@@ -25,7 +25,7 @@ pub async fn generate_tags(prompt: &str) -> Result<Vec<String>> {
 
     let client = Client::new();
 
-    let api_key = conf.openapi_api_key;
+    let api_key = conf.openai_api_key;
     let api_url = "https://api.openai.com/v1/completions";
 
     let prompt = format!("Given the following text, suggest 5 relevant tags:\n\n{}\n\nTags:", prompt);
