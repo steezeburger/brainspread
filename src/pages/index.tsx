@@ -41,7 +41,7 @@ export default function Home() {
       </Head>
       <main className={styles.main}>
 
-        <div className="container">
+        <div className="container is-fluid">
           <div className="columns">
 
             <div className="column">
