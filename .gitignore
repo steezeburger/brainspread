@@ -40,3 +40,7 @@ next-env.d.ts
 
 # config
 BrainSpreadConfig.toml
+
+# sqlite
+*.sqlite
+*.sqlite*

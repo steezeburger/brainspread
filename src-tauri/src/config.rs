@@ -6,4 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct Config {
     /// openai api key
     pub openai_api_key: String,
+
+    /// sqlite database path
+    pub database_path: String,
 }
