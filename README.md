@@ -23,7 +23,7 @@ running for development:
 cargo tauri dev
 ```
 
-### migrrations
+### migrations
 ```bash
 # install the sqlx-cli
 cargo install sqlx-cli --features native-tls,sqlite
