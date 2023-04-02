@@ -1,8 +1,8 @@
 use color_eyre::eyre::Result;
 
 use figment::{
-    Figment,
     providers::{Env, Format, Toml},
+    Figment,
 };
 
 use crate::config::Config;

@@ -1,5 +1,5 @@
-use tokio::sync::Mutex;
 use crate::services::db::DB;
+use tokio::sync::Mutex;
 
 /// Database is a wrapper around DB that provides a Mutex to allow for concurrent access.
 pub struct Database {

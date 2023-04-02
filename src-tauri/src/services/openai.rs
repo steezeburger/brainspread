@@ -18,7 +18,6 @@ struct Choice {
     finish_reason: String,
 }
 
-
 pub async fn generate_tags(prompt: &str) -> Result<Vec<String>> {
     // FIXME - this is just for poc. we don't want to read file everytime we want to make a request.
     let conf = get_config()?;
@@ -28,7 +27,10 @@ pub async fn generate_tags(prompt: &str) -> Result<Vec<String>> {
     let api_key = conf.openai_api_key;
     let api_url = "https://api.openai.com/v1/completions";
 
-    let prompt = format!("Given the following text, suggest 5 relevant tags:\n\n{}\n\nTags:", prompt);
+    let prompt = format!(
+        "Given the following text, suggest 5 relevant tags:\n\n{}\n\nTags:",
+        prompt
+    );
 
     let response = client
         .post(api_url)
@@ -60,7 +62,10 @@ pub async fn generate_tags(prompt: &str) -> Result<Vec<String>> {
 
             if !choices.is_empty() {
                 let tags_text = choices[0].text.trim();
-                let tags: Vec<String> = tags_text.split(',').map(|tag| tag.trim().to_string()).collect();
+                let tags: Vec<String> = tags_text
+                    .split(',')
+                    .map(|tag| tag.trim().to_string())
+                    .collect();
 
                 println!("{:#?}", tags);
 
@@ -75,6 +80,5 @@ pub async fn generate_tags(prompt: &str) -> Result<Vec<String>> {
         }
     };
 
-
-    Ok(vec!("".to_string()))
+    Ok(vec!["".to_string()])
 }

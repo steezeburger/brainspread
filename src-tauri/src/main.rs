@@ -1,8 +1,7 @@
 #![cfg_attr(
-all(not(debug_assertions), target_os = "windows"),
-windows_subsystem = "windows"
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
 )]
-
 
 use tauri::State;
 use tokio::runtime::Builder;
@@ -25,9 +24,7 @@ fn main() {
         .expect("Failed to create Tokio runtime");
 
     // Use an async block to run async code inside the runtime
-    let db_result = runtime.block_on(async {
-        DB::new(&config.database_url).await
-    });
+    let db_result = runtime.block_on(async { DB::new(&config.database_url).await });
 
     if let Ok(db) = db_result {
         let database = Database {
@@ -58,8 +55,7 @@ async fn submit_text(text: &str, database: State<'_, Database>) -> Result<(), St
 
     let query = format!(
         "INSERT INTO contents (title, content) VALUES ('{}', '{}')",
-        "test contents",
-        text
+        "test contents", text
     );
 
     let rows_affected = db.execute(&query).await.expect("Failed to execute query");

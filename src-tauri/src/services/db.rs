@@ -43,7 +43,6 @@ impl DB {
         Ok(rows)
     }
 
-
     /// Execute a query to write data to the SQLite database.
     ///
     /// # Example
