@@ -3,38 +3,68 @@ all(not(debug_assertions), target_os = "windows"),
 windows_subsystem = "windows"
 )]
 
-use app::config::Config as AppConfig;
+
+use tauri::State;
+use tokio::runtime::Builder;
+use tokio::sync::Mutex;
+
 use app::get_config;
 use app::services::db::DB;
-use app::services::openai::generate_tags;
+use app::types::Database;
 
+/// The entrypoint to our Tauri application.
+/// This is where we will initialize and migrate our database connection,
+/// setup State, and register our command handlers.
 fn main() {
-    tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![greet])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    let config = get_config().expect("Failed to get config");
+
+    // Create a Tokio runtime with the current_thread scheduler
+    let runtime = Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create Tokio runtime");
+
+    // Use an async block to run async code inside the runtime
+    let db_result = runtime.block_on(async {
+        DB::new(&config.database_url).await
+    });
+
+    if let Ok(db) = db_result {
+        let database = Database {
+            db: Mutex::new(Some(db)),
+            database_url: config.database_url.to_string(),
+        };
+
+        tauri::Builder::default()
+            .manage(database)
+            .manage(config.clone())
+            .invoke_handler(tauri::generate_handler![greet, submit_text])
+            .run(tauri::generate_context!())
+            .expect("Error while running Tauri application");
+    } else {
+        panic!("Database failure: {:?}", db_result.err().unwrap());
+    }
 }
 
 #[tauri::command]
 async fn greet(name: &str) -> Result<String, String> {
-    let db = DB::new().await.map_err(|err| err.to_string())?;
-    db.init_table().await.map_err(|err| err.to_string())?;
+    Ok(format!("Hello, {}!", name))
+}
 
-    // Write data example
-    let rows_affected = db.execute("INSERT INTO brainspread (name) VALUES ('Howdy partner!')")
-        .await.map_err(|err| err.to_string())?;
-    println!("{} rows affected", rows_affected);
+#[tauri::command]
+async fn submit_text(text: &str, database: State<'_, Database>) -> Result<(), String> {
+    let mut db_guard = database.db.lock().await;
+    let db = db_guard.as_mut().ok_or("Database not available")?;
 
-    // Read data example
-    let rows: Vec<(i32, String)> = db.query("SELECT id, name FROM brainspread")
-        .await.map_err(|err| err.to_string())?;
-    println!("{:?}", rows);
+    let query = format!(
+        "INSERT INTO contents (title, content) VALUES ('{}', '{}')",
+        "test contents",
+        text
+    );
 
-    // Format rows as a string
-    let mut formatted_rows = String::new();
-    for (id, name) in rows {
-        formatted_rows.push_str(&format!("id: {}, name: {}\n", id, name));
-    }
+    let rows_affected = db.execute(&query).await.expect("Failed to execute query");
 
-    Ok(formatted_rows)
+    println!("Inserted new text, {} rows affected", rows_affected);
+
+    Ok(())
 }

@@ -1,1 +1,2 @@
 openai_api_key = "abcd-1234" # replace with your openai API key
+database_url = "sqlite:////Users/bobbyhill/code/projects/brainspread/src-tauri/db/brainspread_dev.db"

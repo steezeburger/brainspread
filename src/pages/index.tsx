@@ -67,8 +67,15 @@ export default function Home() {
           </div>
           <button className={"button is-primary " + loadingClass}
                   onClick={() => {
-                    setLoadingClass('is-loading')}
-                  }>
+                    setLoadingClass('is-loading')
+                    invoke('submit_text', {text: links})
+                      .then(res => {
+                        console.log(res)
+                        setLinks('')
+                        setLoadingClass('')
+                      })
+                      .catch(console.error)
+                  }}>
             Submit
           </button>
         </div>
