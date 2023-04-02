@@ -20,6 +20,12 @@ cargo install tauri-cli
 running for development:
 
 ```bash
+# copy the example config to the correct location.
+# you'll need to set the openai api key and also a location for the database.
+# i recommend putting the db in the `src-tauri/db/` directory.
+cp src-tauri/BrainSpreadConfig.toml.example src-tauri/BrainSpreadConfig.toml
+
+# run the tauri app
 cargo tauri dev
 ```
 
@@ -28,7 +34,10 @@ cargo tauri dev
 # install the sqlx-cli
 cargo install sqlx-cli --features native-tls,sqlite
 
-# best to be in the db directory when running these commands
+# it's best to be in the db directory when running sqlx commands, 
+# but you can also specify the path to the db file via `--database-url`, 
+# except for the `migrate add` command. 
+# that seems to just create the migration in `./migrations/` regardless of where you are.
 cd src-tauri/db
 
 # create the database
