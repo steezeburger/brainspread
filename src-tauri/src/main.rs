@@ -58,6 +58,7 @@ async fn submit_text(text: &str, database: State<'_, Database>) -> Result<(), St
         "test contents", text
     );
 
+    // TODO - error handling
     let rows_affected = db.execute(&query).await.expect("Failed to execute query");
 
     println!("Inserted new text, {} rows affected", rows_affected);

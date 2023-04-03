@@ -44,3 +44,6 @@ BrainSpreadConfig.toml
 # sqlite
 *.sqlite
 *.sqlite*
+*.db
+*.db-shm
+*.db-wal
