@@ -3,6 +3,7 @@ import {Inter} from 'next/font/google'
 import {invoke} from '@tauri-apps/api/tauri'
 import styles from '@/styles/Home.module.css'
 import {useEffect, useState} from 'react'
+import ContentSidelineItem from "@/components/ContentSidelineItem";
 
 const inter = Inter({subsets: ['latin']})
 
@@ -38,6 +39,17 @@ export default function Home() {
 
   const [loadingClass, setLoadingClass] = useState('')
 
+  // TODO - get existing articles and their summaries on first load
+  const [contentsList, setContentsList] = useState([])
+  useEffect(() => {
+    invoke('get_contents')
+      .then(res => {
+        console.log(res)
+        setContentsList(res)
+      })
+      .catch(console.error)
+  }, [summary])
+
   return (
     <>
       <Head>
@@ -53,41 +65,65 @@ export default function Home() {
         <div className="container is-fluid">
           <div className="columns">
 
-            <div className="column">
+            <div className="column is-three-quarters mt-4">
               {/* input for title */}
-              <input className="input is-primary mt-4"
-                     type="text"
-                     value={title}
-                     placeholder="Title"
-                     onChange={e => setTitle(e.target.value)}/>
-              <textarea name=""
-                        id=""
-                        className="textarea is-primary mt-4"
-                        rows={10}
-                        value={contents}
-                        placeholder={'article contents'}
-                        onChange={e => setContents(e.target.value)}>
-              </textarea>
-              <textarea name=""
-                        id=""
-                        className="textarea is-primary mt-4"
-                        rows={3}
-                        value={summary}
-                        readOnly={true}
-                        placeholder={'summary'}>
+              <div className="field">
+                <label className="label">Title</label>
+                <div className="control">
+                  <input className="input is-primary"
+                         type="text"
+                         value={title}
+                         onChange={e => setTitle(e.target.value)}/>
+                </div>
+              </div>
 
-              </textarea>
-              <textarea name=""
-                        id=""
-                        className="textarea is-primary mt-4"
-                        rows={1}
-                        value={labels}
-                        readOnly={true}
-                        placeholder={'labels'}>
+              <div className="field">
+                <label className="label">Contents</label>
+                <div className="control">
+                  <textarea name=""
+                            id=""
+                            className="textarea is-primary"
+                            rows={10}
+                            value={contents}
+                            onChange={e => setContents(e.target.value)}>
+                  </textarea>
+                </div>
+              </div>
 
-              </textarea>
+              <div className="field">
+                <label className="label">Summary</label>
+                <div className="control">
+                  <textarea name=""
+                            id=""
+                            className="textarea is-primary"
+                            rows={3}
+                            value={summary}
+                            readOnly={true}
+                            placeholder={'summary'}>
+                  </textarea>
+                </div>
+              </div>
+              <div className="field">
+                <div className="control">
+                  <label className="label">Labels</label>
+                  <textarea name=""
+                            id=""
+                            className="textarea is-primary"
+                            rows={1}
+                            value={labels}
+                            readOnly={true}
+                            placeholder={'labels'}>
+                  </textarea>
+                </div>
+              </div>
             </div>
 
+            <div className="column">
+              <div className="container mt-4">
+                <h1 className="title has-text-centered">Previous summaries</h1>
+                {contentsList.map(content => (<ContentSidelineItem key={content.id} content={content}/>))}
+              </div>
+            </div>
           </div>
           <button className={"button is-primary " + loadingClass}
                   onClick={() => {

@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use sqlx::sqlite::SqliteConnectOptions;
-use sqlx::SqlitePool;
+use sqlx::{Row, SqlitePool};
 
 /// DB is a wrapper around Sqlite that provides a connection pool and methods to execute queries.
 pub struct DB {
@@ -134,5 +134,27 @@ impl DB {
                 .rows_affected();
         }
         Ok(rows_affected)
+    }
+
+    pub async fn get_contents_w_summaries(&self) -> Result<Vec<(i32, String, String, String)>, sqlx::Error> {
+        let query = "SELECT contents.id, contents.title, contents.content, summaries.content FROM contents INNER JOIN summaries ON contents.id = summaries.content_id";
+        let mut conn = self.pool.acquire().await?;
+        let rows: Vec<(i32, String, String, String)> = sqlx::query_as::<_, (i32, String, String, String)>(query)
+            .fetch_all(&mut conn)
+            .await?;
+        Ok(rows)
+    }
+
+    pub async fn get_labels(&self, content_id: i32) -> Result<Vec<String>, sqlx::Error> {
+        let query = "SELECT name FROM labels WHERE content_id = ?";
+        let mut conn = self.pool.acquire().await?;
+        let rows = sqlx::query(query)
+            .bind(content_id)
+            .fetch_all(&mut conn)
+            .await?
+            .into_iter()
+            .map(|row| row.try_get::<String, _>("name").unwrap())
+            .collect::<Vec<String>>();
+        Ok(rows)
     }
 }
