@@ -35,7 +35,7 @@ fn main() {
         tauri::Builder::default()
             .manage(database)
             .manage(config.clone())
-            .invoke_handler(tauri::generate_handler![greet, submit_text])
+            .invoke_handler(tauri::generate_handler![greet, get_summary_and_labels])
             .run(tauri::generate_context!())
             .expect("Error while running Tauri application");
     } else {
@@ -48,20 +48,57 @@ async fn greet(name: &str) -> Result<String, String> {
     Ok(format!("Hello, {}!", name))
 }
 
+#[derive(serde::Serialize)]
+struct SummaryAndLabelsResponse {
+    summary: String,
+    labels: Vec<String>,
+}
+
 #[tauri::command]
-async fn submit_text(text: &str, database: State<'_, Database>) -> Result<(), String> {
+async fn get_summary_and_labels(
+    title: &str,
+    text: &str,
+    database: State<'_, Database>,
+) -> Result<SummaryAndLabelsResponse, String> {
     let mut db_guard = database.db.lock().await;
     let db = db_guard.as_mut().ok_or("Database not available")?;
 
-    let query = format!(
-        "INSERT INTO contents (title, content) VALUES ('{}', '{}')",
-        "test contents", text
-    );
-
     // TODO - error handling
-    let rows_affected = db.execute(&query).await.expect("Failed to execute query");
-
+    let rows_affected = db
+        .insert_content(title, text)
+        .await
+        .expect("Failed to insert content");
     println!("Inserted new text, {} rows affected", rows_affected);
 
-    Ok(())
+    // get most recent content id
+    let content = db
+        .get_most_recent_content()
+        .await
+        .expect("Failed to get most recent content");
+    let content_id = content.expect("No content found").0;
+
+    // generate summary
+    let summary = app::services::openai::generate_summary(title, text)
+        .await
+        .expect("Failed to generate summary");
+
+    // create summary in db
+    let rows_affected = db
+        .insert_summary(content_id, summary.as_str())
+        .await
+        .expect("Failed to insert summary");
+    println!("Inserted new summary, {} rows affected", rows_affected);
+
+    // generate labels
+    let labels = app::services::openai::generate_labels(title, text)
+        .await
+        .expect("Failed to generate labels");
+    // insert labels into database
+    let rows_affected = db
+        .insert_labels(content_id, labels.clone())
+        .await
+        .expect("Failed to insert labels");
+    println!("Inserted new labels, {} rows affected", rows_affected);
+
+    Ok(SummaryAndLabelsResponse { summary, labels })
 }

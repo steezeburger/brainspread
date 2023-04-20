@@ -3,8 +3,12 @@ CREATE TABLE IF NOT EXISTS labels
 (
     id         INTEGER PRIMARY KEY,
     name       TEXT      NOT NULL UNIQUE,
+    content_id INTEGER,
+    summary_id INTEGER,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    deleted_at TIMESTAMP
+    deleted_at TIMESTAMP,
+    FOREIGN KEY (content_id) REFERENCES contents (id),
+    FOREIGN KEY (summary_id) REFERENCES summaries (id)
 );
 
 CREATE TABLE IF NOT EXISTS content_types
@@ -34,12 +38,12 @@ CREATE TABLE IF NOT EXISTS summaries
 (
     id         INTEGER PRIMARY KEY,
     content    TEXT      NOT NULL,
-    label_id   INTEGER,
     status_id  INTEGER,
+    content_id INTEGER,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP,
-    FOREIGN KEY (label_id) REFERENCES labels (id),
-    FOREIGN KEY (status_id) REFERENCES summaries_statuses (id)
+    FOREIGN KEY (status_id) REFERENCES summaries_statuses (id),
+    FOREIGN KEY (content_id) REFERENCES contents (id)
 );
 
 CREATE TABLE IF NOT EXISTS contents
@@ -49,12 +53,10 @@ CREATE TABLE IF NOT EXISTS contents
     content         TEXT,
     url             TEXT,
     file_path       TEXT,
-    summary_id      INTEGER,
     label_id        INTEGER,
     content_type_id INTEGER,
     created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at      TIMESTAMP,
-    FOREIGN KEY (summary_id) REFERENCES summaries (id),
     FOREIGN KEY (label_id) REFERENCES labels (id),
     FOREIGN KEY (content_type_id) REFERENCES content_types (id)
 );

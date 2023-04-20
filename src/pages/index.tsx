@@ -25,8 +25,16 @@ export default function Home() {
       .catch(console.error)
   }, [])
 
-  const [links, setLinks] = useState('')
-  const [tags, setTags] = useState('')
+  // title
+  const [title, setTitle] = useState('')
+  const [contents, setContents] = useState('')
+  const [labels, setLabels] = useState('')
+  const [summary, setSummary] = useState('')
+
+  // TODO - list of links that are fetched and parsed
+  // const [links, setLinks] = useState('')
+
+  // TODO - file upload. start with pdf
 
   const [loadingClass, setLoadingClass] = useState('')
 
@@ -46,20 +54,36 @@ export default function Home() {
           <div className="columns">
 
             <div className="column">
+              {/* input for title */}
+              <input className="input is-primary mt-4"
+                     type="text"
+                     value={title}
+                     placeholder="Title"
+                     onChange={e => setTitle(e.target.value)}/>
               <textarea name=""
                         id=""
                         className="textarea is-primary mt-4"
                         rows={10}
-                        value={links}
-                        placeholder={'comma separate list of links...'}
-                        onChange={e => setLinks(e.target.value)}>
+                        value={contents}
+                        placeholder={'article contents'}
+                        onChange={e => setContents(e.target.value)}>
               </textarea>
               <textarea name=""
                         id=""
                         className="textarea is-primary mt-4"
-                        rows={10}
-                        value={tags}
-                        onChange={e => setTags(e.target.value)}>
+                        rows={3}
+                        value={summary}
+                        readOnly={true}
+                        placeholder={'summary'}>
+
+              </textarea>
+              <textarea name=""
+                        id=""
+                        className="textarea is-primary mt-4"
+                        rows={1}
+                        value={labels}
+                        readOnly={true}
+                        placeholder={'labels'}>
 
               </textarea>
             </div>
@@ -68,10 +92,13 @@ export default function Home() {
           <button className={"button is-primary " + loadingClass}
                   onClick={() => {
                     setLoadingClass('is-loading')
-                    invoke('submit_text', {text: links})
+                    invoke('get_summary_and_labels', {title: title, text: contents})
                       .then(res => {
                         console.log(res)
-                        setLinks('')
+                        setSummary(res.summary)
+                        setLabels(res.labels.join(', '))
+                        // setTitle('')
+                        // setContents('')
                         setLoadingClass('')
                       })
                       .catch(console.error)
