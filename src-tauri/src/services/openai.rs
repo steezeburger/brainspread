@@ -24,7 +24,6 @@ struct Message {
     content: String,
 }
 
-
 /// Generate a summary of the given text.
 pub async fn generate_summary(title: &str, contents: &str) -> color_eyre::Result<String> {
     // FIXME - this is just for poc. we don't want to read file everytime we want to make a request.

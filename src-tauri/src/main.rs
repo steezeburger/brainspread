@@ -1,6 +1,6 @@
 #![cfg_attr(
-all(not(debug_assertions), target_os = "windows"),
-windows_subsystem = "windows"
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
 )]
 
 use tauri::State;
@@ -35,7 +35,11 @@ fn main() {
         tauri::Builder::default()
             .manage(database)
             .manage(config.clone())
-            .invoke_handler(tauri::generate_handler![greet, get_summary_and_labels, get_contents])
+            .invoke_handler(tauri::generate_handler![
+                greet,
+                get_summary_and_labels,
+                get_contents
+            ])
             .run(tauri::generate_context!())
             .expect("Error while running Tauri application");
     } else {
@@ -117,10 +121,16 @@ async fn get_contents(database: State<'_, Database>) -> Result<Vec<Content>, Str
     let mut db_guard = database.db.lock().await;
     let db = db_guard.as_mut().ok_or("Database not available")?;
 
-    let contents = db.get_contents_w_summaries().await.expect("Failed to get contents");
+    let contents = db
+        .get_contents_w_summaries()
+        .await
+        .expect("Failed to get contents");
     let mut result = Vec::new();
     for content in contents {
-        let labels = db.get_labels(content.0).await.expect("Failed to get labels");
+        let labels = db
+            .get_labels(content.0)
+            .await
+            .expect("Failed to get labels");
         result.push(Content {
             id: content.0,
             title: content.1,

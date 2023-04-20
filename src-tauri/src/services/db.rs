@@ -136,12 +136,15 @@ impl DB {
         Ok(rows_affected)
     }
 
-    pub async fn get_contents_w_summaries(&self) -> Result<Vec<(i32, String, String, String)>, sqlx::Error> {
+    pub async fn get_contents_w_summaries(
+        &self,
+    ) -> Result<Vec<(i32, String, String, String)>, sqlx::Error> {
         let query = "SELECT contents.id, contents.title, contents.content, summaries.content FROM contents INNER JOIN summaries ON contents.id = summaries.content_id";
         let mut conn = self.pool.acquire().await?;
-        let rows: Vec<(i32, String, String, String)> = sqlx::query_as::<_, (i32, String, String, String)>(query)
-            .fetch_all(&mut conn)
-            .await?;
+        let rows: Vec<(i32, String, String, String)> =
+            sqlx::query_as::<_, (i32, String, String, String)>(query)
+                .fetch_all(&mut conn)
+                .await?;
         Ok(rows)
     }
 

@@ -23,8 +23,8 @@ const ContentSidelineItem: React.FC<ContentSidelineItem> = ({content}) => {
         <div className="tags">
           {content.labels.map((label, index) => (
             <span key={index} className="tag">
-          {label}
-        </span>
+              {label}
+            </span>
           ))}
         </div>
       </div>
