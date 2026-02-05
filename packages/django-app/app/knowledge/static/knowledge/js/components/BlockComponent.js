@@ -140,7 +140,9 @@ const BlockComponent = {
     handleTodoTouchEnd(event) {
       if (this.isTapGesture(event)) {
         event.preventDefault();
-        if (['todo', 'done', 'later', 'wontdo'].includes(this.block.block_type)) {
+        if (
+          ["todo", "done", "later", "wontdo"].includes(this.block.block_type)
+        ) {
           this.toggleBlockTodo(this.block);
         }
       }
