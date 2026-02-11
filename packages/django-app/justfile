@@ -10,7 +10,7 @@ django-admin *ARGS="":
   set -euo pipefail
 
   # Check database environment
-  DB_HOST_ENVAR=$(docker-compose run --rm -w /code/app web env | grep POSTGRES_HOST)
+  DB_HOST_ENVAR=$(docker compose run --rm -w /code/app web env | grep POSTGRES_HOST)
   DB_HOST=$(cut -d "=" -f2 <<< "$DB_HOST_ENVAR")
   # Trim newline
   DB_HOST=${DB_HOST//[$'\t\r\n']}
@@ -25,11 +25,11 @@ django-admin *ARGS="":
     echo "Running command against database at $DB_HOST..."
   fi
 
-  docker-compose run --rm -w /code/app web /code/app/manage.py "$@"
+  docker compose run --rm -w /code/app web /code/app/manage.py "$@"
 
 # Execute shell commands in running web container
 exec +ARGS:
-  docker-compose exec web {{ARGS}}
+  docker compose exec web {{ARGS}}
 
 # Install uv package (dev or prod)
 install-package PACKAGE DEV="":
@@ -45,7 +45,7 @@ install-package PACKAGE DEV="":
   fi
 
   echo "Rebuilding containers with new dependencies..."
-  docker-compose build web
+  docker compose build web
 
 # Install dev package shorthand
 install-dev PACKAGE:
@@ -54,11 +54,11 @@ install-dev PACKAGE:
 # Update uv dependencies
 update-deps:
   uv lock --upgrade
-  docker-compose build web
+  docker compose build web
 
 # Generate Django secret key
 generate-secret-key:
-  docker-compose run --rm -w /code/app web python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
+  docker compose run --rm -w /code/app web python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
 
 # Run tests in web container
 # Examples:
@@ -72,16 +72,16 @@ generate-secret-key:
 test +ARGS="":
   #!/usr/bin/env bash
   if [ -z "{{ARGS}}" ]; then
-    docker-compose run --rm -w /code/app web pytest --cov=. --verbose
+    docker compose run --rm -w /code/app web pytest --cov=. --verbose
   else
-    docker-compose run --rm -w /code/app web pytest {{ARGS}}
+    docker compose run --rm -w /code/app web pytest {{ARGS}}
   fi
 
 alias t := test
 
 # Run shell commands in new web container
 run +ARGS:
-  docker-compose run --rm web {{ARGS}}
+  docker compose run --rm web {{ARGS}}
 
 # Create Docker volumes
 create-volumes:
@@ -89,7 +89,7 @@ create-volumes:
 
 # Dump database data to stdout
 dump-data:
-  docker-compose run --rm -w /code/app web /code/app/manage.py dumpdata \
+  docker compose run --rm -w /code/app web /code/app/manage.py dumpdata \
     --natural-primary \
     --natural-foreign \
     --exclude=admin.logentry \
@@ -102,7 +102,7 @@ reload-db DATA="dev_data.json":
   set -euo pipefail
 
   # Check database environment
-  DB_HOST_ENVAR=$(docker-compose run --rm -w /code/app web env | grep POSTGRES_HOST)
+  DB_HOST_ENVAR=$(docker compose run --rm -w /code/app web env | grep POSTGRES_HOST)
   DB_HOST=$(cut -d "=" -f2 <<< "$DB_HOST_ENVAR")
   # Trim newline
   DB_HOST=${DB_HOST//[$'\t\r\n']}
@@ -123,22 +123,22 @@ reload-db DATA="dev_data.json":
 
   echo "recreating volume and container ..."
   # Stop and remove db container
-  docker-compose stop db
-  docker-compose rm -f db
+  docker compose stop db
+  docker compose rm -f db
 
   # Remove and recreate postgres volume
   docker volume rm ${POSTGRES_VOLUME_NAME:-brainspread_postgres} || true
   docker volume create --name=${POSTGRES_VOLUME_NAME:-brainspread_postgres}
 
   # Bring container back up and wait for db
-  docker-compose up -d db
+  docker compose up -d db
   sleep 5
 
   echo "running migrations ..."
-  docker-compose run --rm -w /code/app web /code/app/manage.py migrate
+  docker compose run --rm -w /code/app web /code/app/manage.py migrate
 
   echo "loading data from {{DATA}} ..."
-  docker-compose run --rm -w /code/app web /code/app/manage.py loaddata {{DATA}}
+  docker compose run --rm -w /code/app web /code/app/manage.py loaddata {{DATA}}
 
 
 # Common Django management commands shortcuts
@@ -195,55 +195,55 @@ check-pending-migrations:
 # Docker compose shortcuts
 up SERVICE="":
   @if [ -z "{{SERVICE}}" ]; then \
-    docker-compose up; \
+    docker compose up; \
   else \
-    docker-compose up {{SERVICE}}; \
+    docker compose up {{SERVICE}}; \
   fi
 
 up-d SERVICE="":
   @if [ -z "{{SERVICE}}" ]; then \
-    docker-compose up -d; \
+    docker compose up -d; \
   else \
-    docker-compose up -d {{SERVICE}}; \
+    docker compose up -d {{SERVICE}}; \
   fi
 
 down SERVICE="":
   @if [ -z "{{SERVICE}}" ]; then \
-    docker-compose down; \
+    docker compose down; \
   else \
-    docker-compose stop {{SERVICE}}; \
+    docker compose stop {{SERVICE}}; \
   fi
 
 build SERVICE="":
   @if [ -z "{{SERVICE}}" ]; then \
-    docker-compose build; \
+    docker compose build; \
   else \
-    docker-compose build {{SERVICE}}; \
+    docker compose build {{SERVICE}}; \
   fi
 
 logs SERVICE="":
   @if [ -z "{{SERVICE}}" ]; then \
-    docker-compose logs -f; \
+    docker compose logs -f; \
   else \
-    docker-compose logs -f {{SERVICE}}; \
+    docker compose logs -f {{SERVICE}}; \
   fi
 
 # Show last N lines of logs (defaults to 100)
 tail-logs SERVICE="" LINES="100":
   @if [ -z "{{SERVICE}}" ]; then \
-    docker-compose logs --tail {{LINES}}; \
+    docker compose logs --tail {{LINES}}; \
   else \
-    docker-compose logs --tail {{LINES}} {{SERVICE}}; \
+    docker compose logs --tail {{LINES}} {{SERVICE}}; \
   fi
 
 # Show container status
 ps:
-  docker-compose ps
+  docker compose ps
 
 # Clean up project Docker resources
 dcp-cleanup:
-  docker-compose stop
-  docker-compose rm -f db web
+  docker compose stop
+  docker compose rm -f db web
   docker volume rm ${POSTGRES_VOLUME_NAME:-brainspread_postgres}
 
 # Setup local Python virtual environment
@@ -265,7 +265,7 @@ create-pgdump location=default_backups_location:
   #!/usr/bin/env bash
   set -euo pipefail
   mkdir -p {{location}}
-  docker-compose exec db pg_dump -U $POSTGRES_USER $POSTGRES_DB > {{location}}/`date +%Y-%m-%d_%H-%M-%S`-brainspread-dump.sql
+  docker compose exec db pg_dump -U $POSTGRES_USER $POSTGRES_DB > {{location}}/`date +%Y-%m-%d_%H-%M-%S`-brainspread-dump.sql
 
 # Create JSON backup of the database
 create-json-backup location=default_backups_location:
@@ -276,11 +276,11 @@ create-json-backup location=default_backups_location:
 
 # Format Python code
 format-py:
-  docker-compose run --rm -w /code/app web python -m black . --exclude="migrations/"
+  docker compose run --rm -w /code/app web python -m black . --exclude="migrations/"
 
 # Check Python formatting (Black)
 format-check-py:
-  docker-compose run --rm -w /code/app web python -m black . --check --exclude="migrations/"
+  docker compose run --rm -w /code/app web python -m black . --check --exclude="migrations/"
 
 # Format JavaScript code
 format-js:
@@ -296,7 +296,7 @@ alias f := format
 
 # Lint Python code with ruff
 lint-py:
-  docker-compose run --rm -w /code/app web ruff check . \
+  docker compose run --rm -w /code/app web ruff check . \
     --exclude="**/migrations/**" \
     --exclude="migrations/" \
     --exclude=".venv/" \
@@ -304,7 +304,7 @@ lint-py:
 
 # Fix Python linting issues automatically
 lint-py-fix:
-  docker-compose run --rm -w /code/app web ruff check . \
+  docker compose run --rm -w /code/app web ruff check . \
     --exclude="**/migrations/**" \
     --exclude="migrations/" \
     --exclude=".venv/" \
@@ -349,7 +349,7 @@ prepush:
   echo ""
   
   echo "4️⃣  Running Django system checks..."
-  docker-compose run --rm -w /code/app web python manage.py check --deploy
+  docker compose run --rm -w /code/app web python manage.py check --deploy
   echo "✅ Django checks passed"
   echo ""
   
@@ -359,7 +359,7 @@ prepush:
   echo ""
   
   echo "6️⃣  Checking for missing migrations..."
-  docker-compose run --rm -w /code/app web python manage.py makemigrations --check --dry-run
+  docker compose run --rm -w /code/app web python manage.py makemigrations --check --dry-run
   echo "✅ No missing migrations"
   echo ""
   
@@ -370,10 +370,10 @@ alias p := prepush
 # Update production - pull, build, migrate, restart
 update:
   git pull origin main
-  docker-compose build web
+  docker compose build web
   just migrate
-  docker-compose stop web
-  docker-compose -f docker-compose.yml up -d web
+  docker compose stop web
+  docker compose -f docker compose.yml up -d web
 
 # AI Tools
 # start playwright mcp server
