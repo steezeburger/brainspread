@@ -30,6 +30,11 @@ try:
 except KeyError:
     ALLOWED_HOSTS = []
 
+try:
+    CSRF_TRUSTED_ORIGINS = os.environ["CSRF_TRUSTED_ORIGINS"].split(",")
+except KeyError:
+    CSRF_TRUSTED_ORIGINS = []
+
 # auth
 AUTH_USER_MODEL = "core.User"
 # authentication for django admin
