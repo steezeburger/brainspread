@@ -1,0 +1,58 @@
+[project]
+name = "brainspread"
+version = "0.1.0"
+description = "Django app for brainspread"
+requires-python = "==3.13.*"
+dependencies = [
+    "django==5.0.2",
+    "django-extensions==3.2.3",
+    "psycopg[binary]==3.2.3",
+    "typing-extensions==4.14.0",
+    "stringcase==1.2.0",
+    "djangorestframework==3.14.0",
+    "django-cors-headers==4.3.1",
+    "anthropic==0.55.0",
+    "httpx>=0.24.0,<0.28.0",
+    "openai",
+    "google-generativeai",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==8.0.0",
+    "pytest-cov==4.1.0",
+    "pytest-django==4.8.0",
+    "factory-boy==3.3.0",
+    "black==25.1.0",
+    "pytest-mock==3.14.1",
+    "ruff==0.12.0",
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py313']
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | migrations
+  | __pycache__
+)/
+'''
+
+[tool.ruff]
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "migrations",
+]
+line-length = 88
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "app.test_settings"
+python_files = ["tests.py", "test_*.py", "*_test.py", "*_tests.py"]
+addopts = "--reuse-db"
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+]

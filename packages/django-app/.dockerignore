@@ -2,5 +2,5 @@
 *.pyc
 **/__pycache__
 
-# allows installing pipenv dependencies locally in a virtual environment
+# allows installing uv dependencies locally in a virtual environment
 .venv

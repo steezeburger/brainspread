@@ -31,19 +31,19 @@ django-admin *ARGS="":
 exec +ARGS:
   docker-compose exec web {{ARGS}}
 
-# Install pipenv package (dev or prod) 
+# Install uv package (dev or prod)
 install-package PACKAGE DEV="":
   #!/usr/bin/env bash
   set -euo pipefail
-  
+
   if [ "{{DEV}}" = "--dev" ]; then
     echo "Installing {{PACKAGE}} as dev dependency..."
-    pipenv install --dev {{PACKAGE}}
+    uv add --dev {{PACKAGE}}
   else
     echo "Installing {{PACKAGE}} as production dependency..."
-    pipenv install {{PACKAGE}}
+    uv add {{PACKAGE}}
   fi
-  
+
   echo "Rebuilding containers with new dependencies..."
   docker-compose build web
 
@@ -51,9 +51,9 @@ install-package PACKAGE DEV="":
 install-dev PACKAGE:
   just install-package {{PACKAGE}} --dev
 
-# Update pipenv dependencies
+# Update uv dependencies
 update-deps:
-  pipenv update
+  uv lock --upgrade
   docker-compose build web
 
 # Generate Django secret key
@@ -248,9 +248,7 @@ dcp-cleanup:
 
 # Setup local Python virtual environment
 setup-local-python-venv:
-  python3 -m venv .venv
-  source .venv/bin/activate
-  PIPENV_VENV_IN_PROJECT=1 pipenv install --dev --deploy
+  uv sync
 
 # Copy environment template file
 copy-env:
@@ -368,6 +366,14 @@ prepush:
   echo "🎉 All pre-push checks passed! Ready to push! 🎉"
 
 alias p := prepush
+
+# Update production - pull, build, migrate, restart
+update:
+  git pull origin main
+  docker-compose build web
+  just migrate
+  docker-compose stop web
+  docker-compose -f docker-compose.yml up -d web
 
 # AI Tools
 # start playwright mcp server
