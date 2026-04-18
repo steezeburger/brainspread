@@ -1,0 +1,121 @@
+name: Staging
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, closed]
+
+jobs:
+  deploy:
+    name: Deploy to Staging
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_BRANCH: ${{ github.head_ref }}
+          STAGING_SECRET_KEY: ${{ secrets.STAGING_SECRET_KEY }}
+        with:
+          host: ${{ secrets.DO_SSH_HOST }}
+          username: ${{ secrets.DO_SSH_USER }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          envs: GITHUB_TOKEN,PR_BRANCH,STAGING_SECRET_KEY
+          script: |
+            STAGING_DIR="/opt/brainspread/staging"
+            REPO="https://x-access-token:${GITHUB_TOKEN}@github.com/steezeburger/brainspread.git"
+
+            if [ -d "$STAGING_DIR/.git" ]; then
+              git -C "$STAGING_DIR" fetch origin
+              git -C "$STAGING_DIR" checkout "$PR_BRANCH"
+              git -C "$STAGING_DIR" reset --hard "origin/$PR_BRANCH"
+            else
+              git clone "$REPO" "$STAGING_DIR"
+              git -C "$STAGING_DIR" checkout "$PR_BRANCH"
+            fi
+
+            cd "$STAGING_DIR/packages/django-app"
+
+            cat > .env << EOF
+            POSTGRES_HOST=db
+            POSTGRES_PASSWORD=postgres_staging
+            POSTGRES_DB=brainspread_staging
+            POSTGRES_USER=postgres
+            POSTGRES_PORT=5432
+            POSTGRES_VOLUME_NAME=brainspread_staging_postgres
+            WEB_PORT=8002
+            DEBUG=True
+            ALLOWED_HOSTS=*
+            DJANGO_SECRET_KEY=${STAGING_SECRET_KEY}
+            COMPOSE_PROJECT_NAME=brainspread_staging
+            EOF
+
+            docker compose -p brainspread_staging up -d --build
+            sleep 5
+            docker compose -p brainspread_staging run --rm -w /code/app web python manage.py migrate
+
+      - name: Find existing comment
+        uses: peter-evans/find-comment@v3
+        id: find-comment
+        with:
+          issue-number: ${{ github.event.number }}
+          comment-author: github-actions[bot]
+          body-includes: Staging Environment
+
+      - name: Post staging URL comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ github.event.number }}
+          edit-mode: replace
+          body: |
+            ### Staging Environment
+
+            | | |
+            |---|---|
+            | **URL** | http://${{ secrets.DO_SSH_HOST }}:8002 |
+            | **Branch** | `${{ github.head_ref }}` |
+            | **Commit** | `${{ github.sha }}` |
+            | **Status** | Deployed |
+
+  teardown:
+    name: Teardown Staging
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Teardown staging on VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DO_SSH_HOST }}
+          username: ${{ secrets.DO_SSH_USER }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          script: |
+            STAGING_DIR="/opt/brainspread/staging"
+            if [ -d "$STAGING_DIR/packages/django-app" ]; then
+              docker compose -p brainspread_staging \
+                --project-directory "$STAGING_DIR/packages/django-app" down -v
+            fi
+            rm -rf "$STAGING_DIR"
+
+      - name: Find existing comment
+        uses: peter-evans/find-comment@v3
+        id: find-comment
+        with:
+          issue-number: ${{ github.event.number }}
+          comment-author: github-actions[bot]
+          body-includes: Staging Environment
+
+      - name: Update comment on teardown
+        if: steps.find-comment.outputs.comment-id != ''
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          edit-mode: replace
+          body: |
+            ### Staging Environment
+
+            | | |
+            |---|---|
+            | **Branch** | `${{ github.head_ref }}` |
+            | **Status** | Torn down (PR closed) |
