@@ -11,20 +11,27 @@ jobs:
     if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
+      - name: Calculate staging port
+        id: vars
+        run: echo "port=$((8100 + ${{ github.event.number }}))" >> $GITHUB_OUTPUT
+
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUM: ${{ github.event.number }}
           PR_BRANCH: ${{ github.head_ref }}
-          STAGING_SECRET_KEY: ${{ secrets.STAGING_SECRET_KEY }}
-          STAGING_DB_PASSWORD: ${{ secrets.STAGING_DB_PASSWORD }}
+          PORT: ${{ steps.vars.outputs.port }}
         with:
-          host: ${{ secrets.DO_SSH_HOST }}
-          username: ${{ secrets.DO_SSH_USER }}
+          host: ${{ vars.DO_SSH_HOST }}
+          username: ${{ vars.DO_SSH_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
-          envs: GITHUB_TOKEN,PR_BRANCH,STAGING_SECRET_KEY,STAGING_DB_PASSWORD
+          envs: GITHUB_TOKEN,PR_NUM,PR_BRANCH,PORT
           script: |
-            STAGING_DIR="$HOME/brainspread-staging"
+            STAGING_DIR="$HOME/brainspread-pr-${PR_NUM}"
+            PG_PORT=$((5500 + PR_NUM))
+            PROJECT="brainspread_pr_${PR_NUM}"
+            VOLUME="${PROJECT}_postgres"
             REPO="https://x-access-token:${GITHUB_TOKEN}@github.com/steezeburger/brainspread.git"
 
             if [ -d "$STAGING_DIR/.git" ]; then
@@ -38,23 +45,29 @@ jobs:
 
             cd "$STAGING_DIR/packages/django-app"
 
-            cat > .env << EOF
+            # Only generate secrets on first deploy for this PR
+            if [ ! -f .env ]; then
+              SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(38))")
+              DB_PASSWORD=$(openssl rand -hex 32)
+              cat > .env << EOF
             POSTGRES_HOST=db
-            POSTGRES_PASSWORD=${STAGING_DB_PASSWORD}
-            POSTGRES_DB=brainspread_staging
+            POSTGRES_PASSWORD=${DB_PASSWORD}
+            POSTGRES_DB=${PROJECT}
             POSTGRES_USER=postgres
-            POSTGRES_PORT=5432
-            POSTGRES_VOLUME_NAME=brainspread_staging_postgres
-            WEB_PORT=8002
+            POSTGRES_PORT=${PG_PORT}
+            POSTGRES_VOLUME_NAME=${VOLUME}
+            WEB_PORT=${PORT}
             DEBUG=True
-            ALLOWED_HOSTS=staging.brainspread.nutmegranch.com,localhost
-            DJANGO_SECRET_KEY=${STAGING_SECRET_KEY}
-            COMPOSE_PROJECT_NAME=brainspread_staging
+            ALLOWED_HOSTS=*
+            DJANGO_SECRET_KEY=${SECRET_KEY}
+            COMPOSE_PROJECT_NAME=${PROJECT}
             EOF
+            fi
 
-            docker compose -p brainspread_staging up -d --build
+            docker volume create --name="${VOLUME}" 2>/dev/null || true
+            docker compose -p "${PROJECT}" up -d --build
             sleep 5
-            docker compose -p brainspread_staging run --rm -w /code/app web python manage.py migrate
+            docker compose -p "${PROJECT}" run --rm -w /code/app web python manage.py migrate
 
       - name: Find existing comment
         uses: peter-evans/find-comment@v3
@@ -75,7 +88,7 @@ jobs:
 
             | | |
             |---|---|
-            | **URL** | https://staging.brainspread.nutmegranch.com |
+            | **URL** | http://${{ vars.DO_SSH_HOST }}:${{ steps.vars.outputs.port }} |
             | **Branch** | `${{ github.head_ref }}` |
             | **Commit** | `${{ github.sha }}` |
             | **Status** | Deployed |
@@ -87,16 +100,24 @@ jobs:
     steps:
       - name: Teardown staging on VPS
         uses: appleboy/ssh-action@v1
+        env:
+          PR_NUM: ${{ github.event.number }}
         with:
-          host: ${{ secrets.DO_SSH_HOST }}
-          username: ${{ secrets.DO_SSH_USER }}
+          host: ${{ vars.DO_SSH_HOST }}
+          username: ${{ vars.DO_SSH_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
+          envs: PR_NUM
           script: |
-            STAGING_DIR="$HOME/brainspread-staging"
+            STAGING_DIR="$HOME/brainspread-pr-${PR_NUM}"
+            PROJECT="brainspread_pr_${PR_NUM}"
+            VOLUME="${PROJECT}_postgres"
+
             if [ -d "$STAGING_DIR/packages/django-app" ]; then
-              docker compose -p brainspread_staging \
+              docker compose -p "${PROJECT}" \
                 --project-directory "$STAGING_DIR/packages/django-app" down -v
             fi
+
+            docker volume rm "${VOLUME}" 2>/dev/null || true
             rm -rf "$STAGING_DIR"
 
       - name: Find existing comment
