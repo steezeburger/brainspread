@@ -77,6 +77,9 @@ const BlockComponent = {
       isCollapsed: false,
       showContextMenu: false,
       contextMenuPosition: { x: 0, y: 0 },
+      // Touch tracking for distinguishing taps from scrolls
+      touchStartX: null,
+      touchStartY: null,
     };
   },
   computed: {
@@ -101,6 +104,47 @@ const BlockComponent = {
         this.onBlockRemoveFromContext(this.block.uuid);
       } else {
         this.onBlockAddToContext(this.block);
+      }
+    },
+    // Touch handling methods to distinguish taps from scrolls
+    handleTouchStart(event) {
+      if (event.touches.length === 1) {
+        this.touchStartX = event.touches[0].clientX;
+        this.touchStartY = event.touches[0].clientY;
+      }
+    },
+    isTapGesture(event) {
+      // If we don't have a recorded touch start, assume it's not a valid tap
+      if (this.touchStartX === null || this.touchStartY === null) {
+        return false;
+      }
+
+      const touch = event.changedTouches[0];
+      const deltaX = Math.abs(touch.clientX - this.touchStartX);
+      const deltaY = Math.abs(touch.clientY - this.touchStartY);
+
+      // Reset touch tracking
+      this.touchStartX = null;
+      this.touchStartY = null;
+
+      // If the touch moved more than 10 pixels in any direction, it's a scroll not a tap
+      const TAP_THRESHOLD = 10;
+      return deltaX < TAP_THRESHOLD && deltaY < TAP_THRESHOLD;
+    },
+    handleContentTouchEnd(event) {
+      if (this.isTapGesture(event)) {
+        event.preventDefault();
+        this.startEditing(this.block);
+      }
+    },
+    handleTodoTouchEnd(event) {
+      if (this.isTapGesture(event)) {
+        event.preventDefault();
+        if (
+          ["todo", "done", "later", "wontdo"].includes(this.block.block_type)
+        ) {
+          this.toggleBlockTodo(this.block);
+        }
       }
     },
     toggleCollapse() {
@@ -241,14 +285,15 @@ const BlockComponent = {
         </button>
         <div
           class="block-bullet"
-          :class="{ 
-            'todo': block.block_type === 'todo', 
+          :class="{
+            'todo': block.block_type === 'todo',
             'done': block.block_type === 'done',
             'later': block.block_type === 'later',
             'wontdo': block.block_type === 'wontdo'
           }"
           @click="['todo', 'done', 'later', 'wontdo'].includes(block.block_type) ? toggleBlockTodo(block) : null"
-          @touchend.prevent="['todo', 'done', 'later', 'wontdo'].includes(block.block_type) ? toggleBlockTodo(block) : null"
+          @touchstart="handleTouchStart"
+          @touchend="handleTodoTouchEnd"
         >
           <span v-if="block.block_type === 'todo'">☐</span>
           <span v-else-if="block.block_type === 'done'">☑</span>
@@ -261,7 +306,8 @@ const BlockComponent = {
           class="block-content-display"
           :class="{ 'completed': ['done', 'wontdo'].includes(block.block_type) }"
           @click="startEditing(block)"
-          @touchend.prevent="startEditing(block)"
+          @touchstart="handleTouchStart"
+          @touchend="handleContentTouchEnd"
           v-html="formatContentWithTags(block.content)"
         ></div>
         <textarea
