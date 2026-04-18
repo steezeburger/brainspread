@@ -17,11 +17,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_BRANCH: ${{ github.head_ref }}
           STAGING_SECRET_KEY: ${{ secrets.STAGING_SECRET_KEY }}
+          STAGING_DB_PASSWORD: ${{ secrets.STAGING_DB_PASSWORD }}
         with:
           host: ${{ secrets.DO_SSH_HOST }}
           username: ${{ secrets.DO_SSH_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
-          envs: GITHUB_TOKEN,PR_BRANCH,STAGING_SECRET_KEY
+          envs: GITHUB_TOKEN,PR_BRANCH,STAGING_SECRET_KEY,STAGING_DB_PASSWORD
           script: |
             STAGING_DIR="$HOME/brainspread-staging"
             REPO="https://x-access-token:${GITHUB_TOKEN}@github.com/steezeburger/brainspread.git"
@@ -39,7 +40,7 @@ jobs:
 
             cat > .env << EOF
             POSTGRES_HOST=db
-            POSTGRES_PASSWORD=postgres_staging
+            POSTGRES_PASSWORD=${STAGING_DB_PASSWORD}
             POSTGRES_DB=brainspread_staging
             POSTGRES_USER=postgres
             POSTGRES_PORT=5432
