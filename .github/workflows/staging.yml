@@ -10,6 +10,7 @@ jobs:
     name: Deploy to Staging
     if: github.event.action != 'closed'
     runs-on: ubuntu-latest
+    environment: ci
     steps:
       - name: Calculate staging port
         id: vars
@@ -22,13 +23,14 @@ jobs:
           PR_NUM: ${{ github.event.number }}
           PR_BRANCH: ${{ github.head_ref }}
           PORT: ${{ steps.vars.outputs.port }}
+          STAGING_BASE_DIR: ${{ vars.DO_STAGING_BASE_DIR }}
         with:
-          host: ${{ vars.DO_SSH_HOST }}
-          username: ${{ vars.DO_SSH_USER }}
+          host: ${{ secrets.DO_SSH_HOST }}
+          username: ${{ secrets.DO_SSH_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
-          envs: GITHUB_TOKEN,PR_NUM,PR_BRANCH,PORT
+          envs: GITHUB_TOKEN,PR_NUM,PR_BRANCH,PORT,STAGING_BASE_DIR
           script: |
-            STAGING_DIR="$HOME/brainspread-pr-${PR_NUM}"
+            STAGING_DIR="${STAGING_BASE_DIR}/pr-${PR_NUM}"
             PG_PORT=$((5500 + PR_NUM))
             PROJECT="brainspread_pr_${PR_NUM}"
             VOLUME="${PROJECT}_postgres"
@@ -39,6 +41,7 @@ jobs:
               git -C "$STAGING_DIR" checkout "$PR_BRANCH"
               git -C "$STAGING_DIR" reset --hard "origin/$PR_BRANCH"
             else
+              mkdir -p "$STAGING_BASE_DIR"
               git clone "$REPO" "$STAGING_DIR"
               git -C "$STAGING_DIR" checkout "$PR_BRANCH"
             fi
@@ -65,9 +68,9 @@ jobs:
             fi
 
             docker volume create --name="${VOLUME}" 2>/dev/null || true
-            docker compose -p "${PROJECT}" up -d --build
+            just staging-up
             sleep 5
-            docker compose -p "${PROJECT}" run --rm -w /code/app web python manage.py migrate
+            just staging-migrate
 
       - name: Find existing comment
         uses: peter-evans/find-comment@v3
@@ -77,7 +80,7 @@ jobs:
           comment-author: github-actions[bot]
           body-includes: Staging Environment
 
-      - name: Post staging URL comment
+      - name: Post staging comment
         uses: peter-evans/create-or-update-comment@v4
         with:
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
@@ -88,7 +91,7 @@ jobs:
 
             | | |
             |---|---|
-            | **URL** | http://${{ vars.DO_SSH_HOST }}:${{ steps.vars.outputs.port }} |
+            | **Port** | `${{ steps.vars.outputs.port }}` |
             | **Branch** | `${{ github.head_ref }}` |
             | **Commit** | `${{ github.sha }}` |
             | **Status** | Deployed |
@@ -97,24 +100,26 @@ jobs:
     name: Teardown Staging
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
+    environment: ci
     steps:
       - name: Teardown staging on VPS
         uses: appleboy/ssh-action@v1
         env:
           PR_NUM: ${{ github.event.number }}
+          STAGING_BASE_DIR: ${{ vars.DO_STAGING_BASE_DIR }}
         with:
-          host: ${{ vars.DO_SSH_HOST }}
-          username: ${{ vars.DO_SSH_USER }}
+          host: ${{ secrets.DO_SSH_HOST }}
+          username: ${{ secrets.DO_SSH_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
-          envs: PR_NUM
+          envs: PR_NUM,STAGING_BASE_DIR
           script: |
-            STAGING_DIR="$HOME/brainspread-pr-${PR_NUM}"
+            STAGING_DIR="${STAGING_BASE_DIR}/pr-${PR_NUM}"
             PROJECT="brainspread_pr_${PR_NUM}"
             VOLUME="${PROJECT}_postgres"
 
             if [ -d "$STAGING_DIR/packages/django-app" ]; then
-              docker compose -p "${PROJECT}" \
-                --project-directory "$STAGING_DIR/packages/django-app" down -v
+              cd "$STAGING_DIR/packages/django-app"
+              just staging-down
             fi
 
             docker volume rm "${VOLUME}" 2>/dev/null || true
