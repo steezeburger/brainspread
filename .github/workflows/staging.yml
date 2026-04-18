@@ -23,7 +23,7 @@ jobs:
           key: ${{ secrets.DO_SSH_KEY }}
           envs: GITHUB_TOKEN,PR_BRANCH,STAGING_SECRET_KEY
           script: |
-            STAGING_DIR="/opt/brainspread/staging"
+            STAGING_DIR="$HOME/brainspread-staging"
             REPO="https://x-access-token:${GITHUB_TOKEN}@github.com/steezeburger/brainspread.git"
 
             if [ -d "$STAGING_DIR/.git" ]; then
@@ -46,7 +46,7 @@ jobs:
             POSTGRES_VOLUME_NAME=brainspread_staging_postgres
             WEB_PORT=8002
             DEBUG=True
-            ALLOWED_HOSTS=*
+            ALLOWED_HOSTS=staging.brainspread.nutmegranch.com,localhost
             DJANGO_SECRET_KEY=${STAGING_SECRET_KEY}
             COMPOSE_PROJECT_NAME=brainspread_staging
             EOF
@@ -74,7 +74,7 @@ jobs:
 
             | | |
             |---|---|
-            | **URL** | http://${{ secrets.DO_SSH_HOST }}:8002 |
+            | **URL** | https://staging.brainspread.nutmegranch.com |
             | **Branch** | `${{ github.head_ref }}` |
             | **Commit** | `${{ github.sha }}` |
             | **Status** | Deployed |
@@ -91,7 +91,7 @@ jobs:
           username: ${{ secrets.DO_SSH_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
           script: |
-            STAGING_DIR="/opt/brainspread/staging"
+            STAGING_DIR="$HOME/brainspread-staging"
             if [ -d "$STAGING_DIR/packages/django-app" ]; then
               docker compose -p brainspread_staging \
                 --project-directory "$STAGING_DIR/packages/django-app" down -v
