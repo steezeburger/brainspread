@@ -357,8 +357,11 @@ const Page = {
 
       // Shift existing blocks down by updating their orders
       for (const block of blocksToShift) {
-        await this.updateBlock(block, block.content, true);
         block.order = block.order + 1;
+        await window.apiService.updateBlock(block.uuid, {
+          order: block.order,
+          parent: block.parent ? block.parent.uuid : null,
+        });
       }
 
       // Create the new block at the desired position
@@ -376,8 +379,11 @@ const Page = {
 
       // Shift existing blocks down by updating their orders
       for (const block of blocksToShift) {
-        await this.updateBlock(block, block.content, true);
         block.order = block.order + 1;
+        await window.apiService.updateBlock(block.uuid, {
+          order: block.order,
+          parent: block.parent ? block.parent.uuid : null,
+        });
       }
 
       // Create the new block at the desired position
@@ -635,7 +641,7 @@ const Page = {
         const newOrder = block.parent.order + 1;
 
         // Update orders of siblings that come after the parent
-        this.updateSiblingOrders(grandparent, newOrder);
+        await this.updateSiblingOrders(grandparent, newOrder);
 
         const result = await window.apiService.updateBlock(block.uuid, {
           parent: grandparent ? grandparent.uuid : null,
@@ -700,13 +706,17 @@ const Page = {
       }
     },
 
-    updateSiblingOrders(parent, fromOrder) {
+    async updateSiblingOrders(parent, fromOrder) {
       const siblings = parent ? parent.children : this.directBlocks;
-      siblings.forEach((sibling) => {
+      for (const sibling of siblings) {
         if (sibling.order >= fromOrder) {
           sibling.order += 1;
+          await window.apiService.updateBlock(sibling.uuid, {
+            order: sibling.order,
+            parent: sibling.parent ? sibling.parent.uuid : null,
+          });
         }
-      });
+      }
     },
 
     formatContentWithTags(content) {
