@@ -74,6 +74,7 @@ jobs:
             sleep 5
             just staging-migrate
             just staging-create-superuser
+            just staging-seed
 
       - name: Find existing comment
         uses: peter-evans/find-comment@v3
@@ -94,7 +95,7 @@ jobs:
 
             | | |
             |---|---|
-            | **Port** | `${{ steps.vars.outputs.port }}` |
+            | **URL** | http://${{ secrets.DO_SSH_HOST }}:${{ steps.vars.outputs.port }}/knowledge/ |
             | **Branch** | `${{ github.head_ref }}` |
             | **Commit** | `${{ github.sha }}` |
             | **Status** | Deployed |
