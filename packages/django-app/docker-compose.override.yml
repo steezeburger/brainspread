@@ -1,0 +1,4 @@
+services:
+  web:
+    ports:
+      - "${WEB_PORT:-8000}:${WEB_PORT:-8000}"
