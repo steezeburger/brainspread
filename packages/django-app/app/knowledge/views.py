@@ -542,7 +542,13 @@ def reorder_blocks(request):
             command = ReorderBlocksCommand(form)
             command.execute()
 
-            return Response({"success": True, "data": {"message": "Blocks reordered successfully"}, "errors": None})
+            return Response(
+                {
+                    "success": True,
+                    "data": {"message": "Blocks reordered successfully"},
+                    "errors": None,
+                }
+            )
         else:
             return Response(
                 {"success": False, "data": None, "errors": form.errors},
