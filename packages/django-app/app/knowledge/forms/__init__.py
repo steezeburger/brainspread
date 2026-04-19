@@ -1,4 +1,5 @@
 from .create_block_form import CreateBlockForm
+from .reorder_blocks_form import ReorderBlocksForm
 from .create_page_form import CreatePageForm
 from .delete_block_form import DeleteBlockForm
 from .delete_page_form import DeletePageForm

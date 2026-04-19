@@ -1,4 +1,5 @@
 from .create_block_command import CreateBlockCommand
+from .reorder_blocks_command import ReorderBlocksCommand
 from .create_page_command import CreatePageCommand
 from .delete_block_command import DeleteBlockCommand
 from .delete_page_command import DeletePageCommand

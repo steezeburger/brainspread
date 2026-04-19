@@ -17,6 +17,7 @@ from knowledge.commands import (
     GetTagContentCommand,
     GetUserPagesCommand,
     MoveUndoneTodosCommand,
+    ReorderBlocksCommand,
     SearchPagesCommand,
     ToggleBlockTodoCommand,
     UpdateBlockCommand,
@@ -35,6 +36,7 @@ from knowledge.forms import (
     GetTagContentForm,
     GetUserPagesForm,
     MoveUndoneTodosForm,
+    ReorderBlocksForm,
     SearchPagesForm,
     ToggleBlockTodoForm,
     UpdateBlockForm,
@@ -521,6 +523,43 @@ def delete_block(request):
             "errors": {"non_field_errors": [str(e)]},
         }
         return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["PUT"])
+@permission_classes([IsAuthenticated])
+def reorder_blocks(request):
+    """Batch reorder blocks in a single request.
+
+    Accepts: {"blocks": [{"uuid": "...", "order": N}, ...]}
+    """
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+
+        form = ReorderBlocksForm(data)
+
+        if form.is_valid():
+            command = ReorderBlocksCommand(form)
+            command.execute()
+
+            return Response({"success": True, "data": {"message": "Blocks reordered successfully"}, "errors": None})
+        else:
+            return Response(
+                {"success": False, "data": None, "errors": form.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    except ValidationError as e:
+        return Response(
+            {"success": False, "data": None, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    except Exception as e:
+        return Response(
+            {"success": False, "data": None, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 @api_view(["POST"])
