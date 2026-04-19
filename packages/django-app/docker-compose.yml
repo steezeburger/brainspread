@@ -36,7 +36,5 @@ services:
       - "0.0.0.0:${WEB_PORT:-8000}"
     volumes:
       - .:/code
-    ports:
-      - "${WEB_PORT:-8000}:${WEB_PORT:-8000}"
     depends_on:
       - db
