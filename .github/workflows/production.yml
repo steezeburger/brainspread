@@ -1,0 +1,27 @@
+name: Deploy to Production
+
+on:
+  workflow_run:
+    workflows: ["Lint and Test"]
+    branches: [main]
+    types: [completed]
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: ci
+    steps:
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1
+        env:
+          PROD_DIR: ${{ vars.DO_PROD_DIR }}
+        with:
+          host: ${{ secrets.DO_SSH_HOST }}
+          username: ${{ secrets.DO_SSH_USER }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          envs: PROD_DIR
+          script: |
+            cd "$PROD_DIR/packages/django-app"
+            just update
