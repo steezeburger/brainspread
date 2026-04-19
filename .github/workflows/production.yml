@@ -16,15 +16,12 @@ jobs:
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PROD_DIR: ${{ vars.DO_PROD_DIR }}
         with:
           host: ${{ secrets.DO_SSH_HOST }}
           username: ${{ secrets.DO_SSH_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
-          envs: GITHUB_TOKEN,PROD_DIR
+          envs: PROD_DIR
           script: |
             cd "$PROD_DIR/packages/django-app"
-            git -C "$PROD_DIR" remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/steezeburger/brainspread.git"
             just update
-            git -C "$PROD_DIR" remote set-url origin "https://github.com/steezeburger/brainspread.git"
