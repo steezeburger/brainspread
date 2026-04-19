@@ -389,10 +389,10 @@ alias p := prepush
 # Update production - pull, build, migrate, restart
 update:
   git pull origin main
-  docker compose build web
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml build web
   just migrate
   docker compose stop web
-  docker compose -f docker compose.yml up -d web
+  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d web
 
 # AI Tools
 # start playwright mcp server
