@@ -1,4 +1,0 @@
-services:
-  web:
-    ports:
-      - "0.0.0.0:${WEB_PORT:-8000}:${WEB_PORT:-8000}"

@@ -242,16 +242,16 @@ ps:
 
 # Staging environment commands (run from a staging directory, e.g. ~/brainspread-stuff/environments/pr-5/packages/django-app)
 staging-up:
-  docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --build
+  docker compose up -d --build
 
 staging-down:
-  docker compose -f docker-compose.yml -f docker-compose.staging.yml down -v
+  docker compose down -v
 
 staging-migrate:
-  docker compose -f docker-compose.yml -f docker-compose.staging.yml run --rm -w /code/app web python manage.py migrate
+  docker compose run --rm -w /code/app web python manage.py migrate
 
 staging-create-superuser:
-  docker compose -f docker-compose.yml -f docker-compose.staging.yml run --rm \
+  docker compose run --rm \
     -e DJANGO_SUPERUSER_EMAIL \
     -e DJANGO_SUPERUSER_PASSWORD \
     -w /code/app web python manage.py createsuperuser --noinput || true
