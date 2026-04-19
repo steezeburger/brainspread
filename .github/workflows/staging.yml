@@ -95,7 +95,7 @@ jobs:
 
             | | |
             |---|---|
-            | **URL** | http://${{ secrets.DO_SSH_HOST }}:${{ steps.vars.outputs.port }}/knowledge/ |
+            | **URL** | http://${{ vars.DO_STAGING_HOST }}:${{ steps.vars.outputs.port }}/knowledge/ |
             | **Branch** | `${{ github.head_ref }}` |
             | **Commit** | `${{ github.sha }}` |
             | **Status** | Deployed |
