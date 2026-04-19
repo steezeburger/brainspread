@@ -24,11 +24,13 @@ jobs:
           PR_BRANCH: ${{ github.head_ref }}
           PORT: ${{ steps.vars.outputs.port }}
           STAGING_BASE_DIR: ${{ vars.DO_STAGING_BASE_DIR }}
+          DJANGO_SUPERUSER_EMAIL: ${{ secrets.SUPERUSER_EMAIL }}
+          DJANGO_SUPERUSER_PASSWORD: ${{ secrets.SUPERUSER_PASSWORD }}
         with:
           host: ${{ secrets.DO_SSH_HOST }}
           username: ${{ secrets.DO_SSH_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
-          envs: GITHUB_TOKEN,PR_NUM,PR_BRANCH,PORT,STAGING_BASE_DIR
+          envs: GITHUB_TOKEN,PR_NUM,PR_BRANCH,PORT,STAGING_BASE_DIR,DJANGO_SUPERUSER_EMAIL,DJANGO_SUPERUSER_PASSWORD
           script: |
             STAGING_DIR="${STAGING_BASE_DIR}/pr-${PR_NUM}"
             PG_PORT=$((5500 + PR_NUM))
@@ -71,6 +73,7 @@ jobs:
             just staging-up
             sleep 5
             just staging-migrate
+            just staging-create-superuser
 
       - name: Find existing comment
         uses: peter-evans/find-comment@v3
