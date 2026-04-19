@@ -37,6 +37,6 @@ services:
     volumes:
       - .:/code
     ports:
-      - "127.0.0.1:${WEB_PORT:-8000}:${WEB_PORT:-8000}"
+      - "${WEB_PORT:-8000}:${WEB_PORT:-8000}"
     depends_on:
       - db

@@ -350,19 +350,26 @@ const Page = {
         ? currentBlock.parent.children
         : this.directBlocks;
 
-      // Find all blocks that need to be shifted (same parent, order >= newOrder)
       const blocksToShift = siblings.filter(
         (block) => block.uuid !== currentBlock.uuid && block.order >= newOrder
       );
 
-      // Shift existing blocks down by updating their orders
-      for (const block of blocksToShift) {
-        await this.updateBlock(block, block.content, true);
-        block.order = block.order + 1;
-      }
+      try {
+        const reorderPayload = blocksToShift.map((block) => {
+          block.order = block.order + 1;
+          return { uuid: block.uuid, order: block.order };
+        });
 
-      // Create the new block at the desired position
-      await this.createBlock("", currentBlock.parent, newOrder);
+        if (reorderPayload.length > 0) {
+          const result = await window.apiService.reorderBlocks(reorderPayload);
+          if (!result.success) throw new Error("failed to reorder blocks");
+        }
+
+        await this.createBlock("", currentBlock.parent, newOrder);
+      } catch (error) {
+        console.error("failed to create block after:", error);
+        this.error = "failed to create block";
+      }
     },
 
     async createBlockBefore(currentBlock) {
@@ -371,17 +378,24 @@ const Page = {
         ? currentBlock.parent.children
         : this.directBlocks;
 
-      // Find all blocks that need to be shifted (same parent, order >= newOrder)
       const blocksToShift = siblings.filter((block) => block.order >= newOrder);
 
-      // Shift existing blocks down by updating their orders
-      for (const block of blocksToShift) {
-        await this.updateBlock(block, block.content, true);
-        block.order = block.order + 1;
-      }
+      try {
+        const reorderPayload = blocksToShift.map((block) => {
+          block.order = block.order + 1;
+          return { uuid: block.uuid, order: block.order };
+        });
 
-      // Create the new block at the desired position
-      await this.createBlock("", currentBlock.parent, newOrder);
+        if (reorderPayload.length > 0) {
+          const result = await window.apiService.reorderBlocks(reorderPayload);
+          if (!result.success) throw new Error("failed to reorder blocks");
+        }
+
+        await this.createBlock("", currentBlock.parent, newOrder);
+      } catch (error) {
+        console.error("failed to create block before:", error);
+        this.error = "failed to create block";
+      }
     },
 
     async moveBlockUp(block) {
@@ -403,16 +417,12 @@ const Page = {
         block.order = blockAbove.order;
         blockAbove.order = tempOrder;
 
-        // Update both blocks' orders in the API
-        await window.apiService.updateBlock(block.uuid, {
-          order: block.order,
-          parent: block.parent ? block.parent.uuid : null,
-        });
+        const result = await window.apiService.reorderBlocks([
+          { uuid: block.uuid, order: block.order },
+          { uuid: blockAbove.uuid, order: blockAbove.order },
+        ]);
 
-        await window.apiService.updateBlock(blockAbove.uuid, {
-          order: blockAbove.order,
-          parent: blockAbove.parent ? blockAbove.parent.uuid : null,
-        });
+        if (!result.success) throw new Error("reorder failed");
 
         // Update local state - re-sort siblings
         siblings.sort((a, b) => a.order - b.order);
@@ -444,16 +454,12 @@ const Page = {
         block.order = blockBelow.order;
         blockBelow.order = tempOrder;
 
-        // Update both blocks' orders in the API
-        await window.apiService.updateBlock(block.uuid, {
-          order: block.order,
-          parent: block.parent ? block.parent.uuid : null,
-        });
+        const result = await window.apiService.reorderBlocks([
+          { uuid: block.uuid, order: block.order },
+          { uuid: blockBelow.uuid, order: blockBelow.order },
+        ]);
 
-        await window.apiService.updateBlock(blockBelow.uuid, {
-          order: blockBelow.order,
-          parent: blockBelow.parent ? blockBelow.parent.uuid : null,
-        });
+        if (!result.success) throw new Error("reorder failed");
 
         // Update local state - re-sort siblings
         siblings.sort((a, b) => a.order - b.order);
@@ -635,7 +641,7 @@ const Page = {
         const newOrder = block.parent.order + 1;
 
         // Update orders of siblings that come after the parent
-        this.updateSiblingOrders(grandparent, newOrder);
+        await this.updateSiblingOrders(grandparent, newOrder);
 
         const result = await window.apiService.updateBlock(block.uuid, {
           parent: grandparent ? grandparent.uuid : null,
@@ -700,13 +706,21 @@ const Page = {
       }
     },
 
-    updateSiblingOrders(parent, fromOrder) {
+    async updateSiblingOrders(parent, fromOrder) {
       const siblings = parent ? parent.children : this.directBlocks;
-      siblings.forEach((sibling) => {
+      const reorderPayload = [];
+
+      for (const sibling of siblings) {
         if (sibling.order >= fromOrder) {
           sibling.order += 1;
+          reorderPayload.push({ uuid: sibling.uuid, order: sibling.order });
         }
-      });
+      }
+
+      if (reorderPayload.length === 0) return;
+
+      const result = await window.apiService.reorderBlocks(reorderPayload);
+      if (!result.success) throw new Error("failed to reorder siblings");
     },
 
     formatContentWithTags(content) {

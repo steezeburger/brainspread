@@ -12,6 +12,7 @@ urlpatterns = [
     path("api/blocks/", views.create_block, name="create_block"),
     path("api/blocks/update/", views.update_block, name="update_block"),
     path("api/blocks/delete/", views.delete_block, name="delete_block"),
+    path("api/blocks/reorder/", views.reorder_blocks, name="reorder_blocks"),
     path("api/blocks/toggle-todo/", views.toggle_block_todo, name="toggle_block_todo"),
     path(
         "api/blocks/move-undone-todos/",

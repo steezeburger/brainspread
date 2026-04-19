@@ -182,6 +182,13 @@ class ApiService {
     });
   }
 
+  async reorderBlocks(blocksOrderData) {
+    return await this.request("/knowledge/api/blocks/reorder/", {
+      method: "PUT",
+      body: JSON.stringify({ blocks: blocksOrderData }),
+    });
+  }
+
   async deleteBlock(blockUuid) {
     return await this.request("/knowledge/api/blocks/delete/", {
       method: "DELETE",

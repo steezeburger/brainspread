@@ -142,19 +142,29 @@ class BlockRepository(BaseRepository):
         return max_order if max_order is not None else 0
 
     @classmethod
-    def reorder_blocks(cls, blocks_order_data: List[Dict[str, Any]]) -> bool:
-        """Reorder blocks based on provided order data
+    def reorder_blocks(cls, blocks_order_data: List[Dict[str, Any]], user=None) -> bool:
+        """Reorder blocks using a single bulk_update (2 queries instead of 2N).
 
         Args:
             blocks_order_data: List of dicts with 'uuid' and 'order' keys
+            user: Optional user to scope block lookup for ownership enforcement
         """
-        try:
-            for item in blocks_order_data:
-                block = cls.get_by_uuid(item["uuid"])
-                if block:
-                    block.order = item["order"]
-                    block.save(update_fields=["order"])
+        if not blocks_order_data:
             return True
+
+        try:
+            with transaction.atomic():
+                order_map = {item["uuid"]: item["order"] for item in blocks_order_data}
+                queryset = cls.get_queryset().filter(uuid__in=list(order_map.keys()))
+                if user is not None:
+                    queryset = queryset.filter(user=user)
+                blocks = list(queryset)
+                if len(blocks) != len(order_map):
+                    return False
+                for block in blocks:
+                    block.order = order_map[str(block.uuid)]
+                Block.objects.bulk_update(blocks, ["order"])
+                return True
         except Exception:
             return False
 

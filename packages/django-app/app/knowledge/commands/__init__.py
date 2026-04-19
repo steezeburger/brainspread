@@ -7,6 +7,7 @@ from .get_page_with_blocks_command import GetPageWithBlocksCommand
 from .get_tag_content_command import GetTagContentCommand
 from .get_user_pages_command import GetUserPagesCommand
 from .move_undone_todos_command import MoveUndoneTodosCommand
+from .reorder_blocks_command import ReorderBlocksCommand
 from .search_pages_command import SearchPagesCommand
 from .sync_block_tags_command import SyncBlockTagsCommand
 from .toggle_block_todo_command import ToggleBlockTodoCommand
