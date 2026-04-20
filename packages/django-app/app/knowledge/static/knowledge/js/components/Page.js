@@ -843,8 +843,8 @@ const Page = {
     handleTagClick(event) {
       if (event.target.classList.contains("clickable-tag")) {
         event.stopPropagation();
-        // Allow cmd+click, ctrl+click, and middle-click to open in new tab natively
-        if (event.metaKey || event.ctrlKey || event.button === 1) {
+        // Allow modifier clicks to open in new tab/window natively
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1) {
           return;
         }
         event.preventDefault();
