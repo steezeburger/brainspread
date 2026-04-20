@@ -589,6 +589,102 @@ body {
   flex-shrink: 0;
 }
 
+/* Help Modal */
+.help-modal-content {
+  max-width: 680px;
+}
+
+.help-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.help-modal-header h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1.3rem;
+}
+
+.help-close-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.4rem;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  line-height: 1;
+}
+
+.help-close-btn:hover {
+  color: var(--text-primary);
+}
+
+.help-modal-body {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.help-section h3 {
+  margin: 0 0 0.75rem 0;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border-secondary);
+  padding-bottom: 0.4rem;
+}
+
+.help-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.help-table td {
+  padding: 0.35rem 0.5rem;
+  vertical-align: middle;
+  color: var(--text-primary);
+}
+
+.help-table td:first-child {
+  width: 55%;
+  color: var(--text-secondary);
+}
+
+.help-table tr:hover td {
+  background: var(--hover-bg);
+}
+
+.help-syntax {
+  font-family: monospace;
+  font-size: 0.85rem;
+  background: var(--hover-bg);
+  padding: 0.1rem 0.3rem;
+  color: var(--text-primary);
+}
+
+kbd {
+  display: inline-block;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--border-primary);
+  background: var(--hover-bg);
+  color: var(--text-primary);
+  font-family: monospace;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.help-hint {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
 /* Tags */
 .tags-section {
   margin-top: 2rem;
