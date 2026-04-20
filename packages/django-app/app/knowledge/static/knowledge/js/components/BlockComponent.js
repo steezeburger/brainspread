@@ -170,58 +170,37 @@ const BlockComponent = {
       // Close any other open menus first
       this.closeOtherMenus();
 
-      // Calculate position with viewport constraints
       const menuWidth = 200; // min-width from CSS
-      const shadowOffset = 4; // shadow extends 4px to right and bottom
-      const menuHeight = 300; // estimated max height
+      const shadowOffset = 4;
       const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
       const isMobile = window.innerWidth <= 768;
+      const edgePadding = isMobile ? 20 : 10;
+      const bottomPadding = isMobile ? 60 : 10;
 
       let x = event.clientX;
       let y = event.clientY;
 
-      // Mobile-specific adjustments
-      if (isMobile) {
-        // On mobile, add extra padding to prevent cutoff
-        const mobilePadding = 20;
-        const mobileBottomPadding = 60; // Extra space for mobile browsers UI
-
-        // Adjust X position if menu would overflow right edge
-        if (x + menuWidth + shadowOffset > viewportWidth - mobilePadding) {
-          x = viewportWidth - menuWidth - shadowOffset - mobilePadding;
-        }
-
-        // Adjust Y position if menu would overflow bottom edge
-        if (
-          y + menuHeight + shadowOffset >
-          viewportHeight - mobileBottomPadding
-        ) {
-          y = viewportHeight - menuHeight - shadowOffset - mobileBottomPadding;
-        }
-
-        // Ensure menu doesn't go off left or top edge
-        x = Math.max(mobilePadding, x);
-        y = Math.max(mobilePadding, y);
-      } else {
-        // Desktop positioning logic
-        // Adjust X position if menu would overflow right edge (including shadow)
-        if (x + menuWidth + shadowOffset > viewportWidth) {
-          x = viewportWidth - menuWidth - shadowOffset - 10; // 10px padding from edge
-        }
-
-        // Adjust Y position if menu would overflow bottom edge (including shadow)
-        if (y + menuHeight + shadowOffset > viewportHeight) {
-          y = viewportHeight - menuHeight - shadowOffset - 10; // 10px padding from edge
-        }
-
-        // Ensure menu doesn't go off left or top edge
-        x = Math.max(10, x);
-        y = Math.max(10, y);
+      // Clamp X immediately (we know the menu width upfront)
+      if (x + menuWidth + shadowOffset > viewportWidth - edgePadding) {
+        x = viewportWidth - menuWidth - shadowOffset - edgePadding;
       }
+      x = Math.max(edgePadding, x);
 
       this.contextMenuPosition = { x, y };
       this.showContextMenu = true;
+
+      // After render, measure the actual menu height and reposition vertically if needed
+      this.$nextTick(() => {
+        const menuEl = this.$el.querySelector(".block-context-menu");
+        if (!menuEl) return;
+        const menuHeight = menuEl.offsetHeight;
+        const viewportHeight = window.innerHeight;
+        if (y + menuHeight + shadowOffset > viewportHeight - bottomPadding) {
+          y = viewportHeight - menuHeight - shadowOffset - bottomPadding;
+        }
+        y = Math.max(edgePadding, y);
+        this.contextMenuPosition = { x, y };
+      });
 
       // Add click listener to close menu after a short delay
       setTimeout(() => {
