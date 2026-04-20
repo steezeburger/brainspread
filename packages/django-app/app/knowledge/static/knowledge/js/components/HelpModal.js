@@ -9,8 +9,47 @@ window.HelpModal = {
 
   emits: ["close"],
 
+  watch: {
+    isOpen(newValue) {
+      if (newValue) {
+        this.$nextTick(() => {
+          const closeBtn = this.$el?.querySelector(".help-close-btn");
+          if (closeBtn) closeBtn.focus();
+        });
+      }
+    },
+  },
+
+  methods: {
+    handleModalKeydown(event) {
+      if (event.key === "Escape") {
+        this.$emit("close");
+        return;
+      }
+      if (event.key === "Tab") {
+        const modal = this.$el?.querySelector(".settings-modal-content");
+        if (!modal) return;
+        const focusable = Array.from(
+          modal.querySelectorAll(
+            'button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        );
+        if (focusable.length < 2) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    },
+  },
+
   template: `
-    <div v-if="isOpen" class="settings-modal" @click.self="$emit('close')">
+    <div v-if="isOpen" class="settings-modal" @click.self="$emit('close')" @keydown="handleModalKeydown">
       <div class="settings-modal-content help-modal-content">
         <div class="help-modal-header">
           <h2>help</h2>

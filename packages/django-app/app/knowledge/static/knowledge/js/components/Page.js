@@ -481,7 +481,19 @@ const Page = {
     },
 
     async onBlockKeyDown(event, block) {
-      if (event.key === "Enter" && !event.shiftKey) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        await this.updateBlock(block, block.content, true);
+        block.isEditing = false;
+        // Return focus to the display element so tab navigation continues
+        this.$nextTick(() => {
+          const display = document.querySelector(
+            `[data-block-uuid="${block.uuid}"] .block-content-display`
+          );
+          if (display) display.focus();
+        });
+        return;
+      } else if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
         // Save current block before creating new one
         await this.updateBlock(block, block.content, true);

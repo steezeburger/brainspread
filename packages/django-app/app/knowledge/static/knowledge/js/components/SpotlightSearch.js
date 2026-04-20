@@ -57,6 +57,25 @@ window.SpotlightSearch = {
     },
 
     handleKeydown(event) {
+      if (event.key === "Tab") {
+        const modal = this.$el?.querySelector(".spotlight-modal");
+        if (!modal) return;
+        const focusable = Array.from(
+          modal.querySelectorAll(
+            'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        );
+        if (focusable.length < 2) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
       this.$emit("keydown", event);
     },
 
@@ -76,7 +95,7 @@ window.SpotlightSearch = {
   },
 
   template: `
-    <div v-if="isOpen" class="spotlight-overlay" @click="handleOverlayClick">
+    <div v-if="isOpen" class="spotlight-overlay" @click="handleOverlayClick" @keydown="handleKeydown">
       <div class="spotlight-modal">
         <div class="spotlight-header">
           <div class="spotlight-search-container">
