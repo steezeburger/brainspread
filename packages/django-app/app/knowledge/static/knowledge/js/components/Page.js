@@ -835,7 +835,6 @@ const Page = {
       );
     },
 
-
     goToPage(pageSlug) {
       // Navigate to a page by slug with full page redirect
       const url = `/knowledge/page/${encodeURIComponent(pageSlug)}/`;
