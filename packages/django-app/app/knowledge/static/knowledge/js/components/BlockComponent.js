@@ -308,7 +308,7 @@ const BlockComponent = {
           @click="startEditing(block)"
           @touchstart="handleTouchStart"
           @touchend="handleContentTouchEnd"
-          v-html="formatContentWithTags(block.content)"
+          v-html="formatContentWithTags(block.content, block.block_type)"
         ></div>
         <textarea
           v-else
