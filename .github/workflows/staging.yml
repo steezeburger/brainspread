@@ -124,6 +124,7 @@ jobs:
             if [ -d "$STAGING_DIR/packages/django-app" ]; then
               cd "$STAGING_DIR/packages/django-app"
               just staging-down
+              just staging-cleanup-images
             fi
 
             docker volume rm "${VOLUME}" 2>/dev/null || true

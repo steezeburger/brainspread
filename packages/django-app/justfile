@@ -262,6 +262,10 @@ staging-seed:
 staging-logs LINES="100":
   docker compose logs --tail {{LINES}} -f
 
+# Remove Docker images built for the current staging environment
+staging-cleanup-images:
+  docker rmi ${COMPOSE_PROJECT_NAME}-web:latest 2>/dev/null || true
+
 # Clean up project Docker resources
 dcp-cleanup:
   docker compose stop
