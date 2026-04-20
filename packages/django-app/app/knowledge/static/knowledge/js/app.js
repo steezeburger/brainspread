@@ -633,6 +633,7 @@ const KnowledgeApp = createApp({
         if (result.success) {
           const pages = result.data.pages.map((page) => ({
             type: "page",
+            pageType: page.page_type,
             title: page.title,
             slug: page.slug,
             snippet: "",

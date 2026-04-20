@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Any, Dict, Optional
 
-from django.db.models import Count, QuerySet
+from django.db.models import Count, Q, QuerySet
 
 from common.repositories.base_repository import BaseRepository
 
@@ -132,16 +132,19 @@ class PageRepository(BaseRepository):
         )
 
     @classmethod
-    def get_recent_pages_with_blocks(cls, user, limit=7) -> QuerySet:
-        """Get the most recently modified pages that have blocks."""
-        pages_with_blocks = (
+    def get_recent_pages(cls, user, limit=7) -> QuerySet:
+        """Get the most recently modified pages that have meaningful content.
+
+        Includes pages that have blocks as well as canvas pages (whose content
+        lives in Page.content as a tldraw snapshot rather than in Block rows).
+        """
+        return (
             cls.get_queryset()
             .filter(user=user)
             .annotate(block_count=Count("blocks"))
-            .filter(block_count__gt=0)
+            .filter(Q(block_count__gt=0) | Q(page_type="canvas"))
             .order_by("-modified_at")[:limit]
         )
-        return pages_with_blocks
 
     @classmethod
     def get_tag_page(cls, tag_name: str, user) -> Optional[Page]:
