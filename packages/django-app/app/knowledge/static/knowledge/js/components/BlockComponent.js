@@ -297,16 +297,20 @@ const BlockComponent = {
       }
     },
 
-    handleBlockDisplayKeydown(event) {
+    async handleBlockDisplayKeydown(event) {
       // Alt+Shift+ArrowUp/Down: move block
       if (event.altKey && event.shiftKey && event.key === "ArrowUp") {
         event.preventDefault();
-        this.moveBlockUp(this.block);
+        const uuid = this.block.uuid;
+        await this.moveBlockUp(this.block);
+        this.refocusDisplay(uuid);
         return;
       }
       if (event.altKey && event.shiftKey && event.key === "ArrowDown") {
         event.preventDefault();
-        this.moveBlockDown(this.block);
+        const uuid = this.block.uuid;
+        await this.moveBlockDown(this.block);
+        this.refocusDisplay(uuid);
         return;
       }
       // Cmd/Ctrl+Shift+Backspace: delete block
@@ -381,6 +385,15 @@ const BlockComponent = {
       if (event.detail?.uuid === this.block.uuid) {
         this.openContextMenuAtBlock();
       }
+    },
+
+    refocusDisplay(uuid) {
+      this.$nextTick(() => {
+        const display = document.querySelector(
+          `[data-block-uuid="${uuid}"] .block-content-display`
+        );
+        if (display) display.focus();
+      });
     },
 
     handleContextMenuAction(action) {

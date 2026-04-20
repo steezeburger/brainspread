@@ -493,12 +493,18 @@ const Page = {
       // Alt+Shift+ArrowUp/Down: move block
       if (event.altKey && event.shiftKey && event.key === "ArrowUp") {
         event.preventDefault();
+        const cursorPos = event.target.selectionStart;
+        const wasEditing = block.isEditing;
         await this.moveBlockUp(block);
+        this.restoreBlockFocus(block.uuid, wasEditing, cursorPos);
         return;
       }
       if (event.altKey && event.shiftKey && event.key === "ArrowDown") {
         event.preventDefault();
+        const cursorPos = event.target.selectionStart;
+        const wasEditing = block.isEditing;
         await this.moveBlockDown(block);
+        this.restoreBlockFocus(block.uuid, wasEditing, cursorPos);
         return;
       }
       // Cmd/Ctrl+Shift+Backspace: delete block
@@ -970,6 +976,31 @@ const Page = {
       };
       addBlocks(this.directBlocks);
       return result;
+    },
+
+    restoreBlockFocus(uuid, wasEditing, cursorPos) {
+      this.$nextTick(() => {
+        const newBlock = this.getAllBlocks().find((b) => b.uuid === uuid);
+        if (!newBlock) return;
+        if (wasEditing) {
+          this.startEditing(newBlock);
+          if (typeof cursorPos === "number") {
+            this.$nextTick(() => {
+              const textarea = document.querySelector(
+                `[data-block-uuid="${uuid}"] textarea`
+              );
+              if (textarea) {
+                textarea.setSelectionRange(cursorPos, cursorPos);
+              }
+            });
+          }
+        } else {
+          const display = document.querySelector(
+            `[data-block-uuid="${uuid}"] .block-content-display`
+          );
+          if (display) display.focus();
+        }
+      });
     },
 
     focusNextBlock(currentBlock) {
