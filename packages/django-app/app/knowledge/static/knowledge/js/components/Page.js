@@ -957,10 +957,10 @@ const Page = {
         return;
       }
 
-      // Save the block when user stops editing (blur event)
-      // Skip reload to preserve cursor positions of other blocks
       await this.updateBlock(block, block.content, true);
-      block.isEditing = false;
+      // Don't close the editor if startEditing was called while the save
+      // was in flight (e.g. restoreBlockFocus after a move).
+      if (!block.isEditing) block.isEditing = false;
     },
 
     getAllBlocks() {
