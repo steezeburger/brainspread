@@ -616,12 +616,15 @@ const Page = {
           previousSibling.children.push(block);
           previousSibling.children.sort((a, b) => a.order - b.order);
 
-          // Focus the block again
+          // Re-enter editing mode (blur may have fired during DOM update) and focus
           this.$nextTick(() => {
-            const textarea = document.querySelector(
-              `[data-block-uuid="${block.uuid}"] textarea`
-            );
-            if (textarea) textarea.focus();
+            block.isEditing = true;
+            this.$nextTick(() => {
+              const textarea = document.querySelector(
+                `[data-block-uuid="${block.uuid}"] textarea`
+              );
+              if (textarea) textarea.focus();
+            });
           });
         }
       } catch (error) {
@@ -665,12 +668,15 @@ const Page = {
             this.directBlocks.sort((a, b) => a.order - b.order);
           }
 
-          // Focus the block again
+          // Re-enter editing mode (blur may have fired during DOM update) and focus
           this.$nextTick(() => {
-            const textarea = document.querySelector(
-              `[data-block-uuid="${block.uuid}"] textarea`
-            );
-            if (textarea) textarea.focus();
+            block.isEditing = true;
+            this.$nextTick(() => {
+              const textarea = document.querySelector(
+                `[data-block-uuid="${block.uuid}"] textarea`
+              );
+              if (textarea) textarea.focus();
+            });
           });
         }
       } catch (error) {
