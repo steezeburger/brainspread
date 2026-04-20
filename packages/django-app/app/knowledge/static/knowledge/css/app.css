@@ -3828,6 +3828,27 @@ kbd {
   font-weight: 600;
 }
 
+.spotlight-command .spotlight-result-title {
+  font-weight: 500;
+}
+
+.spotlight-command-icon {
+  font-size: 0.85rem;
+  width: 16px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.spotlight-result-type {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  border: 1px solid var(--border-secondary);
+  padding: 0.1rem 0.4rem;
+  align-self: center;
+  flex-shrink: 0;
+  letter-spacing: 0.03em;
+}
+
 .spotlight-footer {
   border-top: 2px solid var(--border-secondary);
   padding: 0.75rem 1rem;

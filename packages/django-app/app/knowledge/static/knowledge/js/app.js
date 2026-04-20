@@ -310,8 +310,8 @@ const KnowledgeApp = createApp({
       this.removeBlockFromContext(blockId);
     },
 
-    async createNewPage() {
-      const title = prompt("Enter page title:");
+    async createNewPage(prefilledTitle = null) {
+      const title = prefilledTitle ?? prompt("Enter page title:");
       if (!title || !title.trim()) return;
 
       try {
@@ -487,7 +487,7 @@ const KnowledgeApp = createApp({
     openSpotlight() {
       this.showSpotlight = true;
       this.spotlightQuery = "";
-      this.spotlightResults = [];
+      this.spotlightResults = this.getCommandResults("");
       this.spotlightSelectedIndex = 0;
 
       // Focus search input after a brief delay to ensure modal is rendered
@@ -506,21 +506,84 @@ const KnowledgeApp = createApp({
       this.spotlightSelectedIndex = 0;
     },
 
+    getCommandResults(query) {
+      const commands = [
+        {
+          id: "new-page",
+          label: "new page",
+          description: "create a new page",
+          icon: "+",
+        },
+        {
+          id: "new-block",
+          label: "new block",
+          description: "add a block to the current page",
+          icon: "+",
+        },
+        {
+          id: "today",
+          label: "today",
+          description: "go to today's daily note",
+          icon: "→",
+        },
+        {
+          id: "settings",
+          label: "settings",
+          description: "open settings",
+          icon: "⚙",
+        },
+        { id: "help", label: "help", description: "open help", icon: "?" },
+      ];
+
+      const q = query.trim().toLowerCase();
+
+      // "new page <title>" — let the user type the title inline
+      if (q.startsWith("new page ")) {
+        const title = query.trim().slice("new page ".length).trim();
+        if (title) {
+          return [
+            {
+              type: "command",
+              commandId: "new-page",
+              commandArg: title,
+              title: `create page "${title}"`,
+              description: "create a new page with this title",
+              icon: "+",
+            },
+          ];
+        }
+      }
+
+      const filtered = q
+        ? commands.filter(
+            (c) => c.label.includes(q) || c.description.includes(q)
+          )
+        : commands;
+
+      return filtered.map((c) => ({
+        type: "command",
+        commandId: c.id,
+        title: c.label,
+        description: c.description,
+        icon: c.icon,
+      }));
+    },
+
     performSpotlightSearchDebounced() {
-      // Clear existing timeout
       if (this.spotlightSearchTimeout) {
         clearTimeout(this.spotlightSearchTimeout);
       }
-
-      // Set new timeout
       this.spotlightSearchTimeout = setTimeout(() => {
         this.performSpotlightSearch();
       }, 300);
     },
 
     async performSpotlightSearch() {
-      if (!this.spotlightQuery.trim()) {
-        this.spotlightResults = [];
+      const query = this.spotlightQuery.trim();
+      const commands = this.getCommandResults(this.spotlightQuery);
+
+      if (!query) {
+        this.spotlightResults = commands;
         this.spotlightLoading = false;
         return;
       }
@@ -529,24 +592,20 @@ const KnowledgeApp = createApp({
       this.spotlightSelectedIndex = 0;
 
       try {
-        // Use the new dedicated search endpoint
-        const result = await window.apiService.searchPages(
-          this.spotlightQuery,
-          10
-        );
-
+        const result = await window.apiService.searchPages(query, 10);
         if (result.success) {
-          this.spotlightResults = result.data.pages.map((page) => ({
+          const pages = result.data.pages.map((page) => ({
             type: "page",
             title: page.title,
             slug: page.slug,
-            snippet: "", // No snippet needed since we only search titles/slugs
+            snippet: "",
             url: `/knowledge/page/${page.slug}/`,
           }));
+          this.spotlightResults = [...commands, ...pages];
         }
       } catch (error) {
         console.error("Search error:", error);
-        this.spotlightResults = [];
+        this.spotlightResults = commands;
       } finally {
         this.spotlightLoading = false;
       }
@@ -580,10 +639,34 @@ const KnowledgeApp = createApp({
     navigateToSpotlightResult(index = null) {
       const targetIndex = index !== null ? index : this.spotlightSelectedIndex;
       const result = this.spotlightResults[targetIndex];
+      if (!result) return;
 
-      if (result) {
-        this.closeSpotlight();
+      this.closeSpotlight();
+
+      if (result.type === "command") {
+        this.executeSpotlightCommand(result.commandId, result.commandArg);
+      } else {
         window.location.href = result.url;
+      }
+    },
+
+    executeSpotlightCommand(commandId, arg) {
+      switch (commandId) {
+        case "new-page":
+          this.createNewPage(arg ?? null);
+          break;
+        case "new-block":
+          document.dispatchEvent(new CustomEvent("spotlight:new-block"));
+          break;
+        case "today":
+          this.redirectToToday();
+          break;
+        case "settings":
+          this.openSettings();
+          break;
+        case "help":
+          this.openHelp();
+          break;
       }
     },
 

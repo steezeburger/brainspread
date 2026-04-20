@@ -72,6 +72,11 @@ const Page = {
     window.addEventListener("focus", this.handleWindowFocus);
     // Global keydown for Escape to close page menus
     document.addEventListener("keydown", this.handlePageGlobalKeydown);
+    // Spotlight command: new block
+    document.addEventListener(
+      "spotlight:new-block",
+      this.handleSpotlightNewBlock
+    );
     // Load page data
     await this.loadPage();
   },
@@ -81,6 +86,10 @@ const Page = {
     document.removeEventListener("click", this.handleDocumentClick);
     window.removeEventListener("focus", this.handleWindowFocus);
     document.removeEventListener("keydown", this.handlePageGlobalKeydown);
+    document.removeEventListener(
+      "spotlight:new-block",
+      this.handleSpotlightNewBlock
+    );
   },
 
   methods: {
@@ -1018,6 +1027,10 @@ const Page = {
       if (event.key === "Escape" && this.showPageMenu) {
         this.closePageMenuAndRestoreFocus();
       }
+    },
+
+    handleSpotlightNewBlock() {
+      this.addNewBlock();
     },
 
     handleDocumentClick(event) {
