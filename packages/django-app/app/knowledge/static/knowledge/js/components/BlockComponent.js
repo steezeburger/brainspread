@@ -235,7 +235,8 @@ const BlockComponent = {
     },
     getContextMenuItems() {
       return Array.from(
-        this.$el?.querySelectorAll(".block-context-menu [role='menuitem']") || []
+        this.$el?.querySelectorAll(".block-context-menu [role='menuitem']") ||
+          []
       );
     },
 
