@@ -77,6 +77,7 @@ const BlockComponent = {
       isCollapsed: false,
       showContextMenu: false,
       contextMenuPosition: { x: 0, y: 0 },
+      contextMenuFocusedIndex: -1,
       // Touch tracking for distinguishing taps from scrolls
       touchStartX: null,
       touchStartY: null,
@@ -90,6 +91,19 @@ const BlockComponent = {
       return this.block.children?.length > 0;
     },
   },
+  watch: {
+    showContextMenu(val) {
+      if (val) {
+        this.contextMenuFocusedIndex = 0;
+        this.$nextTick(() => {
+          this.focusContextMenuItem(0);
+        });
+      } else {
+        this.contextMenuFocusedIndex = -1;
+      }
+    },
+  },
+
   mounted() {
     // Listen for the custom event to close menus
     document.addEventListener("closeBlockMenus", this.handleCloseBlockMenus);
@@ -211,6 +225,76 @@ const BlockComponent = {
       this.showContextMenu = false;
       document.removeEventListener("click", this.hideContextMenu);
     },
+
+    hideContextMenuAndRestoreFocus() {
+      this.hideContextMenu();
+      this.$nextTick(() => {
+        const menuBtn = this.$el?.querySelector(".block-menu");
+        if (menuBtn) menuBtn.focus();
+      });
+    },
+    getContextMenuItems() {
+      return Array.from(
+        this.$el?.querySelectorAll(".block-context-menu [role='menuitem']") || []
+      );
+    },
+
+    focusContextMenuItem(index) {
+      const items = this.getContextMenuItems();
+      if (items[index]) {
+        items[index].focus();
+        this.contextMenuFocusedIndex = index;
+      }
+    },
+
+    handleContextMenuKeydown(event) {
+      const items = this.getContextMenuItems();
+      if (!items.length) return;
+
+      switch (event.key) {
+        case "ArrowDown":
+          event.preventDefault();
+          this.contextMenuFocusedIndex = Math.min(
+            this.contextMenuFocusedIndex + 1,
+            items.length - 1
+          );
+          this.focusContextMenuItem(this.contextMenuFocusedIndex);
+          break;
+        case "ArrowUp":
+          event.preventDefault();
+          this.contextMenuFocusedIndex = Math.max(
+            this.contextMenuFocusedIndex - 1,
+            0
+          );
+          this.focusContextMenuItem(this.contextMenuFocusedIndex);
+          break;
+        case "Escape":
+        case "Tab":
+          event.preventDefault();
+          this.hideContextMenu();
+          this.$nextTick(() => {
+            const menuBtn = this.$el?.querySelector(".block-menu");
+            if (menuBtn) menuBtn.focus();
+          });
+          break;
+        case "Home":
+          event.preventDefault();
+          this.focusContextMenuItem(0);
+          break;
+        case "End":
+          event.preventDefault();
+          this.focusContextMenuItem(items.length - 1);
+          break;
+      }
+    },
+
+    handleBlockDisplayKeydown(event) {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        this.startEditing(this.block);
+      }
+    },
+
     handleContextMenuAction(action) {
       this.hideContextMenu();
 
@@ -285,7 +369,11 @@ const BlockComponent = {
           v-if="!block.isEditing"
           class="block-content-display"
           :class="{ 'completed': ['done', 'wontdo'].includes(block.block_type) }"
+          tabindex="0"
+          role="button"
+          :aria-label="'Edit block: ' + (block.content || 'empty block')"
           @click="$event.target.closest('.clickable-tag') || startEditing(block)"
+          @keydown="handleBlockDisplayKeydown"
           @touchstart="handleTouchStart"
           @touchend="handleContentTouchEnd"
           v-html="formatContentWithTags(block.content, block.block_type)"
@@ -311,56 +399,56 @@ const BlockComponent = {
       </div>
       
       <!-- Context Menu -->
-      <div v-if="showContextMenu" class="block-context-menu" :style="{ left: contextMenuPosition.x + 'px', top: contextMenuPosition.y + 'px' }" @click.stop>
-        <div class="context-menu-item" v-if="hasChildren && isCollapsed" @click="handleContextMenuAction('expand')">
+      <div v-if="showContextMenu" class="block-context-menu" :style="{ left: contextMenuPosition.x + 'px', top: contextMenuPosition.y + 'px' }" @click.stop @keydown="handleContextMenuKeydown" role="menu">
+        <button class="context-menu-item" role="menuitem" tabindex="-1" v-if="hasChildren && isCollapsed" @click="handleContextMenuAction('expand')">
           <span class="context-menu-icon">▶</span>
           <span>expand</span>
-        </div>
-        <div class="context-menu-item" v-if="hasChildren && !isCollapsed" @click="handleContextMenuAction('collapse')">
+        </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" v-if="hasChildren && !isCollapsed" @click="handleContextMenuAction('collapse')">
           <span class="context-menu-icon">▼</span>
           <span>collapse</span>
-        </div>
+        </button>
         <div class="context-menu-separator" v-if="hasChildren"></div>
-        <div class="context-menu-item" @click="handleContextMenuAction('indent')">
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('indent')">
           <span class="context-menu-icon">→</span>
           <span>indent</span>
-        </div>
-        <div class="context-menu-item" @click="handleContextMenuAction('outdent')">
+        </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('outdent')">
           <span class="context-menu-icon">←</span>
           <span>outdent</span>
-        </div>
+        </button>
         <div class="context-menu-separator"></div>
-        <div class="context-menu-item" @click="handleContextMenuAction('moveUp')">
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('moveUp')">
           <span class="context-menu-icon">↑</span>
           <span>move up</span>
-        </div>
-        <div class="context-menu-item" @click="handleContextMenuAction('moveDown')">
+        </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('moveDown')">
           <span class="context-menu-icon">↓</span>
           <span>move down</span>
-        </div>
+        </button>
         <div class="context-menu-separator"></div>
-        <div class="context-menu-item" @click="handleContextMenuAction('newBlockBefore')">
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('newBlockBefore')">
           <span class="context-menu-icon">+</span>
           <span>new block before</span>
-        </div>
-        <div class="context-menu-item" @click="handleContextMenuAction('newBlockAfter')">
+        </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('newBlockAfter')">
           <span class="context-menu-icon">+</span>
           <span>new block after</span>
-        </div>
+        </button>
         <div class="context-menu-separator"></div>
-        <div class="context-menu-item" v-if="!blockInContext" @click="handleContextMenuAction('addToContext')">
+        <button class="context-menu-item" role="menuitem" tabindex="-1" v-if="!blockInContext" @click="handleContextMenuAction('addToContext')">
           <span class="context-menu-icon">+</span>
           <span>add to ai context</span>
-        </div>
-        <div class="context-menu-item" v-if="blockInContext" @click="handleContextMenuAction('removeFromContext')">
+        </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" v-if="blockInContext" @click="handleContextMenuAction('removeFromContext')">
           <span class="context-menu-icon">-</span>
           <span>remove from ai context</span>
-        </div>
+        </button>
         <div class="context-menu-separator"></div>
-        <div class="context-menu-item context-menu-danger" @click="handleContextMenuAction('delete')">
+        <button class="context-menu-item context-menu-danger" role="menuitem" tabindex="-1" @click="handleContextMenuAction('delete')">
           <span class="context-menu-icon">×</span>
           <span>delete</span>
-        </div>
+        </button>
       </div>
       
       <!-- Recursively render children -->

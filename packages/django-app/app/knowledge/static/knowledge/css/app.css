@@ -1358,12 +1358,16 @@ kbd {
   z-index: 1;
 }
 
-.block:hover .block-collapse-toggle {
+.block:hover .block-collapse-toggle,
+.block-collapse-toggle:focus {
   opacity: 1;
 }
 
-.block-collapse-toggle:hover {
+.block-collapse-toggle:hover,
+.block-collapse-toggle:focus {
   color: var(--text-primary);
+  outline: 2px solid var(--border-primary);
+  outline-offset: 1px;
 }
 
 .block-menu {
@@ -1384,7 +1388,8 @@ kbd {
   transition: opacity 0.2s ease;
 }
 
-.block:hover .block-menu {
+.block:hover .block-menu,
+.block-menu:focus {
   opacity: 1;
 }
 
@@ -1395,10 +1400,13 @@ kbd {
   }
 }
 
-.block-menu:hover {
+.block-menu:hover,
+.block-menu:focus {
   color: var(--text-primary);
   background: var(--bg-secondary);
   border-radius: 3px;
+  outline: 2px solid var(--border-primary);
+  outline-offset: 1px;
 }
 
 .block-context-menu {
@@ -1482,6 +1490,25 @@ kbd {
   background-color: var(--hover-bg);
   margin: -2px;
   padding: 2px;
+}
+
+/* Keyboard navigation focus styles */
+.block-content-display:focus {
+  outline: 2px solid var(--border-primary);
+  outline-offset: 1px;
+  background-color: var(--hover-bg-light);
+}
+
+.context-menu-item:focus {
+  outline: 2px solid var(--border-primary);
+  outline-offset: -2px;
+  background: var(--hover-bg);
+}
+
+.page-title-text:focus {
+  outline: 2px solid var(--border-primary);
+  outline-offset: 2px;
+  cursor: text;
 }
 
 /* Responsive */
@@ -3258,11 +3285,14 @@ kbd {
   transition: none;
 }
 
-.context-menu-btn:hover {
+.context-menu-btn:hover,
+.context-menu-btn:focus {
   background: var(--hover-bg);
   border-color: var(--border-primary);
   transform: none;
   box-shadow: none;
+  outline: 2px solid var(--border-primary);
+  outline-offset: 1px;
 }
 
 .context-menu {

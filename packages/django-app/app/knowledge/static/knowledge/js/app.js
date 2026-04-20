@@ -348,10 +348,51 @@ const KnowledgeApp = createApp({
     // Menu methods
     toggleMenu() {
       this.showMenu = !this.showMenu;
+      if (this.showMenu) {
+        this.$nextTick(() => {
+          const firstItem = document.querySelector(".menu-popover .menu-item");
+          if (firstItem) firstItem.focus();
+        });
+      }
     },
 
     closeMenu() {
       this.showMenu = false;
+    },
+
+    handleNavMenuKeydown(event) {
+      const items = Array.from(
+        document.querySelectorAll(".menu-popover .menu-item")
+      );
+      if (!items.length) return;
+      const currentIndex = items.indexOf(document.activeElement);
+
+      switch (event.key) {
+        case "ArrowDown":
+          event.preventDefault();
+          items[Math.min(currentIndex + 1, items.length - 1)].focus();
+          break;
+        case "ArrowUp":
+          event.preventDefault();
+          items[Math.max(currentIndex - 1, 0)].focus();
+          break;
+        case "Escape":
+        case "Tab":
+          event.preventDefault();
+          this.closeMenu();
+          this.$nextTick(() => {
+            if (this.$refs.menuBtn) this.$refs.menuBtn.focus();
+          });
+          break;
+        case "Home":
+          event.preventDefault();
+          items[0].focus();
+          break;
+        case "End":
+          event.preventDefault();
+          items[items.length - 1].focus();
+          break;
+      }
     },
 
     handleDocumentClick(event) {
@@ -430,9 +471,15 @@ const KnowledgeApp = createApp({
         }
       }
 
-      // Handle Escape to close spotlight
-      if (event.key === "Escape" && this.showSpotlight) {
-        this.closeSpotlight();
+      if (event.key === "Escape") {
+        if (this.showSpotlight) {
+          this.closeSpotlight();
+        } else if (this.showMenu) {
+          this.closeMenu();
+          this.$nextTick(() => {
+            if (this.$refs.menuBtn) this.$refs.menuBtn.focus();
+          });
+        }
       }
     },
 
@@ -583,23 +630,23 @@ const KnowledgeApp = createApp({
                         <div class="nav-right">
                             <span class="user-info">hello, {{ user?.email }}</span>
                             <div class="menu-container">
-                                <button @click="toggleMenu" class="menu-btn">
+                                <button @click="toggleMenu" ref="menuBtn" class="menu-btn" :aria-expanded="showMenu" aria-haspopup="menu">
                                     menu
                                 </button>
-                                <div v-if="showMenu" class="menu-popover" @click.stop>
-                                    <button @click="onMenuSearch" class="menu-item">
+                                <div v-if="showMenu" class="menu-popover" @click.stop @keydown="handleNavMenuKeydown" role="menu">
+                                    <button @click="onMenuSearch" class="menu-item" role="menuitem">
                                         search
                                     </button>
-                                    <button @click="onMenuCreatePage" class="menu-item">
+                                    <button @click="onMenuCreatePage" class="menu-item" role="menuitem">
                                         + page
                                     </button>
-                                    <button @click="onMenuSettings" class="menu-item">
+                                    <button @click="onMenuSettings" class="menu-item" role="menuitem">
                                         settings
                                     </button>
-                                    <button @click="onMenuHelp" class="menu-item">
+                                    <button @click="onMenuHelp" class="menu-item" role="menuitem">
                                         help
                                     </button>
-                                    <button @click="onMenuLogout" class="menu-item">
+                                    <button @click="onMenuLogout" class="menu-item" role="menuitem">
                                         logout
                                     </button>
                                 </div>

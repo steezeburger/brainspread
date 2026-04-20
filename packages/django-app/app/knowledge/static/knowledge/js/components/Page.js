@@ -70,6 +70,8 @@ const Page = {
     document.addEventListener("click", this.handleDocumentClick);
     // Restore focus when window/tab regains focus
     window.addEventListener("focus", this.handleWindowFocus);
+    // Global keydown for Escape to close page menus
+    document.addEventListener("keydown", this.handlePageGlobalKeydown);
     // Load page data
     await this.loadPage();
   },
@@ -78,6 +80,7 @@ const Page = {
     // Clean up event listeners
     document.removeEventListener("click", this.handleDocumentClick);
     window.removeEventListener("focus", this.handleWindowFocus);
+    document.removeEventListener("keydown", this.handlePageGlobalKeydown);
   },
 
   methods: {
@@ -943,10 +946,66 @@ const Page = {
     // Page management methods
     togglePageMenu() {
       this.showPageMenu = !this.showPageMenu;
+      if (this.showPageMenu) {
+        this.$nextTick(() => {
+          const firstItem = this.$el?.querySelector(
+            ".context-menu-container .context-menu .context-menu-item"
+          );
+          if (firstItem) firstItem.focus();
+        });
+      }
     },
 
     closePageMenu() {
       this.showPageMenu = false;
+    },
+
+    closePageMenuAndRestoreFocus() {
+      this.closePageMenu();
+      this.$nextTick(() => {
+        const menuBtn = this.$el?.querySelector(".context-menu-btn");
+        if (menuBtn) menuBtn.focus();
+      });
+    },
+
+    handlePageMenuKeydown(event) {
+      const items = Array.from(
+        this.$el?.querySelectorAll(
+          ".context-menu-container .context-menu .context-menu-item"
+        ) || []
+      );
+      if (!items.length) return;
+      const currentIndex = items.indexOf(document.activeElement);
+
+      switch (event.key) {
+        case "ArrowDown":
+          event.preventDefault();
+          items[Math.min(currentIndex + 1, items.length - 1)].focus();
+          break;
+        case "ArrowUp":
+          event.preventDefault();
+          items[Math.max(currentIndex - 1, 0)].focus();
+          break;
+        case "Escape":
+        case "Tab":
+          event.preventDefault();
+          this.closePageMenuAndRestoreFocus();
+          break;
+        case "Home":
+          event.preventDefault();
+          items[0].focus();
+          break;
+        case "End":
+          event.preventDefault();
+          items[items.length - 1].focus();
+          break;
+      }
+    },
+
+    handlePageGlobalKeydown(event) {
+      if (event.key === "Escape" && this.showPageMenu) {
+        this.closePageMenuAndRestoreFocus();
+      }
     },
 
     handleDocumentClick(event) {
@@ -1134,14 +1193,14 @@ const Page = {
               </div>
               <div class="header-controls">
                 <div class="context-menu-container">
-                  <button @click="togglePageMenu" class="btn btn-outline context-menu-btn" title="Daily note options">
+                  <button @click="togglePageMenu" class="btn btn-outline context-menu-btn" title="Daily note options" :aria-expanded="showPageMenu" aria-haspopup="menu">
                     ⋮
                   </button>
-                  <div v-if="showPageMenu" class="context-menu" @click.stop>
-                    <button @click="moveUndoneTodos" class="context-menu-item" :disabled="loading">
+                  <div v-if="showPageMenu" class="context-menu" @click.stop @keydown="handlePageMenuKeydown" role="menu">
+                    <button @click="moveUndoneTodos" class="context-menu-item" :disabled="loading" role="menuitem">
                       move undone TODOs here
                     </button>
-                    <button @click="deletePage" class="context-menu-item context-menu-danger">
+                    <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">
                        <span class="context-menu-icon">×</span>
                        <span>delete</span>
                     </button>
@@ -1154,7 +1213,7 @@ const Page = {
             <div v-else class="page-title-container page-header-flex">
               <div class="page-header-flex-left">
                 <div v-if="!isEditingTitle" class="page-title-display">
-                  <h1 class="page-title-text" @click="startEditingTitle">{{ page.title || 'Untitled Page' }}</h1>
+                  <h1 class="page-title-text" tabindex="0" role="button" aria-label="Edit page title" @click="startEditingTitle" @keydown.enter.prevent="startEditingTitle" @keydown.space.prevent="startEditingTitle">{{ page.title || 'Untitled Page' }}</h1>
                 </div>
                 <div v-else class="page-title-edit">
                   <input
@@ -1175,14 +1234,14 @@ const Page = {
               </div>
               <div class="page-actions">
                 <div class="context-menu-container">
-                  <button @click="togglePageMenu" class="btn btn-outline context-menu-btn" title="Page options">
+                  <button @click="togglePageMenu" class="btn btn-outline context-menu-btn" title="Page options" :aria-expanded="showPageMenu" aria-haspopup="menu">
                     ⋮
                   </button>
-                  <div v-if="showPageMenu" class="context-menu" @click.stop>
-                    <button @click="startEditingTitle" class="context-menu-item">
+                  <div v-if="showPageMenu" class="context-menu" @click.stop @keydown="handlePageMenuKeydown" role="menu">
+                    <button @click="startEditingTitle" class="context-menu-item" role="menuitem">
                       edit title
                     </button>
-                    <button @click="deletePage" class="context-menu-item context-menu-danger">
+                    <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">
                       delete page
                     </button>
                   </div>
