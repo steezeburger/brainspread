@@ -102,7 +102,32 @@ window.HelpModal = {
           </div>
 
           <div class="help-section">
-            <h3>keyboard shortcuts</h3>
+            <h3>command palette</h3>
+            <table class="help-table">
+              <tbody>
+                <tr>
+                  <td><kbd>⌘</kbd> + <kbd>K</kbd> / <kbd>Ctrl</kbd> + <kbd>K</kbd></td>
+                  <td>open the command palette</td>
+                </tr>
+                <tr>
+                  <td><kbd>↑</kbd> / <kbd>↓</kbd></td>
+                  <td>navigate results</td>
+                </tr>
+                <tr>
+                  <td><kbd>Enter</kbd></td>
+                  <td>select</td>
+                </tr>
+                <tr>
+                  <td><kbd>Esc</kbd></td>
+                  <td>close</td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="help-hint">search pages or run commands (new page, new block, today, settings, help). type <code class="help-syntax">new page &lt;title&gt;</code> to create a page with that title directly.</p>
+          </div>
+
+          <div class="help-section">
+            <h3>block editing</h3>
             <table class="help-table">
               <tbody>
                 <tr>
@@ -126,6 +151,10 @@ window.HelpModal = {
                   <td>navigate between blocks</td>
                 </tr>
                 <tr>
+                  <td><kbd>Esc</kbd></td>
+                  <td>exit editing (keeps focus on block for tabbing)</td>
+                </tr>
+                <tr>
                   <td>double <kbd>space</kbd> at start</td>
                   <td>indent block (mobile)</td>
                 </tr>
@@ -135,7 +164,7 @@ window.HelpModal = {
 
           <div class="help-section">
             <h3>block actions</h3>
-            <p class="help-hint">click the <strong>⋮</strong> button that appears to the right of any block to access block actions: indent, outdent, move up/down, create before/after, add to AI context, and delete.</p>
+            <p class="help-hint">click the <strong>⋮</strong> button (or <kbd>Tab</kbd> to it) on any block to access block actions: indent, outdent, move up/down, create before/after, add to AI context, and delete. inside the menu, use <kbd>↑</kbd><kbd>↓</kbd> to navigate, <kbd>Enter</kbd> to select, <kbd>Esc</kbd> to close.</p>
           </div>
         </div>
       </div>
