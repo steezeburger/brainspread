@@ -3948,3 +3948,82 @@ kbd {
   border-radius: 2px;
   padding: 0.05em 0.2em;
 }
+
+/* Canvas page (tldraw whiteboard) */
+.page-content-canvas {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--navbar-height, 60px));
+  padding: 0;
+  margin: 0;
+  max-width: none;
+}
+
+.canvas-page-header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
+  flex: 0 0 auto;
+}
+
+.canvas-page-header .page-type-badge {
+  display: inline-block;
+  margin-left: 0.75rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary, #888);
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2));
+  border-radius: 10px;
+  padding: 0.05em 0.5em;
+}
+
+.canvas-page {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.canvas-container {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.canvas-container .tl-container {
+  position: absolute;
+  inset: 0;
+}
+
+.canvas-loading,
+.canvas-error {
+  padding: 1rem;
+  color: var(--text-secondary, #888);
+  font-size: 0.9rem;
+}
+
+.canvas-error {
+  color: var(--danger-color, #d33);
+}
+
+.canvas-status {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.75rem;
+  z-index: 10;
+  font-size: 0.75rem;
+  color: var(--text-secondary, #888);
+  background: var(--bg-primary, rgba(255, 255, 255, 0.85));
+  padding: 0.15em 0.5em;
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.canvas-status-error {
+  color: var(--danger-color, #d33);
+}

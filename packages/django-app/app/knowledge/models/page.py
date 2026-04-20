@@ -30,6 +30,7 @@ class Page(UUIDModelMixin, CRUDTimestampsMixin):
             ("page", "Regular Page"),
             ("daily", "Daily Note"),
             ("template", "Template"),
+            ("canvas", "Canvas"),
         ],
         default="page",
     )

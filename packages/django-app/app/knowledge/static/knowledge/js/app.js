@@ -310,8 +310,12 @@ const KnowledgeApp = createApp({
       this.removeBlockFromContext(blockId);
     },
 
-    async createNewPage(prefilledTitle = null) {
-      const title = prefilledTitle ?? prompt("Enter page title:");
+    async createNewPage(prefilledTitle = null, pageType = "page") {
+      const title =
+        prefilledTitle ??
+        prompt(
+          pageType === "canvas" ? "Enter canvas title:" : "Enter page title:"
+        );
       if (!title || !title.trim()) return;
 
       try {
@@ -327,7 +331,8 @@ const KnowledgeApp = createApp({
           title.trim(),
           "",
           slug,
-          true
+          true,
+          pageType
         );
 
         if (result.success) {
@@ -343,6 +348,10 @@ const KnowledgeApp = createApp({
         console.error("Failed to create page:", error);
         alert("Failed to create page. Please try again.");
       }
+    },
+
+    async createNewCanvas(prefilledTitle = null) {
+      return this.createNewPage(prefilledTitle, "canvas");
     },
 
     // Menu methods
@@ -412,6 +421,11 @@ const KnowledgeApp = createApp({
     onMenuCreatePage() {
       this.closeMenu();
       this.createNewPage();
+    },
+
+    onMenuCreateCanvas() {
+      this.closeMenu();
+      this.createNewCanvas();
     },
 
     onMenuSettings() {
@@ -515,6 +529,12 @@ const KnowledgeApp = createApp({
           icon: "+",
         },
         {
+          id: "new-canvas",
+          label: "new canvas",
+          description: "create a new whiteboard canvas",
+          icon: "✎",
+        },
+        {
           id: "new-block",
           label: "new block",
           description: "add a block to the current page",
@@ -549,6 +569,23 @@ const KnowledgeApp = createApp({
               title: `create page "${title}"`,
               description: "create a new page with this title",
               icon: "+",
+            },
+          ];
+        }
+      }
+
+      // "new canvas <title>" — inline canvas title
+      if (q.startsWith("new canvas ")) {
+        const title = query.trim().slice("new canvas ".length).trim();
+        if (title) {
+          return [
+            {
+              type: "command",
+              commandId: "new-canvas",
+              commandArg: title,
+              title: `create canvas "${title}"`,
+              description: "create a new whiteboard canvas with this title",
+              icon: "✎",
             },
           ];
         }
@@ -655,6 +692,9 @@ const KnowledgeApp = createApp({
         case "new-page":
           this.createNewPage(arg ?? null);
           break;
+        case "new-canvas":
+          this.createNewCanvas(arg ?? null);
+          break;
         case "new-block":
           document.dispatchEvent(new CustomEvent("spotlight:new-block"));
           break;
@@ -722,6 +762,9 @@ const KnowledgeApp = createApp({
                                     </button>
                                     <button @click="onMenuCreatePage" class="menu-item" role="menuitem">
                                         + page
+                                    </button>
+                                    <button @click="onMenuCreateCanvas" class="menu-item" role="menuitem">
+                                        + canvas
                                     </button>
                                     <button @click="onMenuSettings" class="menu-item" role="menuitem">
                                         settings

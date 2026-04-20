@@ -25,6 +25,7 @@ class CreatePageCommand(AbstractBaseCommand):
             slug=self.form.cleaned_data.get("slug") or slugify(title),
             content=self.form.cleaned_data.get("content", ""),
             is_published=self.form.cleaned_data.get("is_published", True),
+            page_type=self.form.cleaned_data.get("page_type") or "page",
         )
 
         return page

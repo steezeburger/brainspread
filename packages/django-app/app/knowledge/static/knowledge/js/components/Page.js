@@ -2,6 +2,7 @@
 const Page = {
   components: {
     BlockComponent: window.BlockComponent || {},
+    Canvas: window.Canvas || {},
   },
   props: {
     chatContextBlocks: {
@@ -46,6 +47,10 @@ const Page = {
   computed: {
     isDaily() {
       return this.page?.page_type === "daily";
+    },
+
+    isCanvas() {
+      return this.page?.page_type === "canvas";
     },
 
     pageTitle() {
@@ -1194,6 +1199,12 @@ const Page = {
       this.newTitle = this.page?.title || "";
     },
 
+    onCanvasPageUpdated(updatedPage) {
+      if (this.page && updatedPage) {
+        this.page.modified_at = updatedPage.modified_at;
+      }
+    },
+
     async updatePageTitle() {
       if (!this.page || !this.newTitle.trim()) {
         this.isEditingTitle = false;
@@ -1265,6 +1276,42 @@ const Page = {
       <!-- Error State -->
       <div v-if="error" class="error">
         {{ error }}
+      </div>
+
+      <!-- Canvas Page (full-screen tldraw) -->
+      <div v-else-if="page && isCanvas" class="page-content page-content-canvas">
+        <div class="page-header canvas-page-header">
+          <div class="page-title-container page-header-flex">
+            <div class="page-header-flex-left">
+              <div v-if="!isEditingTitle" class="page-title-display">
+                <h1 class="page-title-text" tabindex="0" role="button" aria-label="Edit page title" @click="startEditingTitle" @keydown.enter.prevent="startEditingTitle" @keydown.space.prevent="startEditingTitle">{{ page.title || 'Untitled Canvas' }}</h1>
+              </div>
+              <div v-else class="page-title-edit">
+                <input
+                  ref="titleInput"
+                  v-model="newTitle"
+                  @keyup.enter="updatePageTitle"
+                  @keyup.escape="cancelEditingTitle"
+                  class="form-control page-title-input"
+                  placeholder="enter canvas title"
+                />
+                <button @click="updatePageTitle" class="btn btn-success save-title-btn" title="Save title">✓</button>
+                <button @click="cancelEditingTitle" class="btn btn-outline cancel-title-btn" title="Cancel">✗</button>
+              </div>
+              <span class="page-type-badge">canvas</span>
+            </div>
+            <div class="page-actions">
+              <div class="context-menu-container">
+                <button @click="togglePageMenu" class="btn btn-outline context-menu-btn" title="Canvas options" :aria-expanded="showPageMenu" aria-haspopup="menu">⋮</button>
+                <div v-if="showPageMenu" class="context-menu" @click.stop @keydown="handlePageMenuKeydown" role="menu">
+                  <button @click="startEditingTitle" class="context-menu-item" role="menuitem">edit title</button>
+                  <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">delete canvas</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <Canvas :page="page" @page-updated="onCanvasPageUpdated" />
       </div>
 
       <!-- Page Content -->

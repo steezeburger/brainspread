@@ -6,6 +6,7 @@
     <title>{% block title %}brainspread{% endblock %}</title>
     {% load static %} {% csrf_token %}
     <link rel="stylesheet" href="{% static 'knowledge/css/app.css' %}" />
+    <link rel="stylesheet" href="https://esm.sh/tldraw@3.13.1/tldraw.css" />
     {% block extra_css %}{% endblock %}
   </head>
   <body>
@@ -29,6 +30,7 @@
     <!-- Vue Components -->
     <script src="{% static 'knowledge/js/components/BlockComponent.js' %}"></script>
     <script src="{% static 'knowledge/js/components/LoginForm.js' %}"></script>
+    <script src="{% static 'knowledge/js/components/Canvas.js' %}"></script>
     <script src="{% static 'knowledge/js/components/Page.js' %}"></script>
     <script src="{% static 'knowledge/js/components/TaggedBlockDisplay.js' %}"></script>
     <script src="{% static 'knowledge/js/components/HistoricalSidebar.js' %}"></script>
