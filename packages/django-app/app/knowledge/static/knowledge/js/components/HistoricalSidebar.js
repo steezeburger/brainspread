@@ -182,7 +182,10 @@ window.HistoricalSidebar = {
       let formatted = content;
 
       // Strip todo-state prefix from display since the checkbox already shows state
-      if (blockType && ["todo", "done", "later", "wontdo"].includes(blockType)) {
+      if (
+        blockType &&
+        ["todo", "done", "later", "wontdo"].includes(blockType)
+      ) {
         formatted = formatted.replace(/^(WONTDO|LATER|DONE|TODO)\s*:?\s*/i, "");
       }
 
@@ -208,13 +211,34 @@ window.HistoricalSidebar = {
         '<span class="markdown-quote">$1</span>'
       );
 
-      formatted = formatted.replace(/\*\*\*(.+?)\*\*\*/g, '<span class="markdown-bold-italic">$1</span>');
-      formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<span class="markdown-bold">$1</span>');
-      formatted = formatted.replace(/__(.+?)__/g, '<span class="markdown-bold">$1</span>');
-      formatted = formatted.replace(/\*([^*]+?)\*/g, '<span class="markdown-italic">$1</span>');
-      formatted = formatted.replace(/_([^_]+?)_/g, '<span class="markdown-italic">$1</span>');
-      formatted = formatted.replace(/~~(.+?)~~/g, '<span class="markdown-strikethrough">$1</span>');
-      formatted = formatted.replace(/==(.+?)==/g, '<span class="markdown-highlight">$1</span>');
+      formatted = formatted.replace(
+        /\*\*\*(.+?)\*\*\*/g,
+        '<span class="markdown-bold-italic">$1</span>'
+      );
+      formatted = formatted.replace(
+        /\*\*(.+?)\*\*/g,
+        '<span class="markdown-bold">$1</span>'
+      );
+      formatted = formatted.replace(
+        /__(.+?)__/g,
+        '<span class="markdown-bold">$1</span>'
+      );
+      formatted = formatted.replace(
+        /\*([^*]+?)\*/g,
+        '<span class="markdown-italic">$1</span>'
+      );
+      formatted = formatted.replace(
+        /_([^_]+?)_/g,
+        '<span class="markdown-italic">$1</span>'
+      );
+      formatted = formatted.replace(
+        /~~(.+?)~~/g,
+        '<span class="markdown-strikethrough">$1</span>'
+      );
+      formatted = formatted.replace(
+        /==(.+?)==/g,
+        '<span class="markdown-highlight">$1</span>'
+      );
 
       // Restore escaped characters as literal text
       escapedChars.forEach((char, idx) => {

@@ -746,7 +746,10 @@ const Page = {
       let formatted = content;
 
       // Strip todo-state prefix from display since the checkbox already shows state
-      if (blockType && ["todo", "done", "later", "wontdo"].includes(blockType)) {
+      if (
+        blockType &&
+        ["todo", "done", "later", "wontdo"].includes(blockType)
+      ) {
         formatted = formatted.replace(/^(WONTDO|LATER|DONE|TODO)\s*:?\s*/i, "");
       }
 
