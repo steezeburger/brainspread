@@ -151,6 +151,18 @@ window.HelpModal = {
                   <td>navigate between blocks</td>
                 </tr>
                 <tr>
+                  <td><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>↑</kbd> / <kbd>↓</kbd></td>
+                  <td>move block up / down</td>
+                </tr>
+                <tr>
+                  <td><kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>⌫</kbd></td>
+                  <td>delete block</td>
+                </tr>
+                <tr>
+                  <td><kbd>⌘</kbd> + <kbd>.</kbd> or <kbd>Shift</kbd> + <kbd>F10</kbd></td>
+                  <td>open block actions menu</td>
+                </tr>
+                <tr>
                   <td><kbd>Esc</kbd></td>
                   <td>exit editing (keeps focus on block for tabbing)</td>
                 </tr>
@@ -164,7 +176,7 @@ window.HelpModal = {
 
           <div class="help-section">
             <h3>block actions</h3>
-            <p class="help-hint">click the <strong>⋮</strong> button (or <kbd>Tab</kbd> to it) on any block to access block actions: indent, outdent, move up/down, create before/after, add to AI context, and delete. inside the menu, use <kbd>↑</kbd><kbd>↓</kbd> to navigate, <kbd>Enter</kbd> to select, <kbd>Esc</kbd> to close.</p>
+            <p class="help-hint">click the <strong>⋮</strong> button, <kbd>Tab</kbd> to it, or press <kbd>⌘</kbd>+<kbd>.</kbd> while focused on a block to open the actions menu: indent, outdent, move up/down, create before/after, add to AI context, and delete. inside the menu, use <kbd>↑</kbd><kbd>↓</kbd> to navigate, <kbd>Enter</kbd> to select, <kbd>Esc</kbd> to close.</p>
           </div>
         </div>
       </div>

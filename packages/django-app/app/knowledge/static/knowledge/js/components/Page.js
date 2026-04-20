@@ -490,6 +490,40 @@ const Page = {
     },
 
     async onBlockKeyDown(event, block) {
+      // Alt+Shift+ArrowUp/Down: move block
+      if (event.altKey && event.shiftKey && event.key === "ArrowUp") {
+        event.preventDefault();
+        await this.moveBlockUp(block);
+        return;
+      }
+      if (event.altKey && event.shiftKey && event.key === "ArrowDown") {
+        event.preventDefault();
+        await this.moveBlockDown(block);
+        return;
+      }
+      // Cmd/Ctrl+Shift+Backspace: delete block
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.shiftKey &&
+        event.key === "Backspace"
+      ) {
+        event.preventDefault();
+        await this.deleteBlock(block);
+        return;
+      }
+      // Cmd/Ctrl+. or Shift+F10: open context menu for this block
+      if (
+        ((event.metaKey || event.ctrlKey) && event.key === ".") ||
+        (event.shiftKey && event.key === "F10")
+      ) {
+        event.preventDefault();
+        document.dispatchEvent(
+          new CustomEvent("openBlockContextMenu", {
+            detail: { uuid: block.uuid },
+          })
+        );
+        return;
+      }
       if (event.key === "Escape") {
         event.preventDefault();
         await this.updateBlock(block, block.content, true);

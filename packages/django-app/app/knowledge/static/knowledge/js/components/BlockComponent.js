@@ -107,10 +107,18 @@ const BlockComponent = {
   mounted() {
     // Listen for the custom event to close menus
     document.addEventListener("closeBlockMenus", this.handleCloseBlockMenus);
+    document.addEventListener(
+      "openBlockContextMenu",
+      this.handleOpenContextMenuEvent
+    );
   },
   beforeUnmount() {
     // Clean up event listener
     document.removeEventListener("closeBlockMenus", this.handleCloseBlockMenus);
+    document.removeEventListener(
+      "openBlockContextMenu",
+      this.handleOpenContextMenuEvent
+    );
   },
   methods: {
     toggleBlockContext() {
@@ -290,9 +298,88 @@ const BlockComponent = {
     },
 
     handleBlockDisplayKeydown(event) {
+      // Alt+Shift+ArrowUp/Down: move block
+      if (event.altKey && event.shiftKey && event.key === "ArrowUp") {
+        event.preventDefault();
+        this.moveBlockUp(this.block);
+        return;
+      }
+      if (event.altKey && event.shiftKey && event.key === "ArrowDown") {
+        event.preventDefault();
+        this.moveBlockDown(this.block);
+        return;
+      }
+      // Cmd/Ctrl+Shift+Backspace: delete block
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.shiftKey &&
+        event.key === "Backspace"
+      ) {
+        event.preventDefault();
+        this.deleteBlock(this.block);
+        return;
+      }
+      // Cmd/Ctrl+. or Shift+F10: open context menu
+      if (
+        ((event.metaKey || event.ctrlKey) && event.key === ".") ||
+        (event.shiftKey && event.key === "F10")
+      ) {
+        event.preventDefault();
+        this.openContextMenuAtBlock();
+        return;
+      }
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         this.startEditing(this.block);
+      }
+    },
+
+    openContextMenuAtBlock() {
+      const menuBtn = this.$el?.querySelector(".block-menu");
+      if (!menuBtn) return;
+      const rect = menuBtn.getBoundingClientRect();
+
+      // Reuse the same positioning logic as showContextMenuAt
+      this.closeOtherMenus();
+
+      const menuWidth = 200;
+      const shadowOffset = 4;
+      const viewportWidth = window.innerWidth;
+      const isMobile = window.innerWidth <= 768;
+      const edgePadding = isMobile ? 20 : 10;
+      const bottomPadding = isMobile ? 60 : 10;
+
+      let x = rect.left;
+      let y = rect.bottom;
+
+      if (x + menuWidth + shadowOffset > viewportWidth - edgePadding) {
+        x = viewportWidth - menuWidth - shadowOffset - edgePadding;
+      }
+      x = Math.max(edgePadding, x);
+
+      this.contextMenuPosition = { x, y };
+      this.showContextMenu = true;
+
+      this.$nextTick(() => {
+        const menuEl = this.$el.querySelector(".block-context-menu");
+        if (!menuEl) return;
+        const menuHeight = menuEl.offsetHeight;
+        const viewportHeight = window.innerHeight;
+        if (y + menuHeight + shadowOffset > viewportHeight - bottomPadding) {
+          y = viewportHeight - menuHeight - shadowOffset - bottomPadding;
+        }
+        y = Math.max(edgePadding, y);
+        this.contextMenuPosition = { x, y };
+      });
+
+      setTimeout(() => {
+        document.addEventListener("click", this.hideContextMenu);
+      }, 10);
+    },
+
+    handleOpenContextMenuEvent(event) {
+      if (event.detail?.uuid === this.block.uuid) {
+        this.openContextMenuAtBlock();
       }
     },
 
