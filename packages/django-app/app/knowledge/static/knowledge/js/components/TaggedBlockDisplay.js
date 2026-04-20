@@ -36,7 +36,7 @@ const TaggedBlockDisplay = {
             <span class="page-title">{{ block.page_type === 'daily' ? formatDate(block.page_title) : block.page_title }}</span>
             <span v-if="block.page_date" class="page-date">{{ formatDate(block.page_date) }}</span>
           </div>
-          <div v-html="formatContentWithTags(block.content)" class="block-text"></div>
+          <div v-html="formatContentWithTags(block.content, block.block_type)" class="block-text"></div>
         </div>
       </div>
     </div>

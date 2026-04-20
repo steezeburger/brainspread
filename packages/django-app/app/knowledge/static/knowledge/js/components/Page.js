@@ -740,10 +740,40 @@ const Page = {
       if (!result.success) throw new Error("failed to reorder siblings");
     },
 
-    formatContentWithTags(content) {
+    formatContentWithTags(content, blockType = null) {
       if (!content) return "";
 
       let formatted = content;
+
+      // Strip todo-state prefix from display since the checkbox already shows state
+      if (
+        blockType &&
+        ["todo", "done", "later", "wontdo"].includes(blockType)
+      ) {
+        formatted = formatted.replace(/^(WONTDO|LATER|DONE|TODO)\s*:?\s*/i, "");
+      }
+
+      // Extract backtick code spans first to protect them from other formatting
+      const codeSegments = [];
+      formatted = formatted.replace(/`([^`]+)`/g, (_match, code) => {
+        const idx = codeSegments.length;
+        codeSegments.push(code);
+        return `\x00CODE${idx}\x00`;
+      });
+
+      // Extract backslash-escaped characters to protect them from formatting
+      const escapedChars = [];
+      formatted = formatted.replace(/\\([*_~`\\#>])/g, (_match, char) => {
+        const idx = escapedChars.length;
+        escapedChars.push(char);
+        return `\x00ESC${idx}\x00`;
+      });
+
+      // Format lines starting with > as blockquotes
+      formatted = formatted.replace(
+        /^>\s?(.+)/gm,
+        '<span class="markdown-quote">$1</span>'
+      );
 
       // Replace all bold and italic markdown ***text*** with styled spans (must be first)
       formatted = formatted.replace(
@@ -780,6 +810,28 @@ const Page = {
         /~~(.+?)~~/g,
         '<span class="markdown-strikethrough">$1</span>'
       );
+
+      // Replace highlight markdown ==text== with styled spans
+      formatted = formatted.replace(
+        /==(.+?)==/g,
+        '<span class="markdown-highlight">$1</span>'
+      );
+
+      // Restore escaped characters as literal text
+      escapedChars.forEach((char, idx) => {
+        formatted = formatted.split(`\x00ESC${idx}\x00`).join(char);
+      });
+
+      // Restore code spans as inline code elements
+      codeSegments.forEach((code, idx) => {
+        const safeCode = code
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+        formatted = formatted
+          .split(`\x00CODE${idx}\x00`)
+          .join(`<code class="markdown-code">${safeCode}</code>`);
+      });
 
       // Replace hashtags with clickable styled spans
       return formatted.replace(

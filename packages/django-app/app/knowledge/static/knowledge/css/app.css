@@ -3773,3 +3773,27 @@ kbd {
   text-decoration-color: var(--text-primary) !important;
   text-decoration-thickness: 2px !important;
 }
+
+.markdown-code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.875em;
+  background-color: var(--bg-secondary, rgba(0, 0, 0, 0.08));
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+}
+
+.markdown-quote {
+  display: inline;
+  border-left: 3px solid var(--text-secondary, #888);
+  padding-left: 0.5em;
+  color: var(--text-secondary, #888);
+  font-style: italic;
+}
+
+.markdown-highlight {
+  background-color: var(--highlight-bg, #ffe066);
+  color: var(--highlight-text, #333);
+  border-radius: 2px;
+  padding: 0.05em 0.2em;
+}

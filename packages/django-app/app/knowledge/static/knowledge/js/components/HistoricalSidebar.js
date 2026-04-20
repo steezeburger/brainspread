@@ -176,11 +176,88 @@ window.HistoricalSidebar = {
       }
     },
 
-    formatContentWithTags(content) {
+    formatContentWithTags(content, blockType = null) {
       if (!content) return "";
 
+      let formatted = content;
+
+      // Strip todo-state prefix from display since the checkbox already shows state
+      if (
+        blockType &&
+        ["todo", "done", "later", "wontdo"].includes(blockType)
+      ) {
+        formatted = formatted.replace(/^(WONTDO|LATER|DONE|TODO)\s*:?\s*/i, "");
+      }
+
+      // Extract backtick code spans first to protect them from other formatting
+      const codeSegments = [];
+      formatted = formatted.replace(/`([^`]+)`/g, (_match, code) => {
+        const idx = codeSegments.length;
+        codeSegments.push(code);
+        return `\x00CODE${idx}\x00`;
+      });
+
+      // Extract backslash-escaped characters to protect them from formatting
+      const escapedChars = [];
+      formatted = formatted.replace(/\\([*_~`\\#>])/g, (_match, char) => {
+        const idx = escapedChars.length;
+        escapedChars.push(char);
+        return `\x00ESC${idx}\x00`;
+      });
+
+      // Format lines starting with > as blockquotes
+      formatted = formatted.replace(
+        /^>\s?(.+)/gm,
+        '<span class="markdown-quote">$1</span>'
+      );
+
+      formatted = formatted.replace(
+        /\*\*\*(.+?)\*\*\*/g,
+        '<span class="markdown-bold-italic">$1</span>'
+      );
+      formatted = formatted.replace(
+        /\*\*(.+?)\*\*/g,
+        '<span class="markdown-bold">$1</span>'
+      );
+      formatted = formatted.replace(
+        /__(.+?)__/g,
+        '<span class="markdown-bold">$1</span>'
+      );
+      formatted = formatted.replace(
+        /\*([^*]+?)\*/g,
+        '<span class="markdown-italic">$1</span>'
+      );
+      formatted = formatted.replace(
+        /_([^_]+?)_/g,
+        '<span class="markdown-italic">$1</span>'
+      );
+      formatted = formatted.replace(
+        /~~(.+?)~~/g,
+        '<span class="markdown-strikethrough">$1</span>'
+      );
+      formatted = formatted.replace(
+        /==(.+?)==/g,
+        '<span class="markdown-highlight">$1</span>'
+      );
+
+      // Restore escaped characters as literal text
+      escapedChars.forEach((char, idx) => {
+        formatted = formatted.split(`\x00ESC${idx}\x00`).join(char);
+      });
+
+      // Restore code spans as inline code elements
+      codeSegments.forEach((code, idx) => {
+        const safeCode = code
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+        formatted = formatted
+          .split(`\x00CODE${idx}\x00`)
+          .join(`<code class="markdown-code">${safeCode}</code>`);
+      });
+
       // Replace hashtags with clickable styled spans
-      return content.replace(
+      return formatted.replace(
         /#([a-zA-Z0-9_-]+)/g,
         '<span class="inline-tag clickable-tag" data-tag="$1">#$1</span>'
       );
@@ -300,7 +377,7 @@ window.HistoricalSidebar = {
                     
                     <!-- Content rows: recent blocks -->
                     <div v-if="page.recent_blocks && page.recent_blocks.length" class="page-content-rows" @click="handleTagClick">
-                      <div v-for="block in page.recent_blocks.slice(0, 2)" :key="block.uuid" class="block-preview" :class="{ 'completed': block.block_type === 'done' }" v-html="formatContentWithTags(truncateContent(block.content, 60))">
+                      <div v-for="block in page.recent_blocks.slice(0, 2)" :key="block.uuid" class="block-preview" :class="{ 'completed': block.block_type === 'done' }" v-html="formatContentWithTags(truncateContent(block.content, 60), block.block_type)">
                       </div>
                     </div>
                   </div>
@@ -332,7 +409,7 @@ window.HistoricalSidebar = {
                     >
                       {{ block.block_type === 'done' ? '☑' : '☐' }}
                     </span>
-                    <span class="item-content" :class="{ 'completed': block.block_type === 'done' }" v-html="formatContentWithTags(truncateContent(block.content, 100))"></span>
+                    <span class="item-content" :class="{ 'completed': block.block_type === 'done' }" v-html="formatContentWithTags(truncateContent(block.content, 100), block.block_type)"></span>
                   </div>
                 </div>
               </div>
