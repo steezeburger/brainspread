@@ -66,9 +66,6 @@ const Page = {
   },
 
   async mounted() {
-    // Add event delegation for clickable hashtags in content
-    document.addEventListener("click", this.handleTagClick);
-    document.addEventListener("touchend", this.handleTagClick);
     // Add document click handler for closing menus
     document.addEventListener("click", this.handleDocumentClick);
     // Restore focus when window/tab regains focus
@@ -79,8 +76,6 @@ const Page = {
 
   beforeUnmount() {
     // Clean up event listeners
-    document.removeEventListener("click", this.handleTagClick);
-    document.removeEventListener("touchend", this.handleTagClick);
     document.removeEventListener("click", this.handleDocumentClick);
     window.removeEventListener("focus", this.handleWindowFocus);
   },
@@ -840,26 +835,6 @@ const Page = {
       );
     },
 
-    handleTagClick(event) {
-      if (event.target.classList.contains("clickable-tag")) {
-        event.stopPropagation();
-        // Allow modifier clicks to open in new tab/window natively
-        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1) {
-          return;
-        }
-        event.preventDefault();
-        const tagName = event.target.getAttribute("data-tag");
-        if (tagName) {
-          this.goToTag(tagName);
-        }
-      }
-    },
-
-    goToTag(tagName) {
-      // Navigate to the tag page with full page redirect
-      const url = `/knowledge/page/${encodeURIComponent(tagName)}/`;
-      window.location.href = url;
-    },
 
     goToPage(pageSlug) {
       // Navigate to a page by slug with full page redirect
