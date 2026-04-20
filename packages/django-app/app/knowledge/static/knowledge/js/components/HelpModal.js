@@ -96,7 +96,7 @@ window.HelpModal = {
 
           <div class="help-section">
             <h3>block actions</h3>
-            <p class="help-hint">right-click any block bullet to access block actions: indent, outdent, move up/down, create before/after, add to AI context, and delete.</p>
+            <p class="help-hint">click the <strong>⋮</strong> button that appears to the right of any block to access block actions: indent, outdent, move up/down, create before/after, add to AI context, and delete.</p>
           </div>
         </div>
       </div>
