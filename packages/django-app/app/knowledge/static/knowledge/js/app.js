@@ -14,6 +14,7 @@ const KnowledgeApp = createApp({
       showSettings: false, // Settings modal state
       settingsActiveTab: "general", // Default tab for settings modal
       showMenu: false, // Menu popover state
+      showHelp: false, // Help modal state
       // Chat context management
       chatContextBlocks: [], // Array of blocks in chat context
       visibleBlocks: [], // Array of currently visible blocks
@@ -35,6 +36,7 @@ const KnowledgeApp = createApp({
     LoginForm: window.LoginForm,
     HistoricalSidebar: window.HistoricalSidebar,
     SettingsModal: window.SettingsModal,
+    HelpModal: window.HelpModal,
     ChatPanel: window.ChatPanel,
     ToastNotifications: window.ToastNotifications,
     SpotlightSearch: window.SpotlightSearch,
@@ -210,6 +212,14 @@ const KnowledgeApp = createApp({
       this.settingsActiveTab = "general"; // Reset to default
     },
 
+    openHelp() {
+      this.showHelp = true;
+    },
+
+    closeHelp() {
+      this.showHelp = false;
+    },
+
     onChatPanelOpenSettings(activeTab) {
       this.openSettings(activeTab);
     },
@@ -366,6 +376,11 @@ const KnowledgeApp = createApp({
     onMenuSettings() {
       this.closeMenu();
       this.openSettings();
+    },
+
+    onMenuHelp() {
+      this.closeMenu();
+      this.openHelp();
     },
 
     onMenuLogout() {
@@ -581,6 +596,9 @@ const KnowledgeApp = createApp({
                                     <button @click="onMenuSettings" class="menu-item">
                                         settings
                                     </button>
+                                    <button @click="onMenuHelp" class="menu-item">
+                                        help
+                                    </button>
                                     <button @click="onMenuLogout" class="menu-item">
                                         logout
                                     </button>
@@ -639,6 +657,12 @@ const KnowledgeApp = createApp({
             :active-tab="settingsActiveTab"
             @close="closeSettings"
             @theme-updated="onThemeUpdated"
+        />
+
+        <!-- Help Modal -->
+        <HelpModal
+            :is-open="showHelp"
+            @close="closeHelp"
         />
 
         <!-- Spotlight Search Modal -->
