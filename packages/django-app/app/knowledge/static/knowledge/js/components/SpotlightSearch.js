@@ -65,7 +65,12 @@ window.SpotlightSearch = {
             'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
           )
         );
-        if (focusable.length < 2) return;
+        if (!focusable.length) return;
+        if (focusable.length === 1) {
+          event.preventDefault();
+          focusable[0].focus();
+          return;
+        }
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
         if (event.shiftKey && document.activeElement === first) {
@@ -95,7 +100,7 @@ window.SpotlightSearch = {
   },
 
   template: `
-    <div v-if="isOpen" class="spotlight-overlay" @click="handleOverlayClick" @keydown="handleKeydown">
+    <div v-if="isOpen" class="spotlight-overlay" @click="handleOverlayClick">
       <div class="spotlight-modal">
         <div class="spotlight-header">
           <div class="spotlight-search-container">
