@@ -389,10 +389,12 @@ const BlockComponent = {
 
     refocusDisplay(uuid) {
       this.$nextTick(() => {
-        const display = document.querySelector(
-          `[data-block-uuid="${uuid}"] .block-content-display`
-        );
-        if (display) display.focus();
+        this.$nextTick(() => {
+          const display = document.querySelector(
+            `[data-block-uuid="${uuid}"] .block-content-display`
+          );
+          if (display) display.focus();
+        });
       });
     },
 

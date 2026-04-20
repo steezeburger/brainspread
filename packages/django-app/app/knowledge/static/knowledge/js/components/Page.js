@@ -980,26 +980,28 @@ const Page = {
 
     restoreBlockFocus(uuid, wasEditing, cursorPos) {
       this.$nextTick(() => {
-        const newBlock = this.getAllBlocks().find((b) => b.uuid === uuid);
-        if (!newBlock) return;
-        if (wasEditing) {
-          this.startEditing(newBlock);
-          if (typeof cursorPos === "number") {
-            this.$nextTick(() => {
-              const textarea = document.querySelector(
-                `[data-block-uuid="${uuid}"] textarea`
-              );
-              if (textarea) {
-                textarea.setSelectionRange(cursorPos, cursorPos);
-              }
-            });
+        this.$nextTick(() => {
+          const newBlock = this.getAllBlocks().find((b) => b.uuid === uuid);
+          if (!newBlock) return;
+          if (wasEditing) {
+            this.startEditing(newBlock);
+            if (typeof cursorPos === "number") {
+              this.$nextTick(() => {
+                const textarea = document.querySelector(
+                  `[data-block-uuid="${uuid}"] textarea`
+                );
+                if (textarea) {
+                  textarea.setSelectionRange(cursorPos, cursorPos);
+                }
+              });
+            }
+          } else {
+            const display = document.querySelector(
+              `[data-block-uuid="${uuid}"] .block-content-display`
+            );
+            if (display) display.focus();
           }
-        } else {
-          const display = document.querySelector(
-            `[data-block-uuid="${uuid}"] .block-content-display`
-          );
-          if (display) display.focus();
-        }
+        });
       });
     },
 
