@@ -110,8 +110,8 @@ const Page = {
       return null;
     },
 
-    async loadPage() {
-      this.loading = true;
+    async loadPage({ silent = false } = {}) {
+      if (!silent) this.loading = true;
       this.error = null;
 
       try {
@@ -439,8 +439,8 @@ const Page = {
         // Update local state - re-sort siblings
         siblings.sort((a, b) => a.order - b.order);
 
-        // Refresh page data to ensure consistency
-        await this.loadPage();
+        // Refresh page data without unmounting blocks (preserves focus)
+        await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to move block up:", error);
         this.error = "failed to move block up";
@@ -476,8 +476,8 @@ const Page = {
         // Update local state - re-sort siblings
         siblings.sort((a, b) => a.order - b.order);
 
-        // Refresh page data to ensure consistency
-        await this.loadPage();
+        // Refresh page data without unmounting blocks (preserves focus)
+        await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to move block down:", error);
         this.error = "failed to move block down";
