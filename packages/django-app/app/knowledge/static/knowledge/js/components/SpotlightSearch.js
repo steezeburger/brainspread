@@ -57,6 +57,30 @@ window.SpotlightSearch = {
     },
 
     handleKeydown(event) {
+      if (event.key === "Tab") {
+        const modal = this.$el?.querySelector(".spotlight-modal");
+        if (!modal) return;
+        const focusable = Array.from(
+          modal.querySelectorAll(
+            'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        );
+        if (!focusable.length) return;
+        if (focusable.length === 1) {
+          event.preventDefault();
+          focusable[0].focus();
+          return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
       this.$emit("keydown", event);
     },
 
@@ -105,18 +129,21 @@ window.SpotlightSearch = {
           </div>
 
           <div v-else-if="query && results.length === 0" class="spotlight-no-results">
-            <p>no pages found for "<strong>{{ query }}</strong>"</p>
+            <p>no results for "<strong>{{ query }}</strong>"</p>
           </div>
 
           <div v-else-if="results.length > 0" class="spotlight-results">
             <div
               v-for="(result, index) in results"
-              :key="result.slug"
+              :key="result.type === 'command' ? result.commandId : result.slug"
               class="spotlight-result"
-              :class="{ 'selected': index === selectedIndex }"
+              :class="{ 'selected': index === selectedIndex, 'spotlight-command': result.type === 'command' }"
               @click="handleResultClick(index)"
             >
-              <div class="spotlight-result-icon">
+              <div class="spotlight-result-icon spotlight-command-icon" v-if="result.type === 'command'">
+                {{ result.icon }}
+              </div>
+              <div class="spotlight-result-icon" v-else>
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                   <path d="M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3z" stroke="currentColor" stroke-width="1.5" fill="none"/>
                   <path d="M5 6h6M5 8h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -124,14 +151,12 @@ window.SpotlightSearch = {
               </div>
               <div class="spotlight-result-content">
                 <div class="spotlight-result-title" v-html="highlightQuery(result.title, query)"></div>
-                <div class="spotlight-result-snippet" v-html="highlightQuery(result.snippet, query)"></div>
-                <div class="spotlight-result-path">{{ result.url }}</div>
+                <div class="spotlight-result-snippet" v-if="result.type === 'command'">{{ result.description }}</div>
+                <div class="spotlight-result-snippet" v-else-if="result.snippet" v-html="highlightQuery(result.snippet, query)"></div>
+                <div class="spotlight-result-path" v-if="result.type === 'page'">{{ result.url }}</div>
               </div>
+              <div class="spotlight-result-type" v-if="result.type === 'command'">command</div>
             </div>
-          </div>
-
-          <div v-else-if="!query" class="spotlight-empty">
-            <p>start typing to search your pages...</p>
           </div>
         </div>
 

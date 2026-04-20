@@ -89,6 +89,12 @@ window.SettingsModal = {
         if (newValue) {
           this.currentTab = this.activeTab || "general";
           await this.loadAISettings();
+          this.$nextTick(() => {
+            const firstFocusable = this.$el?.querySelector(
+              ".settings-modal-content button, .settings-modal-content input, .settings-modal-content select"
+            );
+            if (firstFocusable) firstFocusable.focus();
+          });
         }
       },
     },
@@ -190,6 +196,32 @@ window.SettingsModal = {
     handleBackdropClick(event) {
       if (event.target === event.currentTarget) {
         this.closeModal();
+      }
+    },
+
+    handleModalKeydown(event) {
+      if (event.key === "Escape") {
+        this.closeModal();
+        return;
+      }
+      if (event.key === "Tab") {
+        const modal = this.$el?.querySelector(".settings-modal-content");
+        if (!modal) return;
+        const focusable = Array.from(
+          modal.querySelectorAll(
+            'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        );
+        if (focusable.length < 2) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
       }
     },
 
@@ -357,6 +389,7 @@ window.SettingsModal = {
       v-if="isOpen"
       class="settings-modal"
       @click="handleBackdropClick"
+      @keydown="handleModalKeydown"
     >
       <div class="settings-modal-content">
         <h2>settings</h2>

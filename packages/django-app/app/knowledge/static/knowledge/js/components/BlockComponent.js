@@ -77,6 +77,7 @@ const BlockComponent = {
       isCollapsed: false,
       showContextMenu: false,
       contextMenuPosition: { x: 0, y: 0 },
+      contextMenuFocusedIndex: -1,
       // Touch tracking for distinguishing taps from scrolls
       touchStartX: null,
       touchStartY: null,
@@ -90,13 +91,34 @@ const BlockComponent = {
       return this.block.children?.length > 0;
     },
   },
+  watch: {
+    showContextMenu(val) {
+      if (val) {
+        this.contextMenuFocusedIndex = 0;
+        this.$nextTick(() => {
+          this.focusContextMenuItem(0);
+        });
+      } else {
+        this.contextMenuFocusedIndex = -1;
+      }
+    },
+  },
+
   mounted() {
     // Listen for the custom event to close menus
     document.addEventListener("closeBlockMenus", this.handleCloseBlockMenus);
+    document.addEventListener(
+      "openBlockContextMenu",
+      this.handleOpenContextMenuEvent
+    );
   },
   beforeUnmount() {
     // Clean up event listener
     document.removeEventListener("closeBlockMenus", this.handleCloseBlockMenus);
+    document.removeEventListener(
+      "openBlockContextMenu",
+      this.handleOpenContextMenuEvent
+    );
   },
   methods: {
     toggleBlockContext() {
@@ -211,6 +233,171 @@ const BlockComponent = {
       this.showContextMenu = false;
       document.removeEventListener("click", this.hideContextMenu);
     },
+
+    hideContextMenuAndRestoreFocus() {
+      this.hideContextMenu();
+      this.$nextTick(() => {
+        const menuBtn = this.$el?.querySelector(".block-menu");
+        if (menuBtn) menuBtn.focus();
+      });
+    },
+    getContextMenuItems() {
+      return Array.from(
+        this.$el?.querySelectorAll(".block-context-menu [role='menuitem']") ||
+          []
+      );
+    },
+
+    focusContextMenuItem(index) {
+      const items = this.getContextMenuItems();
+      if (items[index]) {
+        items[index].focus();
+        this.contextMenuFocusedIndex = index;
+      }
+    },
+
+    handleContextMenuKeydown(event) {
+      const items = this.getContextMenuItems();
+      if (!items.length) return;
+
+      switch (event.key) {
+        case "ArrowDown":
+          event.preventDefault();
+          this.contextMenuFocusedIndex = Math.min(
+            this.contextMenuFocusedIndex + 1,
+            items.length - 1
+          );
+          this.focusContextMenuItem(this.contextMenuFocusedIndex);
+          break;
+        case "ArrowUp":
+          event.preventDefault();
+          this.contextMenuFocusedIndex = Math.max(
+            this.contextMenuFocusedIndex - 1,
+            0
+          );
+          this.focusContextMenuItem(this.contextMenuFocusedIndex);
+          break;
+        case "Escape":
+        case "Tab":
+          event.preventDefault();
+          this.hideContextMenu();
+          this.$nextTick(() => {
+            const menuBtn = this.$el?.querySelector(".block-menu");
+            if (menuBtn) menuBtn.focus();
+          });
+          break;
+        case "Home":
+          event.preventDefault();
+          this.focusContextMenuItem(0);
+          break;
+        case "End":
+          event.preventDefault();
+          this.focusContextMenuItem(items.length - 1);
+          break;
+      }
+    },
+
+    async handleBlockDisplayKeydown(event) {
+      // Alt+Shift+ArrowUp/Down: move block
+      if (event.altKey && event.shiftKey && event.key === "ArrowUp") {
+        event.preventDefault();
+        const uuid = this.block.uuid;
+        await this.moveBlockUp(this.block);
+        this.refocusDisplay(uuid);
+        return;
+      }
+      if (event.altKey && event.shiftKey && event.key === "ArrowDown") {
+        event.preventDefault();
+        const uuid = this.block.uuid;
+        await this.moveBlockDown(this.block);
+        this.refocusDisplay(uuid);
+        return;
+      }
+      // Cmd/Ctrl+Shift+Backspace: delete block
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.shiftKey &&
+        event.key === "Backspace"
+      ) {
+        event.preventDefault();
+        this.deleteBlock(this.block);
+        return;
+      }
+      // Cmd/Ctrl+. or Shift+F10: open context menu
+      if (
+        ((event.metaKey || event.ctrlKey) && event.key === ".") ||
+        (event.shiftKey && event.key === "F10")
+      ) {
+        event.preventDefault();
+        this.openContextMenuAtBlock();
+        return;
+      }
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        this.startEditing(this.block);
+      }
+    },
+
+    openContextMenuAtBlock() {
+      const menuBtn = this.$el?.querySelector(".block-menu");
+      if (!menuBtn) return;
+      const rect = menuBtn.getBoundingClientRect();
+
+      // Reuse the same positioning logic as showContextMenuAt
+      this.closeOtherMenus();
+
+      const menuWidth = 200;
+      const shadowOffset = 4;
+      const viewportWidth = window.innerWidth;
+      const isMobile = window.innerWidth <= 768;
+      const edgePadding = isMobile ? 20 : 10;
+      const bottomPadding = isMobile ? 60 : 10;
+
+      let x = rect.left;
+      let y = rect.bottom;
+
+      if (x + menuWidth + shadowOffset > viewportWidth - edgePadding) {
+        x = viewportWidth - menuWidth - shadowOffset - edgePadding;
+      }
+      x = Math.max(edgePadding, x);
+
+      this.contextMenuPosition = { x, y };
+      this.showContextMenu = true;
+
+      this.$nextTick(() => {
+        const menuEl = this.$el.querySelector(".block-context-menu");
+        if (!menuEl) return;
+        const menuHeight = menuEl.offsetHeight;
+        const viewportHeight = window.innerHeight;
+        if (y + menuHeight + shadowOffset > viewportHeight - bottomPadding) {
+          y = viewportHeight - menuHeight - shadowOffset - bottomPadding;
+        }
+        y = Math.max(edgePadding, y);
+        this.contextMenuPosition = { x, y };
+      });
+
+      setTimeout(() => {
+        document.addEventListener("click", this.hideContextMenu);
+      }, 10);
+    },
+
+    handleOpenContextMenuEvent(event) {
+      if (event.detail?.uuid === this.block.uuid) {
+        this.openContextMenuAtBlock();
+      }
+    },
+
+    refocusDisplay(uuid) {
+      this.$nextTick(() => {
+        this.$nextTick(() => {
+          const display = document.querySelector(
+            `[data-block-uuid="${uuid}"] .block-content-display`
+          );
+          if (display) display.focus();
+        });
+      });
+    },
+
     handleContextMenuAction(action) {
       this.hideContextMenu();
 
@@ -285,7 +472,11 @@ const BlockComponent = {
           v-if="!block.isEditing"
           class="block-content-display"
           :class="{ 'completed': ['done', 'wontdo'].includes(block.block_type) }"
+          tabindex="0"
+          role="button"
+          :aria-label="'Edit block: ' + (block.content || 'empty block')"
           @click="$event.target.closest('.clickable-tag') || startEditing(block)"
+          @keydown="handleBlockDisplayKeydown"
           @touchstart="handleTouchStart"
           @touchend="handleContentTouchEnd"
           v-html="formatContentWithTags(block.content, block.block_type)"
@@ -311,56 +502,56 @@ const BlockComponent = {
       </div>
       
       <!-- Context Menu -->
-      <div v-if="showContextMenu" class="block-context-menu" :style="{ left: contextMenuPosition.x + 'px', top: contextMenuPosition.y + 'px' }" @click.stop>
-        <div class="context-menu-item" v-if="hasChildren && isCollapsed" @click="handleContextMenuAction('expand')">
+      <div v-if="showContextMenu" class="block-context-menu" :style="{ left: contextMenuPosition.x + 'px', top: contextMenuPosition.y + 'px' }" @click.stop @keydown="handleContextMenuKeydown" role="menu">
+        <button class="context-menu-item" role="menuitem" tabindex="-1" v-if="hasChildren && isCollapsed" @click="handleContextMenuAction('expand')">
           <span class="context-menu-icon">▶</span>
           <span>expand</span>
-        </div>
-        <div class="context-menu-item" v-if="hasChildren && !isCollapsed" @click="handleContextMenuAction('collapse')">
+        </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" v-if="hasChildren && !isCollapsed" @click="handleContextMenuAction('collapse')">
           <span class="context-menu-icon">▼</span>
           <span>collapse</span>
-        </div>
+        </button>
         <div class="context-menu-separator" v-if="hasChildren"></div>
-        <div class="context-menu-item" @click="handleContextMenuAction('indent')">
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('indent')">
           <span class="context-menu-icon">→</span>
           <span>indent</span>
-        </div>
-        <div class="context-menu-item" @click="handleContextMenuAction('outdent')">
+        </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('outdent')">
           <span class="context-menu-icon">←</span>
           <span>outdent</span>
-        </div>
+        </button>
         <div class="context-menu-separator"></div>
-        <div class="context-menu-item" @click="handleContextMenuAction('moveUp')">
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('moveUp')">
           <span class="context-menu-icon">↑</span>
           <span>move up</span>
-        </div>
-        <div class="context-menu-item" @click="handleContextMenuAction('moveDown')">
+        </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('moveDown')">
           <span class="context-menu-icon">↓</span>
           <span>move down</span>
-        </div>
+        </button>
         <div class="context-menu-separator"></div>
-        <div class="context-menu-item" @click="handleContextMenuAction('newBlockBefore')">
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('newBlockBefore')">
           <span class="context-menu-icon">+</span>
           <span>new block before</span>
-        </div>
-        <div class="context-menu-item" @click="handleContextMenuAction('newBlockAfter')">
+        </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('newBlockAfter')">
           <span class="context-menu-icon">+</span>
           <span>new block after</span>
-        </div>
+        </button>
         <div class="context-menu-separator"></div>
-        <div class="context-menu-item" v-if="!blockInContext" @click="handleContextMenuAction('addToContext')">
+        <button class="context-menu-item" role="menuitem" tabindex="-1" v-if="!blockInContext" @click="handleContextMenuAction('addToContext')">
           <span class="context-menu-icon">+</span>
           <span>add to ai context</span>
-        </div>
-        <div class="context-menu-item" v-if="blockInContext" @click="handleContextMenuAction('removeFromContext')">
+        </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" v-if="blockInContext" @click="handleContextMenuAction('removeFromContext')">
           <span class="context-menu-icon">-</span>
           <span>remove from ai context</span>
-        </div>
+        </button>
         <div class="context-menu-separator"></div>
-        <div class="context-menu-item context-menu-danger" @click="handleContextMenuAction('delete')">
+        <button class="context-menu-item context-menu-danger" role="menuitem" tabindex="-1" @click="handleContextMenuAction('delete')">
           <span class="context-menu-icon">×</span>
           <span>delete</span>
-        </div>
+        </button>
       </div>
       
       <!-- Recursively render children -->

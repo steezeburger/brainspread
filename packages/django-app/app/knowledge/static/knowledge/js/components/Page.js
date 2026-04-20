@@ -70,6 +70,13 @@ const Page = {
     document.addEventListener("click", this.handleDocumentClick);
     // Restore focus when window/tab regains focus
     window.addEventListener("focus", this.handleWindowFocus);
+    // Global keydown for Escape to close page menus
+    document.addEventListener("keydown", this.handlePageGlobalKeydown);
+    // Spotlight command: new block
+    document.addEventListener(
+      "spotlight:new-block",
+      this.handleSpotlightNewBlock
+    );
     // Load page data
     await this.loadPage();
   },
@@ -78,6 +85,11 @@ const Page = {
     // Clean up event listeners
     document.removeEventListener("click", this.handleDocumentClick);
     window.removeEventListener("focus", this.handleWindowFocus);
+    document.removeEventListener("keydown", this.handlePageGlobalKeydown);
+    document.removeEventListener(
+      "spotlight:new-block",
+      this.handleSpotlightNewBlock
+    );
   },
 
   methods: {
@@ -98,8 +110,8 @@ const Page = {
       return null;
     },
 
-    async loadPage() {
-      this.loading = true;
+    async loadPage({ silent = false } = {}) {
+      if (!silent) this.loading = true;
       this.error = null;
 
       try {
@@ -427,8 +439,8 @@ const Page = {
         // Update local state - re-sort siblings
         siblings.sort((a, b) => a.order - b.order);
 
-        // Refresh page data to ensure consistency
-        await this.loadPage();
+        // Refresh page data without unmounting blocks (preserves focus)
+        await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to move block up:", error);
         this.error = "failed to move block up";
@@ -464,8 +476,8 @@ const Page = {
         // Update local state - re-sort siblings
         siblings.sort((a, b) => a.order - b.order);
 
-        // Refresh page data to ensure consistency
-        await this.loadPage();
+        // Refresh page data without unmounting blocks (preserves focus)
+        await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to move block down:", error);
         this.error = "failed to move block down";
@@ -478,7 +490,59 @@ const Page = {
     },
 
     async onBlockKeyDown(event, block) {
-      if (event.key === "Enter" && !event.shiftKey) {
+      // Alt+Shift+ArrowUp/Down: move block
+      if (event.altKey && event.shiftKey && event.key === "ArrowUp") {
+        event.preventDefault();
+        const cursorPos = event.target.selectionStart;
+        const wasEditing = block.isEditing;
+        await this.moveBlockUp(block);
+        this.restoreBlockFocus(block.uuid, wasEditing, cursorPos);
+        return;
+      }
+      if (event.altKey && event.shiftKey && event.key === "ArrowDown") {
+        event.preventDefault();
+        const cursorPos = event.target.selectionStart;
+        const wasEditing = block.isEditing;
+        await this.moveBlockDown(block);
+        this.restoreBlockFocus(block.uuid, wasEditing, cursorPos);
+        return;
+      }
+      // Cmd/Ctrl+Shift+Backspace: delete block
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.shiftKey &&
+        event.key === "Backspace"
+      ) {
+        event.preventDefault();
+        await this.deleteBlock(block);
+        return;
+      }
+      // Cmd/Ctrl+. or Shift+F10: open context menu for this block
+      if (
+        ((event.metaKey || event.ctrlKey) && event.key === ".") ||
+        (event.shiftKey && event.key === "F10")
+      ) {
+        event.preventDefault();
+        document.dispatchEvent(
+          new CustomEvent("openBlockContextMenu", {
+            detail: { uuid: block.uuid },
+          })
+        );
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        await this.updateBlock(block, block.content, true);
+        block.isEditing = false;
+        // Return focus to the display element so tab navigation continues
+        this.$nextTick(() => {
+          const display = document.querySelector(
+            `[data-block-uuid="${block.uuid}"] .block-content-display`
+          );
+          if (display) display.focus();
+        });
+        return;
+      } else if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
         // Save current block before creating new one
         await this.updateBlock(block, block.content, true);
@@ -893,10 +957,10 @@ const Page = {
         return;
       }
 
-      // Save the block when user stops editing (blur event)
-      // Skip reload to preserve cursor positions of other blocks
       await this.updateBlock(block, block.content, true);
-      block.isEditing = false;
+      // Don't close the editor if startEditing was called while the save
+      // was in flight (e.g. restoreBlockFocus after a move).
+      if (!block.isEditing) block.isEditing = false;
     },
 
     getAllBlocks() {
@@ -912,6 +976,33 @@ const Page = {
       };
       addBlocks(this.directBlocks);
       return result;
+    },
+
+    restoreBlockFocus(uuid, wasEditing, cursorPos) {
+      this.$nextTick(() => {
+        this.$nextTick(() => {
+          const newBlock = this.getAllBlocks().find((b) => b.uuid === uuid);
+          if (!newBlock) return;
+          if (wasEditing) {
+            this.startEditing(newBlock);
+            if (typeof cursorPos === "number") {
+              this.$nextTick(() => {
+                const textarea = document.querySelector(
+                  `[data-block-uuid="${uuid}"] textarea`
+                );
+                if (textarea) {
+                  textarea.setSelectionRange(cursorPos, cursorPos);
+                }
+              });
+            }
+          } else {
+            const display = document.querySelector(
+              `[data-block-uuid="${uuid}"] .block-content-display`
+            );
+            if (display) display.focus();
+          }
+        });
+      });
     },
 
     focusNextBlock(currentBlock) {
@@ -943,10 +1034,70 @@ const Page = {
     // Page management methods
     togglePageMenu() {
       this.showPageMenu = !this.showPageMenu;
+      if (this.showPageMenu) {
+        this.$nextTick(() => {
+          const firstItem = this.$el?.querySelector(
+            ".context-menu-container .context-menu .context-menu-item"
+          );
+          if (firstItem) firstItem.focus();
+        });
+      }
     },
 
     closePageMenu() {
       this.showPageMenu = false;
+    },
+
+    closePageMenuAndRestoreFocus() {
+      this.closePageMenu();
+      this.$nextTick(() => {
+        const menuBtn = this.$el?.querySelector(".context-menu-btn");
+        if (menuBtn) menuBtn.focus();
+      });
+    },
+
+    handlePageMenuKeydown(event) {
+      const items = Array.from(
+        this.$el?.querySelectorAll(
+          ".context-menu-container .context-menu .context-menu-item"
+        ) || []
+      );
+      if (!items.length) return;
+      const currentIndex = items.indexOf(document.activeElement);
+
+      switch (event.key) {
+        case "ArrowDown":
+          event.preventDefault();
+          items[Math.min(currentIndex + 1, items.length - 1)].focus();
+          break;
+        case "ArrowUp":
+          event.preventDefault();
+          items[Math.max(currentIndex - 1, 0)].focus();
+          break;
+        case "Escape":
+        case "Tab":
+          event.preventDefault();
+          this.closePageMenuAndRestoreFocus();
+          break;
+        case "Home":
+          event.preventDefault();
+          items[0].focus();
+          break;
+        case "End":
+          event.preventDefault();
+          items[items.length - 1].focus();
+          break;
+      }
+    },
+
+    handlePageGlobalKeydown(event) {
+      if (event.key === "Escape" && this.showPageMenu) {
+        this.closePageMenuAndRestoreFocus();
+      }
+    },
+
+    handleSpotlightNewBlock() {
+      this.addNewBlock();
     },
 
     handleDocumentClick(event) {
@@ -1134,14 +1285,14 @@ const Page = {
               </div>
               <div class="header-controls">
                 <div class="context-menu-container">
-                  <button @click="togglePageMenu" class="btn btn-outline context-menu-btn" title="Daily note options">
+                  <button @click="togglePageMenu" class="btn btn-outline context-menu-btn" title="Daily note options" :aria-expanded="showPageMenu" aria-haspopup="menu">
                     ⋮
                   </button>
-                  <div v-if="showPageMenu" class="context-menu" @click.stop>
-                    <button @click="moveUndoneTodos" class="context-menu-item" :disabled="loading">
+                  <div v-if="showPageMenu" class="context-menu" @click.stop @keydown="handlePageMenuKeydown" role="menu">
+                    <button @click="moveUndoneTodos" class="context-menu-item" :disabled="loading" role="menuitem">
                       move undone TODOs here
                     </button>
-                    <button @click="deletePage" class="context-menu-item context-menu-danger">
+                    <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">
                        <span class="context-menu-icon">×</span>
                        <span>delete</span>
                     </button>
@@ -1154,7 +1305,7 @@ const Page = {
             <div v-else class="page-title-container page-header-flex">
               <div class="page-header-flex-left">
                 <div v-if="!isEditingTitle" class="page-title-display">
-                  <h1 class="page-title-text" @click="startEditingTitle">{{ page.title || 'Untitled Page' }}</h1>
+                  <h1 class="page-title-text" tabindex="0" role="button" aria-label="Edit page title" @click="startEditingTitle" @keydown.enter.prevent="startEditingTitle" @keydown.space.prevent="startEditingTitle">{{ page.title || 'Untitled Page' }}</h1>
                 </div>
                 <div v-else class="page-title-edit">
                   <input
@@ -1175,14 +1326,14 @@ const Page = {
               </div>
               <div class="page-actions">
                 <div class="context-menu-container">
-                  <button @click="togglePageMenu" class="btn btn-outline context-menu-btn" title="Page options">
+                  <button @click="togglePageMenu" class="btn btn-outline context-menu-btn" title="Page options" :aria-expanded="showPageMenu" aria-haspopup="menu">
                     ⋮
                   </button>
-                  <div v-if="showPageMenu" class="context-menu" @click.stop>
-                    <button @click="startEditingTitle" class="context-menu-item">
+                  <div v-if="showPageMenu" class="context-menu" @click.stop @keydown="handlePageMenuKeydown" role="menu">
+                    <button @click="startEditingTitle" class="context-menu-item" role="menuitem">
                       edit title
                     </button>
-                    <button @click="deletePage" class="context-menu-item context-menu-danger">
+                    <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">
                       delete page
                     </button>
                   </div>

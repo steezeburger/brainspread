@@ -489,7 +489,6 @@ body {
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 .settings-modal h2 {
@@ -623,9 +622,11 @@ body {
 
 .help-modal-body {
   overflow-y: auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 1.75rem;
+  outline: none;
 }
 
 .help-section h3 {
@@ -1358,12 +1359,16 @@ kbd {
   z-index: 1;
 }
 
-.block:hover .block-collapse-toggle {
+.block:hover .block-collapse-toggle,
+.block-collapse-toggle:focus {
   opacity: 1;
 }
 
-.block-collapse-toggle:hover {
+.block-collapse-toggle:hover,
+.block-collapse-toggle:focus {
   color: var(--text-primary);
+  outline: 2px solid var(--border-primary);
+  outline-offset: 1px;
 }
 
 .block-menu {
@@ -1384,7 +1389,8 @@ kbd {
   transition: opacity 0.2s ease;
 }
 
-.block:hover .block-menu {
+.block:hover .block-menu,
+.block-menu:focus {
   opacity: 1;
 }
 
@@ -1395,10 +1401,13 @@ kbd {
   }
 }
 
-.block-menu:hover {
+.block-menu:hover,
+.block-menu:focus {
   color: var(--text-primary);
   background: var(--bg-secondary);
   border-radius: 3px;
+  outline: 2px solid var(--border-primary);
+  outline-offset: 1px;
 }
 
 .block-context-menu {
@@ -1482,6 +1491,25 @@ kbd {
   background-color: var(--hover-bg);
   margin: -2px;
   padding: 2px;
+}
+
+/* Keyboard navigation focus styles */
+.block-content-display:focus {
+  outline: 2px solid var(--border-primary);
+  outline-offset: 1px;
+  background-color: var(--hover-bg-light);
+}
+
+.context-menu-item:focus {
+  outline: 2px solid var(--border-primary);
+  outline-offset: -2px;
+  background: var(--hover-bg);
+}
+
+.page-title-text:focus {
+  outline: 2px solid var(--border-primary);
+  outline-offset: 2px;
+  cursor: text;
 }
 
 /* Responsive */
@@ -2824,6 +2852,7 @@ kbd {
 .tab-content {
   animation: fadeIn 0.2s ease-in;
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   margin-bottom: 1rem;
 }
@@ -3258,11 +3287,14 @@ kbd {
   transition: none;
 }
 
-.context-menu-btn:hover {
+.context-menu-btn:hover,
+.context-menu-btn:focus {
   background: var(--hover-bg);
   border-color: var(--border-primary);
   transform: none;
   box-shadow: none;
+  outline: 2px solid var(--border-primary);
+  outline-offset: 1px;
 }
 
 .context-menu {
@@ -3794,6 +3826,27 @@ kbd {
   padding: 0.125rem 0.25rem;
   border-radius: 2px;
   font-weight: 600;
+}
+
+.spotlight-command .spotlight-result-title {
+  font-weight: 500;
+}
+
+.spotlight-command-icon {
+  font-size: 0.85rem;
+  width: 16px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.spotlight-result-type {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  border: 1px solid var(--border-secondary);
+  padding: 0.1rem 0.4rem;
+  align-self: center;
+  flex-shrink: 0;
+  letter-spacing: 0.03em;
 }
 
 .spotlight-footer {
