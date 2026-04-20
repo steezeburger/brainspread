@@ -133,6 +133,7 @@ const BlockComponent = {
     },
     handleContentTouchEnd(event) {
       if (this.isTapGesture(event)) {
+        if (event.target.closest(".clickable-tag")) return;
         event.preventDefault();
         this.startEditing(this.block);
       }
@@ -305,7 +306,7 @@ const BlockComponent = {
           v-if="!block.isEditing"
           class="block-content-display"
           :class="{ 'completed': ['done', 'wontdo'].includes(block.block_type) }"
-          @click="startEditing(block)"
+          @click="$event.target.closest('.clickable-tag') || startEditing(block)"
           @touchstart="handleTouchStart"
           @touchend="handleContentTouchEnd"
           v-html="formatContentWithTags(block.content, block.block_type)"

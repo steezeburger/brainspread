@@ -620,6 +620,7 @@ body {
   padding: 0.1rem 0.3rem;
   font-weight: normal;
   border: 1px solid var(--tag-bg);
+  text-decoration: none;
 }
 
 /* More specific selector for inline tags in block content */
@@ -633,6 +634,7 @@ body {
 .clickable-tag {
   cursor: pointer;
   transition: background-color 0.1s ease;
+  text-decoration: none;
 }
 
 .clickable-tag:hover {

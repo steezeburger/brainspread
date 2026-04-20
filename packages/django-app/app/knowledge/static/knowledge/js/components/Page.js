@@ -833,18 +833,21 @@ const Page = {
           .join(`<code class="markdown-code">${safeCode}</code>`);
       });
 
-      // Replace hashtags with clickable styled spans
+      // Replace hashtags with clickable anchor elements so browsers support cmd+click, middle-click, right-click → open in new tab
       return formatted.replace(
         /#([a-zA-Z0-9_-]+)/g,
-        '<span class="inline-tag clickable-tag" data-tag="$1">#$1</span>'
+        '<a class="inline-tag clickable-tag" href="/knowledge/page/$1/" data-tag="$1">#$1</a>'
       );
     },
 
     handleTagClick(event) {
-      // Check if the clicked element is a clickable tag
       if (event.target.classList.contains("clickable-tag")) {
-        event.preventDefault();
         event.stopPropagation();
+        // Allow cmd+click, ctrl+click, and middle-click to open in new tab natively
+        if (event.metaKey || event.ctrlKey || event.button === 1) {
+          return;
+        }
+        event.preventDefault();
         const tagName = event.target.getAttribute("data-tag");
         if (tagName) {
           this.goToTag(tagName);
