@@ -814,7 +814,9 @@ const Page = {
 
     handleWindowFocus() {
       if (this.lastEditingBlockUuid) {
-        const block = this.getAllBlocks().find(b => b.uuid === this.lastEditingBlockUuid);
+        const block = this.getAllBlocks().find(
+          (b) => b.uuid === this.lastEditingBlockUuid
+        );
         if (block) {
           this.startEditing(block);
         }
