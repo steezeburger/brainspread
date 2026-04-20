@@ -489,7 +489,6 @@ body {
   max-height: 90vh;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 .settings-modal h2 {
@@ -623,9 +622,11 @@ body {
 
 .help-modal-body {
   overflow-y: auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 1.75rem;
+  outline: none;
 }
 
 .help-section h3 {
@@ -2851,6 +2852,7 @@ kbd {
 .tab-content {
   animation: fadeIn 0.2s ease-in;
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   margin-bottom: 1rem;
 }

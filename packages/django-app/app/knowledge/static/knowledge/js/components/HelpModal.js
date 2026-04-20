@@ -13,8 +13,8 @@ window.HelpModal = {
     isOpen(newValue) {
       if (newValue) {
         this.$nextTick(() => {
-          const closeBtn = this.$el?.querySelector(".help-close-btn");
-          if (closeBtn) closeBtn.focus();
+          const body = this.$refs.modalBody;
+          if (body) body.focus();
         });
       }
     },
@@ -56,7 +56,7 @@ window.HelpModal = {
           <button @click="$emit('close')" class="help-close-btn" title="Close">×</button>
         </div>
 
-        <div class="help-modal-body">
+        <div class="help-modal-body" ref="modalBody" tabindex="-1">
           <div class="help-section">
             <h3>text formatting</h3>
             <table class="help-table">
