@@ -38,6 +38,8 @@ const Page = {
       // Track blocks being deleted to prevent save conflicts
       deletingBlocks: new Set(),
       isNavigating: false,
+      isIndentingOrOutdenting: false,
+      lastEditingBlockUuid: null,
     };
   },
 
@@ -69,6 +71,8 @@ const Page = {
     document.addEventListener("touchend", this.handleTagClick);
     // Add document click handler for closing menus
     document.addEventListener("click", this.handleDocumentClick);
+    // Restore focus when window/tab regains focus
+    window.addEventListener("focus", this.handleWindowFocus);
     // Load page data
     await this.loadPage();
   },
@@ -78,6 +82,7 @@ const Page = {
     document.removeEventListener("click", this.handleTagClick);
     document.removeEventListener("touchend", this.handleTagClick);
     document.removeEventListener("click", this.handleDocumentClick);
+    window.removeEventListener("focus", this.handleWindowFocus);
   },
 
   methods: {
@@ -594,6 +599,7 @@ const Page = {
       const previousSibling = this.findPreviousSibling(block);
       if (!previousSibling) return; // Can't indent if no previous sibling
 
+      this.isIndentingOrOutdenting = true;
       try {
         // Save current content first
         await this.updateBlock(block, block.content, true);
@@ -620,6 +626,7 @@ const Page = {
           this.$nextTick(() => {
             block.isEditing = true;
             this.$nextTick(() => {
+              this.isIndentingOrOutdenting = false;
               const textarea = document.querySelector(
                 `[data-block-uuid="${block.uuid}"] textarea`
               );
@@ -628,6 +635,7 @@ const Page = {
           });
         }
       } catch (error) {
+        this.isIndentingOrOutdenting = false;
         console.error("Failed to indent block:", error);
       }
     },
@@ -635,6 +643,7 @@ const Page = {
     async outdentBlock(block) {
       if (!block.parent) return; // Already at root level
 
+      this.isIndentingOrOutdenting = true;
       try {
         // Save current content first
         await this.updateBlock(block, block.content, true);
@@ -672,6 +681,7 @@ const Page = {
           this.$nextTick(() => {
             block.isEditing = true;
             this.$nextTick(() => {
+              this.isIndentingOrOutdenting = false;
               const textarea = document.querySelector(
                 `[data-block-uuid="${block.uuid}"] textarea`
               );
@@ -680,6 +690,7 @@ const Page = {
           });
         }
       } catch (error) {
+        this.isIndentingOrOutdenting = false;
         console.error("Failed to outdent block:", error);
       }
     },
@@ -801,7 +812,17 @@ const Page = {
       window.location.href = url;
     },
 
+    handleWindowFocus() {
+      if (this.lastEditingBlockUuid) {
+        const block = this.getAllBlocks().find(b => b.uuid === this.lastEditingBlockUuid);
+        if (block) {
+          this.startEditing(block);
+        }
+      }
+    },
+
     startEditing(block) {
+      this.lastEditingBlockUuid = block.uuid;
       // Stop editing all other blocks first (save them)
       const allBlocks = this.getAllBlocks();
       allBlocks.forEach((b) => {
@@ -827,6 +848,11 @@ const Page = {
       // Don't stop editing if we're navigating between blocks
       if (this.isNavigating) {
         this.isNavigating = false;
+        return;
+      }
+
+      // Don't stop editing during indent/outdent; content is already saved there
+      if (this.isIndentingOrOutdenting) {
         return;
       }
 
