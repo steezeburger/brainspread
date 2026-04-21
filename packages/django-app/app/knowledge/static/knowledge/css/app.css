@@ -10,10 +10,10 @@
   --text-disabled: #333333;
   --border-primary: #00ff00;
   --border-secondary: #333333;
-  --hover-bg: #003300;
+  --hover-bg: #002200;
   --hover-bg-light: #001100;
   --accent-bg: #003300;
-  --selected-bg: #003300;
+  --selected-bg: #004d00;
   --error-color: #ff3333;
   --error-hover: #ff1111;
   --tag-bg: #00ff00;
@@ -61,7 +61,7 @@
   --hover-bg: #073642;
   --hover-bg-light: #002b36;
   --accent-bg: #073642;
-  --selected-bg: #073642;
+  --selected-bg: #0d4758;
   --error-color: #dc322f;
   --error-hover: #cb4b16;
   --tag-bg: #268bd2;
@@ -85,7 +85,7 @@
   --hover-bg: #4d1a5b;
   --hover-bg-light: #3d1447;
   --accent-bg: #4d1a5b;
-  --selected-bg: #4d1a5b;
+  --selected-bg: #6a2180;
   --error-color: #ff6b9d;
   --error-hover: #ff4081;
   --tag-bg: #7a1cac;
@@ -106,7 +106,7 @@
   --text-disabled: #ffb823;
   --border-primary: #2d4f2b;
   --border-secondary: #708a58;
-  --hover-bg: #ffb823;
+  --hover-bg: #ffd773;
   --hover-bg-light: #fff1ca;
   --accent-bg: #ffb823;
   --selected-bg: #ffb823;
@@ -130,10 +130,10 @@
   --text-disabled: #c8d35b;
   --border-primary: #a2663e;
   --border-secondary: #ad8c45;
-  --hover-bg: #c8d35b;
+  --hover-bg: #e6e68a;
   --hover-bg-light: #d2f079;
   --accent-bg: #c8d35b;
-  --selected-bg: #ad8c45;
+  --selected-bg: #7a4f25;
   --error-color: #8b4513;
   --error-hover: #a0522d;
   --tag-bg: #a2663e;
@@ -3888,28 +3888,6 @@ kbd {
   align-self: center;
   flex-shrink: 0;
   letter-spacing: 0.03em;
-}
-
-/* Forest theme: --hover-bg matches --text-muted and --selected-bg matches
-   --text-secondary, so the snippet/path/type/icon text disappears into the
-   highlight background. Force those children to --bg-primary, which contrasts
-   with both highlight backgrounds. */
-:root[data-theme="forest"] .spotlight-result:hover .spotlight-result-snippet,
-:root[data-theme="forest"] .spotlight-result:hover .spotlight-result-path,
-:root[data-theme="forest"] .spotlight-result:hover .spotlight-result-type,
-:root[data-theme="forest"] .spotlight-result:hover .spotlight-result-icon,
-:root[data-theme="forest"] .spotlight-result:hover .spotlight-command-icon,
-:root[data-theme="forest"] .spotlight-result.selected .spotlight-result-snippet,
-:root[data-theme="forest"] .spotlight-result.selected .spotlight-result-path,
-:root[data-theme="forest"] .spotlight-result.selected .spotlight-result-type,
-:root[data-theme="forest"] .spotlight-result.selected .spotlight-result-icon,
-:root[data-theme="forest"] .spotlight-result.selected .spotlight-command-icon {
-  color: var(--bg-primary);
-}
-
-:root[data-theme="forest"] .spotlight-result:hover .spotlight-result-type,
-:root[data-theme="forest"] .spotlight-result.selected .spotlight-result-type {
-  border-color: var(--bg-primary);
 }
 
 .spotlight-footer {
