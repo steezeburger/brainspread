@@ -1340,8 +1340,9 @@ kbd {
 }
 
 .block-collapse-toggle {
-  background: transparent;
+  background: var(--bg-primary);
   border: none;
+  border-radius: 3px;
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 0.8rem;
