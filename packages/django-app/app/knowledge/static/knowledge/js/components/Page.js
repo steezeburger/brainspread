@@ -1253,6 +1253,220 @@ const Page = {
     onBlockRemoveFromContext(blockId) {
       this.$emit("block-remove-from-context", blockId);
     },
+
+    // Markdown list paste handling
+    parseMarkdownList(text) {
+      if (!text) return [];
+
+      const lines = text.replace(/\r\n?/g, "\n").split("\n");
+      const items = [];
+      let sawFirstNonEmpty = false;
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+
+        const leadingMatch = line.match(/^[ \t]*/);
+        const leading = leadingMatch ? leadingMatch[0] : "";
+        const rest = line.slice(leading.length);
+
+        // Normalize tabs to 2 spaces for indent calculation
+        const indent = leading.replace(/\t/g, "  ").length;
+
+        const unorderedMatch = rest.match(/^([-*+])\s+(.*)$/);
+        const orderedMatch = rest.match(/^\d+[.)]\s+(.*)$/);
+
+        let content = null;
+        if (unorderedMatch) {
+          content = unorderedMatch[2];
+        } else if (orderedMatch) {
+          content = orderedMatch[1];
+        } else {
+          // Only intercept pastes that start with a list item; if the first
+          // non-empty line isn't a list item, defer to native paste behavior.
+          if (!sawFirstNonEmpty) return [];
+          continue;
+        }
+
+        sawFirstNonEmpty = true;
+
+        let blockType = "bullet";
+        const taskMatch = content.match(/^\[([ xX])\]\s*(.*)$/);
+        if (taskMatch) {
+          blockType = taskMatch[1].toLowerCase() === "x" ? "done" : "todo";
+          const prefix = blockType === "done" ? "DONE" : "TODO";
+          content = taskMatch[2].trim() ? `${prefix} ${taskMatch[2]}` : prefix;
+        }
+
+        items.push({ indent, content, blockType });
+      }
+
+      return items;
+    },
+
+    buildBlockTree(items) {
+      if (!items.length) return [];
+
+      const uniqueIndents = [...new Set(items.map((i) => i.indent))].sort(
+        (a, b) => a - b
+      );
+      const indentToLevel = new Map(
+        uniqueIndents.map((indent, idx) => [indent, idx])
+      );
+
+      const roots = [];
+      const stack = [];
+
+      for (const item of items) {
+        const level = indentToLevel.get(item.indent);
+        const node = {
+          content: item.content,
+          blockType: item.blockType,
+          children: [],
+        };
+
+        while (stack.length && stack[stack.length - 1].level >= level) {
+          stack.pop();
+        }
+
+        if (stack.length === 0) {
+          roots.push(node);
+        } else {
+          stack[stack.length - 1].node.children.push(node);
+        }
+
+        stack.push({ node, level });
+      }
+
+      return roots;
+    },
+
+    async createBlockFromTree(node, parentUuid, order) {
+      if (!this.page) return null;
+
+      const result = await window.apiService.createBlock({
+        page: this.page.uuid,
+        content: node.content,
+        parent: parentUuid,
+        block_type: node.blockType,
+        content_type: "text",
+        order: order,
+      });
+
+      if (!result.success) return null;
+
+      const createdUuid = result.data.uuid;
+
+      for (let i = 0; i < node.children.length; i++) {
+        await this.createBlockFromTree(node.children[i], createdUuid, i);
+      }
+
+      return createdUuid;
+    },
+
+    async onBlockPaste(event, block) {
+      const clipboardData = event.clipboardData || window.clipboardData;
+      if (!clipboardData) return;
+
+      const text = clipboardData.getData("text/plain");
+      if (!text) return;
+
+      const items = this.parseMarkdownList(text);
+      if (items.length === 0) return;
+
+      event.preventDefault();
+
+      const tree = this.buildBlockTree(items);
+      if (tree.length === 0) return;
+
+      try {
+        const blockIsEmpty = !block.content || block.content.trim() === "";
+        const parentUuid = block.parent ? block.parent.uuid : null;
+        const siblings = block.parent
+          ? block.parent.children
+          : this.directBlocks;
+
+        if (blockIsEmpty) {
+          // Use current block as first item, insert remaining roots as siblings
+          const firstItem = tree[0];
+          const remainingRoots = tree.slice(1);
+
+          // Shift subsequent siblings by the number of additional root items
+          if (remainingRoots.length > 0) {
+            const blocksToShift = siblings.filter(
+              (b) => b.uuid !== block.uuid && b.order > block.order
+            );
+            if (blocksToShift.length > 0) {
+              const reorderPayload = blocksToShift.map((b) => ({
+                uuid: b.uuid,
+                order: b.order + remainingRoots.length,
+              }));
+              const reorderResult =
+                await window.apiService.reorderBlocks(reorderPayload);
+              if (!reorderResult.success) {
+                throw new Error("failed to reorder blocks");
+              }
+            }
+          }
+
+          // Update current block with first item content and block_type
+          const updateResult = await window.apiService.updateBlock(block.uuid, {
+            content: firstItem.content,
+            block_type: firstItem.blockType,
+            parent: parentUuid,
+          });
+          if (!updateResult.success) {
+            throw new Error("failed to update block");
+          }
+
+          // Create children of first item under current block
+          for (let i = 0; i < firstItem.children.length; i++) {
+            await this.createBlockFromTree(
+              firstItem.children[i],
+              block.uuid,
+              i
+            );
+          }
+
+          // Create remaining roots as siblings after current block
+          for (let i = 0; i < remainingRoots.length; i++) {
+            await this.createBlockFromTree(
+              remainingRoots[i],
+              parentUuid,
+              block.order + 1 + i
+            );
+          }
+        } else {
+          // Insert all root items as siblings after current block
+          const blocksToShift = siblings.filter(
+            (b) => b.uuid !== block.uuid && b.order > block.order
+          );
+          if (blocksToShift.length > 0) {
+            const reorderPayload = blocksToShift.map((b) => ({
+              uuid: b.uuid,
+              order: b.order + tree.length,
+            }));
+            const reorderResult =
+              await window.apiService.reorderBlocks(reorderPayload);
+            if (!reorderResult.success) {
+              throw new Error("failed to reorder blocks");
+            }
+          }
+
+          for (let i = 0; i < tree.length; i++) {
+            await this.createBlockFromTree(
+              tree[i],
+              parentUuid,
+              block.order + 1 + i
+            );
+          }
+        }
+
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("failed to paste markdown list:", error);
+        this.error = "failed to paste markdown list";
+      }
+    },
   },
 
   template: `
@@ -1366,6 +1580,7 @@ const Page = {
               :createBlockBefore="createBlockBefore"
               :moveBlockUp="moveBlockUp"
               :moveBlockDown="moveBlockDown"
+              :onBlockPaste="onBlockPaste"
             />
             <button @click="addNewBlock" class="add-block-btn">
               + add new block
@@ -1403,6 +1618,7 @@ const Page = {
                 :createBlockBefore="createBlockBefore"
                 :moveBlockUp="moveBlockUp"
                 :moveBlockDown="moveBlockDown"
+                :onBlockPaste="onBlockPaste"
               />
             </div>
           </div>

@@ -71,6 +71,10 @@ const BlockComponent = {
       type: Function,
       default: () => () => {},
     },
+    onBlockPaste: {
+      type: Function,
+      default: () => () => {},
+    },
   },
   data() {
     return {
@@ -486,6 +490,7 @@ const BlockComponent = {
           :value="block.content"
           @input="onBlockContentChange(block, $event.target.value)"
           @keydown="onBlockKeyDown($event, block)"
+          @paste="onBlockPaste($event, block)"
           @blur="stopEditing(block)"
           class="block-content"
           :class="{ 'completed': ['done', 'wontdo'].includes(block.block_type) }"
@@ -576,6 +581,7 @@ const BlockComponent = {
           :createBlockBefore="createBlockBefore"
           :moveBlockUp="moveBlockUp"
           :moveBlockDown="moveBlockDown"
+          :onBlockPaste="onBlockPaste"
         />
       </div>
     </div>
