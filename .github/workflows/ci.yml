@@ -11,11 +11,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint-python:
+  ci:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      # --- Fast fail-first: lint + format (native, no Docker) ---
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -28,7 +30,7 @@ jobs:
         with:
           python-version-file: packages/django-app/pyproject.toml
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         working-directory: ./packages/django-app
         run: uv sync --frozen
 
@@ -45,12 +47,6 @@ jobs:
             --exclude=".venv/" \
             --exclude="__pycache__/"
 
-  lint-js:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -58,7 +54,7 @@ jobs:
           cache: npm
           cache-dependency-path: packages/django-app/package-lock.json
 
-      - name: Install dependencies
+      - name: Install JS dependencies
         working-directory: ./packages/django-app
         run: npm ci
 
@@ -66,11 +62,7 @@ jobs:
         working-directory: ./packages/django-app
         run: npx prettier --check .
 
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      # --- Docker-based: build + migrate + django check + tests ---
 
       - name: Install Just
         uses: extractions/setup-just@v2
@@ -115,18 +107,3 @@ jobs:
       - name: Run tests
         working-directory: ./packages/django-app
         run: just test
-
-  ci-success:
-    runs-on: ubuntu-latest
-    needs: [lint-python, lint-js, test]
-    if: always()
-    steps:
-      - name: Verify all jobs succeeded
-        run: |
-          if [[ "${{ needs.lint-python.result }}" != "success" \
-             || "${{ needs.lint-js.result }}" != "success" \
-             || "${{ needs.test.result }}" != "success" ]]; then
-            echo "One or more CI jobs failed."
-            exit 1
-          fi
-          echo "All CI jobs passed."
