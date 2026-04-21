@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 import anthropic
 
@@ -51,50 +51,7 @@ class AnthropicService(BaseAIService):
     ) -> AIServiceResult:
         try:
             self.validate_messages(messages)
-
-            anthropic_messages = []
-            # If a system prompt is embedded in messages (legacy callers), pull it out.
-            embedded_system = None
-            for msg in messages:
-                if msg["role"] == "system":
-                    embedded_system = msg["content"]
-                else:
-                    anthropic_messages.append(
-                        {"role": msg["role"], "content": msg["content"]}
-                    )
-
-            effective_system = system if system is not None else embedded_system
-
-            thinking_enabled = self._supports_thinking()
-
-            kwargs: Dict[str, Any] = {
-                "model": self.model,
-                "max_tokens": (
-                    THINKING_MAX_TOKENS if thinking_enabled else DEFAULT_MAX_TOKENS
-                ),
-                "messages": anthropic_messages,
-            }
-
-            if effective_system:
-                # Mark the system prompt as cacheable so repeated requests with
-                # the same prompt pay the discounted cache-read rate.
-                kwargs["system"] = [
-                    {
-                        "type": "text",
-                        "text": effective_system,
-                        "cache_control": {"type": "ephemeral"},
-                    }
-                ]
-
-            if tools:
-                kwargs["tools"] = tools
-
-            if thinking_enabled:
-                kwargs["thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": THINKING_BUDGET_TOKENS,
-                }
-
+            kwargs = self._build_kwargs(messages, tools, system)
             response = self.client.messages.create(**kwargs)
 
             text_parts: List[str] = []
@@ -139,6 +96,134 @@ class AnthropicService(BaseAIService):
             raise AnthropicServiceError(
                 f"Anthropic API call failed: {str(e)}"
             ) from e
+
+    def stream_message(
+        self,
+        messages: List[Dict[str, str]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        system: Optional[str] = None,
+    ) -> Iterator[Dict[str, Any]]:
+        try:
+            self.validate_messages(messages)
+            kwargs = self._build_kwargs(messages, tools, system)
+
+            content_parts: List[str] = []
+            thinking_parts: List[str] = []
+            input_tokens = 0
+            output_tokens = 0
+            cache_creation = 0
+            cache_read = 0
+
+            with self.client.messages.stream(**kwargs) as stream:
+                for event in stream:
+                    event_type = getattr(event, "type", None)
+
+                    if event_type == "message_start":
+                        start_usage = getattr(
+                            getattr(event, "message", None), "usage", None
+                        )
+                        if start_usage is not None:
+                            input_tokens = (
+                                getattr(start_usage, "input_tokens", 0) or 0
+                            )
+                            cache_creation = (
+                                getattr(
+                                    start_usage, "cache_creation_input_tokens", 0
+                                )
+                                or 0
+                            )
+                            cache_read = (
+                                getattr(start_usage, "cache_read_input_tokens", 0)
+                                or 0
+                            )
+
+                    elif event_type == "content_block_delta":
+                        delta = getattr(event, "delta", None)
+                        delta_type = getattr(delta, "type", None)
+                        if delta_type == "text_delta":
+                            text = getattr(delta, "text", "") or ""
+                            if text:
+                                content_parts.append(text)
+                                yield {"type": "text", "delta": text}
+                        elif delta_type == "thinking_delta":
+                            thinking = getattr(delta, "thinking", "") or ""
+                            if thinking:
+                                thinking_parts.append(thinking)
+                                yield {"type": "thinking", "delta": thinking}
+
+                    elif event_type == "message_delta":
+                        delta_usage = getattr(event, "usage", None)
+                        if delta_usage is not None:
+                            output_tokens = (
+                                getattr(delta_usage, "output_tokens", 0) or 0
+                            )
+
+            usage = AIUsage(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cache_creation_input_tokens=cache_creation,
+                cache_read_input_tokens=cache_read,
+            )
+            content = "".join(content_parts)
+            thinking = "\n\n".join(thinking_parts) if thinking_parts else None
+
+            yield {
+                "type": "done",
+                "content": content,
+                "thinking": thinking,
+                "usage": usage,
+            }
+        except Exception as e:
+            logger.error(f"Anthropic streaming error: {e}")
+            if isinstance(e, AnthropicServiceError):
+                raise
+            raise AnthropicServiceError(
+                f"Anthropic streaming call failed: {e}"
+            ) from e
+
+    def _build_kwargs(
+        self,
+        messages: List[Dict[str, str]],
+        tools: Optional[List[Dict[str, Any]]],
+        system: Optional[str],
+    ) -> Dict[str, Any]:
+        anthropic_messages: List[Dict[str, str]] = []
+        embedded_system: Optional[str] = None
+        for msg in messages:
+            if msg["role"] == "system":
+                embedded_system = msg["content"]
+            else:
+                anthropic_messages.append(
+                    {"role": msg["role"], "content": msg["content"]}
+                )
+
+        effective_system = system if system is not None else embedded_system
+        thinking_enabled = self._supports_thinking()
+
+        kwargs: Dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": (
+                THINKING_MAX_TOKENS if thinking_enabled else DEFAULT_MAX_TOKENS
+            ),
+            "messages": anthropic_messages,
+        }
+
+        if effective_system:
+            kwargs["system"] = [
+                {
+                    "type": "text",
+                    "text": effective_system,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
+        if tools:
+            kwargs["tools"] = tools
+        if thinking_enabled:
+            kwargs["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": THINKING_BUDGET_TOKENS,
+            }
+        return kwargs
 
     @staticmethod
     def _extract_usage(response: Any) -> AIUsage:

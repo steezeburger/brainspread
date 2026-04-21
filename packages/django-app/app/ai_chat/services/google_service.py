@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 import google.generativeai as genai
 from google.api_core import exceptions as google_exceptions
@@ -83,6 +83,56 @@ class GoogleService(BaseAIService):
         except Exception as e:
             logger.error(f"Unexpected error in Google AI service: {e}")
             raise GoogleServiceError(f"Unexpected error: {e}")
+
+    def stream_message(
+        self,
+        messages: List[Dict[str, str]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        system: Optional[str] = None,
+    ) -> Iterator[Dict[str, Any]]:
+        try:
+            self.validate_messages(messages)
+
+            working_messages = list(messages)
+            if system and not any(m["role"] == "system" for m in working_messages):
+                working_messages = [
+                    {"role": "system", "content": system}
+                ] + working_messages
+
+            # Streaming with Google's Search Grounding is not consistently
+            # supported across SDK versions, so only stream plain generations.
+            if tools:
+                yield from super().stream_message(messages, tools, system=system)
+                return
+
+            formatted_messages = self._format_messages_for_google(working_messages)
+
+            content_parts: List[str] = []
+            last_chunk: Any = None
+
+            stream = self.client.generate_content(formatted_messages, stream=True)
+            for chunk in stream:
+                last_chunk = chunk
+                text = getattr(chunk, "text", None)
+                if text:
+                    content_parts.append(text)
+                    yield {"type": "text", "delta": text}
+
+            usage = self._extract_usage(last_chunk) if last_chunk is not None else AIUsage()
+            yield {
+                "type": "done",
+                "content": "".join(content_parts),
+                "thinking": None,
+                "usage": usage,
+            }
+        except google_exceptions.GoogleAPIError as e:
+            logger.error(f"Google streaming error: {e}")
+            raise GoogleServiceError(f"Google AI streaming error: {e}")
+        except Exception as e:
+            logger.error(f"Google streaming error: {e}")
+            if isinstance(e, GoogleServiceError):
+                raise
+            raise GoogleServiceError(f"Google streaming call failed: {e}")
 
     def validate_api_key(self) -> bool:
         try:

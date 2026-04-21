@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 
 class AIServiceError(Exception):
@@ -65,6 +65,37 @@ class BaseAIService(ABC):
             AIServiceError: If the API call fails
         """
         pass
+
+    def stream_message(
+        self,
+        messages: List[Dict[str, str]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        system: Optional[str] = None,
+    ) -> Iterator[Dict[str, Any]]:
+        """
+        Stream the assistant response as incremental events.
+
+        Each yielded dict has a `type` field and type-specific payload:
+          - {"type": "text", "delta": "..."}
+          - {"type": "thinking", "delta": "..."}
+          - {"type": "done", "content": str, "thinking": Optional[str],
+             "usage": AIUsage}
+
+        The default implementation buffers `send_message` into a single
+        `done` event so providers without native streaming still work.
+        Subclasses should override for true streaming.
+        """
+        result = self.send_message(messages, tools, system=system)
+        if result.content:
+            yield {"type": "text", "delta": result.content}
+        if result.thinking:
+            yield {"type": "thinking", "delta": result.thinking}
+        yield {
+            "type": "done",
+            "content": result.content,
+            "thinking": result.thinking,
+            "usage": result.usage,
+        }
 
     @abstractmethod
     def validate_api_key(self) -> bool:

@@ -52,7 +52,7 @@ class SendMessageCommand(AbstractBaseCommand):
             if not session:
                 session = ChatSessionRepository.create_session(user)
 
-            formatted_message = self._format_message_with_context(
+            formatted_message = SendMessageCommand._format_message_with_context(
                 message, context_blocks
             )
 
@@ -68,7 +68,7 @@ class SendMessageCommand(AbstractBaseCommand):
                 api_key=api_key,
                 model=model,
             )
-            tools = self._get_web_search_tools(provider_name)
+            tools = SendMessageCommand._get_web_search_tools(provider_name)
 
             result = service.send_message(
                 messages, tools, system=BRAINSPREAD_SYSTEM_PROMPT
@@ -141,8 +141,9 @@ class SendMessageCommand(AbstractBaseCommand):
             ),
         }
 
+    @staticmethod
     def _format_message_with_context(
-        self, message: str, context_blocks: List[Dict]
+        message: str, context_blocks: List[Dict]
     ) -> str:
         """Format the user message with context blocks if any are provided."""
         if not context_blocks:
@@ -170,8 +171,9 @@ class SendMessageCommand(AbstractBaseCommand):
 **My question:**
 {message}"""
 
+    @staticmethod
     def _get_web_search_tools(
-        self, provider_name: str
+        provider_name: str,
     ) -> Optional[List[Dict[str, Any]]]:
         """Get web search tools configuration for the specified provider."""
         if provider_name == "anthropic":

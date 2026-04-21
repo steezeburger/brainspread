@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
@@ -67,6 +67,66 @@ class OpenAIService(BaseAIService):
             if isinstance(e, OpenAIServiceError):
                 raise
             raise OpenAIServiceError(f"OpenAI API call failed: {str(e)}") from e
+
+    def stream_message(
+        self,
+        messages: List[Dict[str, str]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        system: Optional[str] = None,
+    ) -> Iterator[Dict[str, Any]]:
+        try:
+            self.validate_messages(messages)
+
+            chat_messages = list(messages)
+            if system and not any(m["role"] == "system" for m in chat_messages):
+                chat_messages = [{"role": "system", "content": system}] + chat_messages
+
+            # The Responses API (used for native web search) does not yet share
+            # the same streaming contract as Chat Completions. Fall back to the
+            # default buffered stream when tools are requested.
+            if tools:
+                yield from super().stream_message(messages, tools, system=system)
+                return
+
+            kwargs = {
+                "model": self.model,
+                "messages": chat_messages,
+                "max_tokens": 2000,
+                "temperature": 0.7,
+                "stream": True,
+                "stream_options": {"include_usage": True},
+            }
+
+            content_parts: List[str] = []
+            usage = AIUsage()
+
+            stream = self.client.chat.completions.create(**kwargs)
+            for chunk in stream:
+                chunk_usage = getattr(chunk, "usage", None)
+                if chunk_usage is not None:
+                    usage = self._extract_usage(chunk_usage)
+
+                choices = getattr(chunk, "choices", None) or []
+                if not choices:
+                    continue
+                delta = getattr(choices[0], "delta", None)
+                text = getattr(delta, "content", None) if delta else None
+                if text:
+                    content_parts.append(text)
+                    yield {"type": "text", "delta": text}
+
+            content = "".join(content_parts)
+            yield {
+                "type": "done",
+                "content": content,
+                "thinking": None,
+                "usage": usage,
+            }
+        except Exception as e:
+            logger.error(f"OpenAI streaming error: {str(e)}")
+            if isinstance(e, OpenAIServiceError):
+                raise
+            raise OpenAIServiceError(f"OpenAI streaming call failed: {str(e)}") from e
 
     def validate_api_key(self) -> bool:
         try:

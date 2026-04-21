@@ -111,41 +111,60 @@ const ChatPanel = {
       };
       this.message = "";
       this.loading = true;
+
+      const assistantMsg = {
+        role: "assistant",
+        content: "",
+        thinking: "",
+        created_at: new Date().toISOString(),
+        usage: null,
+        ai_model: null,
+        streaming: true,
+      };
+      this.messages.push(assistantMsg);
+      const assistantIndex = this.messages.length - 1;
+
       try {
-        const result = await window.apiService.sendAIMessage(payload);
-        if (result.success) {
-          // Use the complete message data from the API response
-          if (result.data.message) {
-            this.messages.push(result.data.message);
-          } else {
-            // Fallback for backward compatibility
-            this.messages.push({
-              role: "assistant",
-              content: result.data.response,
-              created_at: new Date().toISOString(),
-            });
+        let streamed = false;
+        for await (const event of window.apiService.streamAIMessage(payload)) {
+          streamed = true;
+          if (event.type === "session") {
+            if (event.session_id && !this.currentSessionId) {
+              this.currentSessionId = event.session_id;
+              this.saveLastSessionId(event.session_id);
+            }
+          } else if (event.type === "text") {
+            this.messages[assistantIndex].content += event.delta || "";
+          } else if (event.type === "thinking") {
+            this.messages[assistantIndex].thinking =
+              (this.messages[assistantIndex].thinking || "") + (event.delta || "");
+          } else if (event.type === "done") {
+            if (event.message) {
+              this.messages.splice(assistantIndex, 1, {
+                ...event.message,
+                streaming: false,
+              });
+            } else {
+              this.messages[assistantIndex].streaming = false;
+            }
+            if (event.session_id && !this.currentSessionId) {
+              this.currentSessionId = event.session_id;
+              this.saveLastSessionId(event.session_id);
+            }
+          } else if (event.type === "error") {
+            this.messages[assistantIndex].content =
+              `Error: ${event.error || "Failed to send message"}`;
+            this.messages[assistantIndex].streaming = false;
           }
-          if (result.data.session_id && !this.currentSessionId) {
-            this.currentSessionId = result.data.session_id;
-            this.saveLastSessionId(result.data.session_id);
-          }
-        } else {
-          // Handle error response
-          const errorMsg = result.error || "Failed to send message";
-          this.messages.push({
-            role: "assistant",
-            content: `Error: ${errorMsg}`,
-            created_at: new Date().toISOString(),
-          });
+        }
+        if (!streamed) {
+          throw new Error("Empty stream response");
         }
       } catch (err) {
         console.error(err);
-        this.messages.push({
-          role: "assistant",
-          content:
-            "Error: Failed to send message. Please check your connection and try again.",
-          created_at: new Date().toISOString(),
-        });
+        this.messages[assistantIndex].content =
+          "Error: Failed to send message. Please check your connection and try again.";
+        this.messages[assistantIndex].streaming = false;
       } finally {
         this.loading = false;
       }
@@ -645,7 +664,14 @@ const ChatPanel = {
               </button>
               <div v-if="expandedThinking[index]" class="thinking-content" v-html="parseMarkdown(msg.thinking)"></div>
             </div>
-            <div class="message-content" v-html="parseMarkdown(msg.content)"></div>
+            <div v-if="msg.role === 'assistant' && msg.streaming && !msg.content" class="message-content loading-content">
+              <div class="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+            <div v-else class="message-content" v-html="parseMarkdown(msg.content)"></div>
             <div class="message-footer">
               <div class="message-timestamp">
                 {{ formatTimestamp(msg.created_at) }}
@@ -672,15 +698,6 @@ const ChatPanel = {
                     copy message
                   </button>
                 </div>
-              </div>
-            </div>
-          </div>
-          <div v-if="loading" class="message-bubble assistant loading">
-            <div class="message-content loading-content">
-              <div class="typing-indicator">
-                <span></span>
-                <span></span>
-                <span></span>
               </div>
             </div>
           </div>
