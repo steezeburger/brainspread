@@ -16,6 +16,10 @@ class CreatePageForm(BaseForm):
     content = forms.CharField(widget=forms.Textarea, required=False)
     slug = forms.SlugField(max_length=200, required=False)
     is_published = forms.BooleanField(required=False, initial=True)
+    page_type = forms.ChoiceField(
+        choices=Page._meta.get_field("page_type").choices,
+        required=False,
+    )
 
     def clean_title(self) -> str:
         title = self.cleaned_data.get("title")
