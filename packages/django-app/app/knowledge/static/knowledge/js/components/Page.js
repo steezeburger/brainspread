@@ -970,10 +970,11 @@ const Page = {
         return;
       }
 
+      // Close the editor immediately on blur. If startEditing runs during
+      // the save await (e.g. restoreBlockFocus after a move), it will set
+      // isEditing=true again, which we leave alone.
+      block.isEditing = false;
       await this.updateBlock(block, block.content, true);
-      // Don't close the editor if startEditing was called while the save
-      // was in flight (e.g. restoreBlockFocus after a move).
-      if (!block.isEditing) block.isEditing = false;
     },
 
     getAllBlocks() {
