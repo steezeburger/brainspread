@@ -15,7 +15,7 @@ class AnthropicServiceError(AIServiceError):
 
 
 class AnthropicService(BaseAIService):
-    def __init__(self, api_key: str, model: str = "claude-sonnet-4-20250514") -> None:
+    def __init__(self, api_key: str, model: str = "claude-opus-4-7") -> None:
         super().__init__(api_key, model)
         try:
             self.client = anthropic.Anthropic(api_key=api_key)

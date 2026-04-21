@@ -47,45 +47,27 @@ class Command(BaseCommand):
             # Anthropic models
             (
                 "Anthropic",
-                "claude-opus-4-20250514",
-                "Claude Opus 4",
-                "Most capable Claude 4 model",
+                "claude-opus-4-7",
+                "Claude Opus 4.7",
+                "Most capable Claude model; adaptive thinking, 1M context",
             ),
             (
                 "Anthropic",
-                "claude-sonnet-4-20250514",
-                "Claude Sonnet 4",
-                "Latest Claude 4 model",
+                "claude-opus-4-6",
+                "Claude Opus 4.6",
+                "Previous-generation Opus; adaptive thinking, 1M context",
             ),
             (
                 "Anthropic",
-                "claude-3-5-sonnet-20241022",
-                "Claude 3.5 Sonnet",
-                "Most intelligent Claude 3.5 model",
+                "claude-sonnet-4-6",
+                "Claude Sonnet 4.6",
+                "Best balance of speed and intelligence; 1M context",
             ),
             (
                 "Anthropic",
-                "claude-3-5-haiku-20241022",
-                "Claude 3.5 Haiku",
-                "Fast and lightweight Claude model",
-            ),
-            (
-                "Anthropic",
-                "claude-3-opus-20240229",
-                "Claude 3 Opus",
-                "Most capable Claude 3 model",
-            ),
-            (
-                "Anthropic",
-                "claude-3-sonnet-20240229",
-                "Claude 3 Sonnet",
-                "Balanced Claude 3 model",
-            ),
-            (
-                "Anthropic",
-                "claude-3-haiku-20240307",
-                "Claude 3 Haiku",
-                "Fast Claude 3 model",
+                "claude-haiku-4-5",
+                "Claude Haiku 4.5",
+                "Fastest and most cost-effective Claude model",
             ),
             # Google models
             (
