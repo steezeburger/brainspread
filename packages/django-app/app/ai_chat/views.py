@@ -6,6 +6,7 @@ from django.http import StreamingHttpResponse
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.renderers import BaseRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -92,10 +93,25 @@ def _sse_event(payload: dict) -> bytes:
     return f"data: {json.dumps(payload)}\n\n".encode("utf-8")
 
 
+class ServerSentEventRenderer(BaseRenderer):
+    """Allow DRF content negotiation to accept `text/event-stream` clients.
+
+    The view returns a StreamingHttpResponse directly, so this renderer is
+    never invoked — it only exists to make negotiation match.
+    """
+
+    media_type = "text/event-stream"
+    format = "sse"
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        return data
+
+
 class StreamSendMessageView(APIView):
     """SSE endpoint for streaming assistant responses."""
 
     permission_classes = [IsAuthenticated]
+    renderer_classes = [ServerSentEventRenderer]
 
     def post(self, request):
         data = request.data.copy()
