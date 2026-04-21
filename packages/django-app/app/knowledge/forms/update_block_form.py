@@ -22,6 +22,7 @@ class UpdateBlockForm(BaseForm):
     media_url = forms.URLField(required=False)
     media_metadata = forms.JSONField(required=False)
     properties = forms.JSONField(required=False)
+    collapsed = forms.NullBooleanField(required=False)
 
     def clean_block(self) -> Block:
         block = self.cleaned_data.get("block")

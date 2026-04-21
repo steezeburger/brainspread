@@ -82,7 +82,7 @@ const BlockComponent = {
   },
   data() {
     return {
-      isCollapsed: false,
+      isCollapsed: this.block.collapsed === true,
       showContextMenu: false,
       contextMenuPosition: { x: 0, y: 0 },
       contextMenuFocusedIndex: -1,
@@ -184,8 +184,24 @@ const BlockComponent = {
         }
       }
     },
-    toggleCollapse() {
-      this.isCollapsed = !this.isCollapsed;
+    async toggleCollapse() {
+      const next = !this.isCollapsed;
+      const previous = this.isCollapsed;
+      this.isCollapsed = next;
+      this.block.collapsed = next;
+      try {
+        const result = await window.apiService.updateBlock(this.block.uuid, {
+          collapsed: next,
+          parent: this.block.parent ? this.block.parent.uuid : null,
+        });
+        if (!result || !result.success) {
+          throw new Error("updateBlock did not succeed");
+        }
+      } catch (error) {
+        console.error("failed to persist collapsed state:", error);
+        this.isCollapsed = previous;
+        this.block.collapsed = previous;
+      }
     },
     closeOtherMenus() {
       // Dispatch a custom event to close all other menus

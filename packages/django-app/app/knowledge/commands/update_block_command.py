@@ -45,6 +45,7 @@ class UpdateBlockCommand(AbstractBaseCommand):
             "media_url",
             "media_metadata",
             "properties",
+            "collapsed",
         ]:
             if (
                 field in self.form.cleaned_data
