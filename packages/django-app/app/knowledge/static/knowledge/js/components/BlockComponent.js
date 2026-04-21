@@ -82,7 +82,7 @@ const BlockComponent = {
   },
   data() {
     return {
-      isCollapsed: false,
+      isCollapsed: this.block.collapsed === true,
       showContextMenu: false,
       contextMenuPosition: { x: 0, y: 0 },
       contextMenuFocusedIndex: -1,
@@ -100,6 +100,9 @@ const BlockComponent = {
     },
     hasChildren() {
       return this.block.children?.length > 0;
+    },
+    childrenCount() {
+      return this.block.children?.length || 0;
     },
   },
   watch: {
@@ -181,8 +184,24 @@ const BlockComponent = {
         }
       }
     },
-    toggleCollapse() {
-      this.isCollapsed = !this.isCollapsed;
+    async toggleCollapse() {
+      const next = !this.isCollapsed;
+      const previous = this.isCollapsed;
+      this.isCollapsed = next;
+      this.block.collapsed = next;
+      try {
+        const result = await window.apiService.updateBlock(this.block.uuid, {
+          collapsed: next,
+          parent: this.block.parent ? this.block.parent.uuid : null,
+        });
+        if (!result || !result.success) {
+          throw new Error("updateBlock did not succeed");
+        }
+      } catch (error) {
+        console.error("failed to persist collapsed state:", error);
+        this.isCollapsed = previous;
+        this.block.collapsed = previous;
+      }
     },
     closeOtherMenus() {
       // Dispatch a custom event to close all other menus
@@ -451,7 +470,7 @@ const BlockComponent = {
   },
   template: `
     <div class="block-wrapper" :class="{ 'child-block': block.parent, 'in-context': blockInContext, 'selected': blockSelected }" :data-block-uuid="block.uuid">
-      <div class="block" :class="{ 'has-children': hasChildren }">
+      <div class="block" :class="{ 'has-children': hasChildren, 'is-collapsed': hasChildren && isCollapsed }">
         <button
           v-if="hasChildren"
           @click="toggleCollapse"
@@ -505,6 +524,13 @@ const BlockComponent = {
           placeholder="start writing..."
           ref="blockTextarea"
         ></textarea>
+        <button
+          v-if="hasChildren && isCollapsed"
+          @click="toggleCollapse"
+          class="block-collapsed-indicator"
+          :title="'Expand ' + childrenCount + ' hidden ' + (childrenCount === 1 ? 'block' : 'blocks')"
+          :aria-label="'Expand ' + childrenCount + ' hidden ' + (childrenCount === 1 ? 'block' : 'blocks')"
+        >… {{ childrenCount }}</button>
         <button
           @click="showContextMenuAt($event)"
           @contextmenu="showContextMenuAt($event)"

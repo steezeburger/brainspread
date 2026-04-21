@@ -1,5 +1,14 @@
 const { createApp } = Vue;
 
+const AVAILABLE_THEMES = [
+  { id: "dark", label: "dark" },
+  { id: "light", label: "light" },
+  { id: "solarized_dark", label: "solarized dark" },
+  { id: "purple", label: "purple" },
+  { id: "earthy", label: "earthy" },
+  { id: "forest", label: "forest" },
+];
+
 // Global Vue app for knowledge base
 const KnowledgeApp = createApp({
   data() {
@@ -567,6 +576,17 @@ const KnowledgeApp = createApp({
         { id: "help", label: "help", description: "open help", icon: "?" },
       ];
 
+      const currentTheme = this.user?.theme || "dark";
+      for (const theme of AVAILABLE_THEMES) {
+        if (theme.id === currentTheme) continue;
+        commands.push({
+          id: `theme-${theme.id}`,
+          label: `theme: ${theme.label}`,
+          description: `switch to the ${theme.label} theme`,
+          icon: "◐",
+        });
+      }
+
       const q = query.trim().toLowerCase();
 
       // "new page <title>" — let the user type the title inline
@@ -701,6 +721,10 @@ const KnowledgeApp = createApp({
     },
 
     executeSpotlightCommand(commandId, arg) {
+      if (commandId.startsWith("theme-")) {
+        this.setTheme(commandId.slice("theme-".length));
+        return;
+      }
       switch (commandId) {
         case "new-page":
           this.createNewPage(arg ?? null);
@@ -720,6 +744,26 @@ const KnowledgeApp = createApp({
         case "help":
           this.openHelp();
           break;
+      }
+    },
+
+    async setTheme(theme) {
+      if (!AVAILABLE_THEMES.some((t) => t.id === theme)) return;
+      const previous = this.user?.theme || "dark";
+      if (theme === previous) return;
+
+      document.documentElement.setAttribute("data-theme", theme);
+      this.user = { ...this.user, theme };
+
+      try {
+        const result = await window.apiService.updateUserTheme(theme);
+        if (!result || !result.success) {
+          throw new Error("updateUserTheme did not succeed");
+        }
+      } catch (error) {
+        console.error("failed to persist theme:", error);
+        document.documentElement.setAttribute("data-theme", previous);
+        this.user = { ...this.user, theme: previous };
       }
     },
 

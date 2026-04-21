@@ -325,3 +325,55 @@ class TestUpdateBlockCommand(TestCase):
         block.refresh_from_db()
         self.assertEqual(block.block_type, "code")
         self.assertEqual(block.properties, {"language": "python"})
+
+    def test_should_persist_collapsed_true(self):
+        """Collapsing a block should persist to the database"""
+        form_data = {
+            "user": self.user.id,
+            "block": str(self.block.uuid),
+            "collapsed": True,
+        }
+        form = UpdateBlockForm(form_data)
+        form.is_valid()
+        command = UpdateBlockCommand(form)
+        block = command.execute()
+
+        block.refresh_from_db()
+        self.assertTrue(block.collapsed)
+
+    def test_should_persist_collapsed_false(self):
+        """Expanding a previously collapsed block should persist to the database"""
+        self.block.collapsed = True
+        self.block.save()
+
+        form_data = {
+            "user": self.user.id,
+            "block": str(self.block.uuid),
+            "collapsed": False,
+        }
+        form = UpdateBlockForm(form_data)
+        form.is_valid()
+        command = UpdateBlockCommand(form)
+        block = command.execute()
+
+        block.refresh_from_db()
+        self.assertFalse(block.collapsed)
+
+    def test_should_not_change_collapsed_when_not_provided(self):
+        """Updating other fields should not reset collapsed state"""
+        self.block.collapsed = True
+        self.block.save()
+
+        form_data = {
+            "user": self.user.id,
+            "block": str(self.block.uuid),
+            "content": "updated content",
+        }
+        form = UpdateBlockForm(form_data)
+        form.is_valid()
+        command = UpdateBlockCommand(form)
+        block = command.execute()
+
+        block.refresh_from_db()
+        self.assertTrue(block.collapsed)
+        self.assertEqual(block.content, "updated content")

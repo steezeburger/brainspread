@@ -10,10 +10,10 @@
   --text-disabled: #333333;
   --border-primary: #00ff00;
   --border-secondary: #333333;
-  --hover-bg: #003300;
+  --hover-bg: #002200;
   --hover-bg-light: #001100;
   --accent-bg: #003300;
-  --selected-bg: #003300;
+  --selected-bg: #004d00;
   --error-color: #ff3333;
   --error-hover: #ff1111;
   --tag-bg: #00ff00;
@@ -61,7 +61,7 @@
   --hover-bg: #073642;
   --hover-bg-light: #002b36;
   --accent-bg: #073642;
-  --selected-bg: #073642;
+  --selected-bg: #0d4758;
   --error-color: #dc322f;
   --error-hover: #cb4b16;
   --tag-bg: #268bd2;
@@ -85,7 +85,7 @@
   --hover-bg: #4d1a5b;
   --hover-bg-light: #3d1447;
   --accent-bg: #4d1a5b;
-  --selected-bg: #4d1a5b;
+  --selected-bg: #6a2180;
   --error-color: #ff6b9d;
   --error-hover: #ff4081;
   --tag-bg: #7a1cac;
@@ -106,7 +106,7 @@
   --text-disabled: #ffb823;
   --border-primary: #2d4f2b;
   --border-secondary: #708a58;
-  --hover-bg: #ffb823;
+  --hover-bg: #ffd773;
   --hover-bg-light: #fff1ca;
   --accent-bg: #ffb823;
   --selected-bg: #ffb823;
@@ -130,10 +130,10 @@
   --text-disabled: #c8d35b;
   --border-primary: #a2663e;
   --border-secondary: #ad8c45;
-  --hover-bg: #c8d35b;
+  --hover-bg: #e6e68a;
   --hover-bg-light: #d2f079;
   --accent-bg: #c8d35b;
-  --selected-bg: #ad8c45;
+  --selected-bg: #7a4f25;
   --error-color: #8b4513;
   --error-hover: #a0522d;
   --tag-bg: #a2663e;
@@ -1340,8 +1340,9 @@ kbd {
 }
 
 .block-collapse-toggle {
-  background: transparent;
+  background: var(--bg-primary);
   border: none;
+  border-radius: 3px;
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 0.8rem;
@@ -1360,8 +1361,13 @@ kbd {
 }
 
 .block:hover .block-collapse-toggle,
-.block-collapse-toggle:focus {
+.block-collapse-toggle:focus,
+.block-collapse-toggle.collapsed {
   opacity: 1;
+}
+
+.block-collapse-toggle.collapsed {
+  color: var(--text-primary);
 }
 
 .block-collapse-toggle:hover,
@@ -1369,6 +1375,35 @@ kbd {
   color: var(--text-primary);
   outline: 2px solid var(--border-primary);
   outline-offset: 1px;
+}
+
+.block-collapsed-indicator {
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 25%, transparent);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.7rem;
+  line-height: 1;
+  padding: 0.1rem 0.4rem;
+  margin-left: 0.4rem;
+  align-self: center;
+  user-select: none;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.block-collapsed-indicator:hover,
+.block-collapsed-indicator:focus {
+  background: color-mix(in srgb, var(--text-primary) 18%, transparent);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.block.is-collapsed .block-content-display,
+.block.is-collapsed .block-bullet {
+  opacity: 0.85;
 }
 
 .block-menu {
