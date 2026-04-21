@@ -19,6 +19,8 @@ class UserAISettings(UUIDModelMixin, CRUDTimestampsMixin):
 
     class Meta:
         db_table = "user_ai_settings"
+        verbose_name = "user AI settings"
+        verbose_name_plural = "user AI settings"
 
     def __str__(self) -> str:
         return f"{self.user.email} settings"
