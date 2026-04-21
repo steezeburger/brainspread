@@ -40,6 +40,10 @@ const Page = {
       isNavigating: false,
       isIndentingOrOutdenting: false,
       lastEditingBlockUuid: null,
+      // Block selection (Cmd+A escalation)
+      selectionAnchorUuid: null,
+      selectionLevel: 0,
+      selectedBlockUuids: new Set(),
     };
   },
 
@@ -72,6 +76,9 @@ const Page = {
     window.addEventListener("focus", this.handleWindowFocus);
     // Global keydown for Escape to close page menus
     document.addEventListener("keydown", this.handlePageGlobalKeydown);
+    // Selection escalation and copy
+    document.addEventListener("keydown", this.handleSelectionKeydown);
+    document.addEventListener("copy", this.handleSelectionCopy);
     // Spotlight command: new block
     document.addEventListener(
       "spotlight:new-block",
@@ -86,6 +93,8 @@ const Page = {
     document.removeEventListener("click", this.handleDocumentClick);
     window.removeEventListener("focus", this.handleWindowFocus);
     document.removeEventListener("keydown", this.handlePageGlobalKeydown);
+    document.removeEventListener("keydown", this.handleSelectionKeydown);
+    document.removeEventListener("copy", this.handleSelectionCopy);
     document.removeEventListener(
       "spotlight:new-block",
       this.handleSpotlightNewBlock
@@ -918,6 +927,10 @@ const Page = {
 
     startEditing(block) {
       this.lastEditingBlockUuid = block.uuid;
+      // Clear any block selection when entering edit mode
+      if (this.selectionAnchorUuid) {
+        this.clearBlockSelection();
+      }
       // Stop editing all other blocks first (save them)
       const allBlocks = this.getAllBlocks();
       allBlocks.forEach((b) => {
@@ -1091,8 +1104,12 @@ const Page = {
     },
 
     handlePageGlobalKeydown(event) {
-      if (event.key === "Escape" && this.showPageMenu) {
-        this.closePageMenuAndRestoreFocus();
+      if (event.key === "Escape") {
+        if (this.showPageMenu) {
+          this.closePageMenuAndRestoreFocus();
+        } else if (this.selectionAnchorUuid) {
+          this.clearBlockSelection();
+        }
       }
     },
 
@@ -1106,6 +1123,13 @@ const Page = {
       );
       if (!contextMenuContainer && this.showPageMenu) {
         this.closePageMenu();
+      }
+      // Clear block selection when clicking outside any block
+      if (this.selectionAnchorUuid) {
+        const clickedBlock = event.target.closest("[data-block-uuid]");
+        if (!clickedBlock) {
+          this.clearBlockSelection();
+        }
       }
     },
 
@@ -1467,6 +1491,195 @@ const Page = {
         this.error = "failed to paste markdown list";
       }
     },
+
+    // Block selection (Cmd+A escalation) and markdown copy
+    isBlockSelected(uuid) {
+      return this.selectedBlockUuids.has(uuid);
+    },
+
+    collectSubtreeUuids(block, out) {
+      out.add(block.uuid);
+      if (block.children) {
+        for (const child of block.children) {
+          this.collectSubtreeUuids(child, out);
+        }
+      }
+    },
+
+    computeSelectionUuids(anchorUuid, level) {
+      const anchor = this.getAllBlocks().find((b) => b.uuid === anchorUuid);
+      if (!anchor) return { uuids: new Set(), reachedPage: false };
+
+      let scope = anchor;
+      for (let i = 0; i < level; i++) {
+        if (!scope.parent) {
+          const uuids = new Set();
+          for (const b of this.directBlocks) {
+            this.collectSubtreeUuids(b, uuids);
+          }
+          return { uuids, reachedPage: true };
+        }
+        scope = scope.parent;
+      }
+
+      const uuids = new Set();
+      this.collectSubtreeUuids(scope, uuids);
+      // If the scope is a root block and its subtree already covers all
+      // direct blocks, flag as reachedPage so next escalation is a no-op.
+      const reachedPage =
+        !scope.parent &&
+        this.directBlocks.length === 1 &&
+        this.directBlocks[0].uuid === scope.uuid;
+      return { uuids, reachedPage };
+    },
+
+    setBlockSelection(anchorBlock, level) {
+      const { uuids } = this.computeSelectionUuids(anchorBlock.uuid, level);
+      this.selectionAnchorUuid = anchorBlock.uuid;
+      this.selectionLevel = level;
+      this.selectedBlockUuids = uuids;
+    },
+
+    clearBlockSelection() {
+      if (!this.selectionAnchorUuid && this.selectedBlockUuids.size === 0) {
+        return;
+      }
+      this.selectionAnchorUuid = null;
+      this.selectionLevel = 0;
+      this.selectedBlockUuids = new Set();
+    },
+
+    expandBlockSelection() {
+      if (!this.selectionAnchorUuid) return false;
+      const nextLevel = this.selectionLevel + 1;
+      const { uuids, reachedPage } = this.computeSelectionUuids(
+        this.selectionAnchorUuid,
+        nextLevel
+      );
+      // If the computed selection didn't change size or we hit the page,
+      // stop escalating.
+      if (
+        uuids.size === this.selectedBlockUuids.size &&
+        [...uuids].every((u) => this.selectedBlockUuids.has(u))
+      ) {
+        return false;
+      }
+      this.selectionLevel = nextLevel;
+      this.selectedBlockUuids = uuids;
+      if (reachedPage) {
+        // Mark level so future expansions don't try to go higher
+        this.selectionLevel = nextLevel;
+      }
+      return true;
+    },
+
+    handleSelectionKeydown(event) {
+      const isCmdA =
+        (event.metaKey || event.ctrlKey) &&
+        (event.key === "a" || event.key === "A");
+      if (!isCmdA) return;
+      if (event.shiftKey || event.altKey) return;
+
+      const active = document.activeElement;
+      const tag = active?.tagName;
+
+      // Don't hijack inside non-block inputs/textareas (e.g. page title, chat)
+      if (tag === "INPUT") return;
+      const isBlockTextarea =
+        tag === "TEXTAREA" && active.classList.contains("block-content");
+
+      if (tag === "TEXTAREA" && !isBlockTextarea) return;
+
+      if (isBlockTextarea) {
+        const isEmpty = active.value.length === 0;
+        const isFullySelected =
+          active.selectionStart === 0 &&
+          active.selectionEnd === active.value.length &&
+          active.value.length > 0;
+        if (!isEmpty && !isFullySelected) {
+          // Let native Cmd+A select all text in the textarea first
+          return;
+        }
+        // Escalate: select the current block + its descendants
+        const wrapper = active.closest("[data-block-uuid]");
+        if (!wrapper) return;
+        const uuid = wrapper.dataset.blockUuid;
+        const block = this.getAllBlocks().find((b) => b.uuid === uuid);
+        if (!block) return;
+        event.preventDefault();
+        if (block.isEditing) block.isEditing = false;
+        active.blur();
+        this.setBlockSelection(block, 0);
+        return;
+      }
+
+      if (this.selectionAnchorUuid) {
+        event.preventDefault();
+        this.expandBlockSelection();
+        return;
+      }
+    },
+
+    serializeBlockToMarkdown(block, depth, lines) {
+      const indent = "  ".repeat(depth);
+      let content = block.content || "";
+      let prefix = "- ";
+      if (block.block_type === "todo") {
+        content = content.replace(/^TODO\s*:?\s*/i, "");
+        prefix = "- [ ] ";
+      } else if (block.block_type === "done") {
+        content = content.replace(/^DONE\s*:?\s*/i, "");
+        prefix = "- [x] ";
+      }
+      lines.push(`${indent}${prefix}${content}`);
+      if (block.children) {
+        for (const child of block.children) {
+          if (this.selectedBlockUuids.has(child.uuid)) {
+            this.serializeBlockToMarkdown(child, depth + 1, lines);
+          }
+        }
+      }
+    },
+
+    serializeSelectedBlocksAsMarkdown() {
+      if (this.selectedBlockUuids.size === 0) return "";
+      // Find "top" blocks in selection — blocks whose parent is not selected
+      const topBlocks = [];
+      const walk = (blocks) => {
+        for (const b of blocks) {
+          if (this.selectedBlockUuids.has(b.uuid)) {
+            const parentSelected =
+              b.parent && this.selectedBlockUuids.has(b.parent.uuid);
+            if (!parentSelected) topBlocks.push(b);
+          }
+          if (b.children?.length) walk(b.children);
+        }
+      };
+      walk(this.directBlocks);
+
+      const lines = [];
+      for (const b of topBlocks) {
+        this.serializeBlockToMarkdown(b, 0, lines);
+      }
+      return lines.join("\n");
+    },
+
+    handleSelectionCopy(event) {
+      if (this.selectedBlockUuids.size === 0) return;
+      const active = document.activeElement;
+      // Don't hijack copy when user is inside a textarea/input with text selected
+      if (
+        active &&
+        (active.tagName === "TEXTAREA" || active.tagName === "INPUT") &&
+        active.selectionStart !== active.selectionEnd
+      ) {
+        return;
+      }
+      const markdown = this.serializeSelectedBlocksAsMarkdown();
+      if (!markdown) return;
+      event.preventDefault();
+      event.clipboardData.setData("text/plain", markdown);
+    },
   },
 
   template: `
@@ -1572,6 +1785,7 @@ const Page = {
               :toggleBlockTodo="toggleBlockTodo"
               :formatContentWithTags="formatContentWithTags"
               :isBlockInContext="isBlockInContext"
+              :isBlockSelected="isBlockSelected"
               :onBlockAddToContext="onBlockAddToContext"
               :onBlockRemoveFromContext="onBlockRemoveFromContext"
               :indentBlock="indentBlock"
@@ -1610,6 +1824,7 @@ const Page = {
                 :toggleBlockTodo="toggleBlockTodo"
                 :formatContentWithTags="formatContentWithTags"
                 :isBlockInContext="isBlockInContext"
+                :isBlockSelected="isBlockSelected"
                 :onBlockAddToContext="onBlockAddToContext"
                 :onBlockRemoveFromContext="onBlockRemoveFromContext"
                 :indentBlock="indentBlock"

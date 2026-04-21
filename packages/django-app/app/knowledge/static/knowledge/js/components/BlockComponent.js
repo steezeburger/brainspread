@@ -38,6 +38,10 @@ const BlockComponent = {
       type: Function,
       default: () => () => false,
     },
+    isBlockSelected: {
+      type: Function,
+      default: () => () => false,
+    },
     onBlockAddToContext: {
       type: Function,
       default: () => () => {},
@@ -90,6 +94,9 @@ const BlockComponent = {
   computed: {
     blockInContext() {
       return this.isBlockInContext(this.block.uuid);
+    },
+    blockSelected() {
+      return this.isBlockSelected(this.block.uuid);
     },
     hasChildren() {
       return this.block.children?.length > 0;
@@ -443,7 +450,7 @@ const BlockComponent = {
     },
   },
   template: `
-    <div class="block-wrapper" :class="{ 'child-block': block.parent, 'in-context': blockInContext }" :data-block-uuid="block.uuid">
+    <div class="block-wrapper" :class="{ 'child-block': block.parent, 'in-context': blockInContext, 'selected': blockSelected }" :data-block-uuid="block.uuid">
       <div class="block" :class="{ 'has-children': hasChildren }">
         <button
           v-if="hasChildren"
@@ -573,6 +580,7 @@ const BlockComponent = {
           :toggleBlockTodo="toggleBlockTodo"
           :formatContentWithTags="formatContentWithTags"
           :isBlockInContext="isBlockInContext"
+          :isBlockSelected="isBlockSelected"
           :onBlockAddToContext="onBlockAddToContext"
           :onBlockRemoveFromContext="onBlockRemoveFromContext"
           :indentBlock="indentBlock"

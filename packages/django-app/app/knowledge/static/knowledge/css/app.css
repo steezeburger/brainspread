@@ -3239,6 +3239,13 @@ kbd {
   color: var(--text-primary);
 }
 
+/* Block selection highlight (Cmd+A escalation) */
+.block-wrapper.selected > .block {
+  background: color-mix(in srgb, var(--text-primary) 18%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--text-primary) 40%, transparent);
+  outline-offset: -1px;
+}
+
 /* Referenced blocks in context highlighting */
 .referenced-block-wrapper.in-context > .block {
   background: color-mix(in srgb, var(--context-color) 15%, transparent);
