@@ -42,6 +42,10 @@ const Page = {
       isNavigating: false,
       isIndentingOrOutdenting: false,
       lastEditingBlockUuid: null,
+      // Block selection (Cmd+A escalation)
+      selectionAnchorUuid: null,
+      selectionLevel: 0,
+      selectedBlockUuids: new Set(),
     };
   },
 
@@ -78,6 +82,9 @@ const Page = {
     window.addEventListener("focus", this.handleWindowFocus);
     // Global keydown for Escape to close page menus
     document.addEventListener("keydown", this.handlePageGlobalKeydown);
+    // Selection escalation and copy
+    document.addEventListener("keydown", this.handleSelectionKeydown);
+    document.addEventListener("copy", this.handleSelectionCopy);
     // Spotlight command: new block
     document.addEventListener(
       "spotlight:new-block",
@@ -92,6 +99,8 @@ const Page = {
     document.removeEventListener("click", this.handleDocumentClick);
     window.removeEventListener("focus", this.handleWindowFocus);
     document.removeEventListener("keydown", this.handlePageGlobalKeydown);
+    document.removeEventListener("keydown", this.handleSelectionKeydown);
+    document.removeEventListener("copy", this.handleSelectionCopy);
     document.removeEventListener(
       "spotlight:new-block",
       this.handleSpotlightNewBlock
@@ -806,8 +815,21 @@ const Page = {
       if (!result.success) throw new Error("failed to reorder siblings");
     },
 
-    formatContentWithTags(content, blockType = null) {
+    formatContentWithTags(content, blockType = null, properties = null) {
       if (!content) return "";
+
+      // Code blocks render as <pre><code> with content escaped and no other
+      // markdown formatting applied.
+      if (blockType === "code") {
+        const escapeHtml = (s) =>
+          s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const escaped = escapeHtml(content);
+        const lang = properties?.language || "";
+        const langBadge = lang
+          ? `<span class="block-code-lang">${escapeHtml(lang)}</span>`
+          : "";
+        return `<div class="block-code-wrapper">${langBadge}<pre class="block-code"><code>${escaped}</code></pre></div>`;
+      }
 
       let formatted = content;
 
@@ -925,6 +947,10 @@ const Page = {
 
     startEditing(block) {
       this.lastEditingBlockUuid = block.uuid;
+      // Clear any block selection when entering edit mode
+      if (this.selectionAnchorUuid) {
+        this.clearBlockSelection();
+      }
       // Stop editing all other blocks first (save them)
       const allBlocks = this.getAllBlocks();
       allBlocks.forEach((b) => {
@@ -964,10 +990,11 @@ const Page = {
         return;
       }
 
+      // Close the editor immediately on blur. If startEditing runs during
+      // the save await (e.g. restoreBlockFocus after a move), it will set
+      // isEditing=true again, which we leave alone.
+      block.isEditing = false;
       await this.updateBlock(block, block.content, true);
-      // Don't close the editor if startEditing was called while the save
-      // was in flight (e.g. restoreBlockFocus after a move).
-      if (!block.isEditing) block.isEditing = false;
     },
 
     getAllBlocks() {
@@ -1098,8 +1125,12 @@ const Page = {
     },
 
     handlePageGlobalKeydown(event) {
-      if (event.key === "Escape" && this.showPageMenu) {
-        this.closePageMenuAndRestoreFocus();
+      if (event.key === "Escape") {
+        if (this.showPageMenu) {
+          this.closePageMenuAndRestoreFocus();
+        } else if (this.selectionAnchorUuid) {
+          this.clearBlockSelection();
+        }
       }
     },
 
@@ -1113,6 +1144,13 @@ const Page = {
       );
       if (!contextMenuContainer && this.showPageMenu) {
         this.closePageMenu();
+      }
+      // Clear block selection when clicking outside any block
+      if (this.selectionAnchorUuid) {
+        const clickedBlock = event.target.closest("[data-block-uuid]");
+        if (!clickedBlock) {
+          this.clearBlockSelection();
+        }
       }
     },
 
@@ -1266,6 +1304,491 @@ const Page = {
     onBlockRemoveFromContext(blockId) {
       this.$emit("block-remove-from-context", blockId);
     },
+
+    // Markdown list paste handling
+    parseMarkdownList(text) {
+      if (!text) return [];
+
+      const lines = text.replace(/\r\n?/g, "\n").split("\n");
+      const items = [];
+      let sawFirstNonEmpty = false;
+
+      // Code fence state
+      let codeFenceOpen = false;
+      let codeFenceIndentStr = "";
+      let codeFenceIndent = 0;
+      let codeFenceLang = "";
+      let codeFenceLines = [];
+
+      const finishCodeFence = () => {
+        // Strip the fence's leading whitespace from each collected line
+        const stripped = codeFenceLines.map((l) =>
+          l.startsWith(codeFenceIndentStr)
+            ? l.slice(codeFenceIndentStr.length)
+            : l
+        );
+        const item = {
+          indent: codeFenceIndent,
+          content: stripped.join("\n"),
+          blockType: "code",
+        };
+        if (codeFenceLang) item.language = codeFenceLang;
+        items.push(item);
+        codeFenceOpen = false;
+        codeFenceIndentStr = "";
+        codeFenceIndent = 0;
+        codeFenceLang = "";
+        codeFenceLines = [];
+      };
+
+      for (const line of lines) {
+        // Check for fence markers (``` optionally followed by a language)
+        const fenceMatch = line.match(/^([ \t]*)```(.*)$/);
+
+        if (codeFenceOpen) {
+          if (fenceMatch) {
+            // Closing fence — regardless of language suffix
+            finishCodeFence();
+          } else {
+            codeFenceLines.push(line);
+          }
+          continue;
+        }
+
+        if (fenceMatch) {
+          // Opening fence: only intercept if we've started processing a list
+          if (!sawFirstNonEmpty) return [];
+          const leading = fenceMatch[1];
+          codeFenceOpen = true;
+          codeFenceIndentStr = leading;
+          codeFenceIndent = leading.replace(/\t/g, "  ").length;
+          codeFenceLang = fenceMatch[2].trim();
+          codeFenceLines = [];
+          sawFirstNonEmpty = true;
+          continue;
+        }
+
+        if (!line.trim()) continue;
+
+        const leadingMatch = line.match(/^[ \t]*/);
+        const leading = leadingMatch ? leadingMatch[0] : "";
+        const rest = line.slice(leading.length);
+
+        // Normalize tabs to 2 spaces for indent calculation
+        const indent = leading.replace(/\t/g, "  ").length;
+
+        const unorderedMatch = rest.match(/^([-*+])\s+(.*)$/);
+        const orderedMatch = rest.match(/^\d+[.)]\s+(.*)$/);
+
+        let content = null;
+        if (unorderedMatch) {
+          content = unorderedMatch[2];
+        } else if (orderedMatch) {
+          content = orderedMatch[1];
+        } else {
+          // Only intercept pastes that start with a list item; if the first
+          // non-empty line isn't a list item, defer to native paste behavior.
+          if (!sawFirstNonEmpty) return [];
+          continue;
+        }
+
+        sawFirstNonEmpty = true;
+
+        let blockType = "bullet";
+        const taskMatch = content.match(/^\[([ xX])\]\s*(.*)$/);
+        if (taskMatch) {
+          blockType = taskMatch[1].toLowerCase() === "x" ? "done" : "todo";
+          const prefix = blockType === "done" ? "DONE" : "TODO";
+          content = taskMatch[2].trim() ? `${prefix} ${taskMatch[2]}` : prefix;
+        }
+
+        items.push({ indent, content, blockType });
+      }
+
+      // Unterminated fence at EOF — still flush as a code block
+      if (codeFenceOpen) finishCodeFence();
+
+      return items;
+    },
+
+    buildBlockTree(items) {
+      if (!items.length) return [];
+
+      const uniqueIndents = [...new Set(items.map((i) => i.indent))].sort(
+        (a, b) => a - b
+      );
+      const indentToLevel = new Map(
+        uniqueIndents.map((indent, idx) => [indent, idx])
+      );
+
+      const roots = [];
+      const stack = [];
+
+      for (const item of items) {
+        const level = indentToLevel.get(item.indent);
+        const node = {
+          content: item.content,
+          blockType: item.blockType,
+          language: item.language || null,
+          children: [],
+        };
+
+        while (stack.length && stack[stack.length - 1].level >= level) {
+          stack.pop();
+        }
+
+        if (stack.length === 0) {
+          roots.push(node);
+        } else {
+          stack[stack.length - 1].node.children.push(node);
+        }
+
+        stack.push({ node, level });
+      }
+
+      return roots;
+    },
+
+    async createBlockFromTree(node, parentUuid, order) {
+      if (!this.page) return null;
+
+      const payload = {
+        page: this.page.uuid,
+        content: node.content,
+        parent: parentUuid,
+        block_type: node.blockType,
+        content_type: "text",
+        order: order,
+      };
+      if (node.blockType === "code" && node.language) {
+        payload.properties = { language: node.language };
+      }
+
+      const result = await window.apiService.createBlock(payload);
+
+      if (!result.success) return null;
+
+      const createdUuid = result.data.uuid;
+
+      for (let i = 0; i < node.children.length; i++) {
+        await this.createBlockFromTree(node.children[i], createdUuid, i);
+      }
+
+      return createdUuid;
+    },
+
+    async onBlockPaste(event, block) {
+      const clipboardData = event.clipboardData || window.clipboardData;
+      if (!clipboardData) return;
+
+      const text = clipboardData.getData("text/plain");
+      if (!text) return;
+
+      const items = this.parseMarkdownList(text);
+      if (items.length === 0) return;
+
+      event.preventDefault();
+
+      const tree = this.buildBlockTree(items);
+      if (tree.length === 0) return;
+
+      try {
+        const blockIsEmpty = !block.content || block.content.trim() === "";
+        const parentUuid = block.parent ? block.parent.uuid : null;
+        const siblings = block.parent
+          ? block.parent.children
+          : this.directBlocks;
+
+        if (blockIsEmpty) {
+          // Use current block as first item, insert remaining roots as siblings
+          const firstItem = tree[0];
+          const remainingRoots = tree.slice(1);
+
+          // Shift subsequent siblings by the number of additional root items
+          if (remainingRoots.length > 0) {
+            const blocksToShift = siblings.filter(
+              (b) => b.uuid !== block.uuid && b.order > block.order
+            );
+            if (blocksToShift.length > 0) {
+              const reorderPayload = blocksToShift.map((b) => ({
+                uuid: b.uuid,
+                order: b.order + remainingRoots.length,
+              }));
+              const reorderResult =
+                await window.apiService.reorderBlocks(reorderPayload);
+              if (!reorderResult.success) {
+                throw new Error("failed to reorder blocks");
+              }
+            }
+          }
+
+          // Update current block with first item content and block_type
+          const updatePayload = {
+            content: firstItem.content,
+            block_type: firstItem.blockType,
+            parent: parentUuid,
+          };
+          if (firstItem.blockType === "code" && firstItem.language) {
+            updatePayload.properties = { language: firstItem.language };
+          }
+          const updateResult = await window.apiService.updateBlock(
+            block.uuid,
+            updatePayload
+          );
+          if (!updateResult.success) {
+            throw new Error("failed to update block");
+          }
+
+          // Create children of first item under current block
+          for (let i = 0; i < firstItem.children.length; i++) {
+            await this.createBlockFromTree(
+              firstItem.children[i],
+              block.uuid,
+              i
+            );
+          }
+
+          // Create remaining roots as siblings after current block
+          for (let i = 0; i < remainingRoots.length; i++) {
+            await this.createBlockFromTree(
+              remainingRoots[i],
+              parentUuid,
+              block.order + 1 + i
+            );
+          }
+        } else {
+          // Insert all root items as siblings after current block
+          const blocksToShift = siblings.filter(
+            (b) => b.uuid !== block.uuid && b.order > block.order
+          );
+          if (blocksToShift.length > 0) {
+            const reorderPayload = blocksToShift.map((b) => ({
+              uuid: b.uuid,
+              order: b.order + tree.length,
+            }));
+            const reorderResult =
+              await window.apiService.reorderBlocks(reorderPayload);
+            if (!reorderResult.success) {
+              throw new Error("failed to reorder blocks");
+            }
+          }
+
+          for (let i = 0; i < tree.length; i++) {
+            await this.createBlockFromTree(
+              tree[i],
+              parentUuid,
+              block.order + 1 + i
+            );
+          }
+        }
+
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("failed to paste markdown list:", error);
+        this.error = "failed to paste markdown list";
+      }
+    },
+
+    // Block selection (Cmd+A escalation) and markdown copy
+    isBlockSelected(uuid) {
+      return this.selectedBlockUuids.has(uuid);
+    },
+
+    collectSubtreeUuids(block, out) {
+      out.add(block.uuid);
+      if (block.children) {
+        for (const child of block.children) {
+          this.collectSubtreeUuids(child, out);
+        }
+      }
+    },
+
+    computeSelectionUuids(anchorUuid, level) {
+      const anchor = this.getAllBlocks().find((b) => b.uuid === anchorUuid);
+      if (!anchor) return { uuids: new Set(), reachedPage: false };
+
+      let scope = anchor;
+      for (let i = 0; i < level; i++) {
+        if (!scope.parent) {
+          const uuids = new Set();
+          for (const b of this.directBlocks) {
+            this.collectSubtreeUuids(b, uuids);
+          }
+          return { uuids, reachedPage: true };
+        }
+        scope = scope.parent;
+      }
+
+      const uuids = new Set();
+      this.collectSubtreeUuids(scope, uuids);
+      // If the scope is a root block and its subtree already covers all
+      // direct blocks, flag as reachedPage so next escalation is a no-op.
+      const reachedPage =
+        !scope.parent &&
+        this.directBlocks.length === 1 &&
+        this.directBlocks[0].uuid === scope.uuid;
+      return { uuids, reachedPage };
+    },
+
+    setBlockSelection(anchorBlock, level) {
+      const { uuids } = this.computeSelectionUuids(anchorBlock.uuid, level);
+      this.selectionAnchorUuid = anchorBlock.uuid;
+      this.selectionLevel = level;
+      this.selectedBlockUuids = uuids;
+    },
+
+    clearBlockSelection() {
+      if (!this.selectionAnchorUuid && this.selectedBlockUuids.size === 0) {
+        return;
+      }
+      this.selectionAnchorUuid = null;
+      this.selectionLevel = 0;
+      this.selectedBlockUuids = new Set();
+    },
+
+    expandBlockSelection() {
+      if (!this.selectionAnchorUuid) return false;
+      const nextLevel = this.selectionLevel + 1;
+      const { uuids, reachedPage } = this.computeSelectionUuids(
+        this.selectionAnchorUuid,
+        nextLevel
+      );
+      // If the computed selection didn't change size or we hit the page,
+      // stop escalating.
+      if (
+        uuids.size === this.selectedBlockUuids.size &&
+        [...uuids].every((u) => this.selectedBlockUuids.has(u))
+      ) {
+        return false;
+      }
+      this.selectionLevel = nextLevel;
+      this.selectedBlockUuids = uuids;
+      if (reachedPage) {
+        // Mark level so future expansions don't try to go higher
+        this.selectionLevel = nextLevel;
+      }
+      return true;
+    },
+
+    handleSelectionKeydown(event) {
+      const isCmdA =
+        (event.metaKey || event.ctrlKey) &&
+        (event.key === "a" || event.key === "A");
+      if (!isCmdA) return;
+      if (event.shiftKey || event.altKey) return;
+
+      const active = document.activeElement;
+      const tag = active?.tagName;
+
+      // Don't hijack inside non-block inputs/textareas (e.g. page title, chat)
+      if (tag === "INPUT") return;
+      const isBlockTextarea =
+        tag === "TEXTAREA" && active.classList.contains("block-content");
+
+      if (tag === "TEXTAREA" && !isBlockTextarea) return;
+
+      if (isBlockTextarea) {
+        const isEmpty = active.value.length === 0;
+        const isFullySelected =
+          active.selectionStart === 0 &&
+          active.selectionEnd === active.value.length &&
+          active.value.length > 0;
+        if (!isEmpty && !isFullySelected) {
+          // Let native Cmd+A select all text in the textarea first
+          return;
+        }
+        // Escalate: select the current block + its descendants
+        const wrapper = active.closest("[data-block-uuid]");
+        if (!wrapper) return;
+        const uuid = wrapper.dataset.blockUuid;
+        const block = this.getAllBlocks().find((b) => b.uuid === uuid);
+        if (!block) return;
+        event.preventDefault();
+        if (block.isEditing) block.isEditing = false;
+        active.blur();
+        this.setBlockSelection(block, 0);
+        return;
+      }
+
+      if (this.selectionAnchorUuid) {
+        event.preventDefault();
+        this.expandBlockSelection();
+        return;
+      }
+    },
+
+    serializeBlockToMarkdown(block, depth, lines) {
+      const indent = "  ".repeat(depth);
+
+      if (block.block_type === "code") {
+        const lang = block.properties?.language || "";
+        lines.push(`${indent}\`\`\`${lang}`);
+        const codeLines = (block.content || "").split("\n");
+        for (const cl of codeLines) {
+          lines.push(`${indent}${cl}`);
+        }
+        lines.push(`${indent}\`\`\``);
+      } else {
+        let content = block.content || "";
+        let prefix = "- ";
+        if (block.block_type === "todo") {
+          content = content.replace(/^TODO\s*:?\s*/i, "");
+          prefix = "- [ ] ";
+        } else if (block.block_type === "done") {
+          content = content.replace(/^DONE\s*:?\s*/i, "");
+          prefix = "- [x] ";
+        }
+        lines.push(`${indent}${prefix}${content}`);
+      }
+
+      if (block.children) {
+        for (const child of block.children) {
+          if (this.selectedBlockUuids.has(child.uuid)) {
+            this.serializeBlockToMarkdown(child, depth + 1, lines);
+          }
+        }
+      }
+    },
+
+    serializeSelectedBlocksAsMarkdown() {
+      if (this.selectedBlockUuids.size === 0) return "";
+      // Find "top" blocks in selection — blocks whose parent is not selected
+      const topBlocks = [];
+      const walk = (blocks) => {
+        for (const b of blocks) {
+          if (this.selectedBlockUuids.has(b.uuid)) {
+            const parentSelected =
+              b.parent && this.selectedBlockUuids.has(b.parent.uuid);
+            if (!parentSelected) topBlocks.push(b);
+          }
+          if (b.children?.length) walk(b.children);
+        }
+      };
+      walk(this.directBlocks);
+
+      const lines = [];
+      for (const b of topBlocks) {
+        this.serializeBlockToMarkdown(b, 0, lines);
+      }
+      return lines.join("\n");
+    },
+
+    handleSelectionCopy(event) {
+      if (this.selectedBlockUuids.size === 0) return;
+      const active = document.activeElement;
+      // Don't hijack copy when user is inside a textarea/input with text selected
+      if (
+        active &&
+        (active.tagName === "TEXTAREA" || active.tagName === "INPUT") &&
+        active.selectionStart !== active.selectionEnd
+      ) {
+        return;
+      }
+      const markdown = this.serializeSelectedBlocksAsMarkdown();
+      if (!markdown) return;
+      event.preventDefault();
+      event.clipboardData.setData("text/plain", markdown);
+    },
   },
 
   template: `
@@ -1407,6 +1930,7 @@ const Page = {
               :toggleBlockTodo="toggleBlockTodo"
               :formatContentWithTags="formatContentWithTags"
               :isBlockInContext="isBlockInContext"
+              :isBlockSelected="isBlockSelected"
               :onBlockAddToContext="onBlockAddToContext"
               :onBlockRemoveFromContext="onBlockRemoveFromContext"
               :indentBlock="indentBlock"
@@ -1415,6 +1939,7 @@ const Page = {
               :createBlockBefore="createBlockBefore"
               :moveBlockUp="moveBlockUp"
               :moveBlockDown="moveBlockDown"
+              :onBlockPaste="onBlockPaste"
             />
             <button @click="addNewBlock" class="add-block-btn">
               + add new block
@@ -1444,6 +1969,7 @@ const Page = {
                 :toggleBlockTodo="toggleBlockTodo"
                 :formatContentWithTags="formatContentWithTags"
                 :isBlockInContext="isBlockInContext"
+                :isBlockSelected="isBlockSelected"
                 :onBlockAddToContext="onBlockAddToContext"
                 :onBlockRemoveFromContext="onBlockRemoveFromContext"
                 :indentBlock="indentBlock"
@@ -1452,6 +1978,7 @@ const Page = {
                 :createBlockBefore="createBlockBefore"
                 :moveBlockUp="moveBlockUp"
                 :moveBlockDown="moveBlockDown"
+                :onBlockPaste="onBlockPaste"
               />
             </div>
           </div>

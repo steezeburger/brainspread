@@ -38,6 +38,10 @@ const BlockComponent = {
       type: Function,
       default: () => () => false,
     },
+    isBlockSelected: {
+      type: Function,
+      default: () => () => false,
+    },
     onBlockAddToContext: {
       type: Function,
       default: () => () => {},
@@ -71,6 +75,10 @@ const BlockComponent = {
       type: Function,
       default: () => () => {},
     },
+    onBlockPaste: {
+      type: Function,
+      default: () => () => {},
+    },
   },
   data() {
     return {
@@ -86,6 +94,9 @@ const BlockComponent = {
   computed: {
     blockInContext() {
       return this.isBlockInContext(this.block.uuid);
+    },
+    blockSelected() {
+      return this.isBlockSelected(this.block.uuid);
     },
     hasChildren() {
       return this.block.children?.length > 0;
@@ -439,7 +450,7 @@ const BlockComponent = {
     },
   },
   template: `
-    <div class="block-wrapper" :class="{ 'child-block': block.parent, 'in-context': blockInContext }" :data-block-uuid="block.uuid">
+    <div class="block-wrapper" :class="{ 'child-block': block.parent, 'in-context': blockInContext, 'selected': blockSelected }" :data-block-uuid="block.uuid">
       <div class="block" :class="{ 'has-children': hasChildren }">
         <button
           v-if="hasChildren"
@@ -479,13 +490,14 @@ const BlockComponent = {
           @keydown="handleBlockDisplayKeydown"
           @touchstart="handleTouchStart"
           @touchend="handleContentTouchEnd"
-          v-html="formatContentWithTags(block.content, block.block_type)"
+          v-html="formatContentWithTags(block.content, block.block_type, block.properties)"
         ></div>
         <textarea
           v-else
           :value="block.content"
           @input="onBlockContentChange(block, $event.target.value)"
           @keydown="onBlockKeyDown($event, block)"
+          @paste="onBlockPaste($event, block)"
           @blur="stopEditing(block)"
           class="block-content"
           :class="{ 'completed': ['done', 'wontdo'].includes(block.block_type) }"
@@ -568,6 +580,7 @@ const BlockComponent = {
           :toggleBlockTodo="toggleBlockTodo"
           :formatContentWithTags="formatContentWithTags"
           :isBlockInContext="isBlockInContext"
+          :isBlockSelected="isBlockSelected"
           :onBlockAddToContext="onBlockAddToContext"
           :onBlockRemoveFromContext="onBlockRemoveFromContext"
           :indentBlock="indentBlock"
@@ -576,6 +589,7 @@ const BlockComponent = {
           :createBlockBefore="createBlockBefore"
           :moveBlockUp="moveBlockUp"
           :moveBlockDown="moveBlockDown"
+          :onBlockPaste="onBlockPaste"
         />
       </div>
     </div>
