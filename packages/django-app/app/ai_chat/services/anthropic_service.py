@@ -146,9 +146,7 @@ class AnthropicService(BaseAIService):
             logger.error(f"Anthropic API error: {str(e)}")
             if isinstance(e, AnthropicServiceError):
                 raise
-            raise AnthropicServiceError(
-                f"Anthropic API call failed: {str(e)}"
-            ) from e
+            raise AnthropicServiceError(f"Anthropic API call failed: {str(e)}") from e
 
     @staticmethod
     def _serialize_block(block: Any) -> Dict[str, Any]:
@@ -220,18 +218,13 @@ class AnthropicService(BaseAIService):
                             getattr(event, "message", None), "usage", None
                         )
                         if start_usage is not None:
-                            input_tokens = (
-                                getattr(start_usage, "input_tokens", 0) or 0
-                            )
+                            input_tokens = getattr(start_usage, "input_tokens", 0) or 0
                             cache_creation = (
-                                getattr(
-                                    start_usage, "cache_creation_input_tokens", 0
-                                )
+                                getattr(start_usage, "cache_creation_input_tokens", 0)
                                 or 0
                             )
                             cache_read = (
-                                getattr(start_usage, "cache_read_input_tokens", 0)
-                                or 0
+                                getattr(start_usage, "cache_read_input_tokens", 0) or 0
                             )
 
                     elif event_type == "content_block_delta":
@@ -274,9 +267,7 @@ class AnthropicService(BaseAIService):
             logger.error(f"Anthropic streaming error: {e}")
             if isinstance(e, AnthropicServiceError):
                 raise
-            raise AnthropicServiceError(
-                f"Anthropic streaming call failed: {e}"
-            ) from e
+            raise AnthropicServiceError(f"Anthropic streaming call failed: {e}") from e
 
     def _build_kwargs(
         self,

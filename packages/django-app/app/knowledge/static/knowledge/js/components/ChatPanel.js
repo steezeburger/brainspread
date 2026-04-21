@@ -150,7 +150,8 @@ const ChatPanel = {
             this.messages[assistantIndex].content += event.delta || "";
           } else if (event.type === "thinking") {
             this.messages[assistantIndex].thinking =
-              (this.messages[assistantIndex].thinking || "") + (event.delta || "");
+              (this.messages[assistantIndex].thinking || "") +
+              (event.delta || "");
           } else if (event.type === "done") {
             if (event.message) {
               this.messages.splice(assistantIndex, 1, {

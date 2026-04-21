@@ -11,7 +11,9 @@ class NotesToolExecutorTestCase(TestCase):
         cls.user = UserFactory(email="notes-tools@example.com")
         cls.other_user = UserFactory(email="other@example.com")
 
-        cls.page = PageFactory(user=cls.user, title="Project Alpha", slug="project-alpha")
+        cls.page = PageFactory(
+            user=cls.user, title="Project Alpha", slug="project-alpha"
+        )
         cls.block = BlockFactory(
             user=cls.user,
             page=cls.page,
@@ -52,7 +54,9 @@ class NotesToolExecutorTestCase(TestCase):
     def test_get_block_by_id_returns_children(self):
         executor = NotesToolExecutor(self.user)
 
-        result = executor.execute("get_block_by_id", {"block_uuid": str(self.block.uuid)})
+        result = executor.execute(
+            "get_block_by_id", {"block_uuid": str(self.block.uuid)}
+        )
 
         self.assertEqual(result["block"]["content"], "Follow up with design team")
         self.assertEqual(len(result["children"]), 1)

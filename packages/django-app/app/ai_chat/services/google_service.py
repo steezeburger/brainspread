@@ -129,7 +129,9 @@ class GoogleService(BaseAIService):
                     content_parts.append(text)
                     yield {"type": "text", "delta": text}
 
-            usage = self._extract_usage(last_chunk) if last_chunk is not None else AIUsage()
+            usage = (
+                self._extract_usage(last_chunk) if last_chunk is not None else AIUsage()
+            )
             yield {
                 "type": "done",
                 "content": "".join(content_parts),

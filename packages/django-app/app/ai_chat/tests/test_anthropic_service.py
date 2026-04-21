@@ -4,9 +4,9 @@ from unittest.mock import Mock, patch
 import pytest
 
 from ai_chat.services.anthropic_service import (
+    THINKING_BUDGET_TOKENS,
     AnthropicService,
     AnthropicServiceError,
-    THINKING_BUDGET_TOKENS,
 )
 from ai_chat.services.base_ai_service import AIServiceResult
 

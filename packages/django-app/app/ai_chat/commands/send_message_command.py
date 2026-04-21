@@ -150,9 +150,7 @@ class SendMessageCommand(AbstractBaseCommand):
         }
 
     @staticmethod
-    def _format_message_with_context(
-        message: str, context_blocks: List[Dict]
-    ) -> str:
+    def _format_message_with_context(message: str, context_blocks: List[Dict]) -> str:
         """Format the user message with context blocks if any are provided."""
         if not context_blocks:
             return message
