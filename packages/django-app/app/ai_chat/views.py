@@ -294,12 +294,10 @@ def update_ai_settings(request):
 
                 # Handle enabled_models M2M relationship
                 enabled_model_names = config_data.get("enabled_models", [])
-                if enabled_model_names:
-                    # Get AIModel objects for the given names and provider
-                    ai_models = AIModel.objects.filter(
-                        name__in=enabled_model_names, provider=provider, is_active=True
-                    )
-                    provider_config.enabled_models.set(ai_models)
+                ai_models = AIModel.objects.filter(
+                    name__in=enabled_model_names, provider=provider, is_active=True
+                )
+                provider_config.enabled_models.set(ai_models)
 
             except AIProvider.DoesNotExist:
                 logger.warning(
