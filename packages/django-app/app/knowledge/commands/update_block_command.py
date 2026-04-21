@@ -65,7 +65,8 @@ class UpdateBlockCommand(AbstractBaseCommand):
         block.save()
 
         # Extract and set tags if content was updated (business logic)
-        if content_updated and block.content:
+        # Skip for code blocks — their content is code, not markdown.
+        if content_updated and block.content and block.block_type != "code":
             sync_tags_form = SyncBlockTagsForm(
                 {
                     "block": block.uuid,
@@ -80,7 +81,8 @@ class UpdateBlockCommand(AbstractBaseCommand):
                 block.refresh_from_db()
 
         # Extract and set properties from content if content was updated (business logic)
-        if content_updated and block.content:
+        # Skip for code blocks — `key::value` inside code shouldn't be parsed.
+        if content_updated and block.content and block.block_type != "code":
             block.extract_properties_from_content()
 
         return block

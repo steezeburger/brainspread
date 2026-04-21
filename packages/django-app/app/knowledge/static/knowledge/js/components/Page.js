@@ -808,8 +808,21 @@ const Page = {
       if (!result.success) throw new Error("failed to reorder siblings");
     },
 
-    formatContentWithTags(content, blockType = null) {
+    formatContentWithTags(content, blockType = null, properties = null) {
       if (!content) return "";
+
+      // Code blocks render as <pre><code> with content escaped and no other
+      // markdown formatting applied.
+      if (blockType === "code") {
+        const escapeHtml = (s) =>
+          s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const escaped = escapeHtml(content);
+        const lang = properties?.language || "";
+        const langBadge = lang
+          ? `<span class="block-code-lang">${escapeHtml(lang)}</span>`
+          : "";
+        return `<div class="block-code-wrapper">${langBadge}<pre class="block-code"><code>${escaped}</code></pre></div>`;
+      }
 
       let formatted = content;
 
@@ -1287,7 +1300,61 @@ const Page = {
       const items = [];
       let sawFirstNonEmpty = false;
 
+      // Code fence state
+      let codeFenceOpen = false;
+      let codeFenceIndentStr = "";
+      let codeFenceIndent = 0;
+      let codeFenceLang = "";
+      let codeFenceLines = [];
+
+      const finishCodeFence = () => {
+        // Strip the fence's leading whitespace from each collected line
+        const stripped = codeFenceLines.map((l) =>
+          l.startsWith(codeFenceIndentStr)
+            ? l.slice(codeFenceIndentStr.length)
+            : l
+        );
+        const item = {
+          indent: codeFenceIndent,
+          content: stripped.join("\n"),
+          blockType: "code",
+        };
+        if (codeFenceLang) item.language = codeFenceLang;
+        items.push(item);
+        codeFenceOpen = false;
+        codeFenceIndentStr = "";
+        codeFenceIndent = 0;
+        codeFenceLang = "";
+        codeFenceLines = [];
+      };
+
       for (const line of lines) {
+        // Check for fence markers (``` optionally followed by a language)
+        const fenceMatch = line.match(/^([ \t]*)```(.*)$/);
+
+        if (codeFenceOpen) {
+          if (fenceMatch) {
+            // Closing fence — regardless of language suffix
+            finishCodeFence();
+          } else {
+            codeFenceLines.push(line);
+          }
+          continue;
+        }
+
+        if (fenceMatch) {
+          // Opening fence: only intercept if we've started processing a list
+          if (!sawFirstNonEmpty) return [];
+          const leading = fenceMatch[1];
+          codeFenceOpen = true;
+          codeFenceIndentStr = leading;
+          codeFenceIndent = leading.replace(/\t/g, "  ").length;
+          codeFenceLang = fenceMatch[2].trim();
+          codeFenceLines = [];
+          sawFirstNonEmpty = true;
+          continue;
+        }
+
         if (!line.trim()) continue;
 
         const leadingMatch = line.match(/^[ \t]*/);
@@ -1325,6 +1392,9 @@ const Page = {
         items.push({ indent, content, blockType });
       }
 
+      // Unterminated fence at EOF — still flush as a code block
+      if (codeFenceOpen) finishCodeFence();
+
       return items;
     },
 
@@ -1346,6 +1416,7 @@ const Page = {
         const node = {
           content: item.content,
           blockType: item.blockType,
+          language: item.language || null,
           children: [],
         };
 
@@ -1368,14 +1439,19 @@ const Page = {
     async createBlockFromTree(node, parentUuid, order) {
       if (!this.page) return null;
 
-      const result = await window.apiService.createBlock({
+      const payload = {
         page: this.page.uuid,
         content: node.content,
         parent: parentUuid,
         block_type: node.blockType,
         content_type: "text",
         order: order,
-      });
+      };
+      if (node.blockType === "code" && node.language) {
+        payload.properties = { language: node.language };
+      }
+
+      const result = await window.apiService.createBlock(payload);
 
       if (!result.success) return null;
 
@@ -1434,11 +1510,18 @@ const Page = {
           }
 
           // Update current block with first item content and block_type
-          const updateResult = await window.apiService.updateBlock(block.uuid, {
+          const updatePayload = {
             content: firstItem.content,
             block_type: firstItem.blockType,
             parent: parentUuid,
-          });
+          };
+          if (firstItem.blockType === "code" && firstItem.language) {
+            updatePayload.properties = { language: firstItem.language };
+          }
+          const updateResult = await window.apiService.updateBlock(
+            block.uuid,
+            updatePayload
+          );
           if (!updateResult.success) {
             throw new Error("failed to update block");
           }
@@ -1623,16 +1706,28 @@ const Page = {
 
     serializeBlockToMarkdown(block, depth, lines) {
       const indent = "  ".repeat(depth);
-      let content = block.content || "";
-      let prefix = "- ";
-      if (block.block_type === "todo") {
-        content = content.replace(/^TODO\s*:?\s*/i, "");
-        prefix = "- [ ] ";
-      } else if (block.block_type === "done") {
-        content = content.replace(/^DONE\s*:?\s*/i, "");
-        prefix = "- [x] ";
+
+      if (block.block_type === "code") {
+        const lang = block.properties?.language || "";
+        lines.push(`${indent}\`\`\`${lang}`);
+        const codeLines = (block.content || "").split("\n");
+        for (const cl of codeLines) {
+          lines.push(`${indent}${cl}`);
+        }
+        lines.push(`${indent}\`\`\``);
+      } else {
+        let content = block.content || "";
+        let prefix = "- ";
+        if (block.block_type === "todo") {
+          content = content.replace(/^TODO\s*:?\s*/i, "");
+          prefix = "- [ ] ";
+        } else if (block.block_type === "done") {
+          content = content.replace(/^DONE\s*:?\s*/i, "");
+          prefix = "- [x] ";
+        }
+        lines.push(`${indent}${prefix}${content}`);
       }
-      lines.push(`${indent}${prefix}${content}`);
+
       if (block.children) {
         for (const child of block.children) {
           if (this.selectedBlockUuids.has(child.uuid)) {

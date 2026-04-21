@@ -490,7 +490,7 @@ const BlockComponent = {
           @keydown="handleBlockDisplayKeydown"
           @touchstart="handleTouchStart"
           @touchend="handleContentTouchEnd"
-          v-html="formatContentWithTags(block.content, block.block_type)"
+          v-html="formatContentWithTags(block.content, block.block_type, block.properties)"
         ></div>
         <textarea
           v-else

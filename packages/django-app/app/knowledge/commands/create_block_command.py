@@ -47,7 +47,8 @@ class CreateBlockCommand(AbstractBaseCommand):
         )
 
         # Extract and set tags from content (business logic)
-        if block.content:
+        # Skip for code blocks — their content is code, not markdown.
+        if block.content and block.block_type != "code":
             sync_tags_form = SyncBlockTagsForm(
                 {
                     "block": block.uuid,
@@ -62,7 +63,8 @@ class CreateBlockCommand(AbstractBaseCommand):
                 block.refresh_from_db()
 
         # Extract and set properties from content (business logic)
-        if block.content:
+        # Skip for code blocks — `key::value` inside code shouldn't be parsed.
+        if block.content and block.block_type != "code":
             block.extract_properties_from_content()
 
         return block

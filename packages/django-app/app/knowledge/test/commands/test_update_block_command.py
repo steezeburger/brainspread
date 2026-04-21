@@ -291,3 +291,39 @@ class TestUpdateBlockCommand(TestCase):
 
         # Verify that SyncBlockTagsCommand was not called when content wasn't updated
         mock_sync_command_class.assert_not_called()
+
+    @patch("knowledge.commands.update_block_command.SyncBlockTagsCommand")
+    def test_should_skip_tag_extraction_for_code_blocks(
+        self, mock_sync_command_class
+    ):
+        """Updating a code block shouldn't trigger tag sync on code content"""
+        form_data = {
+            "user": self.user.id,
+            "block": str(self.block.uuid),
+            "content": "#include <stdio.h>\nint main() {}",
+            "block_type": "code",
+        }
+        form = UpdateBlockForm(form_data)
+        form.is_valid()
+        command = UpdateBlockCommand(form)
+        command.execute()
+
+        mock_sync_command_class.assert_not_called()
+
+    def test_should_preserve_properties_for_code_blocks(self):
+        """Code block properties survive the no-key-extraction path on update"""
+        form_data = {
+            "user": self.user.id,
+            "block": str(self.block.uuid),
+            "content": "x = 1\nkey:: value",
+            "block_type": "code",
+            "properties": {"language": "python"},
+        }
+        form = UpdateBlockForm(form_data)
+        form.is_valid()
+        command = UpdateBlockCommand(form)
+        block = command.execute()
+
+        block.refresh_from_db()
+        self.assertEqual(block.block_type, "code")
+        self.assertEqual(block.properties, {"language": "python"})
