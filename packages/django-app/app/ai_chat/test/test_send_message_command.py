@@ -129,6 +129,7 @@ class SendMessageCommandTestCase(TestCase):
             [{"role": "user", "content": "Hello, AI!"}],
             [{"type": "web_search_preview", "search_context_size": "medium"}],
             system=BRAINSPREAD_SYSTEM_PROMPT,
+            tool_executor=None,
         )
 
     @patch("ai_chat.services.ai_service_factory.AIServiceFactory.create_service")

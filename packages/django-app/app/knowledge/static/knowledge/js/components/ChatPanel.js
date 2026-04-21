@@ -31,6 +31,7 @@ const ChatPanel = {
       showContextArea: false,
       messageMenus: {},
       expandedThinking: {},
+      enableNotesTools: this.loadNotesToolsPref(),
     };
   },
   mounted() {
@@ -78,6 +79,17 @@ const ChatPanel = {
     saveOpenState() {
       localStorage.setItem("chatPanel.isOpen", JSON.stringify(this.isOpen));
     },
+    loadNotesToolsPref() {
+      const saved = localStorage.getItem("chatPanel.enableNotesTools");
+      return saved === null ? false : JSON.parse(saved);
+    },
+    toggleNotesTools() {
+      this.enableNotesTools = !this.enableNotesTools;
+      localStorage.setItem(
+        "chatPanel.enableNotesTools",
+        JSON.stringify(this.enableNotesTools)
+      );
+    },
     saveWidth() {
       localStorage.setItem("chatPanel.width", this.width.toString());
     },
@@ -108,6 +120,7 @@ const ChatPanel = {
         model: this.selectedModel,
         session_id: this.currentSessionId,
         context_blocks: this.chatContextBlocks,
+        enable_notes_tools: this.enableNotesTools,
       };
       this.message = "";
       this.loading = true;
@@ -767,13 +780,21 @@ const ChatPanel = {
                 </div>
               </div>
             </div>
-            <button 
-              class="context-btn" 
-              @click="toggleContextArea" 
+            <button
+              class="context-btn"
+              @click="toggleContextArea"
               :class="{ active: hasContext() }"
               :title="hasContext() ? 'Context (' + getContextCount() + ')' : 'Add context'"
             >
               ctx
+            </button>
+            <button
+              class="notes-tools-btn"
+              @click="toggleNotesTools"
+              :class="{ active: enableNotesTools }"
+              :title="enableNotesTools ? 'Notes tools enabled (Anthropic)' : 'Enable notes tools (Anthropic)'"
+            >
+              notes
             </button>
             <button class="settings-btn" @click="openSettings" title="AI Settings">cfg</button>
           </div>

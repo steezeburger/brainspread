@@ -434,7 +434,8 @@ body {
 
 /* Chat controls buttons - FORCE same height as model selector */
 .chat-controls .settings-btn,
-.chat-controls .context-btn {
+.chat-controls .context-btn,
+.chat-controls .notes-tools-btn {
   background: var(--bg-primary) !important;
   border: 1px solid var(--border-secondary) !important;
   color: var(--text-primary) !important;
@@ -461,6 +462,13 @@ body {
 
 .chat-controls .context-btn:hover,
 .chat-controls .context-btn.active {
+  color: var(--text-primary) !important;
+  border-color: var(--context-color) !important;
+  background: var(--hover-bg) !important;
+}
+
+.chat-controls .notes-tools-btn:hover,
+.chat-controls .notes-tools-btn.active {
   color: var(--text-primary) !important;
   border-color: var(--context-color) !important;
   background: var(--hover-bg) !important;

@@ -4,7 +4,13 @@ from typing import Any, Dict, Iterator, List, Optional
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
 
-from .base_ai_service import AIServiceError, AIServiceResult, AIUsage, BaseAIService
+from .base_ai_service import (
+    AIServiceError,
+    AIServiceResult,
+    AIUsage,
+    BaseAIService,
+    ToolExecutor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +35,7 @@ class OpenAIService(BaseAIService):
         messages: List[Dict[str, str]],
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
+        tool_executor: Optional[ToolExecutor] = None,
     ) -> AIServiceResult:
         try:
             self.validate_messages(messages)
@@ -73,6 +80,7 @@ class OpenAIService(BaseAIService):
         messages: List[Dict[str, str]],
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
+        tool_executor: Optional[ToolExecutor] = None,
     ) -> Iterator[Dict[str, Any]]:
         try:
             self.validate_messages(messages)
@@ -82,10 +90,13 @@ class OpenAIService(BaseAIService):
                 chat_messages = [{"role": "system", "content": system}] + chat_messages
 
             # The Responses API (used for native web search) does not yet share
-            # the same streaming contract as Chat Completions. Fall back to the
-            # default buffered stream when tools are requested.
-            if tools:
-                yield from super().stream_message(messages, tools, system=system)
+            # the same streaming contract as Chat Completions, and custom tool
+            # loops require multiple round-trips. Fall back to the buffered
+            # stream in either case.
+            if tools or tool_executor is not None:
+                yield from super().stream_message(
+                    messages, tools, system=system, tool_executor=tool_executor
+                )
                 return
 
             kwargs = {

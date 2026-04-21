@@ -1,12 +1,22 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Protocol
 
 
 class AIServiceError(Exception):
     """Base exception for AI service errors"""
 
     pass
+
+
+class ToolExecutor(Protocol):
+    """Callable that runs a custom (client-side) tool and returns a JSON-
+    serialisable result dict. Services use this to complete a tool-use loop
+    when the model asks for a tool that isn't provider-native."""
+
+    def is_known(self, name: str) -> bool: ...
+
+    def execute(self, name: str, args: Dict[str, Any]) -> Dict[str, Any]: ...
 
 
 @dataclass
@@ -47,6 +57,7 @@ class BaseAIService(ABC):
         messages: List[Dict[str, str]],
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
+        tool_executor: Optional[ToolExecutor] = None,
     ) -> AIServiceResult:
         """
         Send messages to AI service and return the response.
@@ -56,6 +67,8 @@ class BaseAIService(ABC):
             tools: Optional list of tools/functions to make available to the model
             system: Optional system prompt. Providers that support a dedicated
                 system slot should mark it with cache_control where possible.
+            tool_executor: Optional callback that runs client-side tools and
+                returns results so the service can complete the tool-use loop.
 
         Returns:
             AIServiceResult: Structured result containing the assistant text,
@@ -71,6 +84,7 @@ class BaseAIService(ABC):
         messages: List[Dict[str, str]],
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
+        tool_executor: Optional[ToolExecutor] = None,
     ) -> Iterator[Dict[str, Any]]:
         """
         Stream the assistant response as incremental events.
@@ -85,7 +99,9 @@ class BaseAIService(ABC):
         `done` event so providers without native streaming still work.
         Subclasses should override for true streaming.
         """
-        result = self.send_message(messages, tools, system=system)
+        result = self.send_message(
+            messages, tools, system=system, tool_executor=tool_executor
+        )
         if result.content:
             yield {"type": "text", "delta": result.content}
         if result.thinking:

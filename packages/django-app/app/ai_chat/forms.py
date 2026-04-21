@@ -19,6 +19,7 @@ class SendMessageForm(BaseForm):
     model = forms.CharField(required=True)  # Model selection per request
     session_id = forms.CharField(required=False)
     context_blocks = forms.JSONField(required=False)
+    enable_notes_tools = forms.BooleanField(required=False)
 
     def clean_user(self) -> User:
         user = self.cleaned_data.get("user")

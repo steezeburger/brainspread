@@ -1,9 +1,16 @@
+import json
 import logging
 from typing import Any, Dict, Iterator, List, Optional
 
 import anthropic
 
-from .base_ai_service import AIServiceError, AIServiceResult, AIUsage, BaseAIService
+from .base_ai_service import (
+    AIServiceError,
+    AIServiceResult,
+    AIUsage,
+    BaseAIService,
+    ToolExecutor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +28,10 @@ THINKING_CAPABLE_MODEL_PREFIXES = (
 THINKING_BUDGET_TOKENS = 4000
 DEFAULT_MAX_TOKENS = 2000
 THINKING_MAX_TOKENS = 8000
+
+# Safety net for custom tool loops: the model shouldn't be able to spin
+# us indefinitely even if it keeps requesting tool calls.
+MAX_TOOL_ITERATIONS = 5
 
 
 class AnthropicServiceError(AIServiceError):
@@ -48,34 +59,75 @@ class AnthropicService(BaseAIService):
         messages: List[Dict[str, str]],
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
+        tool_executor: Optional[ToolExecutor] = None,
     ) -> AIServiceResult:
         try:
             self.validate_messages(messages)
             kwargs = self._build_kwargs(messages, tools, system)
-            response = self.client.messages.create(**kwargs)
 
             text_parts: List[str] = []
             thinking_parts: List[str] = []
+            total_usage = AIUsage()
 
-            for block in response.content or []:
-                block_type = getattr(block, "type", None)
-                if block_type == "thinking":
-                    thinking_text = getattr(block, "thinking", None)
-                    if thinking_text:
-                        thinking_parts.append(thinking_text)
-                elif block_type == "tool_use":
-                    continue
-                elif getattr(block, "text", None):
-                    text_parts.append(block.text)
-                else:
-                    logger.debug(
-                        f"Unknown Anthropic block type: {block_type} attrs: {getattr(block, '__dict__', block)}"
+            for _ in range(MAX_TOOL_ITERATIONS + 1):
+                response = self.client.messages.create(**kwargs)
+                self._accumulate_usage(total_usage, response)
+
+                for block in response.content or []:
+                    block_type = getattr(block, "type", None)
+                    if block_type == "thinking":
+                        thinking_text = getattr(block, "thinking", None)
+                        if thinking_text:
+                            thinking_parts.append(thinking_text)
+                    elif block_type == "tool_use":
+                        continue
+                    elif getattr(block, "text", None):
+                        text_parts.append(block.text)
+                    else:
+                        logger.debug(
+                            f"Unknown Anthropic block type: {block_type} attrs: {getattr(block, '__dict__', block)}"
+                        )
+
+                if (
+                    tool_executor is None
+                    or getattr(response, "stop_reason", None) != "tool_use"
+                ):
+                    break
+
+                custom_tool_uses = [
+                    block
+                    for block in response.content or []
+                    if getattr(block, "type", None) == "tool_use"
+                    and tool_executor.is_known(getattr(block, "name", ""))
+                ]
+                if not custom_tool_uses:
+                    break
+
+                kwargs["messages"].append(
+                    {
+                        "role": "assistant",
+                        "content": [
+                            self._serialize_block(b) for b in response.content or []
+                        ],
+                    }
+                )
+                tool_results: List[Dict[str, Any]] = []
+                for tu in custom_tool_uses:
+                    result = tool_executor.execute(
+                        getattr(tu, "name", ""), getattr(tu, "input", {}) or {}
                     )
+                    tool_results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": getattr(tu, "id", ""),
+                            "content": json.dumps(result),
+                        }
+                    )
+                kwargs["messages"].append({"role": "user", "content": tool_results})
 
             if not text_parts:
                 logger.warning(
-                    "No text content found in Anthropic response (%s blocks)",
-                    len(response.content or []),
+                    "No text content found in Anthropic response after tool loop"
                 )
                 content = (
                     "I apologize, but I encountered an issue processing the response."
@@ -84,10 +136,11 @@ class AnthropicService(BaseAIService):
             else:
                 content = "\n".join(text_parts)
 
-            usage = self._extract_usage(response)
             thinking = "\n\n".join(thinking_parts) if thinking_parts else None
 
-            return AIServiceResult(content=content, thinking=thinking, usage=usage)
+            return AIServiceResult(
+                content=content, thinking=thinking, usage=total_usage
+            )
 
         except Exception as e:
             logger.error(f"Anthropic API error: {str(e)}")
@@ -97,12 +150,56 @@ class AnthropicService(BaseAIService):
                 f"Anthropic API call failed: {str(e)}"
             ) from e
 
+    @staticmethod
+    def _serialize_block(block: Any) -> Dict[str, Any]:
+        """Serialize a response content block back to the dict shape the API accepts."""
+        block_type = getattr(block, "type", None)
+        if block_type == "text":
+            return {"type": "text", "text": getattr(block, "text", "") or ""}
+        if block_type == "thinking":
+            return {
+                "type": "thinking",
+                "thinking": getattr(block, "thinking", "") or "",
+                "signature": getattr(block, "signature", "") or "",
+            }
+        if block_type == "tool_use":
+            return {
+                "type": "tool_use",
+                "id": getattr(block, "id", ""),
+                "name": getattr(block, "name", ""),
+                "input": getattr(block, "input", {}) or {},
+            }
+        return {"type": block_type or "text", "text": str(block)}
+
+    @staticmethod
+    def _accumulate_usage(total: AIUsage, response: Any) -> None:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return
+        total.input_tokens += getattr(usage, "input_tokens", 0) or 0
+        total.output_tokens += getattr(usage, "output_tokens", 0) or 0
+        total.cache_creation_input_tokens += (
+            getattr(usage, "cache_creation_input_tokens", 0) or 0
+        )
+        total.cache_read_input_tokens += (
+            getattr(usage, "cache_read_input_tokens", 0) or 0
+        )
+
     def stream_message(
         self,
         messages: List[Dict[str, str]],
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
+        tool_executor: Optional[ToolExecutor] = None,
     ) -> Iterator[Dict[str, Any]]:
+        # Custom-tool loops require multiple round-trips, which don't fit
+        # the single-stream contract. Fall back to buffered send_message so
+        # the UI still gets a `done` event.
+        if tool_executor is not None:
+            yield from super().stream_message(
+                messages, tools, system=system, tool_executor=tool_executor
+            )
+            return
         try:
             self.validate_messages(messages)
             kwargs = self._build_kwargs(messages, tools, system)

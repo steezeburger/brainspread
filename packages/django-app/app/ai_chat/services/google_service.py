@@ -4,7 +4,13 @@ from typing import Any, Dict, Iterator, List, Optional
 import google.generativeai as genai
 from google.api_core import exceptions as google_exceptions
 
-from .base_ai_service import AIServiceError, AIServiceResult, AIUsage, BaseAIService
+from .base_ai_service import (
+    AIServiceError,
+    AIServiceResult,
+    AIUsage,
+    BaseAIService,
+    ToolExecutor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +34,7 @@ class GoogleService(BaseAIService):
         messages: List[Dict[str, str]],
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
+        tool_executor: Optional[ToolExecutor] = None,
     ) -> AIServiceResult:
         try:
             self.validate_messages(messages)
@@ -89,6 +96,7 @@ class GoogleService(BaseAIService):
         messages: List[Dict[str, str]],
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
+        tool_executor: Optional[ToolExecutor] = None,
     ) -> Iterator[Dict[str, Any]]:
         try:
             self.validate_messages(messages)
@@ -100,9 +108,12 @@ class GoogleService(BaseAIService):
                 ] + working_messages
 
             # Streaming with Google's Search Grounding is not consistently
-            # supported across SDK versions, so only stream plain generations.
-            if tools:
-                yield from super().stream_message(messages, tools, system=system)
+            # supported across SDK versions, and custom tool loops need
+            # multiple round-trips, so fall back in either case.
+            if tools or tool_executor is not None:
+                yield from super().stream_message(
+                    messages, tools, system=system, tool_executor=tool_executor
+                )
                 return
 
             formatted_messages = self._format_messages_for_google(working_messages)

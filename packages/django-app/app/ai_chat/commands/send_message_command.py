@@ -3,6 +3,8 @@ from typing import Any, Dict, List, Optional
 
 from ai_chat.services.ai_service_factory import AIServiceFactory, AIServiceFactoryError
 from ai_chat.services.base_ai_service import AIServiceError
+from ai_chat.tools.notes_tool_executor import NotesToolExecutor
+from ai_chat.tools.notes_tools import anthropic_notes_tools, openai_notes_tools
 from ai_chat.tools.web_search import WebSearchTools
 from common.commands.abstract_base_command import AbstractBaseCommand
 
@@ -68,10 +70,16 @@ class SendMessageCommand(AbstractBaseCommand):
                 api_key=api_key,
                 model=model,
             )
-            tools = SendMessageCommand._get_web_search_tools(provider_name)
+            enable_notes_tools = self.form.cleaned_data.get("enable_notes_tools")
+            tools, tool_executor = SendMessageCommand._build_tools(
+                provider_name, user, enable_notes_tools
+            )
 
             result = service.send_message(
-                messages, tools, system=BRAINSPREAD_SYSTEM_PROMPT
+                messages,
+                tools,
+                system=BRAINSPREAD_SYSTEM_PROMPT,
+                tool_executor=tool_executor,
             )
 
             ai_model = AIModelRepository.get_by_name(model)
@@ -184,3 +192,30 @@ class SendMessageCommand(AbstractBaseCommand):
             return [WebSearchTools.google_search()]
 
         return None
+
+    @staticmethod
+    def _build_tools(provider_name, user, enable_notes_tools):
+        """Combine provider-native web search with optional notes tools.
+
+        Returns the tools payload plus a ToolExecutor if custom tools are
+        active — only Anthropic's service runs the custom tool loop today,
+        so for other providers notes tools are skipped.
+        """
+        tools: List[Dict[str, Any]] = []
+        web_tools = SendMessageCommand._get_web_search_tools(provider_name)
+        if web_tools:
+            tools.extend(web_tools)
+
+        tool_executor = None
+        if enable_notes_tools:
+            if provider_name == "anthropic":
+                tools.extend(anthropic_notes_tools())
+                tool_executor = NotesToolExecutor(user)
+            elif provider_name == "openai":
+                # OpenAI's Responses API is only invoked when tools are present;
+                # mixing function-calling with the Responses web_search path is
+                # brittle, so we only surface notes tools here for Anthropic
+                # until the tool loop is implemented for OpenAI.
+                tools.extend(openai_notes_tools())
+
+        return (tools or None), tool_executor

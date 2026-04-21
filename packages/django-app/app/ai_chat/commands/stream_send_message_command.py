@@ -63,7 +63,10 @@ class StreamSendMessageCommand(AbstractBaseCommand):
                 api_key=api_key,
                 model=model,
             )
-            tools = SendMessageCommand._get_web_search_tools(provider_name)
+            enable_notes_tools = self.form.cleaned_data.get("enable_notes_tools")
+            tools, tool_executor = SendMessageCommand._build_tools(
+                provider_name, user, enable_notes_tools
+            )
 
             yield {
                 "type": "session",
@@ -75,7 +78,10 @@ class StreamSendMessageCommand(AbstractBaseCommand):
             final_usage = AIUsage()
 
             for event in service.stream_message(
-                messages, tools, system=BRAINSPREAD_SYSTEM_PROMPT
+                messages,
+                tools,
+                system=BRAINSPREAD_SYSTEM_PROMPT,
+                tool_executor=tool_executor,
             ):
                 etype = event.get("type")
                 if etype == "text":
