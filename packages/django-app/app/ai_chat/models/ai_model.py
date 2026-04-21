@@ -12,7 +12,7 @@ class AIModel(UUIDModelMixin, CRUDTimestampsMixin):
     name = models.CharField(
         max_length=100,
         unique=True,
-        help_text="Model name (e.g., gpt-4, claude-3-sonnet)",
+        help_text="Model name (e.g., gpt-4, claude-opus-4-7)",
     )
     provider = models.ForeignKey(
         AIProvider, on_delete=models.CASCADE, related_name="models"
