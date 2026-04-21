@@ -35,13 +35,13 @@ jobs:
         run: uv sync --frozen
 
       - name: Check Python formatting (Black)
-        working-directory: ./packages/django-app/app
-        run: uv run black . --check --exclude="migrations/"
+        working-directory: ./packages/django-app
+        run: uv run black app --check --exclude="migrations/"
 
       - name: Lint Python code (Ruff)
-        working-directory: ./packages/django-app/app
+        working-directory: ./packages/django-app
         run: |
-          uv run ruff check . \
+          uv run ruff check app \
             --exclude="**/migrations/**" \
             --exclude="migrations/" \
             --exclude=".venv/" \
