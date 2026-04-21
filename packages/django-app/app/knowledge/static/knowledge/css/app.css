@@ -1360,8 +1360,13 @@ kbd {
 }
 
 .block:hover .block-collapse-toggle,
-.block-collapse-toggle:focus {
+.block-collapse-toggle:focus,
+.block-collapse-toggle.collapsed {
   opacity: 1;
+}
+
+.block-collapse-toggle.collapsed {
+  color: var(--text-primary);
 }
 
 .block-collapse-toggle:hover,
@@ -1369,6 +1374,35 @@ kbd {
   color: var(--text-primary);
   outline: 2px solid var(--border-primary);
   outline-offset: 1px;
+}
+
+.block-collapsed-indicator {
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 25%, transparent);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.7rem;
+  line-height: 1;
+  padding: 0.1rem 0.4rem;
+  margin-left: 0.4rem;
+  align-self: center;
+  user-select: none;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.block-collapsed-indicator:hover,
+.block-collapsed-indicator:focus {
+  background: color-mix(in srgb, var(--text-primary) 18%, transparent);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.block.is-collapsed .block-content-display,
+.block.is-collapsed .block-bullet {
+  opacity: 0.85;
 }
 
 .block-menu {

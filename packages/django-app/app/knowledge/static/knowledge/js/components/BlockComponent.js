@@ -101,6 +101,9 @@ const BlockComponent = {
     hasChildren() {
       return this.block.children?.length > 0;
     },
+    childrenCount() {
+      return this.block.children?.length || 0;
+    },
   },
   watch: {
     showContextMenu(val) {
@@ -451,7 +454,7 @@ const BlockComponent = {
   },
   template: `
     <div class="block-wrapper" :class="{ 'child-block': block.parent, 'in-context': blockInContext, 'selected': blockSelected }" :data-block-uuid="block.uuid">
-      <div class="block" :class="{ 'has-children': hasChildren }">
+      <div class="block" :class="{ 'has-children': hasChildren, 'is-collapsed': hasChildren && isCollapsed }">
         <button
           v-if="hasChildren"
           @click="toggleCollapse"
@@ -505,6 +508,13 @@ const BlockComponent = {
           placeholder="start writing..."
           ref="blockTextarea"
         ></textarea>
+        <button
+          v-if="hasChildren && isCollapsed"
+          @click="toggleCollapse"
+          class="block-collapsed-indicator"
+          :title="'Expand ' + childrenCount + ' hidden ' + (childrenCount === 1 ? 'block' : 'blocks')"
+          :aria-label="'Expand ' + childrenCount + ' hidden ' + (childrenCount === 1 ? 'block' : 'blocks')"
+        >… {{ childrenCount }}</button>
         <button
           @click="showContextMenuAt($event)"
           @contextmenu="showContextMenuAt($event)"
