@@ -6,7 +6,7 @@ from django.test import TestCase
 from knowledge.models import Page
 from knowledge.repositories import PageRepository
 
-from ..helpers import PageFactory, UserFactory
+from ..helpers import BlockFactory, PageFactory, UserFactory
 
 
 class TestPageRepository(TestCase):
@@ -172,3 +172,23 @@ class TestPageRepository(TestCase):
 
         self.assertEqual(unpublished_pages.count(), 1)
         self.assertFalse(unpublished_pages.first().is_published)
+
+    def test_get_recent_pages_should_include_whiteboard_pages_without_blocks(self):
+        # Whiteboard pages have no Block rows — their content lives in
+        # Page.content. They should still show up in history alongside pages
+        # that have blocks.
+        page_with_blocks = PageFactory(user=self.user, title="Has Blocks")
+        BlockFactory(user=self.user, page=page_with_blocks)
+
+        whiteboard_page = PageFactory(
+            user=self.user, title="My Whiteboard", page_type="whiteboard"
+        )
+
+        empty_regular_page = PageFactory(user=self.user, title="No Blocks Here")
+
+        pages = list(PageRepository.get_recent_pages(self.user))
+        uuids = {str(p.uuid) for p in pages}
+
+        self.assertIn(str(page_with_blocks.uuid), uuids)
+        self.assertIn(str(whiteboard_page.uuid), uuids)
+        self.assertNotIn(str(empty_regular_page.uuid), uuids)
