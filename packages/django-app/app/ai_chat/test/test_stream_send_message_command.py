@@ -54,7 +54,7 @@ class StreamSendMessageCommandTestCase(TestCase):
     ):
         mock_get_messages.return_value = [Mock(role="user", content="Hello")]
 
-        def fake_stream(messages, tools, system=None):
+        def fake_stream(messages, tools, system=None, tool_executor=None):
             yield {"type": "text", "delta": "Hi "}
             yield {"type": "text", "delta": "there"}
             yield {
