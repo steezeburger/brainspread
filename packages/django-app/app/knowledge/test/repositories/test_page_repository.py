@@ -184,8 +184,8 @@ class TestPageRepository(TestCase):
         empty_regular_page = PageFactory(user=self.user, title="No Blocks Here")
 
         pages = list(PageRepository.get_recent_pages(self.user))
-        uuids = {p.uuid for p in pages}
+        uuids = {str(p.uuid) for p in pages}
 
-        self.assertIn(page_with_blocks.uuid, uuids)
-        self.assertIn(canvas_page.uuid, uuids)
-        self.assertNotIn(empty_regular_page.uuid, uuids)
+        self.assertIn(str(page_with_blocks.uuid), uuids)
+        self.assertIn(str(canvas_page.uuid), uuids)
+        self.assertNotIn(str(empty_regular_page.uuid), uuids)
