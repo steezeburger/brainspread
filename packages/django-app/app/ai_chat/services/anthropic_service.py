@@ -3,9 +3,24 @@ from typing import Any, Dict, List, Optional
 
 import anthropic
 
-from .base_ai_service import AIServiceError, BaseAIService
+from .base_ai_service import AIServiceError, AIServiceResult, AIUsage, BaseAIService
 
 logger = logging.getLogger(__name__)
+
+
+# Claude models that support extended thinking. Keep this list conservative —
+# enabling `thinking` on a model that doesn't support it raises at the API.
+THINKING_CAPABLE_MODEL_PREFIXES = (
+    "claude-opus-4-7",
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5",
+)
+
+# With thinking enabled Anthropic requires max_tokens > budget_tokens.
+THINKING_BUDGET_TOKENS = 4000
+DEFAULT_MAX_TOKENS = 2000
+THINKING_MAX_TOKENS = 8000
 
 
 class AnthropicServiceError(AIServiceError):
@@ -25,108 +40,124 @@ class AnthropicService(BaseAIService):
                 f"Failed to initialize Anthropic client: {e}"
             ) from e
 
+    def _supports_thinking(self) -> bool:
+        return self.model.startswith(THINKING_CAPABLE_MODEL_PREFIXES)
+
     def send_message(
         self,
         messages: List[Dict[str, str]],
         tools: Optional[List[Dict[str, Any]]] = None,
-    ) -> str:
-        """
-        Send messages to Anthropic API and return the response content.
-
-        Args:
-            messages: List of message dictionaries with 'role' and 'content' keys
-            tools: Optional list of tools to make available to the model
-
-        Returns:
-            str: The assistant's response content
-
-        Raises:
-            AnthropicServiceError: If the API call fails
-        """
+        system: Optional[str] = None,
+    ) -> AIServiceResult:
         try:
-            # Validate messages format using base class method
             self.validate_messages(messages)
 
-            # Convert messages format for Anthropic API
             anthropic_messages = []
-            system_message = None
-
+            # If a system prompt is embedded in messages (legacy callers), pull it out.
+            embedded_system = None
             for msg in messages:
                 if msg["role"] == "system":
-                    system_message = msg["content"]
+                    embedded_system = msg["content"]
                 else:
                     anthropic_messages.append(
                         {"role": msg["role"], "content": msg["content"]}
                     )
 
-            # Prepare API call parameters
-            kwargs = {
+            effective_system = system if system is not None else embedded_system
+
+            thinking_enabled = self._supports_thinking()
+
+            kwargs: Dict[str, Any] = {
                 "model": self.model,
-                "max_tokens": 2000,
+                "max_tokens": (
+                    THINKING_MAX_TOKENS if thinking_enabled else DEFAULT_MAX_TOKENS
+                ),
                 "messages": anthropic_messages,
             }
 
-            # Add system message if present
-            if system_message:
-                kwargs["system"] = system_message
+            if effective_system:
+                # Mark the system prompt as cacheable so repeated requests with
+                # the same prompt pay the discounted cache-read rate.
+                kwargs["system"] = [
+                    {
+                        "type": "text",
+                        "text": effective_system,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ]
 
-            # Add tools if provided
             if tools:
                 kwargs["tools"] = tools
 
-            # Make the API call
+            if thinking_enabled:
+                kwargs["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": THINKING_BUDGET_TOKENS,
+                }
+
             response = self.client.messages.create(**kwargs)
 
-            # Extract the content from the response
-            if response.content and len(response.content) > 0:
-                # Handle different content block types
-                content_parts = []
-                for block in response.content:
-                    # Handle text blocks
-                    if hasattr(block, "text") and block.text:
-                        content_parts.append(block.text)
-                    # Handle tool use blocks (should be skipped)
-                    elif hasattr(block, "type") and block.type == "tool_use":
-                        continue
-                    # Handle any other block types by trying to access text
-                    elif hasattr(block, "__dict__"):
-                        # Log the block structure for debugging
-                        logger.debug(
-                            f"Unknown block type: {type(block)}, attributes: {block.__dict__}"
-                        )
-                        # Try to extract text content if available
-                        if hasattr(block, "text"):
-                            content_parts.append(str(block.text))
+            text_parts: List[str] = []
+            thinking_parts: List[str] = []
 
-                if content_parts:
-                    return "\n".join(content_parts)
+            for block in response.content or []:
+                block_type = getattr(block, "type", None)
+                if block_type == "thinking":
+                    thinking_text = getattr(block, "thinking", None)
+                    if thinking_text:
+                        thinking_parts.append(thinking_text)
+                elif block_type == "tool_use":
+                    continue
+                elif getattr(block, "text", None):
+                    text_parts.append(block.text)
                 else:
-                    # If no text content found, return a fallback message
-                    logger.warning(
-                        f"No text content found in Anthropic response with {len(response.content)} blocks"
+                    logger.debug(
+                        f"Unknown Anthropic block type: {block_type} attrs: {getattr(block, '__dict__', block)}"
                     )
-                    return "I apologize, but I encountered an issue processing the response. Please try again."
+
+            if not text_parts:
+                logger.warning(
+                    "No text content found in Anthropic response (%s blocks)",
+                    len(response.content or []),
+                )
+                content = (
+                    "I apologize, but I encountered an issue processing the response."
+                    " Please try again."
+                )
             else:
-                raise AnthropicServiceError("No content blocks in Anthropic response")
+                content = "\n".join(text_parts)
+
+            usage = self._extract_usage(response)
+            thinking = "\n\n".join(thinking_parts) if thinking_parts else None
+
+            return AIServiceResult(content=content, thinking=thinking, usage=usage)
 
         except Exception as e:
             logger.error(f"Anthropic API error: {str(e)}")
             if isinstance(e, AnthropicServiceError):
                 raise
-            else:
-                raise AnthropicServiceError(
-                    f"Anthropic API call failed: {str(e)}"
-                ) from e
+            raise AnthropicServiceError(
+                f"Anthropic API call failed: {str(e)}"
+            ) from e
+
+    @staticmethod
+    def _extract_usage(response: Any) -> AIUsage:
+        usage_obj = getattr(response, "usage", None)
+        if usage_obj is None:
+            return AIUsage()
+        return AIUsage(
+            input_tokens=getattr(usage_obj, "input_tokens", 0) or 0,
+            output_tokens=getattr(usage_obj, "output_tokens", 0) or 0,
+            cache_creation_input_tokens=(
+                getattr(usage_obj, "cache_creation_input_tokens", 0) or 0
+            ),
+            cache_read_input_tokens=(
+                getattr(usage_obj, "cache_read_input_tokens", 0) or 0
+            ),
+        )
 
     def validate_api_key(self) -> bool:
-        """
-        Validate the Anthropic API key by making a test call.
-
-        Returns:
-            bool: True if API key is valid, False otherwise
-        """
         try:
-            # Make a minimal test call to validate the API key
             test_messages = [{"role": "user", "content": "Hi"}]
             response = self.client.messages.create(
                 model=self.model, max_tokens=1, messages=test_messages

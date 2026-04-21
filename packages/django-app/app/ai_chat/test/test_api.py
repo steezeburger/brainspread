@@ -12,7 +12,7 @@ from ai_chat.models import (
     UserAISettings,
     UserProviderConfig,
 )
-from ai_chat.services.base_ai_service import AIServiceError
+from ai_chat.services.base_ai_service import AIServiceError, AIServiceResult
 from ai_chat.test.helpers import (
     AnthropicProviderFactory,
     ChatMessageFactory,
@@ -92,7 +92,9 @@ class AIChatAPITestCase(TestCase):
         """Test successful message sending through API"""
         # Mock AI service response
         mock_service = Mock()
-        mock_service.send_message.return_value = "Hello! How can I help you today?"
+        mock_service.send_message.return_value = AIServiceResult(
+            content="Hello! How can I help you today?"
+        )
         mock_create_service.return_value = mock_service
 
         data = {"message": "Hello, AI!", "model": "gpt-4"}
@@ -122,8 +124,8 @@ class AIChatAPITestCase(TestCase):
     def test_send_message_with_context_blocks(self, mock_create_service):
         """Test sending message with context blocks"""
         mock_service = Mock()
-        mock_service.send_message.return_value = (
-            "Based on your notes, here's my advice..."
+        mock_service.send_message.return_value = AIServiceResult(
+            content="Based on your notes, here's my advice..."
         )
         mock_create_service.return_value = mock_service
 
@@ -154,7 +156,9 @@ class AIChatAPITestCase(TestCase):
     def test_send_message_with_existing_session(self, mock_create_service):
         """Test sending message to existing session"""
         mock_service = Mock()
-        mock_service.send_message.return_value = "Continuing our conversation..."
+        mock_service.send_message.return_value = AIServiceResult(
+            content="Continuing our conversation..."
+        )
         mock_create_service.return_value = mock_service
 
         # Create existing session with messages
@@ -419,7 +423,7 @@ class AIChatAPITestCase(TestCase):
     def test_send_message_invalid_session_id(self, mock_create_service):
         """Test sending message with invalid session ID creates new session"""
         mock_service = Mock()
-        mock_service.send_message.return_value = "Response"
+        mock_service.send_message.return_value = AIServiceResult(content="Response")
         mock_create_service.return_value = mock_service
 
         # Use a properly formatted UUID that doesn't exist instead of "invalid-uuid"

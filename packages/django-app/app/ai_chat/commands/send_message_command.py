@@ -16,6 +16,17 @@ from ..repositories import (
 logger = logging.getLogger(__name__)
 
 
+# A stable system prompt gives providers that support prompt caching something
+# worth caching. Keep it short but concrete.
+BRAINSPREAD_SYSTEM_PROMPT = (
+    "You are the assistant embedded in brainspread, a personal note-taking app"
+    " where users capture thoughts as hierarchical blocks on daily pages."
+    " Be concise, direct, and helpful. Format answers as markdown."
+    " When the user attaches note blocks as context, prefer them over outside"
+    " knowledge and cite specific items when relevant."
+)
+
+
 class SendMessageCommandError(Exception):
     """Custom exception for command errors"""
 
@@ -26,11 +37,10 @@ class SendMessageCommand(AbstractBaseCommand):
     def __init__(self, form: SendMessageForm) -> None:
         self.form = form
 
-    def execute(self) -> Dict[str, str]:
+    def execute(self) -> Dict[str, Any]:
         super().execute()
 
         try:
-            # Get validated data from form
             message = self.form.cleaned_data["message"]
             model = self.form.cleaned_data["model"]
             session = self.form.cleaned_data.get("session_id")
@@ -39,81 +49,64 @@ class SendMessageCommand(AbstractBaseCommand):
             api_key = self.form.cleaned_data["api_key"]
             user = self.form.cleaned_data["user"]
 
-            # Create or get session
             if not session:
                 session = ChatSessionRepository.create_session(user)
 
-            # Prepare the message with context blocks
             formatted_message = self._format_message_with_context(
                 message, context_blocks
             )
 
-            # Add user message to database
             ChatMessageRepository.add_message(session, "user", formatted_message)
 
-            # Get conversation history
             messages: List[Dict[str, str]] = [
                 {"role": msg.role, "content": msg.content}
                 for msg in ChatMessageRepository.get_messages(session)
             ]
 
-            # Create AI service using factory
             service = AIServiceFactory.create_service(
                 provider_name=provider_name,
                 api_key=api_key,
                 model=model,
             )
-            # Configure web search tools if enabled
             tools = self._get_web_search_tools(provider_name)
 
-            response_content = service.send_message(messages, tools)
-
-            # Get the AI model to store with the assistant response
-            ai_model = AIModelRepository.get_by_name(model)
-
-            # Add assistant response to database
-            assistant_message = ChatMessageRepository.add_message(
-                session, "assistant", response_content, ai_model
+            result = service.send_message(
+                messages, tools, system=BRAINSPREAD_SYSTEM_PROMPT
             )
 
-            # Return complete message data including AI model info
+            ai_model = AIModelRepository.get_by_name(model)
+
+            assistant_message = ChatMessageRepository.add_message(
+                session,
+                "assistant",
+                result.content,
+                ai_model=ai_model,
+                thinking=result.thinking or "",
+                usage=result.usage,
+            )
+
             return {
-                "response": response_content,
+                "response": result.content,
                 "session_id": str(session.uuid),
-                "message": {
-                    "role": assistant_message.role,
-                    "content": assistant_message.content,
-                    "created_at": assistant_message.created_at.isoformat(),
-                    "ai_model": (
-                        {
-                            "name": ai_model.name,
-                            "display_name": ai_model.display_name,
-                            "provider": ai_model.provider.name,
-                        }
-                        if ai_model
-                        else None
-                    ),
-                },
+                "message": self._serialize_message(assistant_message, ai_model),
             }
 
         except (AIServiceError, AIServiceFactoryError) as e:
             logger.error(f"AI service error for user {user.id}: {str(e)}")
-            # Still save the user message even if AI fails
             if session:
                 ai_model = AIModelRepository.get_by_name(model)
                 error_message = (
                     f"Sorry, I'm experiencing technical difficulties: {str(e)}"
                 )
-                assistant_message = ChatMessageRepository.add_message(
+                ChatMessageRepository.add_message(
                     session,
                     "assistant",
                     error_message,
-                    ai_model,
+                    ai_model=ai_model,
                 )
             raise SendMessageCommandError(f"AI service error: {str(e)}") from e
 
         except SendMessageCommandError:
-            # Re-raise command errors as-is
             raise
 
         except Exception as e:
@@ -124,6 +117,30 @@ class SendMessageCommand(AbstractBaseCommand):
                 f"An unexpected error occurred: {str(e)}"
             ) from e
 
+    @staticmethod
+    def _serialize_message(message, ai_model) -> Dict[str, Any]:
+        return {
+            "role": message.role,
+            "content": message.content,
+            "thinking": message.thinking or None,
+            "created_at": message.created_at.isoformat(),
+            "usage": {
+                "input_tokens": message.input_tokens,
+                "output_tokens": message.output_tokens,
+                "cache_creation_input_tokens": message.cache_creation_input_tokens,
+                "cache_read_input_tokens": message.cache_read_input_tokens,
+            },
+            "ai_model": (
+                {
+                    "name": ai_model.name,
+                    "display_name": ai_model.display_name,
+                    "provider": ai_model.provider.name,
+                }
+                if ai_model
+                else None
+            ),
+        }
+
     def _format_message_with_context(
         self, message: str, context_blocks: List[Dict]
     ) -> str:
@@ -131,7 +148,6 @@ class SendMessageCommand(AbstractBaseCommand):
         if not context_blocks:
             return message
 
-        # Format context blocks
         context_text_parts = []
         for block in context_blocks:
             content = block.get("content", "").strip()
@@ -147,21 +163,17 @@ class SendMessageCommand(AbstractBaseCommand):
         if not context_text_parts:
             return message
 
-        # Combine context and message
         context_section = "\n".join(context_text_parts)
-        formatted_message = f"""**Context from my notes:**
+        return f"""**Context from my notes:**
 {context_section}
 
 **My question:**
 {message}"""
 
-        return formatted_message
-
     def _get_web_search_tools(
         self, provider_name: str
     ) -> Optional[List[Dict[str, Any]]]:
         """Get web search tools configuration for the specified provider."""
-        # Enable web search for all providers
         if provider_name == "anthropic":
             return [WebSearchTools.anthropic_web_search()]
         elif provider_name == "openai":

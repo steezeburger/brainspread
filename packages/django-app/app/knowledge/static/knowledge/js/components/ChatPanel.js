@@ -30,6 +30,7 @@ const ChatPanel = {
       selectedModel: null,
       showContextArea: false,
       messageMenus: {},
+      expandedThinking: {},
     };
   },
   mounted() {
@@ -512,6 +513,31 @@ const ChatPanel = {
       }
     },
 
+    toggleThinking(messageIndex) {
+      this.expandedThinking = {
+        ...this.expandedThinking,
+        [messageIndex]: !this.expandedThinking[messageIndex],
+      };
+    },
+
+    formatUsage(usage) {
+      if (!usage) return "";
+      const parts = [];
+      if (usage.input_tokens != null) parts.push(`in ${usage.input_tokens}`);
+      if (usage.output_tokens != null) parts.push(`out ${usage.output_tokens}`);
+      const cached = usage.cache_read_input_tokens || 0;
+      if (cached > 0) parts.push(`cached ${cached}`);
+      return parts.join(" · ");
+    },
+
+    hasUsage(usage) {
+      if (!usage) return false;
+      return (
+        (usage.input_tokens != null && usage.input_tokens > 0) ||
+        (usage.output_tokens != null && usage.output_tokens > 0)
+      );
+    },
+
     // Message menu methods
     toggleMessageMenu(messageIndex) {
       // Close all other menus first
@@ -613,12 +639,21 @@ const ChatPanel = {
         </div>
         <div class="messages">
           <div v-for="(msg, index) in messages" :key="index" :class="['message-bubble', msg.role]">
+            <div v-if="msg.role === 'assistant' && msg.thinking" class="thinking-block">
+              <button class="thinking-toggle" @click="toggleThinking(index)">
+                {{ expandedThinking[index] ? '▾' : '▸' }} thinking
+              </button>
+              <div v-if="expandedThinking[index]" class="thinking-content" v-html="parseMarkdown(msg.thinking)"></div>
+            </div>
             <div class="message-content" v-html="parseMarkdown(msg.content)"></div>
             <div class="message-footer">
               <div class="message-timestamp">
                 {{ formatTimestamp(msg.created_at) }}
                 <span v-if="msg.role === 'assistant' && msg.ai_model" class="model-info">
                   · {{ msg.ai_model.display_name || msg.ai_model.name }}
+                </span>
+                <span v-if="msg.role === 'assistant' && hasUsage(msg.usage)" class="usage-info" :title="'Token usage'">
+                  · {{ formatUsage(msg.usage) }}
                 </span>
               </div>
               <div class="message-menu-container" v-if="msg.role === 'assistant'">

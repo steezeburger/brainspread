@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 from openai import OpenAI
 from openai.types.chat import ChatCompletion
 
-from .base_ai_service import AIServiceError, BaseAIService
+from .base_ai_service import AIServiceError, AIServiceResult, AIUsage, BaseAIService
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +17,8 @@ class OpenAIServiceError(AIServiceError):
 
 class OpenAIService(BaseAIService):
     def __init__(self, api_key: str, model: str = "gpt-4o") -> None:
-        self.api_key = api_key
-        self.model = model
-        # Initialize OpenAI client with minimal parameters to avoid proxy issues
+        super().__init__(api_key, model)
         try:
-            # Try with just the API key first
             self.client = OpenAI(api_key=api_key)
         except Exception as e:
             logger.error(f"Failed to initialize OpenAI client: {e}")
@@ -31,65 +28,48 @@ class OpenAIService(BaseAIService):
         self,
         messages: List[Dict[str, str]],
         tools: Optional[List[Dict[str, Any]]] = None,
-    ) -> str:
-        """
-        Send messages to OpenAI API and return the response content.
-
-        Args:
-            messages: List of message dictionaries with 'role' and 'content' keys
-            tools: Optional list of tools to make available to the model
-
-        Returns:
-            str: The assistant's response content
-
-        Raises:
-            OpenAIServiceError: If the API call fails
-        """
+        system: Optional[str] = None,
+    ) -> AIServiceResult:
         try:
-            # Validate messages format using base class method
             self.validate_messages(messages)
 
-            # Prepare API call parameters
+            # OpenAI takes the system prompt as a message; prepend it if provided
+            # and not already embedded. Keeping the system message stable across
+            # requests lets OpenAI's automatic prompt caching (>1024 tokens) kick in.
+            chat_messages = list(messages)
+            if system and not any(m["role"] == "system" for m in chat_messages):
+                chat_messages = [{"role": "system", "content": system}] + chat_messages
+
+            if tools:
+                return self._send_message_with_responses_api(chat_messages, tools)
+
             kwargs = {
                 "model": self.model,
-                "messages": messages,
+                "messages": chat_messages,
                 "max_tokens": 2000,
                 "temperature": 0.7,
             }
-
-            # Check if tools are provided - if so, use Responses API
-            if tools:
-                return self._send_message_with_responses_api(messages, tools)
-
-            # Use regular Chat Completions API
             response: ChatCompletion = self.client.chat.completions.create(**kwargs)
 
-            # Extract the content from the response
-            if response.choices and len(response.choices) > 0:
-                content = response.choices[0].message.content
-                if content:
-                    return content
-                else:
-                    raise OpenAIServiceError("No content in OpenAI response")
-            else:
+            if not response.choices:
                 raise OpenAIServiceError("No choices in OpenAI response")
+            content = response.choices[0].message.content
+            if not content:
+                raise OpenAIServiceError("No content in OpenAI response")
+
+            return AIServiceResult(
+                content=content,
+                usage=self._extract_usage(getattr(response, "usage", None)),
+            )
 
         except Exception as e:
             logger.error(f"OpenAI API error: {str(e)}")
             if isinstance(e, OpenAIServiceError):
                 raise
-            else:
-                raise OpenAIServiceError(f"OpenAI API call failed: {str(e)}") from e
+            raise OpenAIServiceError(f"OpenAI API call failed: {str(e)}") from e
 
     def validate_api_key(self) -> bool:
-        """
-        Validate the OpenAI API key by making a test call.
-
-        Returns:
-            bool: True if API key is valid, False otherwise
-        """
         try:
-            # Make a minimal test call to validate the API key
             test_messages = [{"role": "user", "content": "Hi"}]
             response = self.client.chat.completions.create(
                 model=self.model, messages=test_messages, max_tokens=1
@@ -101,44 +81,42 @@ class OpenAIService(BaseAIService):
 
     def _send_message_with_responses_api(
         self, messages: List[Dict[str, str]], tools: List[Dict[str, Any]]
-    ) -> str:
-        """
-        Send message using OpenAI's Responses API for native web search
-
-        Args:
-            messages: List of message dictionaries
-            tools: List of tools to use
-
-        Returns:
-            str: The assistant's response content
-        """
+    ) -> AIServiceResult:
+        """Send message using OpenAI's Responses API for native web search."""
         try:
-            # Convert messages to a single input string for Responses API
-            # Take the last user message as the input
             user_messages = [msg for msg in messages if msg["role"] == "user"]
             if not user_messages:
                 raise OpenAIServiceError("No user messages found for Responses API")
 
             input_text = user_messages[-1]["content"]
 
-            # Make the Responses API call with native web search
             response = self.client.responses.create(
                 model=self.model, tools=tools, input=input_text
             )
 
-            # Extract the text from the response
-            if hasattr(response, "output_text") and response.output_text:
-                return response.output_text
-            elif hasattr(response, "output") and response.output:
-                # Handle different response formats
+            content: Optional[str] = None
+            if getattr(response, "output_text", None):
+                content = response.output_text
+            elif getattr(response, "output", None):
                 for item in response.output:
-                    if hasattr(item, "type") and item.type == "message":
-                        if hasattr(item, "content") and item.content:
-                            for content_item in item.content:
-                                if hasattr(content_item, "text"):
-                                    return content_item.text
+                    if getattr(item, "type", None) == "message":
+                        for content_item in getattr(item, "content", []) or []:
+                            text = getattr(content_item, "text", None)
+                            if text:
+                                content = text
+                                break
+                    if content:
+                        break
 
-            raise OpenAIServiceError("No text content found in Responses API response")
+            if not content:
+                raise OpenAIServiceError(
+                    "No text content found in Responses API response"
+                )
+
+            return AIServiceResult(
+                content=content,
+                usage=self._extract_usage(getattr(response, "usage", None)),
+            )
 
         except AttributeError as e:
             if "'OpenAI' object has no attribute 'responses'" in str(e):
@@ -146,11 +124,9 @@ class OpenAIService(BaseAIService):
                     "OpenAI SDK version doesn't support Responses API, falling back to Chat Completions without web search"
                 )
                 return self._send_message_without_tools(messages)
-            else:
-                raise OpenAIServiceError(f"OpenAI Responses API error: {str(e)}") from e
+            raise OpenAIServiceError(f"OpenAI Responses API error: {str(e)}") from e
         except Exception as e:
             logger.error(f"OpenAI Responses API error: {str(e)}")
-            # Try to determine if it's a Responses API availability issue
             if any(
                 keyword in str(e).lower()
                 for keyword in ["responses", "not found", "unsupported"]
@@ -159,35 +135,59 @@ class OpenAIService(BaseAIService):
                     "Responses API not available, falling back to Chat Completions without web search"
                 )
                 return self._send_message_without_tools(messages)
-            else:
-                raise OpenAIServiceError(
-                    f"OpenAI Responses API call failed: {str(e)}"
-                ) from e
+            raise OpenAIServiceError(
+                f"OpenAI Responses API call failed: {str(e)}"
+            ) from e
 
-    def _send_message_without_tools(self, messages: List[Dict[str, str]]) -> str:
-        """
-        Send message using regular Chat Completions API without tools
-
-        Args:
-            messages: List of message dictionaries
-
-        Returns:
-            str: The assistant's response content
-        """
+    def _send_message_without_tools(
+        self, messages: List[Dict[str, str]]
+    ) -> AIServiceResult:
         kwargs = {
             "model": self.model,
             "messages": messages,
             "max_tokens": 2000,
             "temperature": 0.7,
         }
-
         response: ChatCompletion = self.client.chat.completions.create(**kwargs)
 
-        if response.choices and len(response.choices) > 0:
-            content = response.choices[0].message.content
-            if content:
-                return content
-            else:
-                raise OpenAIServiceError("No content in OpenAI response")
-        else:
+        if not response.choices:
             raise OpenAIServiceError("No choices in OpenAI response")
+        content = response.choices[0].message.content
+        if not content:
+            raise OpenAIServiceError("No content in OpenAI response")
+
+        return AIServiceResult(
+            content=content,
+            usage=self._extract_usage(getattr(response, "usage", None)),
+        )
+
+    @staticmethod
+    def _extract_usage(usage_obj: Any) -> AIUsage:
+        if usage_obj is None:
+            return AIUsage()
+
+        # Chat Completions uses prompt_tokens/completion_tokens;
+        # Responses API uses input_tokens/output_tokens.
+        input_tokens = (
+            getattr(usage_obj, "input_tokens", None)
+            if getattr(usage_obj, "input_tokens", None) is not None
+            else getattr(usage_obj, "prompt_tokens", 0)
+        ) or 0
+        output_tokens = (
+            getattr(usage_obj, "output_tokens", None)
+            if getattr(usage_obj, "output_tokens", None) is not None
+            else getattr(usage_obj, "completion_tokens", 0)
+        ) or 0
+
+        cached = 0
+        details = getattr(usage_obj, "prompt_tokens_details", None) or getattr(
+            usage_obj, "input_tokens_details", None
+        )
+        if details is not None:
+            cached = getattr(details, "cached_tokens", 0) or 0
+
+        return AIUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_read_input_tokens=cached,
+        )

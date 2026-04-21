@@ -20,9 +20,14 @@ class ChatMessage(UUIDModelMixin, CRUDTimestampsMixin):
     )
     role = models.CharField(max_length=20)  # 'user' or 'assistant'
     content = models.TextField()
+    thinking = models.TextField(blank=True, default="")
     ai_model = models.ForeignKey(
         "ai_chat.AIModel", on_delete=models.SET_NULL, null=True, blank=True
     )
+    input_tokens = models.PositiveIntegerField(null=True, blank=True)
+    output_tokens = models.PositiveIntegerField(null=True, blank=True)
+    cache_creation_input_tokens = models.PositiveIntegerField(null=True, blank=True)
+    cache_read_input_tokens = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta:
         db_table = "ai_chat_messages"

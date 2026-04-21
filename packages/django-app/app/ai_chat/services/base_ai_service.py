@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 
@@ -6,6 +7,31 @@ class AIServiceError(Exception):
     """Base exception for AI service errors"""
 
     pass
+
+
+@dataclass
+class AIUsage:
+    """Token usage for a single AI service call.
+
+    All fields default to 0 so services that don't surface a given counter
+    still produce a valid record.
+    """
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    # Anthropic-only: tokens written to the prompt cache on this request.
+    cache_creation_input_tokens: int = 0
+    # Anthropic + OpenAI: tokens served from cache rather than the live prompt.
+    cache_read_input_tokens: int = 0
+
+
+@dataclass
+class AIServiceResult:
+    """Structured response from an AI provider."""
+
+    content: str
+    thinking: Optional[str] = None
+    usage: AIUsage = field(default_factory=AIUsage)
 
 
 class BaseAIService(ABC):
@@ -20,16 +46,20 @@ class BaseAIService(ABC):
         self,
         messages: List[Dict[str, str]],
         tools: Optional[List[Dict[str, Any]]] = None,
-    ) -> str:
+        system: Optional[str] = None,
+    ) -> AIServiceResult:
         """
-        Send messages to AI service and return the response content.
+        Send messages to AI service and return the response.
 
         Args:
             messages: List of message dictionaries with 'role' and 'content' keys
             tools: Optional list of tools/functions to make available to the model
+            system: Optional system prompt. Providers that support a dedicated
+                system slot should mark it with cache_control where possible.
 
         Returns:
-            str: The assistant's response content
+            AIServiceResult: Structured result containing the assistant text,
+                optional thinking trace, and token usage.
 
         Raises:
             AIServiceError: If the API call fails

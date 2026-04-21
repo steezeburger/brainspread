@@ -142,7 +142,14 @@ def chat_session_detail(request, session_id):
             {
                 "role": msg.role,
                 "content": msg.content,
+                "thinking": msg.thinking or None,
                 "created_at": msg.created_at.isoformat(),
+                "usage": {
+                    "input_tokens": msg.input_tokens,
+                    "output_tokens": msg.output_tokens,
+                    "cache_creation_input_tokens": msg.cache_creation_input_tokens,
+                    "cache_read_input_tokens": msg.cache_read_input_tokens,
+                },
                 "ai_model": (
                     {
                         "name": msg.ai_model.name,

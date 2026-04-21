@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 import google.generativeai as genai
 from google.api_core import exceptions as google_exceptions
 
-from .base_ai_service import AIServiceError, BaseAIService
+from .base_ai_service import AIServiceError, AIServiceResult, AIUsage, BaseAIService
 
 logger = logging.getLogger(__name__)
 
@@ -27,38 +27,26 @@ class GoogleService(BaseAIService):
         self,
         messages: List[Dict[str, str]],
         tools: Optional[List[Dict[str, Any]]] = None,
-    ) -> str:
-        """
-        Send messages to Google AI service and return the response content.
-
-        Args:
-            messages: List of message dictionaries with 'role' and 'content' keys
-            tools: Optional list of tools to make available to the model
-
-        Returns:
-            str: The assistant's response content
-
-        Raises:
-            GoogleServiceError: If the API call fails
-        """
+        system: Optional[str] = None,
+    ) -> AIServiceResult:
         try:
             self.validate_messages(messages)
 
-            # Configure generation with tools if provided
+            # Prepend the caller-supplied system prompt if one isn't already present.
+            working_messages = list(messages)
+            if system and not any(m["role"] == "system" for m in working_messages):
+                working_messages = [
+                    {"role": "system", "content": system}
+                ] + working_messages
+
             tool_config = None
-
             if tools:
-                # Convert tools to Google AI format
-                google_tools = self._convert_tools_to_google_format(tools)
-                tool_config = google_tools
+                tool_config = self._convert_tools_to_google_format(tools)
 
-            # Convert messages to Google AI format
-            formatted_messages = self._format_messages_for_google(messages)
+            formatted_messages = self._format_messages_for_google(working_messages)
 
-            # Generate response
             if tool_config:
                 try:
-                    # Try direct tools parameter first
                     response = self.client.generate_content(
                         formatted_messages, tools=tool_config
                     )
@@ -70,7 +58,6 @@ class GoogleService(BaseAIService):
                         logger.warning(
                             f"Google Search Grounding not supported, falling back to regular generation: {e}"
                         )
-                        # Fallback to regular generation without tools
                         response = self.client.generate_content(formatted_messages)
                     else:
                         raise e
@@ -85,7 +72,10 @@ class GoogleService(BaseAIService):
             if not response.text:
                 raise GoogleServiceError("Empty response from Google AI")
 
-            return response.text
+            return AIServiceResult(
+                content=response.text,
+                usage=self._extract_usage(response),
+            )
 
         except google_exceptions.GoogleAPIError as e:
             logger.error(f"Google AI API error: {e}")
@@ -95,16 +85,9 @@ class GoogleService(BaseAIService):
             raise GoogleServiceError(f"Unexpected error: {e}")
 
     def validate_api_key(self) -> bool:
-        """
-        Validate the API key by making a test call.
-
-        Returns:
-            bool: True if API key is valid, False otherwise
-        """
         try:
-            # Use a reliable model for validation
             test_model = genai.GenerativeModel("gemini-1.5-flash")
-            response = test_model.generate_content("Hi")  # Minimal test prompt
+            response = test_model.generate_content("Hi")
             return response.text is not None
         except google_exceptions.GoogleAPIError:
             return False
@@ -112,64 +95,34 @@ class GoogleService(BaseAIService):
             return False
 
     def _format_messages_for_google(self, messages: List[Dict[str, str]]) -> str:
-        """
-        Format messages for Google AI API.
-
-        Google AI expects a single text prompt, so we'll concatenate messages
-        with role indicators.
-
-        Args:
-            messages: List of message dictionaries
-
-        Returns:
-            str: Formatted prompt for Google AI
-        """
         formatted_parts = []
-
         for msg in messages:
             role = msg["role"]
             content = msg["content"]
-
             if role == "system":
                 formatted_parts.append(f"System: {content}")
             elif role == "user":
                 formatted_parts.append(f"User: {content}")
             elif role == "assistant":
                 formatted_parts.append(f"Assistant: {content}")
-
         return "\n\n".join(formatted_parts)
 
     def _convert_tools_to_google_format(
         self, tools: List[Dict[str, Any]]
     ) -> Optional[List[Dict[str, Any]]]:
-        """
-        Convert tools to Google AI format.
-
-        Args:
-            tools: List of tool configurations
-
-        Returns:
-            Optional[List[Dict[str, Any]]]: Tools in Google AI format, or None if not supported
-        """
         try:
             google_tools = []
-
             for tool in tools:
                 if "google_search" in tool:
-                    # Try different formats for Google Search grounding
                     try:
-                        # Method 1: Try the direct dictionary format
-                        google_search_tool = {"google_search_retrieval": {}}
-                        google_tools.append(google_search_tool)
+                        google_tools.append({"google_search_retrieval": {}})
                         logger.info(
                             "Google Search grounding tool added (dictionary format)"
                         )
                     except Exception as e:
                         logger.warning(f"Google Search grounding method 1 failed: {e}")
                         try:
-                            # Method 2: Try alternative format
-                            google_search_tool = {"google_search": {}}
-                            google_tools.append(google_search_tool)
+                            google_tools.append({"google_search": {}})
                             logger.info(
                                 "Google Search grounding tool added (alternative format)"
                             )
@@ -179,7 +132,6 @@ class GoogleService(BaseAIService):
                             )
                             continue
                 elif "url_context" in tool:
-                    # Handle URL context if needed
                     logger.info("URL context tool not implemented yet")
                     continue
 
@@ -188,3 +140,16 @@ class GoogleService(BaseAIService):
         except Exception as e:
             logger.warning(f"Google tools conversion failed: {e}")
             return None
+
+    @staticmethod
+    def _extract_usage(response: Any) -> AIUsage:
+        metadata = getattr(response, "usage_metadata", None)
+        if metadata is None:
+            return AIUsage()
+        return AIUsage(
+            input_tokens=getattr(metadata, "prompt_token_count", 0) or 0,
+            output_tokens=getattr(metadata, "candidates_token_count", 0) or 0,
+            cache_read_input_tokens=(
+                getattr(metadata, "cached_content_token_count", 0) or 0
+            ),
+        )
