@@ -3890,6 +3890,28 @@ kbd {
   letter-spacing: 0.03em;
 }
 
+/* Forest theme: --hover-bg matches --text-muted and --selected-bg matches
+   --text-secondary, so the snippet/path/type/icon text disappears into the
+   highlight background. Force those children to --bg-primary, which contrasts
+   with both highlight backgrounds. */
+:root[data-theme="forest"] .spotlight-result:hover .spotlight-result-snippet,
+:root[data-theme="forest"] .spotlight-result:hover .spotlight-result-path,
+:root[data-theme="forest"] .spotlight-result:hover .spotlight-result-type,
+:root[data-theme="forest"] .spotlight-result:hover .spotlight-result-icon,
+:root[data-theme="forest"] .spotlight-result:hover .spotlight-command-icon,
+:root[data-theme="forest"] .spotlight-result.selected .spotlight-result-snippet,
+:root[data-theme="forest"] .spotlight-result.selected .spotlight-result-path,
+:root[data-theme="forest"] .spotlight-result.selected .spotlight-result-type,
+:root[data-theme="forest"] .spotlight-result.selected .spotlight-result-icon,
+:root[data-theme="forest"] .spotlight-result.selected .spotlight-command-icon {
+  color: var(--bg-primary);
+}
+
+:root[data-theme="forest"] .spotlight-result:hover .spotlight-result-type,
+:root[data-theme="forest"] .spotlight-result.selected .spotlight-result-type {
+  border-color: var(--bg-primary);
+}
+
 .spotlight-footer {
   border-top: 2px solid var(--border-secondary);
   padding: 0.75rem 1rem;
