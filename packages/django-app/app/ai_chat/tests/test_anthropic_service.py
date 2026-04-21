@@ -4,7 +4,6 @@ from unittest.mock import Mock, patch
 import pytest
 
 from ai_chat.services.anthropic_service import (
-    THINKING_BUDGET_TOKENS,
     AnthropicService,
     AnthropicServiceError,
 )
@@ -56,9 +55,10 @@ class TestAnthropicServiceThinking:
 
         kwargs = mock_client.messages.create.call_args.kwargs
         assert kwargs["thinking"] == {
-            "type": "enabled",
-            "budget_tokens": THINKING_BUDGET_TOKENS,
+            "type": "adaptive",
+            "display": "summarized",
         }
+        assert kwargs["output_config"] == {"effort": "high"}
         # System prompt is rendered as a cacheable block
         assert kwargs["system"] == [
             {
@@ -93,6 +93,20 @@ class TestAnthropicServiceThinking:
 
         assert result.usage.cache_creation_input_tokens == 100
         assert result.usage.cache_read_input_tokens == 500
+
+    @patch("anthropic.Anthropic")
+    def test_haiku_gets_thinking_but_no_effort(self, mock_anthropic_cls):
+        mock_client = Mock()
+        mock_client.messages.create.return_value = _build_response()
+        mock_anthropic_cls.return_value = mock_client
+
+        service = AnthropicService(api_key="k", model="claude-haiku-4-5")
+        service.send_message([{"role": "user", "content": "Hi"}])
+
+        kwargs = mock_client.messages.create.call_args.kwargs
+        assert kwargs["thinking"] == {"type": "adaptive", "display": "summarized"}
+        # effort would 400 on Haiku — make sure we don't send it.
+        assert "output_config" not in kwargs
 
     @patch("anthropic.Anthropic")
     def test_validates_message_format(self, mock_anthropic_cls):

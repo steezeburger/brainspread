@@ -24,10 +24,15 @@ THINKING_CAPABLE_MODEL_PREFIXES = (
     "claude-haiku-4-5",
 )
 
-# With thinking enabled Anthropic requires max_tokens > budget_tokens.
-THINKING_BUDGET_TOKENS = 4000
-DEFAULT_MAX_TOKENS = 2000
-THINKING_MAX_TOKENS = 8000
+# Models that accept `output_config.effort`. Sending it to Haiku 4.5 (or older
+# non-4.6 models) returns a 400.
+EFFORT_CAPABLE_MODEL_PREFIXES = (
+    "claude-opus-4-7",
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+)
+
+DEFAULT_MAX_TOKENS = 8192
 
 # Safety net for custom tool loops: the model shouldn't be able to spin
 # us indefinitely even if it keeps requesting tool calls.
@@ -53,6 +58,9 @@ class AnthropicService(BaseAIService):
 
     def _supports_thinking(self) -> bool:
         return self.model.startswith(THINKING_CAPABLE_MODEL_PREFIXES)
+
+    def _supports_effort(self) -> bool:
+        return self.model.startswith(EFFORT_CAPABLE_MODEL_PREFIXES)
 
     def send_message(
         self,
@@ -290,9 +298,7 @@ class AnthropicService(BaseAIService):
 
         kwargs: Dict[str, Any] = {
             "model": self.model,
-            "max_tokens": (
-                THINKING_MAX_TOKENS if thinking_enabled else DEFAULT_MAX_TOKENS
-            ),
+            "max_tokens": DEFAULT_MAX_TOKENS,
             "messages": anthropic_messages,
         }
 
@@ -307,10 +313,12 @@ class AnthropicService(BaseAIService):
         if tools:
             kwargs["tools"] = tools
         if thinking_enabled:
-            kwargs["thinking"] = {
-                "type": "enabled",
-                "budget_tokens": THINKING_BUDGET_TOKENS,
-            }
+            # Adaptive thinking — Claude decides when and how much to reason.
+            # `display: "summarized"` surfaces the reasoning trace; the 4.7
+            # default is "omitted" which would make thinking blocks empty.
+            kwargs["thinking"] = {"type": "adaptive", "display": "summarized"}
+        if self._supports_effort():
+            kwargs["output_config"] = {"effort": "high"}
         return kwargs
 
     @staticmethod
