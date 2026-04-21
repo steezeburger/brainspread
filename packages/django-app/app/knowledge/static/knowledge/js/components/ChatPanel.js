@@ -57,6 +57,37 @@ const ChatPanel = {
       deep: true,
     },
   },
+  computed: {
+    sessionStats() {
+      let inputTokens = 0;
+      let outputTokens = 0;
+      let cacheRead = 0;
+      let cacheCreation = 0;
+      let turns = 0;
+      for (const msg of this.messages) {
+        if (msg.role !== "assistant" || !msg.usage) continue;
+        turns += 1;
+        inputTokens += msg.usage.input_tokens || 0;
+        outputTokens += msg.usage.output_tokens || 0;
+        cacheRead += msg.usage.cache_read_input_tokens || 0;
+        cacheCreation += msg.usage.cache_creation_input_tokens || 0;
+      }
+      const totalInput = inputTokens + cacheRead + cacheCreation;
+      const cacheRatio = totalInput > 0 ? cacheRead / totalInput : 0;
+      return {
+        turns,
+        inputTokens,
+        outputTokens,
+        cacheRead,
+        cacheCreation,
+        totalInput,
+        cacheRatio,
+      };
+    },
+    hasSessionStats() {
+      return this.sessionStats.turns > 0;
+    },
+  },
   methods: {
     loadOpenState() {
       const saved = localStorage.getItem("chatPanel.isOpen");
@@ -553,13 +584,27 @@ const ChatPanel = {
       };
     },
 
+    formatTokens(n) {
+      if (n == null) return "0";
+      if (n >= 1000) return (n / 1000).toFixed(1) + "k";
+      return String(n);
+    },
+
     formatUsage(usage) {
       if (!usage) return "";
-      const parts = [];
-      if (usage.input_tokens != null) parts.push(`in ${usage.input_tokens}`);
-      if (usage.output_tokens != null) parts.push(`out ${usage.output_tokens}`);
-      const cached = usage.cache_read_input_tokens || 0;
-      if (cached > 0) parts.push(`cached ${cached}`);
+      const input = usage.input_tokens || 0;
+      const output = usage.output_tokens || 0;
+      const cacheRead = usage.cache_read_input_tokens || 0;
+      const cacheCreation = usage.cache_creation_input_tokens || 0;
+      const parts = [
+        `in ${this.formatTokens(input + cacheRead + cacheCreation)}`,
+        `out ${this.formatTokens(output)}`,
+      ];
+      const totalInput = input + cacheRead + cacheCreation;
+      if (totalInput > 0 && cacheRead > 0) {
+        const pct = Math.round((cacheRead / totalInput) * 100);
+        parts.push(`${pct}% cached`);
+      }
       return parts.join(" · ");
     },
 
@@ -567,7 +612,9 @@ const ChatPanel = {
       if (!usage) return false;
       return (
         (usage.input_tokens != null && usage.input_tokens > 0) ||
-        (usage.output_tokens != null && usage.output_tokens > 0)
+        (usage.output_tokens != null && usage.output_tokens > 0) ||
+        (usage.cache_read_input_tokens != null &&
+          usage.cache_read_input_tokens > 0)
       );
     },
 
@@ -755,6 +802,17 @@ const ChatPanel = {
         </div>
         
         <div class="input-area">
+          <div v-if="hasSessionStats" class="session-stats" title="Session token usage">
+            <span>{{ sessionStats.turns }} turn{{ sessionStats.turns === 1 ? '' : 's' }}</span>
+            <span class="session-stats-sep">·</span>
+            <span>in {{ formatTokens(sessionStats.totalInput) }}</span>
+            <span class="session-stats-sep">·</span>
+            <span>out {{ formatTokens(sessionStats.outputTokens) }}</span>
+            <template v-if="sessionStats.cacheRead > 0">
+              <span class="session-stats-sep">·</span>
+              <span>{{ Math.round(sessionStats.cacheRatio * 100) }}% cached</span>
+            </template>
+          </div>
           <div class="chat-controls">
             <div class="model-selector" v-if="aiSettings">
               <button 

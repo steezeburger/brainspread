@@ -461,17 +461,26 @@ body {
 }
 
 .chat-controls .context-btn:hover,
-.chat-controls .context-btn.active {
+.chat-controls .notes-tools-btn:hover {
   color: var(--text-primary) !important;
-  border-color: var(--context-color) !important;
+  border-color: var(--border-primary) !important;
   background: var(--hover-bg) !important;
 }
 
-.chat-controls .notes-tools-btn:hover,
+/* Active capability chips invert fg/bg so the on-state is obvious at a glance */
+.chat-controls .context-btn.active,
 .chat-controls .notes-tools-btn.active {
-  color: var(--text-primary) !important;
-  border-color: var(--context-color) !important;
-  background: var(--hover-bg) !important;
+  background: var(--text-primary) !important;
+  color: var(--bg-primary) !important;
+  border-color: var(--text-primary) !important;
+}
+
+.chat-controls .context-btn.active:hover,
+.chat-controls .notes-tools-btn.active:hover {
+  background: var(--text-primary) !important;
+  color: var(--bg-primary) !important;
+  border-color: var(--text-primary) !important;
+  opacity: 0.85;
 }
 
 /* Settings Modal */
@@ -3047,6 +3056,25 @@ kbd {
   background: var(--accent-bg);
   order: 1;
   min-height: 40px;
+}
+
+/* Session stats strip — sits above .chat-controls in the input area */
+.session-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  background: var(--accent-bg);
+  border-top: 1px solid var(--border-secondary);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  order: 0;
+  opacity: 0.85;
+}
+
+.session-stats-sep {
+  opacity: 0.5;
 }
 
 /* Message Input Row */
