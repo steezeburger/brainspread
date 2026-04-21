@@ -25,18 +25,18 @@ class TestCreatePageCommand(TestCase):
         self.assertEqual(page.title, "My Page")
         self.assertEqual(page.slug, "my-page")
 
-    def test_should_create_canvas_page_when_page_type_is_canvas(self):
+    def test_should_create_whiteboard_page_when_page_type_is_whiteboard(self):
         form = CreatePageForm(
             {
                 "user": self.user.id,
                 "title": "Brain Dump Board",
-                "page_type": "canvas",
+                "page_type": "whiteboard",
             }
         )
         self.assertTrue(form.is_valid(), form.errors)
         page = CreatePageCommand(form).execute()
 
-        self.assertEqual(page.page_type, "canvas")
+        self.assertEqual(page.page_type, "whiteboard")
         self.assertEqual(page.title, "Brain Dump Board")
         self.assertEqual(page.slug, "brain-dump-board")
 

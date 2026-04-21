@@ -2,7 +2,7 @@
 const Page = {
   components: {
     BlockComponent: window.BlockComponent || {},
-    Canvas: window.Canvas || {},
+    Whiteboard: window.Whiteboard || {},
   },
   props: {
     chatContextBlocks: {
@@ -18,6 +18,7 @@ const Page = {
     "block-add-to-context",
     "block-remove-from-context",
     "visible-blocks-changed",
+    "page-loaded",
   ],
   data() {
     return {
@@ -49,8 +50,8 @@ const Page = {
       return this.page?.page_type === "daily";
     },
 
-    isCanvas() {
-      return this.page?.page_type === "canvas";
+    isWhiteboard() {
+      return this.page?.page_type === "whiteboard";
     },
 
     pageTitle() {
@@ -142,6 +143,7 @@ const Page = {
             result.data.direct_blocks || []
           );
           this.referencedBlocks = result.data.referenced_blocks || [];
+          this.$emit("page-loaded", this.page);
         } else {
           this.error = "failed to load page";
         }
@@ -1199,7 +1201,7 @@ const Page = {
       this.newTitle = this.page?.title || "";
     },
 
-    onCanvasPageUpdated(updatedPage) {
+    onWhiteboardPageUpdated(updatedPage) {
       if (this.page && updatedPage) {
         this.page.modified_at = updatedPage.modified_at;
       }
@@ -1278,13 +1280,13 @@ const Page = {
         {{ error }}
       </div>
 
-      <!-- Canvas Page (full-screen tldraw) -->
-      <div v-else-if="page && isCanvas" class="page-content page-content-canvas">
-        <div class="page-header canvas-page-header">
+      <!-- Whiteboard Page (full-screen tldraw) -->
+      <div v-else-if="page && isWhiteboard" class="page-content page-content-whiteboard">
+        <div class="page-header whiteboard-page-header">
           <div class="page-title-container page-header-flex">
             <div class="page-header-flex-left">
               <div v-if="!isEditingTitle" class="page-title-display">
-                <h1 class="page-title-text" tabindex="0" role="button" aria-label="Edit page title" @click="startEditingTitle" @keydown.enter.prevent="startEditingTitle" @keydown.space.prevent="startEditingTitle">{{ page.title || 'Untitled Canvas' }}</h1>
+                <h1 class="page-title-text" tabindex="0" role="button" aria-label="Edit page title" @click="startEditingTitle" @keydown.enter.prevent="startEditingTitle" @keydown.space.prevent="startEditingTitle">{{ page.title || 'Untitled Whiteboard' }}</h1>
               </div>
               <div v-else class="page-title-edit">
                 <input
@@ -1293,25 +1295,25 @@ const Page = {
                   @keyup.enter="updatePageTitle"
                   @keyup.escape="cancelEditingTitle"
                   class="form-control page-title-input"
-                  placeholder="enter canvas title"
+                  placeholder="enter whiteboard title"
                 />
                 <button @click="updatePageTitle" class="btn btn-success save-title-btn" title="Save title">✓</button>
                 <button @click="cancelEditingTitle" class="btn btn-outline cancel-title-btn" title="Cancel">✗</button>
               </div>
-              <span class="page-type-badge">canvas</span>
+              <span class="page-type-badge">whiteboard</span>
             </div>
             <div class="page-actions">
               <div class="context-menu-container">
-                <button @click="togglePageMenu" class="btn btn-outline context-menu-btn" title="Canvas options" :aria-expanded="showPageMenu" aria-haspopup="menu">⋮</button>
+                <button @click="togglePageMenu" class="btn btn-outline context-menu-btn" title="Whiteboard options" :aria-expanded="showPageMenu" aria-haspopup="menu">⋮</button>
                 <div v-if="showPageMenu" class="context-menu" @click.stop @keydown="handlePageMenuKeydown" role="menu">
                   <button @click="startEditingTitle" class="context-menu-item" role="menuitem">edit title</button>
-                  <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">delete canvas</button>
+                  <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">delete whiteboard</button>
                 </div>
               </div>
             </div>
           </div>
         </div>
-        <Canvas :page="page" @page-updated="onCanvasPageUpdated" />
+        <Whiteboard :page="page" @page-updated="onWhiteboardPageUpdated" />
       </div>
 
       <!-- Page Content -->

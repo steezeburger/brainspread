@@ -28,6 +28,7 @@ const KnowledgeApp = createApp({
       spotlightLoading: false, // Loading state for search
       spotlightSelectedIndex: 0, // Selected result index for keyboard navigation
       spotlightSearchTimeout: null, // Debounce timeout for search
+      currentPagePageType: null, // page_type of the currently-loaded page
     };
   },
 
@@ -58,6 +59,11 @@ const KnowledgeApp = createApp({
       }
 
       return "page"; // Default fallback for /knowledge/ - redirect to today's date
+    },
+
+    showChatPanel() {
+      // Whiteboards benefit from the full column width; chat is noise on them.
+      return this.currentPagePageType !== "whiteboard";
     },
   },
 
@@ -310,11 +316,17 @@ const KnowledgeApp = createApp({
       this.removeBlockFromContext(blockId);
     },
 
+    onPageLoaded(page) {
+      this.currentPagePageType = page?.page_type || null;
+    },
+
     async createNewPage(prefilledTitle = null, pageType = "page") {
       const title =
         prefilledTitle ??
         prompt(
-          pageType === "canvas" ? "Enter canvas title:" : "Enter page title:"
+          pageType === "whiteboard"
+            ? "Enter whiteboard title:"
+            : "Enter page title:"
         );
       if (!title || !title.trim()) return;
 
@@ -350,8 +362,8 @@ const KnowledgeApp = createApp({
       }
     },
 
-    async createNewCanvas(prefilledTitle = null) {
-      return this.createNewPage(prefilledTitle, "canvas");
+    async createNewWhiteboard(prefilledTitle = null) {
+      return this.createNewPage(prefilledTitle, "whiteboard");
     },
 
     // Menu methods
@@ -423,9 +435,9 @@ const KnowledgeApp = createApp({
       this.createNewPage();
     },
 
-    onMenuCreateCanvas() {
+    onMenuCreateWhiteboard() {
       this.closeMenu();
-      this.createNewCanvas();
+      this.createNewWhiteboard();
     },
 
     onMenuSettings() {
@@ -529,9 +541,9 @@ const KnowledgeApp = createApp({
           icon: "+",
         },
         {
-          id: "new-canvas",
-          label: "new canvas",
-          description: "create a new whiteboard canvas",
+          id: "new-whiteboard",
+          label: "new whiteboard",
+          description: "create a new whiteboard",
           icon: "✎",
         },
         {
@@ -574,17 +586,17 @@ const KnowledgeApp = createApp({
         }
       }
 
-      // "new canvas <title>" — inline canvas title
-      if (q.startsWith("new canvas ")) {
-        const title = query.trim().slice("new canvas ".length).trim();
+      // "new whiteboard <title>" — inline whiteboard title
+      if (q.startsWith("new whiteboard ")) {
+        const title = query.trim().slice("new whiteboard ".length).trim();
         if (title) {
           return [
             {
               type: "command",
-              commandId: "new-canvas",
+              commandId: "new-whiteboard",
               commandArg: title,
-              title: `create canvas "${title}"`,
-              description: "create a new whiteboard canvas with this title",
+              title: `create whiteboard "${title}"`,
+              description: "create a new whiteboard with this title",
               icon: "✎",
             },
           ];
@@ -693,8 +705,8 @@ const KnowledgeApp = createApp({
         case "new-page":
           this.createNewPage(arg ?? null);
           break;
-        case "new-canvas":
-          this.createNewCanvas(arg ?? null);
+        case "new-whiteboard":
+          this.createNewWhiteboard(arg ?? null);
           break;
         case "new-block":
           document.dispatchEvent(new CustomEvent("spotlight:new-block"));
@@ -764,8 +776,8 @@ const KnowledgeApp = createApp({
                                     <button @click="onMenuCreatePage" class="menu-item" role="menuitem">
                                         + page
                                     </button>
-                                    <button @click="onMenuCreateCanvas" class="menu-item" role="menuitem">
-                                        + canvas
+                                    <button @click="onMenuCreateWhiteboard" class="menu-item" role="menuitem">
+                                        + whiteboard
                                     </button>
                                     <button @click="onMenuSettings" class="menu-item" role="menuitem">
                                         settings
@@ -803,9 +815,11 @@ const KnowledgeApp = createApp({
                                 @block-add-to-context="onBlockAddToContext"
                                 @block-remove-from-context="onBlockRemoveFromContext"
                                 @visible-blocks-changed="updateVisibleBlocks"
+                                @page-loaded="onPageLoaded"
                             />
                         </div>
                         <ChatPanel
+                            v-if="showChatPanel"
                             :chat-context-blocks="chatContextBlocks"
                             :visible-blocks="visibleBlocks"
                             @open-settings="onChatPanelOpenSettings"

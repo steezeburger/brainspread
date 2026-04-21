@@ -135,14 +135,15 @@ class PageRepository(BaseRepository):
     def get_recent_pages(cls, user, limit=7) -> QuerySet:
         """Get the most recently modified pages that have meaningful content.
 
-        Includes pages that have blocks as well as canvas pages (whose content
-        lives in Page.content as a tldraw snapshot rather than in Block rows).
+        Includes pages that have blocks as well as whiteboard pages (whose
+        content lives in Page.content as a tldraw snapshot rather than in
+        Block rows).
         """
         return (
             cls.get_queryset()
             .filter(user=user)
             .annotate(block_count=Count("blocks"))
-            .filter(Q(block_count__gt=0) | Q(page_type="canvas"))
+            .filter(Q(block_count__gt=0) | Q(page_type="whiteboard"))
             .order_by("-modified_at")[:limit]
         )
 

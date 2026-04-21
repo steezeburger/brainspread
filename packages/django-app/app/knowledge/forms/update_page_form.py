@@ -30,7 +30,7 @@ class UpdatePageForm(BaseForm):
     def clean_title(self) -> Optional[str]:
         # Distinguish "title omitted from payload" from "title explicitly blank".
         # Django's CharField(required=False) coerces a missing field to "", so
-        # without this guard every partial update (e.g. canvas snapshot saves
+        # without this guard every partial update (e.g. whiteboard snapshot saves
         # that only send `content`) would trip the empty-title check.
         if "title" not in self.data:
             return None

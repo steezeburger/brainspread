@@ -1,6 +1,6 @@
-// Canvas component — renders a tldraw whiteboard for canvas-type pages.
-// tldraw is a React library; we load React + tldraw via ESM from esm.sh
-// and mount it into a DOM node that Vue manages.
+// Whiteboard component — renders a tldraw whiteboard for whiteboard-type
+// pages. tldraw is a React library; we load React + tldraw via ESM from
+// esm.sh and mount it into a DOM node that Vue manages.
 //
 // IMPORTANT: the React root, tldraw editor, and store subscription must NOT
 // become Vue reactive proxies — Vue's proxying of tldraw's internal signals
@@ -8,14 +8,14 @@
 // `data()` and assign them to the component instance as plain properties,
 // additionally wrapping with Vue.markRaw as a belt-and-suspenders measure.
 
-const CANVAS_SAVE_DEBOUNCE_MS = 1500;
+const WHITEBOARD_SAVE_DEBOUNCE_MS = 1500;
 
 const REACT_VERSION = "18";
 const TLDRAW_VERSION = "3";
 
 const markRaw = (val) => (Vue && Vue.markRaw ? Vue.markRaw(val) : val);
 
-const Canvas = {
+const Whiteboard = {
   props: {
     page: {
       type: Object,
@@ -39,8 +39,15 @@ const Canvas = {
     this._editor = null;
     this._unsubscribeStore = null;
     this._tldrawApi = null;
+    this._lastSavedPayload = null;
+    this._boundVisibilityHandler = this.handleVisibilityChange.bind(this);
+    this._boundBeforeUnloadHandler = this.handleBeforeUnload.bind(this);
+    this._boundThemeObserver = null;
   },
   async mounted() {
+    document.addEventListener("visibilitychange", this._boundVisibilityHandler);
+    window.addEventListener("beforeunload", this._boundBeforeUnloadHandler);
+
     try {
       await this.loadAndMountTldraw();
     } catch (err) {
@@ -51,6 +58,17 @@ const Canvas = {
     }
   },
   beforeUnmount() {
+    document.removeEventListener(
+      "visibilitychange",
+      this._boundVisibilityHandler
+    );
+    window.removeEventListener("beforeunload", this._boundBeforeUnloadHandler);
+
+    if (this._boundThemeObserver) {
+      this._boundThemeObserver.disconnect();
+      this._boundThemeObserver = null;
+    }
+
     if (this._saveTimer) {
       clearTimeout(this._saveTimer);
       this.flushSave();
@@ -87,9 +105,9 @@ const Canvas = {
 
       this._tldrawApi = markRaw({ getSnapshot, loadSnapshot });
 
-      const container = this.$refs.canvasContainer;
+      const container = this.$refs.whiteboardContainer;
       if (!container) {
-        throw new Error("Canvas container ref missing");
+        throw new Error("Whiteboard container ref missing");
       }
 
       this._reactRoot = markRaw(createRoot(container));
@@ -103,12 +121,18 @@ const Canvas = {
     onTldrawMount(editor) {
       this._editor = markRaw(editor);
 
+      this.applyThemeToEditor();
+      this.watchThemeChanges();
+
       const snapshot = this.parseStoredSnapshot(this.page.content);
       if (snapshot) {
         try {
           this._tldrawApi.loadSnapshot(editor.store, snapshot);
         } catch (err) {
-          console.warn("Failed to load canvas snapshot; starting fresh:", err);
+          console.warn(
+            "Failed to load whiteboard snapshot; starting fresh:",
+            err
+          );
         }
       }
 
@@ -118,7 +142,7 @@ const Canvas = {
             try {
               this.scheduleSave();
             } catch (err) {
-              console.error("Canvas scheduleSave threw:", err);
+              console.error("Whiteboard scheduleSave threw:", err);
             }
           },
           { source: "user", scope: "document" }
@@ -133,12 +157,35 @@ const Canvas = {
       }
     },
 
+    applyThemeToEditor() {
+      if (!this._editor) return;
+      const appTheme =
+        document.documentElement.getAttribute("data-theme") || "light";
+      const colorScheme = appTheme === "dark" ? "dark" : "light";
+      try {
+        this._editor.user.updateUserPreferences({ colorScheme });
+      } catch (err) {
+        console.warn("Failed to set tldraw color scheme:", err);
+      }
+    },
+
+    watchThemeChanges() {
+      // Mirror app theme changes into tldraw while the whiteboard is open.
+      if (this._boundThemeObserver) return;
+      const observer = new MutationObserver(() => this.applyThemeToEditor());
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["data-theme"],
+      });
+      this._boundThemeObserver = observer;
+    },
+
     parseStoredSnapshot(content) {
       if (!content || !content.trim()) return null;
       try {
         return JSON.parse(content);
       } catch (err) {
-        console.warn("Stored canvas content is not valid JSON:", err);
+        console.warn("Stored whiteboard content is not valid JSON:", err);
         return null;
       }
     },
@@ -150,20 +197,29 @@ const Canvas = {
       this.saveStatus = "pending";
       this._saveTimer = setTimeout(() => {
         this.flushSave();
-      }, CANVAS_SAVE_DEBOUNCE_MS);
+      }, WHITEBOARD_SAVE_DEBOUNCE_MS);
+    },
+
+    buildPayload() {
+      if (!this._editor || !this._tldrawApi) return null;
+      try {
+        const snapshot = this._tldrawApi.getSnapshot(this._editor.store);
+        return JSON.stringify(snapshot);
+      } catch (err) {
+        console.error("Failed to snapshot whiteboard:", err);
+        return null;
+      }
     },
 
     async flushSave() {
       this._saveTimer = null;
-      if (!this._editor || !this._tldrawApi) return;
-
-      let payload;
-      try {
-        const snapshot = this._tldrawApi.getSnapshot(this._editor.store);
-        payload = JSON.stringify(snapshot);
-      } catch (err) {
-        console.error("Failed to snapshot canvas:", err);
+      const payload = this.buildPayload();
+      if (payload === null) {
         this.saveStatus = "error";
+        return;
+      }
+      if (payload === this._lastSavedPayload) {
+        this.saveStatus = "saved";
         return;
       }
 
@@ -173,34 +229,53 @@ const Canvas = {
           content: payload,
         });
         if (result.success) {
+          this._lastSavedPayload = payload;
           this.saveStatus = "saved";
           this.$emit("page-updated", result.data);
         } else {
           this.saveStatus = "error";
-          console.error("Canvas save failed:", result.errors);
+          console.error("Whiteboard save failed:", result.errors);
         }
       } catch (err) {
         this.saveStatus = "error";
-        console.error("Canvas save error:", err);
+        console.error("Whiteboard save error:", err);
       }
+    },
+
+    handleVisibilityChange() {
+      // Flush pending edits when the tab is backgrounded so a swipe-away on
+      // iPad doesn't drop the last 1.5s of work.
+      if (document.visibilityState === "hidden") {
+        if (this._saveTimer) clearTimeout(this._saveTimer);
+        this.flushSave();
+      }
+    },
+
+    handleBeforeUnload() {
+      // Best-effort flush on navigation/close. Modern browsers may still
+      // cancel the in-flight fetch; a proper sendBeacon upgrade is a
+      // follow-up, but for now this catches the common "tab close with a
+      // second of pending edits" case.
+      if (this._saveTimer) clearTimeout(this._saveTimer);
+      this.flushSave();
     },
   },
 
   template: `
-    <div class="canvas-page">
-      <div v-if="isLoadingLib" class="canvas-loading">loading canvas...</div>
-      <div v-if="loadError" class="canvas-error">
-        failed to load canvas: {{ loadError }}
+    <div class="whiteboard-page">
+      <div v-if="isLoadingLib" class="whiteboard-loading">loading whiteboard...</div>
+      <div v-if="loadError" class="whiteboard-error">
+        failed to load whiteboard: {{ loadError }}
       </div>
-      <div class="canvas-status" :class="'canvas-status-' + saveStatus">
+      <div class="whiteboard-status" :class="'whiteboard-status-' + saveStatus">
         <span v-if="saveStatus === 'pending'">•</span>
         <span v-else-if="saveStatus === 'saving'">saving…</span>
         <span v-else-if="saveStatus === 'saved'">saved</span>
         <span v-else-if="saveStatus === 'error'">save failed</span>
       </div>
-      <div ref="canvasContainer" class="canvas-container"></div>
+      <div ref="whiteboardContainer" class="whiteboard-container"></div>
     </div>
   `,
 };
 
-window.Canvas = Canvas;
+window.Whiteboard = Whiteboard;

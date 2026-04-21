@@ -3949,8 +3949,8 @@ kbd {
   padding: 0.05em 0.2em;
 }
 
-/* Canvas page (tldraw whiteboard) */
-.page-content-canvas {
+/* Whiteboard page (tldraw) */
+.page-content-whiteboard {
   display: flex;
   flex-direction: column;
   height: calc(100vh - var(--navbar-height, 60px));
@@ -3959,13 +3959,13 @@ kbd {
   max-width: none;
 }
 
-.canvas-page-header {
+.whiteboard-page-header {
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
   flex: 0 0 auto;
 }
 
-.canvas-page-header .page-type-badge {
+.whiteboard-page-header .page-type-badge {
   display: inline-block;
   margin-left: 0.75rem;
   font-size: 0.7rem;
@@ -3977,7 +3977,7 @@ kbd {
   padding: 0.05em 0.5em;
 }
 
-.canvas-page {
+.whiteboard-page {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
@@ -3985,7 +3985,7 @@ kbd {
   flex-direction: column;
 }
 
-.canvas-container {
+.whiteboard-container {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
@@ -3995,23 +3995,23 @@ kbd {
   user-select: none;
 }
 
-.canvas-container .tl-container {
+.whiteboard-container .tl-container {
   position: absolute;
   inset: 0;
 }
 
-.canvas-loading,
-.canvas-error {
+.whiteboard-loading,
+.whiteboard-error {
   padding: 1rem;
   color: var(--text-secondary, #888);
   font-size: 0.9rem;
 }
 
-.canvas-error {
+.whiteboard-error {
   color: var(--danger-color, #d33);
 }
 
-.canvas-status {
+.whiteboard-status {
   position: absolute;
   top: 0.5rem;
   right: 0.75rem;
@@ -4024,6 +4024,6 @@ kbd {
   pointer-events: none;
 }
 
-.canvas-status-error {
+.whiteboard-status-error {
   color: var(--danger-color, #d33);
 }

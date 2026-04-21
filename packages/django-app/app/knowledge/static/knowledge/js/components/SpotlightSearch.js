@@ -143,7 +143,7 @@ window.SpotlightSearch = {
               <div class="spotlight-result-icon spotlight-command-icon" v-if="result.type === 'command'">
                 {{ result.icon }}
               </div>
-              <div class="spotlight-result-icon" v-else-if="result.pageType === 'canvas'">
+              <div class="spotlight-result-icon" v-else-if="result.pageType === 'whiteboard'">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                   <path d="M2 3h12v10H2z" stroke="currentColor" stroke-width="1.5" fill="none"/>
                   <path d="M4 10l2-3 2 2 3-4 1 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>

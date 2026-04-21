@@ -13,7 +13,7 @@ class TestUpdatePageCommand(TestCase):
         cls.page = PageFactory(user=cls.user, title="Original", content="old")
 
     def test_should_update_content_without_touching_title_when_title_omitted(self):
-        # Canvas snapshot saves only send `content` in the payload. The form
+        # Whiteboard snapshot saves only send `content` in the payload. The form
         # must not reject this as "Title cannot be empty".
         form = UpdatePageForm(
             {
