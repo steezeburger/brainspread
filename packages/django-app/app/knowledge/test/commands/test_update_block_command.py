@@ -293,9 +293,7 @@ class TestUpdateBlockCommand(TestCase):
         mock_sync_command_class.assert_not_called()
 
     @patch("knowledge.commands.update_block_command.SyncBlockTagsCommand")
-    def test_should_skip_tag_extraction_for_code_blocks(
-        self, mock_sync_command_class
-    ):
+    def test_should_skip_tag_extraction_for_code_blocks(self, mock_sync_command_class):
         """Updating a code block shouldn't trigger tag sync on code content"""
         form_data = {
             "user": self.user.id,
