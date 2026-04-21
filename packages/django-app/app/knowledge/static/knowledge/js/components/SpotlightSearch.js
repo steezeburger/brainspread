@@ -36,6 +36,12 @@ window.SpotlightSearch = {
         document.body.style.overflow = "";
       }
     },
+    selectedIndex() {
+      this.scrollSelectedIntoView();
+    },
+    results() {
+      this.$nextTick(() => this.scrollSelectedIntoView());
+    },
   },
 
   methods: {
@@ -86,6 +92,15 @@ window.SpotlightSearch = {
 
     handleResultClick(index) {
       this.$emit("navigate", index);
+    },
+
+    scrollSelectedIntoView() {
+      this.$nextTick(() => {
+        const items = this.$el?.querySelectorAll(".spotlight-result");
+        const selected = items && items[this.selectedIndex];
+        if (!selected) return;
+        selected.scrollIntoView({ block: "nearest" });
+      });
     },
 
     highlightQuery(text, query) {
