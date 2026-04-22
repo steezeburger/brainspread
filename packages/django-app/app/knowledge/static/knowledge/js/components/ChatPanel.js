@@ -304,7 +304,6 @@ const ChatPanel = {
               this.currentSessionId = event.session_id;
               this.saveLastSessionId(event.session_id);
             }
-            this.autoCollapseToolCalls(assistantIndex);
             this.maybeNavigateToToolTarget(
               this.messages[assistantIndex].tool_events
             );
@@ -791,19 +790,6 @@ const ChatPanel = {
       }
     },
 
-    autoCollapseToolCalls(messageIndex) {
-      // Stream ended: the tool activity is over and keeping the strip
-      // open clutters the reply. Collapse back to the summary line
-      // unless the user explicitly toggled it open.
-      if (this.userToggledToolCalls[messageIndex]) return;
-      if (this.expandedToolCalls[messageIndex]) {
-        this.expandedToolCalls = {
-          ...this.expandedToolCalls,
-          [messageIndex]: false,
-        };
-      }
-    },
-
     runningToolName(msg) {
       // Latest tool_use without a matching tool_result is what's "in
       // flight". Used to label the strip header while streaming.
@@ -1037,7 +1023,6 @@ const ChatPanel = {
             const next = { ...this.pendingApprovals };
             delete next[messageIndex];
             this.pendingApprovals = next;
-            this.autoCollapseToolCalls(messageIndex);
             this.maybeNavigateToToolTarget(
               this.messages[messageIndex].tool_events
             );
