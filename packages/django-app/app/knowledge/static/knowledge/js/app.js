@@ -526,16 +526,14 @@ const KnowledgeApp = createApp({
         }
       }
 
-      // Sidebar toggles — only when the user isn't editing text, so we don't
-      // hijack shortcuts used inside the note editor or chat input.
-      // Uses Obsidian-style Cmd/Ctrl+\ (left/history) and Cmd/Ctrl+Shift+\
-      // (right/ai) to avoid clashing with browser shortcuts (Cmd+Shift+H
-      // is "Home" in Chrome, Cmd+Shift+A is "Search Tabs").
+      // Sidebar toggles — Obsidian-style Cmd/Ctrl+\ (left/history) and
+      // Cmd/Ctrl+Shift+\ (right/ai). No editable-target guard because
+      // backslash isn't a text-editing shortcut, so it's safe to intercept
+      // even when focus is in the block editor or chat input.
       if (
         (event.metaKey || event.ctrlKey) &&
         event.key === "\\" &&
-        this.isAuthenticated &&
-        !this._isEditableTarget(event.target)
+        this.isAuthenticated
       ) {
         event.preventDefault();
         if (event.shiftKey) {

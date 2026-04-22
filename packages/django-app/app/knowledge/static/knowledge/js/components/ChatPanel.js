@@ -398,6 +398,15 @@ const ChatPanel = {
         e.preventDefault();
         this.sendMessage();
       }
+      if (e.key === "Escape" && this.isOpen) {
+        // Close the panel. preventDefault + stopPropagation so the textarea
+        // doesn't surface this to the document-level handler as a second
+        // event; the app-level handler already skips editable targets.
+        e.preventDefault();
+        e.stopPropagation();
+        this.isOpen = false;
+        this.saveOpenState();
+      }
       // Shift+Enter will naturally create a newline (default behavior)
     },
     scrollToBottom() {
