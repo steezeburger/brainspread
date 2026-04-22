@@ -23,6 +23,8 @@ class UserProviderConfig(UUIDModelMixin, CRUDTimestampsMixin):
     class Meta:
         db_table = "user_provider_configs"
         unique_together = [("user", "provider")]
+        verbose_name = "User Provider Config"
+        verbose_name_plural = "User Provider Configs"
 
     def __str__(self) -> str:
         return f"{self.user.email} - {self.provider.name}"

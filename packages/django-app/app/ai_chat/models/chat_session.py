@@ -12,6 +12,8 @@ class ChatSession(UUIDModelMixin, CRUDTimestampsMixin):
     class Meta:
         db_table = "ai_chat_sessions"
         ordering = ("-created_at",)
+        verbose_name = "Chat Session"
+        verbose_name_plural = "Chat Sessions"
 
 
 class ChatMessage(UUIDModelMixin, CRUDTimestampsMixin):
@@ -28,7 +30,14 @@ class ChatMessage(UUIDModelMixin, CRUDTimestampsMixin):
     output_tokens = models.PositiveIntegerField(null=True, blank=True)
     cache_creation_input_tokens = models.PositiveIntegerField(null=True, blank=True)
     cache_read_input_tokens = models.PositiveIntegerField(null=True, blank=True)
+    # Ordered list of tool events (tool_use / tool_result) captured while the
+    # assistant was producing this message. Shape:
+    #   [{"type": "tool_use", "tool_use_id": str, "name": str, "input": dict},
+    #    {"type": "tool_result", "tool_use_id": str, "name": str, "result": dict}]
+    tool_events = models.JSONField(default=list, blank=True)
 
     class Meta:
         db_table = "ai_chat_messages"
         ordering = ("created_at",)
+        verbose_name = "Chat Message"
+        verbose_name_plural = "Chat Messages"

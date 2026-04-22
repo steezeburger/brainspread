@@ -10,9 +10,13 @@ from rest_framework.renderers import BaseRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .commands import SendMessageCommand, StreamSendMessageCommand
+from .commands import (
+    ResumeApprovalCommand,
+    SendMessageCommand,
+    StreamSendMessageCommand,
+)
 from .commands.send_message_command import SendMessageCommandError
-from .forms import SendMessageForm
+from .forms import ResumeApprovalForm, SendMessageForm
 from .models import (
     AIModel,
     AIProvider,
@@ -159,6 +163,57 @@ class StreamSendMessageView(APIView):
         return response
 
 
+class ResumeApprovalView(APIView):
+    """SSE endpoint that resumes a paused tool-approval chat turn."""
+
+    permission_classes = [IsAuthenticated]
+    renderer_classes = [ServerSentEventRenderer]
+
+    def post(self, request, approval_id):
+        data = request.data.copy()
+        data["user"] = request.user.id
+        data["approval_id"] = approval_id
+        form = ResumeApprovalForm(data)
+        if not form.is_valid():
+            error_message = (
+                str(list(form.errors.values())[0][0])
+                if form.errors
+                else "Invalid form data"
+            )
+            return Response(
+                {
+                    "success": False,
+                    "error": error_message,
+                    "error_type": "configuration_error",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        command = ResumeApprovalCommand(form)
+
+        def event_stream():
+            try:
+                for event in command.execute():
+                    yield _sse_event(event)
+            except SendMessageCommandError as e:
+                logger.warning(f"Resume command error for user {request.user.id}: {e}")
+                yield _sse_event({"type": "error", "error": str(e)})
+            except Exception as e:
+                logger.error(
+                    f"Unexpected error in resume_approval for user {request.user.id}: {e}"
+                )
+                yield _sse_event(
+                    {"type": "error", "error": "An unexpected error occurred."}
+                )
+
+        response = StreamingHttpResponse(
+            event_stream(), content_type="text/event-stream"
+        )
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def chat_sessions(request):
@@ -219,6 +274,7 @@ def chat_session_detail(request, session_id):
                 "content": msg.content,
                 "thinking": msg.thinking or None,
                 "created_at": msg.created_at.isoformat(),
+                "tool_events": list(msg.tool_events or []),
                 "usage": {
                     "input_tokens": msg.input_tokens,
                     "output_tokens": msg.output_tokens,

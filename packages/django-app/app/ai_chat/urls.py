@@ -11,6 +11,11 @@ urlpatterns = [
         views.StreamSendMessageView.as_view(),
         name="stream_send_message",
     ),
+    path(
+        "approvals/<str:approval_id>/resume/",
+        views.ResumeApprovalView.as_view(),
+        name="resume_approval",
+    ),
     path("sessions/", views.chat_sessions, name="chat_sessions"),
     path(
         "sessions/<str:session_id>/",

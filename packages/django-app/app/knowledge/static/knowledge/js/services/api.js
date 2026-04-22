@@ -108,18 +108,11 @@ class ApiService {
     return await this.request("/api/auth/me/");
   }
 
-  async createPage(
-    title,
-    content,
-    slug,
-    isPublished = true,
-    pageType = "page"
-  ) {
+  async createPage(title, slug, isPublished = true, pageType = "page") {
     return await this.request("/knowledge/api/pages/", {
       method: "POST",
       body: JSON.stringify({
         title,
-        content,
         slug,
         is_published: isPublished,
         page_type: pageType,
@@ -347,6 +340,67 @@ class ApiService {
 
     if (!response.ok) {
       let detail = "Streaming request failed";
+      try {
+        const data = await response.json();
+        detail = data.error || data.detail || detail;
+      } catch (_) {
+        // non-JSON error body
+      }
+      throw new Error(detail);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary !== -1) {
+        const frame = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        for (const line of frame.split("\n")) {
+          if (!line.startsWith("data:")) continue;
+          const raw = line.slice(5).trim();
+          if (!raw) continue;
+          try {
+            yield JSON.parse(raw);
+          } catch (e) {
+            console.error("Failed to parse SSE frame:", raw, e);
+          }
+        }
+        boundary = buffer.indexOf("\n\n");
+      }
+    }
+  }
+
+  async *resumeApproval(approvalId, payload) {
+    const headers = {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+    };
+    const csrfToken = this.getCsrfToken();
+    if (csrfToken) {
+      headers["X-CSRFToken"] = csrfToken;
+    }
+    if (this.token) {
+      headers["Authorization"] = `Token ${this.token}`;
+    }
+
+    const response = await fetch(
+      `${this.baseURL}/api/ai-chat/approvals/${approvalId}/resume/`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      }
+    );
+
+    if (!response.ok) {
+      let detail = "Resume request failed";
       try {
         const data = await response.json();
         detail = data.error || data.detail || detail;

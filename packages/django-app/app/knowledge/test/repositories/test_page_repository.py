@@ -20,7 +20,6 @@ class TestPageRepository(TestCase):
             "user": self.user,
             "title": "Test Page",
             "slug": "test-page",
-            "content": "Test content",
             "is_published": True,
         }
 
@@ -28,7 +27,7 @@ class TestPageRepository(TestCase):
 
         self.assertEqual(page.title, "Test Page")
         self.assertEqual(page.slug, "test-page")
-        self.assertEqual(page.content, "Test content")
+        self.assertEqual(page.whiteboard_snapshot, "")
         self.assertTrue(page.is_published)
         self.assertEqual(page.user, self.user)
 
@@ -132,11 +131,14 @@ class TestPageRepository(TestCase):
     def test_should_update_page_by_uuid(self):
         page = PageFactory(user=self.user, title="Original Title", slug="original-slug")
 
-        update_data = {"title": "Updated Title", "content": "New content"}
+        update_data = {
+            "title": "Updated Title",
+            "whiteboard_snapshot": '{"shapes": []}',
+        }
         updated_page = PageRepository.update(uuid=str(page.uuid), data=update_data)
 
         self.assertEqual(updated_page.title, "Updated Title")
-        self.assertEqual(updated_page.content, "New content")
+        self.assertEqual(updated_page.whiteboard_snapshot, '{"shapes": []}')
         self.assertEqual(updated_page.slug, "original-slug")  # unchanged
 
     def test_should_delete_page_by_uuid(self):
@@ -175,8 +177,8 @@ class TestPageRepository(TestCase):
 
     def test_get_recent_pages_should_include_whiteboard_pages_without_blocks(self):
         # Whiteboard pages have no Block rows — their content lives in
-        # Page.content. They should still show up in history alongside pages
-        # that have blocks.
+        # Page.whiteboard_snapshot. They should still show up in history
+        # alongside pages that have blocks.
         page_with_blocks = PageFactory(user=self.user, title="Has Blocks")
         BlockFactory(user=self.user, page=page_with_blocks)
 

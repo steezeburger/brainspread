@@ -522,6 +522,24 @@ body {
   background: var(--hover-bg);
 }
 
+.tools-menu-item.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tools-menu-item.disabled input[type="checkbox"] {
+  cursor: not-allowed;
+}
+
+.tools-btn.auto-approve-warning {
+  border-color: #b00020;
+  color: #b00020;
+}
+
+.tools-btn-warning-glyph {
+  margin-right: 0.25rem;
+}
+
 /* Mirror the SettingsModal .model-checkbox styling so tool toggles use the
    same custom checkmark glyph as the rest of the app. */
 .tools-menu-item input[type="checkbox"] {
@@ -2748,12 +2766,12 @@ kbd {
 .typing-indicator {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
 }
 
 .typing-indicator span {
-  width: 8px;
-  height: 8px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background-color: var(--text-secondary);
   animation: typing 1.4s infinite ease-in-out;
@@ -2779,7 +2797,7 @@ kbd {
     opacity: 0.4;
   }
   30% {
-    transform: translateY(-10px);
+    transform: translateY(-4px);
     opacity: 1;
   }
 }
@@ -3513,6 +3531,7 @@ kbd {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
   margin-top: 0.25rem;
 }
 
@@ -3627,6 +3646,345 @@ kbd {
   color: var(--text-secondary);
   font-style: italic;
   white-space: pre-wrap;
+}
+
+.tool-calls-block {
+  margin-bottom: 0.5rem;
+  border-left: 2px solid var(--border-primary);
+  padding-left: 0.5rem;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    padding 0.2s ease;
+}
+
+/* Elevate the whole block to a visible status banner while a tool is in
+   flight. Fast tools (edit_block, search_notes) otherwise flash this
+   state for a frame and you'd miss it. */
+.tool-calls-block.tool-calls-running {
+  border: 1px solid var(--text-primary);
+  border-left: 3px solid var(--text-primary);
+  background: var(--hover-bg);
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+  animation: tool-calls-banner-glow 2.2s ease-in-out infinite;
+}
+
+@keyframes tool-calls-banner-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 0 2px var(--hover-bg);
+  }
+}
+
+.tool-calls-block.tool-calls-running .tool-calls-toggle {
+  color: var(--text-primary) !important;
+  font-weight: 600 !important;
+  font-size: 0.9rem !important;
+}
+
+/* A bit more breathing room between header text and the animated dots
+   — tight-fit inside inline body text, looser in the banner header. */
+.tool-calls-toggle .loading-dots {
+  margin-left: 0.5em;
+}
+
+/* Inline three-dot loader used in place of a static ellipsis wherever we
+   want to signal "still working". currentColor so it picks up the
+   surrounding text's color — banner header, per-row pending text, etc. */
+.loading-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15em;
+  margin-left: 0.25em;
+  vertical-align: middle;
+}
+
+.loading-dots span {
+  display: inline-block;
+  width: 0.28em;
+  height: 0.28em;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.3;
+  animation: loading-dots-bounce 1.2s ease-in-out infinite;
+}
+
+.loading-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.loading-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes loading-dots-bounce {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-0.2em);
+  }
+}
+
+/* Slow background blink on the row whose tool call is in flight, so
+   the eye lands on it among any already-completed calls above it. */
+.tool-call.tool-call-running {
+  border-radius: 3px;
+  padding: 0.05rem 0.25rem;
+  margin: 0 -0.25rem;
+  animation: tool-call-blink 1.8s ease-in-out infinite;
+}
+
+@keyframes tool-call-blink {
+  0%,
+  100% {
+    background-color: transparent;
+  }
+  50% {
+    background-color: var(--hover-bg, rgba(128, 128, 128, 0.2));
+  }
+}
+
+/* `.chat-content button` (~line 2734) is a CTA-style rule meant for the
+   send button — it inverts background/color and adds a border. Without
+   !important here, that rule wins on specificity and turns the toggle
+   into a bright bar that swallows the inner colored spans. */
+.tool-calls-toggle {
+  background: none !important;
+  border: none !important;
+  color: var(--text-secondary) !important;
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0 !important;
+  font-family: inherit;
+  font-weight: normal !important;
+  letter-spacing: normal !important;
+  align-self: auto !important;
+}
+
+.tool-calls-toggle:hover {
+  color: var(--text-primary) !important;
+  background: none !important;
+}
+
+.tool-calls-list {
+  margin-top: 0.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.tool-call {
+  font-size: 0.75rem;
+  font-family: var(--mono-font, monospace);
+  color: var(--text-secondary);
+}
+
+/* See note on .tool-calls-toggle — same global-button override needed
+   here, otherwise the button background becomes var(--text-primary) and
+   .tool-call-name (also var(--text-primary)) becomes invisible. */
+.tool-call-summary {
+  background: none !important;
+  border: none !important;
+  color: inherit !important;
+  font: inherit;
+  cursor: pointer;
+  padding: 0.1rem 0 !important;
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  text-align: left;
+  width: 100%;
+  flex-wrap: wrap;
+  font-weight: normal !important;
+  letter-spacing: normal !important;
+  align-self: auto !important;
+}
+
+.tool-call-summary:hover {
+  color: var(--text-primary) !important;
+  background: none !important;
+}
+
+.tool-call-chevron {
+  opacity: 0.7;
+}
+
+.tool-call-name {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.tool-call-args {
+  opacity: 0.85;
+  word-break: break-word;
+}
+
+.tool-call-arrow {
+  opacity: 0.5;
+}
+
+.tool-call-result-summary {
+  opacity: 0.85;
+}
+
+.tool-call-result-summary.pending {
+  font-style: italic;
+}
+
+.tool-call-details {
+  margin: 0.25rem 0 0.35rem 1rem;
+  padding: 0.35rem 0.5rem;
+  background: var(--hover-bg, rgba(128, 128, 128, 0.08));
+  border-left: 2px solid var(--border-primary);
+}
+
+.tool-call-detail-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-top: 0.25rem;
+}
+
+.tool-call-detail-label:first-child {
+  margin-top: 0;
+}
+
+.tool-call-detail-body {
+  margin: 0.15rem 0 0 0;
+  font-size: 0.7rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 12rem;
+  overflow: auto;
+  color: var(--text-primary);
+}
+
+.approval-block {
+  margin: 0.5rem 0;
+  border: 1px solid var(--border-primary);
+  background: var(--hover-bg, rgba(255, 165, 0, 0.06));
+  padding: 0.5rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.approval-header {
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.approval-tool-call {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  border-top: 1px dashed var(--border-primary);
+  padding-top: 0.5rem;
+}
+
+.approval-tool-call:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.approval-tool-head {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  align-items: baseline;
+  font-family: var(--mono-font, monospace);
+  font-size: 0.8rem;
+}
+
+.approval-tool-name {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.approval-tool-args {
+  color: var(--text-secondary);
+}
+
+.approval-tool-body {
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  font-size: 0.7rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 12rem;
+  overflow: auto;
+  font-family: var(--mono-font, monospace);
+}
+
+.approval-tool-actions {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.8rem;
+}
+
+.approval-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.approval-choice input[type="radio"]:checked + * {
+  color: var(--text-primary);
+}
+
+.approval-footer {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+/* See note on .tool-calls-toggle — these buttons live inside .chat-content
+   and need !important to win against the CTA-style global button rule. */
+.approval-submit,
+.approval-reject-all {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.75rem !important;
+  border: 1px solid var(--border-primary) !important;
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: normal !important;
+  letter-spacing: normal !important;
+  align-self: auto !important;
+  border-radius: 0;
+}
+
+.approval-submit:hover,
+.approval-reject-all:hover {
+  background: var(--hover-bg) !important;
+  color: var(--text-primary) !important;
+}
+
+.approval-submit:disabled,
+.approval-reject-all:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.approval-error {
+  color: #b00020;
+  font-size: 0.75rem;
 }
 
 /* Page Components */
@@ -4156,6 +4514,15 @@ kbd {
   color: var(--highlight-text, #333);
   border-radius: 2px;
   padding: 0.05em 0.2em;
+}
+
+.markdown-link {
+  color: var(--link-color, #0a66c2);
+  text-decoration: underline;
+}
+
+.markdown-link:hover {
+  text-decoration: none;
 }
 
 .block-code-wrapper {

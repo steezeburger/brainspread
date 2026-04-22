@@ -84,3 +84,74 @@ class StreamSendMessageCommandTestCase(TestCase):
         self.assertEqual(done["message"]["content"], "Hi there")
         self.assertEqual(done["message"]["usage"]["input_tokens"], 2)
         self.assertEqual(done["message"]["usage"]["output_tokens"], 3)
+
+    @patch("ai_chat.services.ai_service_factory.AIServiceFactory.create_service")
+    @patch(
+        "ai_chat.repositories.chat_message_repository.ChatMessageRepository.get_messages"
+    )
+    def test_emits_tool_events_and_persists_them(
+        self, mock_get_messages, mock_create_service
+    ):
+        mock_get_messages.return_value = [Mock(role="user", content="ask")]
+
+        def fake_stream(messages, tools, system=None, tool_executor=None):
+            yield {"type": "text", "delta": "Looking up..."}
+            yield {
+                "type": "tool_use",
+                "tool_use_id": "tu_1",
+                "name": "search_notes",
+                "input": {"query": "foo"},
+            }
+            yield {
+                "type": "tool_result",
+                "tool_use_id": "tu_1",
+                "name": "search_notes",
+                "result": {"count": 2, "results": [{"content": "a"}, {"content": "b"}]},
+            }
+            yield {"type": "text", "delta": " Found 2."}
+            yield {
+                "type": "done",
+                "content": "Looking up... Found 2.",
+                "thinking": None,
+                "usage": AIUsage(input_tokens=1, output_tokens=1),
+                "tool_events": [
+                    {
+                        "type": "tool_use",
+                        "tool_use_id": "tu_1",
+                        "name": "search_notes",
+                        "input": {"query": "foo"},
+                    },
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "tu_1",
+                        "name": "search_notes",
+                        "result": {"count": 2},
+                    },
+                ],
+            }
+
+        mock_service = Mock()
+        mock_service.stream_message.side_effect = fake_stream
+        mock_create_service.return_value = mock_service
+
+        form = self._create_form()
+        command = StreamSendMessageCommand(form)
+        events = list(command.execute())
+
+        types = [e["type"] for e in events]
+        self.assertIn("tool_use", types)
+        self.assertIn("tool_result", types)
+
+        tool_use = next(e for e in events if e["type"] == "tool_use")
+        self.assertEqual(tool_use["name"], "search_notes")
+        self.assertEqual(tool_use["input"], {"query": "foo"})
+
+        tool_result = next(e for e in events if e["type"] == "tool_result")
+        self.assertEqual(tool_result["result"]["count"], 2)
+
+        # Persisted assistant message carries the full tool_events log.
+        done = events[-1]
+        persisted = done["message"]["tool_events"]
+        self.assertEqual(len(persisted), 2)
+        self.assertEqual(persisted[0]["type"], "tool_use")
+        self.assertEqual(persisted[1]["type"], "tool_result")

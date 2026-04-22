@@ -52,10 +52,10 @@ class UpdatePageCommand(AbstractBaseCommand):
                     page.slug = new_slug
 
         if (
-            "content" in self.form.cleaned_data
-            and self.form.cleaned_data["content"] is not None
+            "whiteboard_snapshot" in self.form.cleaned_data
+            and self.form.cleaned_data["whiteboard_snapshot"] is not None
         ):
-            page.content = self.form.cleaned_data["content"]
+            page.whiteboard_snapshot = self.form.cleaned_data["whiteboard_snapshot"]
 
         if (
             "is_published" in self.form.cleaned_data

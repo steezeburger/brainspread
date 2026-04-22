@@ -205,6 +205,18 @@ window.HistoricalSidebar = {
         return `\x00ESC${idx}\x00`;
       });
 
+      // Extract markdown links [text](url) before other transforms can munge
+      // the brackets.
+      const linkSegments = [];
+      formatted = formatted.replace(
+        /\[([^\]]+)\]\(([^)]+)\)/g,
+        (_match, text, url) => {
+          const idx = linkSegments.length;
+          linkSegments.push({ text, url });
+          return `\x00LINK${idx}\x00`;
+        }
+      );
+
       // Format lines starting with > as blockquotes
       formatted = formatted.replace(
         /^>\s?(.+)/gm,
@@ -256,11 +268,57 @@ window.HistoricalSidebar = {
           .join(`<code class="markdown-code">${safeCode}</code>`);
       });
 
+      // Linkify bare URLs (https://, http://, www.).
+      formatted = formatted.replace(
+        /(^|[\s(])((?:https?:\/\/|www\.)[^\s<>"]+[^\s<>".,;:!?)])/g,
+        (_match, lead, url) => {
+          const safe = this.safeUrl(url);
+          if (!safe) return _match;
+          return `${lead}<a class="markdown-link" href="${this.escapeAttr(safe)}" target="_blank" rel="noopener noreferrer">${this.escapeHtml(url)}</a>`;
+        }
+      );
+
+      // Restore markdown link placeholders as <a> tags.
+      linkSegments.forEach(({ text, url }, idx) => {
+        const safe = this.safeUrl(url);
+        const replacement = safe
+          ? `<a class="markdown-link" href="${this.escapeAttr(safe)}" target="_blank" rel="noopener noreferrer">${text}</a>`
+          : `[${text}](${this.escapeHtml(url)})`;
+        formatted = formatted.split(`\x00LINK${idx}\x00`).join(replacement);
+      });
+
       // Replace hashtags with clickable styled spans
       return formatted.replace(
         /#([a-zA-Z0-9_-]+)/g,
         '<span class="inline-tag clickable-tag" data-tag="$1">#$1</span>'
       );
+    },
+
+    safeUrl(rawUrl) {
+      if (!rawUrl) return null;
+      const trimmed = String(rawUrl).trim();
+      if (!trimmed) return null;
+      if (/^(javascript|data|vbscript|file):/i.test(trimmed)) return null;
+      if (/^www\./i.test(trimmed)) return "https://" + trimmed;
+      if (/^(https?:|mailto:|tel:|\/|#)/i.test(trimmed)) return trimmed;
+      if (/^[a-z0-9.-]+\.[a-z]{2,}/i.test(trimmed)) return "https://" + trimmed;
+      return null;
+    },
+
+    escapeAttr(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    },
+
+    escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
     },
 
     handleTagClick(event) {

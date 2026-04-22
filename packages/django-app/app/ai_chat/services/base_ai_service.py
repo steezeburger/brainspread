@@ -3,6 +3,10 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, List, Optional, Protocol
 
 
+def _empty_tool_events() -> List[Dict[str, Any]]:
+    return []
+
+
 class AIServiceError(Exception):
     """Base exception for AI service errors"""
 
@@ -12,11 +16,35 @@ class AIServiceError(Exception):
 class ToolExecutor(Protocol):
     """Callable that runs a custom (client-side) tool and returns a JSON-
     serialisable result dict. Services use this to complete a tool-use loop
-    when the model asks for a tool that isn't provider-native."""
+    when the model asks for a tool that isn't provider-native.
+
+    `requires_approval(name)` returning True causes the service to pause
+    the tool loop instead of executing the tool — the user must explicitly
+    approve via the pending-approval flow before the tool runs.
+    """
 
     def is_known(self, name: str) -> bool: ...
 
+    def requires_approval(self, name: str) -> bool: ...
+
     def execute(self, name: str, args: Dict[str, Any]) -> Dict[str, Any]: ...
+
+
+@dataclass
+class PendingApproval:
+    """Snapshot of a paused tool-use turn.
+
+    `messages` is the conversation passed to the API up to (but not
+    including) the paused assistant turn. `assistant_blocks` holds that
+    turn's serialized content blocks so resume can append it plus the
+    tool_result follow-up. `tool_uses` describes each custom tool call
+    the model requested (reads are auto-approved; writes wait for the
+    user).
+    """
+
+    messages: List[Dict[str, Any]] = field(default_factory=list)
+    assistant_blocks: List[Dict[str, Any]] = field(default_factory=list)
+    tool_uses: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -42,6 +70,12 @@ class AIServiceResult:
     content: str
     thinking: Optional[str] = None
     usage: AIUsage = field(default_factory=AIUsage)
+    # Captured during a custom-tool loop: ordered `tool_use` and `tool_result`
+    # dicts so the UI can render what the model actually did.
+    tool_events: List[Dict[str, Any]] = field(default_factory=_empty_tool_events)
+    # Set when the model asked for a tool that requires user approval.
+    # `content` is the partial assistant text emitted before the pause.
+    pending_approval: Optional[PendingApproval] = None
 
 
 class BaseAIService(ABC):
@@ -106,11 +140,22 @@ class BaseAIService(ABC):
             yield {"type": "text", "delta": result.content}
         if result.thinking:
             yield {"type": "thinking", "delta": result.thinking}
+        for event in result.tool_events:
+            yield event
+        if result.pending_approval is not None:
+            yield {
+                "type": "approval_required",
+                "messages": result.pending_approval.messages,
+                "assistant_blocks": result.pending_approval.assistant_blocks,
+                "tool_uses": result.pending_approval.tool_uses,
+            }
         yield {
             "type": "done",
             "content": result.content,
             "thinking": result.thinking,
             "usage": result.usage,
+            "tool_events": result.tool_events,
+            "pending_approval": result.pending_approval,
         }
 
     @abstractmethod

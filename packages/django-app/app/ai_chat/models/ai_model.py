@@ -30,6 +30,8 @@ class AIModel(UUIDModelMixin, CRUDTimestampsMixin):
     class Meta:
         db_table = "ai_models"
         ordering = ["provider__name", "name"]
+        verbose_name = "AI Model"
+        verbose_name_plural = "AI Models"
 
     def __str__(self) -> str:
         return f"{self.name} ({self.provider.name})"

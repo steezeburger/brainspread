@@ -13,7 +13,6 @@ from ..models import Page
 class CreatePageForm(BaseForm):
     user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
     title = forms.CharField(max_length=200, required=True)
-    content = forms.CharField(widget=forms.Textarea, required=False)
     slug = forms.SlugField(max_length=200, required=False)
     is_published = forms.BooleanField(required=False, initial=True)
     page_type = forms.ChoiceField(

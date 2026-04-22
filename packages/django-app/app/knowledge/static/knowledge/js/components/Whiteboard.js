@@ -124,7 +124,7 @@ const Whiteboard = {
       this.applyThemeToEditor();
       this.watchThemeChanges();
 
-      const snapshot = this.parseStoredSnapshot(this.page.content);
+      const snapshot = this.parseStoredSnapshot(this.page.whiteboard_snapshot);
       if (snapshot) {
         try {
           this._tldrawApi.loadSnapshot(editor.store, snapshot);
@@ -180,12 +180,12 @@ const Whiteboard = {
       this._boundThemeObserver = observer;
     },
 
-    parseStoredSnapshot(content) {
-      if (!content || !content.trim()) return null;
+    parseStoredSnapshot(rawSnapshot) {
+      if (!rawSnapshot || !rawSnapshot.trim()) return null;
       try {
-        return JSON.parse(content);
+        return JSON.parse(rawSnapshot);
       } catch (err) {
-        console.warn("Stored whiteboard content is not valid JSON:", err);
+        console.warn("Stored whiteboard snapshot is not valid JSON:", err);
         return null;
       }
     },
@@ -226,7 +226,7 @@ const Whiteboard = {
       this.saveStatus = "saving";
       try {
         const result = await window.apiService.updatePage(this.page.uuid, {
-          content: payload,
+          whiteboard_snapshot: payload,
         });
         if (result.success) {
           this._lastSavedPayload = payload;

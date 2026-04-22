@@ -317,6 +317,96 @@ class SendMessageCommandTestCase(TestCase):
         self.assertIn("**My question:**", formatted_message)
         self.assertIn("What should I do?", formatted_message)
 
+    def test_build_tools_web_search_enabled_by_default(self):
+        tools, executor = SendMessageCommand._build_tools(
+            provider_name="openai", user=self.user, enable_notes_tools=False
+        )
+        self.assertIsNotNone(tools)
+        self.assertTrue(
+            any(t.get("type") == "web_search_preview" for t in tools),
+            f"Expected web search tool in {tools}",
+        )
+        self.assertIsNone(executor)
+
+    def test_build_tools_web_search_disabled(self):
+        tools, executor = SendMessageCommand._build_tools(
+            provider_name="openai",
+            user=self.user,
+            enable_notes_tools=False,
+            enable_web_search=False,
+        )
+        # No web search and no notes tools → no tools at all.
+        self.assertIsNone(tools)
+        self.assertIsNone(executor)
+
+    def test_build_tools_anthropic_notes_only_when_web_search_off(self):
+        tools, executor = SendMessageCommand._build_tools(
+            provider_name="anthropic",
+            user=self.user,
+            enable_notes_tools=True,
+            enable_web_search=False,
+        )
+        self.assertIsNotNone(tools)
+        tool_names = {t.get("name") for t in tools}
+        # No web search tool
+        self.assertFalse(any(t.get("type") == "web_search_20250305" for t in tools))
+        # Notes tools still present
+        self.assertIn("search_notes", tool_names)
+        self.assertIsNotNone(executor)
+
+    def test_build_tools_auto_approve_disables_approval_gate(self):
+        # With write tools + auto-approve, the executor should report no
+        # tool needs approval — the service then runs writes inline.
+        tools, executor = SendMessageCommand._build_tools(
+            provider_name="anthropic",
+            user=self.user,
+            enable_notes_tools=True,
+            enable_web_search=False,
+            enable_notes_write_tools=True,
+            auto_approve_notes_writes=True,
+        )
+        self.assertIsNotNone(executor)
+        self.assertFalse(executor.requires_approval("edit_block"))
+        self.assertFalse(executor.requires_approval("create_block"))
+        # Schemas for write tools are still surfaced.
+        tool_names = {t.get("name") for t in tools}
+        self.assertIn("edit_block", tool_names)
+
+    def test_build_tools_auto_approve_ignored_without_write_tools(self):
+        # auto_approve is meaningless when write tools aren't granted —
+        # _build_tools should not flip the executor into auto-approve mode.
+        _, executor = SendMessageCommand._build_tools(
+            provider_name="anthropic",
+            user=self.user,
+            enable_notes_tools=True,
+            enable_web_search=False,
+            enable_notes_write_tools=False,
+            auto_approve_notes_writes=True,
+        )
+        self.assertIsNotNone(executor)
+        self.assertFalse(executor.auto_approve_writes)
+
+    def test_form_default_enables_web_search(self):
+        # BaseForm.clean strips fields not present in input data, so callers
+        # must `.get("enable_web_search", True)` to read the default. The
+        # contract is: omitted = web search on. Verify it's never explicit
+        # False when the client didn't send the flag.
+        form = self._create_form()
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertTrue(form.cleaned_data.get("enable_web_search", True))
+
+    def test_form_respects_explicit_web_search_false(self):
+        form_data = {
+            "user": self.user.id,
+            "message": "hi",
+            "model": "gpt-4",
+            "context_blocks": [],
+            "enable_web_search": False,
+        }
+        form = SendMessageForm(form_data)
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertFalse(form.cleaned_data["enable_web_search"])
+
     def test_format_message_no_context_blocks(self):
         """Test message formatting without context blocks"""
         form = self._create_form(message="Simple question")

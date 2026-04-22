@@ -90,6 +90,13 @@ const Page = {
       "spotlight:new-block",
       this.handleSpotlightNewBlock
     );
+    // AI chat write tools dispatch this when they touch a page; reload
+    // silently if it's the page we're viewing so the user sees the new
+    // state without refreshing.
+    window.addEventListener(
+      "brainspread:notes-modified",
+      this.handleNotesModified
+    );
     // Load page data
     await this.loadPage();
   },
@@ -104,6 +111,10 @@ const Page = {
     document.removeEventListener(
       "spotlight:new-block",
       this.handleSpotlightNewBlock
+    );
+    window.removeEventListener(
+      "brainspread:notes-modified",
+      this.handleNotesModified
     );
   },
 
@@ -123,6 +134,35 @@ const Page = {
         return slug;
       }
       return null;
+    },
+
+    handleNotesModified(event) {
+      // AI chat edited blocks / pages. Reload silently if the affected set
+      // includes this page. Debounce so bursts of tool calls (common with
+      // auto-approve) only trigger one reload.
+      if (!this.page || !this.page.uuid) return;
+      const pages = event?.detail?.page_uuids || [];
+      if (!pages.includes(this.page.uuid)) return;
+      if (this._notesModifiedTimer) {
+        clearTimeout(this._notesModifiedTimer);
+      }
+      this._notesModifiedTimer = setTimeout(() => {
+        this._notesModifiedTimer = null;
+        // If the user is actively typing in a block on this page, skip
+        // the reload — clobbering an in-progress edit would be worse than
+        // showing stale state. They'll see the AI's changes the next time
+        // they finish editing (which saves and reloads).
+        const active = document.activeElement;
+        if (
+          active &&
+          active.tagName === "TEXTAREA" &&
+          this.$el &&
+          this.$el.contains(active)
+        ) {
+          return;
+        }
+        this.loadPage({ silent: true });
+      }, 300);
     },
 
     async loadPage({ silent = false } = {}) {
@@ -857,6 +897,19 @@ const Page = {
         return `\x00ESC${idx}\x00`;
       });
 
+      // Extract markdown links [text](url) before other transforms can munge
+      // the brackets. Stored as placeholders and restored as <a> tags at the
+      // end so emphasis/etc inside the link text still gets formatted.
+      const linkSegments = [];
+      formatted = formatted.replace(
+        /\[([^\]]+)\]\(([^)]+)\)/g,
+        (_match, text, url) => {
+          const idx = linkSegments.length;
+          linkSegments.push({ text, url });
+          return `\x00LINK${idx}\x00`;
+        }
+      );
+
       // Format lines starting with > as blockquotes
       formatted = formatted.replace(
         /^>\s?(.+)/gm,
@@ -921,11 +974,63 @@ const Page = {
           .join(`<code class="markdown-code">${safeCode}</code>`);
       });
 
+      // Linkify bare URLs (https://, http://, www.) that aren't already
+      // wrapped in a markdown link placeholder.
+      formatted = formatted.replace(
+        /(^|[\s(])((?:https?:\/\/|www\.)[^\s<>"]+[^\s<>".,;:!?)])/g,
+        (_match, lead, url) => {
+          const safe = this.safeUrl(url);
+          if (!safe) return _match;
+          return `${lead}<a class="markdown-link" href="${this.escapeAttr(safe)}" target="_blank" rel="noopener noreferrer">${this.escapeHtml(url)}</a>`;
+        }
+      );
+
+      // Restore markdown link placeholders as <a> tags. URL is escaped into
+      // the href attribute; unsafe schemes fall back to plain text.
+      linkSegments.forEach(({ text, url }, idx) => {
+        const safe = this.safeUrl(url);
+        const replacement = safe
+          ? `<a class="markdown-link" href="${this.escapeAttr(safe)}" target="_blank" rel="noopener noreferrer">${text}</a>`
+          : `[${text}](${this.escapeHtml(url)})`;
+        formatted = formatted.split(`\x00LINK${idx}\x00`).join(replacement);
+      });
+
       // Replace hashtags with clickable anchor elements so browsers support cmd+click, middle-click, right-click → open in new tab
       return formatted.replace(
         /#([a-zA-Z0-9_-]+)/g,
         '<a class="inline-tag clickable-tag" href="/knowledge/page/$1/" data-tag="$1">#$1</a>'
       );
+    },
+
+    safeUrl(rawUrl) {
+      if (!rawUrl) return null;
+      const trimmed = String(rawUrl).trim();
+      if (!trimmed) return null;
+      // Block dangerous schemes outright.
+      if (/^(javascript|data|vbscript|file):/i.test(trimmed)) return null;
+      // Bare www. → assume https.
+      if (/^www\./i.test(trimmed)) return "https://" + trimmed;
+      // Trusted schemes pass through.
+      if (/^(https?:|mailto:|tel:|\/|#)/i.test(trimmed)) return trimmed;
+      // Anything else (e.g. some.com without scheme) → treat as https.
+      if (/^[a-z0-9.-]+\.[a-z]{2,}/i.test(trimmed)) return "https://" + trimmed;
+      return null;
+    },
+
+    escapeAttr(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    },
+
+    escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
     },
 
     goToPage(pageSlug) {

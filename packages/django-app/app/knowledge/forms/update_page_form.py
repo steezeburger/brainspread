@@ -15,7 +15,7 @@ class UpdatePageForm(BaseForm):
     user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
     page = UUIDModelChoiceField(queryset=PageRepository.get_queryset(), required=True)
     title = forms.CharField(max_length=200, required=False)
-    content = forms.CharField(widget=forms.Textarea, required=False)
+    whiteboard_snapshot = forms.CharField(widget=forms.Textarea, required=False)
     is_published = forms.BooleanField(required=False)
 
     def clean_page(self) -> Page:
@@ -30,8 +30,9 @@ class UpdatePageForm(BaseForm):
     def clean_title(self) -> Optional[str]:
         # Distinguish "title omitted from payload" from "title explicitly blank".
         # Django's CharField(required=False) coerces a missing field to "", so
-        # without this guard every partial update (e.g. whiteboard snapshot saves
-        # that only send `content`) would trip the empty-title check.
+        # without this guard every partial update (e.g. whiteboard snapshot
+        # saves that only send `whiteboard_snapshot`) would trip the empty-
+        # title check.
         if "title" not in self.data:
             return None
         title = self.cleaned_data.get("title")
