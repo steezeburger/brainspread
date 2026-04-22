@@ -476,26 +476,19 @@ body {
   opacity: 0.85;
 }
 
-/* Tools chip: border change signals the popover is open; a small ✓ glyph
-   next to the label signals "at least one tool is on". We don't invert
-   fg/bg like ctx because the popover itself carries the detailed state. */
-.chat-controls .tools-btn.open {
+/* Tools chip inverts fg/bg when any tool is on — matches the ctx chip
+   treatment so "chip inverted = feature on" is a single consistent rule. */
+.chat-controls .tools-btn.active {
+  background: var(--text-primary) !important;
+  color: var(--bg-primary) !important;
   border-color: var(--text-primary) !important;
 }
 
-/* Always reserved to keep the button width constant whether or not any
-   tool is active — avoids layout jitter when toggling. */
-.tools-btn-check {
-  font-weight: bold;
-  color: var(--text-primary);
-  display: inline-block;
-  width: 0.7rem;
-  text-align: center;
-  visibility: hidden;
-}
-
-.tools-btn-check.active {
-  visibility: visible;
+.chat-controls .tools-btn.active:hover {
+  background: var(--text-primary) !important;
+  color: var(--bg-primary) !important;
+  border-color: var(--text-primary) !important;
+  opacity: 0.85;
 }
 
 /* Tools popover — anchored above the trigger since controls sit at the bottom */
