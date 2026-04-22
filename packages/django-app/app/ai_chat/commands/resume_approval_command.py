@@ -65,9 +65,7 @@ class ResumeApprovalCommand(AbstractBaseCommand):
             }
             return
 
-        model_name = (
-            approval.ai_model.name if approval.ai_model else None
-        ) or ""
+        model_name = (approval.ai_model.name if approval.ai_model else None) or ""
         if not model_name:
             yield {
                 "type": "error",
@@ -172,8 +170,8 @@ class ResumeApprovalCommand(AbstractBaseCommand):
                         final_content = (approval.partial_text or "") + turn_content
                     if turn_thinking:
                         final_thinking = (
-                            (approval.partial_thinking or "") + turn_thinking
-                        )
+                            approval.partial_thinking or ""
+                        ) + turn_thinking
                     self._merge_usage(final_usage, turn_usage)
                     final_tool_events = resume_tool_events + list(turn_tool_events)
                     final_pending_approval = event.get("pending_approval")
@@ -196,8 +194,7 @@ class ResumeApprovalCommand(AbstractBaseCommand):
                     session=session,
                     ai_model=ai_model,
                     provider_name=approval.provider_name,
-                    system_prompt=approval.system_prompt
-                    or BRAINSPREAD_SYSTEM_PROMPT,
+                    system_prompt=approval.system_prompt or BRAINSPREAD_SYSTEM_PROMPT,
                     messages_snapshot=final_pending_approval.messages,
                     assistant_blocks=final_pending_approval.assistant_blocks,
                     tool_uses=final_pending_approval.tool_uses,

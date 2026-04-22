@@ -96,7 +96,9 @@ const ChatPanel = {
     },
     hasActiveTools() {
       return (
-        this.enableNotesTools || this.enableNotesWriteTools || this.enableWebSearch
+        this.enableNotesTools ||
+        this.enableNotesWriteTools ||
+        this.enableWebSearch
       );
     },
   },
@@ -704,7 +706,10 @@ const ChatPanel = {
         .map(([k, v]) => {
           let display;
           if (typeof v === "string") {
-            display = v.length > 40 ? JSON.stringify(v.slice(0, 40)) + "…" : JSON.stringify(v);
+            display =
+              v.length > 40
+                ? JSON.stringify(v.slice(0, 40)) + "…"
+                : JSON.stringify(v);
           } else {
             try {
               display = JSON.stringify(v);

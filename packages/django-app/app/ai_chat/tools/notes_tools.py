@@ -110,9 +110,7 @@ NOTES_WRITE_TOOLS: List[Dict[str, Any]] = [
                 },
                 "order": {
                     "type": "integer",
-                    "description": (
-                        "Optional order within parent; defaults to end."
-                    ),
+                    "description": ("Optional order within parent; defaults to end."),
                 },
             },
             "required": ["page_uuid", "content"],

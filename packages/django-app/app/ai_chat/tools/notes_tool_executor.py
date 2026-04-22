@@ -265,9 +265,7 @@ class NotesToolExecutor:
         blocks = []
         missing: List[str] = []
         for uuid_value in block_uuids:
-            block = BlockRepository.get_by_uuid(
-                str(uuid_value).strip(), user=self.user
-            )
+            block = BlockRepository.get_by_uuid(str(uuid_value).strip(), user=self.user)
             if block is None:
                 missing.append(str(uuid_value))
             else:

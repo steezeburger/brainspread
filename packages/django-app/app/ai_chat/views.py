@@ -196,9 +196,7 @@ class ResumeApprovalView(APIView):
                 for event in command.execute():
                     yield _sse_event(event)
             except SendMessageCommandError as e:
-                logger.warning(
-                    f"Resume command error for user {request.user.id}: {e}"
-                )
+                logger.warning(f"Resume command error for user {request.user.id}: {e}")
                 yield _sse_event({"type": "error", "error": str(e)})
             except Exception as e:
                 logger.error(

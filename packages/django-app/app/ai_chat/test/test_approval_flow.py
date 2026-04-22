@@ -198,7 +198,9 @@ class ResumeApprovalCommandTestCase(TestCase):
 
         types = [e["type"] for e in events]
         self.assertEqual(types[-1], "done")
-        mock_execute.assert_called_once_with("edit_block", {"block_uuid": "b1", "content": "new"})
+        mock_execute.assert_called_once_with(
+            "edit_block", {"block_uuid": "b1", "content": "new"}
+        )
 
         approval.refresh_from_db()
         self.assertEqual(approval.status, PendingToolApproval.STATUS_COMPLETED)

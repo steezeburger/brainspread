@@ -68,9 +68,7 @@ class NotesToolExecutorWriteTestCase(TestCase):
 
         self.assertIn("error", result)
         self.assertFalse(
-            Block.objects.filter(
-                user=self.other_user, content="nope"
-            ).exists()
+            Block.objects.filter(user=self.other_user, content="nope").exists()
         )
 
     def test_edit_block_updates_content(self):
