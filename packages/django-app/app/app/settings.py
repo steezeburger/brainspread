@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.0/ref/settings/
 """
 
 import os
+import time
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -88,6 +89,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "common.context_processors.static_version",
             ],
         },
     },
@@ -149,6 +151,11 @@ STATIC_URL = os.environ.get("STATIC_URL", "/static/")
 # path to static directory in docker container.
 # this is where files are created when running `collectstatic`
 STATIC_ROOT = os.environ.get("STATIC_ROOT", os.path.join(BASE_DIR, "static"))
+
+# Cache-busting token appended to static asset URLs. Prefer an explicit
+# STATIC_VERSION set by deploys (e.g. a git SHA); otherwise use process
+# start time so every web process restart invalidates cached assets.
+STATIC_VERSION = os.environ.get("STATIC_VERSION") or str(int(time.time()))
 
 # https://docs.djangoproject.com/en/4.0/topics/files/
 MEDIA_URL = os.environ.get("MEDIA_URL", "/media/")
