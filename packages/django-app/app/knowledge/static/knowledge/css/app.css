@@ -3653,6 +3653,38 @@ kbd {
   padding-left: 0.5rem;
 }
 
+.tool-calls-block.tool-calls-running {
+  border-left-color: var(--text-primary);
+}
+
+.tool-calls-block.tool-calls-running .tool-calls-toggle {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.tool-calls-running-dot {
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--text-primary);
+  margin: 0 0.35rem 0 0.15rem;
+  vertical-align: middle;
+  animation: tool-calls-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes tool-calls-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
 .tool-calls-toggle {
   background: none;
   border: none;

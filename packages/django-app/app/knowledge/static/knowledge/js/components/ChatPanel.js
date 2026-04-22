@@ -261,6 +261,7 @@ const ChatPanel = {
               name: event.name,
               input: event.input || {},
             });
+            this.autoExpandToolCalls(assistantIndex);
           } else if (event.type === "tool_result") {
             if (!this.messages[assistantIndex].tool_events) {
               this.messages[assistantIndex].tool_events = [];
@@ -685,6 +686,40 @@ const ChatPanel = {
       };
     },
 
+    autoExpandToolCalls(messageIndex) {
+      // Open the tools strip the first time a tool fires on this message
+      // so the user can see what's happening live (especially important
+      // with auto-approve, where there's no other surface for tool work).
+      // We only flip from undefined → true; an explicit user collapse
+      // (false) is preserved.
+      if (this.expandedToolCalls[messageIndex] === undefined) {
+        this.expandedToolCalls = {
+          ...this.expandedToolCalls,
+          [messageIndex]: true,
+        };
+      }
+    },
+
+    runningToolName(msg) {
+      // Latest tool_use without a matching tool_result is what's "in
+      // flight". Used to label the strip header while streaming.
+      const events = msg && msg.tool_events ? msg.tool_events : [];
+      if (!events.length) return null;
+      const seenResults = new Set();
+      for (const ev of events) {
+        if (ev.type === "tool_result" && ev.tool_use_id) {
+          seenResults.add(ev.tool_use_id);
+        }
+      }
+      for (let i = events.length - 1; i >= 0; i--) {
+        const ev = events[i];
+        if (ev.type === "tool_use" && !seenResults.has(ev.tool_use_id)) {
+          return ev.name || "tool";
+        }
+      }
+      return null;
+    },
+
     toggleToolCall(messageIndex, eventIndex) {
       const key = `${messageIndex}:${eventIndex}`;
       this.expandedToolCall = {
@@ -869,6 +904,7 @@ const ChatPanel = {
               name: event.name,
               input: event.input || {},
             });
+            this.autoExpandToolCalls(messageIndex);
           } else if (event.type === "tool_result") {
             if (!this.messages[messageIndex].tool_events) {
               this.messages[messageIndex].tool_events = [];
@@ -1085,9 +1121,16 @@ const ChatPanel = {
               </button>
               <div v-if="expandedThinking[index]" class="thinking-content" v-html="parseMarkdown(msg.thinking)"></div>
             </div>
-            <div v-if="msg.role === 'assistant' && toolCallPairs(msg).length" class="tool-calls-block">
+            <div v-if="msg.role === 'assistant' && toolCallPairs(msg).length" class="tool-calls-block" :class="{ 'tool-calls-running': msg.streaming && runningToolName(msg) }">
               <button class="tool-calls-toggle" @click="toggleToolCalls(index)">
-                {{ expandedToolCalls[index] ? '▾' : '▸' }} tools ({{ toolCallPairs(msg).length }})
+                {{ expandedToolCalls[index] ? '▾' : '▸' }}
+                <template v-if="msg.streaming && runningToolName(msg)">
+                  <span class="tool-calls-running-dot"></span>
+                  running {{ runningToolName(msg) }}…
+                </template>
+                <template v-else>
+                  tools ({{ toolCallPairs(msg).length }})
+                </template>
               </button>
               <div v-if="expandedToolCalls[index]" class="tool-calls-list">
                 <div
