@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Tuple
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.utils.text import slugify
 
 from knowledge.commands.sync_block_tags_command import SyncBlockTagsCommand
 from knowledge.forms.sync_block_tags_form import SyncBlockTagsForm
@@ -29,7 +30,7 @@ PAGES: List[Tuple[str, str, List[str]]] = [
         "Django",
         [
             "Web framework built on #python",
-            "ORM patterns — prefer #repositories over fat models",
+            "ORM patterns — prefer #repository-pattern over fat models",
             "Testing strategies live in #testing",
         ],
     ),
@@ -77,7 +78,7 @@ PAGES: List[Tuple[str, str, List[str]]] = [
         ["Fixture factories for #testing", "Works smoothly with #django models"],
     ),
     (
-        "repositories",
+        "repository-pattern",
         "Repository Pattern",
         [
             "Keeps queries out of views and commands",
@@ -99,7 +100,7 @@ PAGES: List[Tuple[str, str, List[str]]] = [
         "Knowledge Management",
         [
             "Captures notes, ideas, and references over time",
-            "Tools: #logseq #obsidian #roam",
+            "Tools: #logseq #obsidian #roam-research",
             "Graph visualization (#graph-view) surfaces hidden connections",
         ],
     ),
@@ -112,7 +113,7 @@ PAGES: List[Tuple[str, str, List[str]]] = [
         ],
     ),
     (
-        "roam",
+        "roam-research",
         "Roam Research",
         ["Pioneered the bidirectional-linking approach to #knowledge-management"],
     ),
@@ -175,6 +176,11 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options) -> None:
+        # Guard against drift — the app derives slug from title via slugify()
+        # on create and update, so the seed data must do the same or it ends
+        # up modeling states the UI can't produce.
+        self._assert_slugs_match_titles()
+
         user = self._resolve_user(options.get("user"))
         reset: bool = options.get("reset", False)
 
@@ -194,6 +200,19 @@ class Command(BaseCommand):
                 f"{created_blocks} blocks created."
             )
         )
+
+    def _assert_slugs_match_titles(self) -> None:
+        mismatches = [
+            (slug, title, slugify(title))
+            for slug, title, _blocks in PAGES
+            if slug != slugify(title)
+        ]
+        if mismatches:
+            details = ", ".join(
+                f"{slug!r} != slugify({title!r}) == {expected!r}"
+                for slug, title, expected in mismatches
+            )
+            raise CommandError(f"PAGES slug/title mismatch: {details}")
 
     def _resolve_user(self, email: Optional[str]) -> User:
         if email:
@@ -229,7 +248,6 @@ class Command(BaseCommand):
                     "title": title,
                     "page_type": "page",
                     "is_published": True,
-                    "content": "",
                 },
             )
             pages[slug] = page

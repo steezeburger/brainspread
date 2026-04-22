@@ -89,6 +89,12 @@ const BlockComponent = {
       // Touch tracking for distinguishing taps from scrolls
       touchStartX: null,
       touchStartY: null,
+      // Hashtag autocomplete state
+      tagSuggestions: [],
+      tagQueryStart: -1,
+      tagQuery: "",
+      tagSelectedIndex: 0,
+      tagSearchToken: 0,
     };
   },
   computed: {
@@ -103,6 +109,9 @@ const BlockComponent = {
     },
     childrenCount() {
       return this.block.children?.length || 0;
+    },
+    showTagSuggestions() {
+      return this.tagQueryStart >= 0 && this.tagSuggestions.length > 0;
     },
   },
   watch: {
@@ -178,7 +187,9 @@ const BlockComponent = {
       if (this.isTapGesture(event)) {
         event.preventDefault();
         if (
-          ["todo", "done", "later", "wontdo"].includes(this.block.block_type)
+          ["todo", "doing", "done", "later", "wontdo"].includes(
+            this.block.block_type
+          )
         ) {
           this.toggleBlockTodo(this.block);
         }
@@ -428,6 +439,117 @@ const BlockComponent = {
       });
     },
 
+    // --- Hashtag autocomplete ---
+    // Detect a `#query` prefix ending at the cursor. Returns { start, query }
+    // or null when the cursor isn't in a hashtag context.
+    detectTagContext(value, caret) {
+      if (caret == null || caret < 0) return null;
+      const upToCaret = value.slice(0, caret);
+      // Match an optional hashtag starting after whitespace or at string start.
+      // Allow empty query so a bare `#` still triggers suggestions.
+      const match = upToCaret.match(/(^|\s)#([a-zA-Z0-9_-]*)$/);
+      if (!match) return null;
+      const hashIndex = upToCaret.length - match[2].length - 1;
+      return { start: hashIndex, query: match[2] };
+    },
+    closeTagSuggestions() {
+      this.tagSuggestions = [];
+      this.tagQueryStart = -1;
+      this.tagQuery = "";
+      this.tagSelectedIndex = 0;
+    },
+    async updateTagSuggestions(value, caret) {
+      const ctx = this.detectTagContext(value, caret);
+      if (!ctx) {
+        this.closeTagSuggestions();
+        return;
+      }
+      this.tagQueryStart = ctx.start;
+      this.tagQuery = ctx.query;
+
+      // Each search gets a monotonically increasing token so stale responses
+      // (from slower earlier requests) don't overwrite newer results.
+      const token = ++this.tagSearchToken;
+      try {
+        const result = await window.apiService.searchPages(ctx.query, 8);
+        if (token !== this.tagSearchToken) return;
+        if (this.tagQueryStart < 0) return;
+        const pages = (result && result.data && result.data.pages) || [];
+        this.tagSuggestions = pages;
+        if (this.tagSelectedIndex >= pages.length) {
+          this.tagSelectedIndex = 0;
+        }
+      } catch (error) {
+        console.error("tag search failed:", error);
+        if (token === this.tagSearchToken) this.tagSuggestions = [];
+      }
+    },
+    insertTagSuggestion(page) {
+      if (!page || this.tagQueryStart < 0) return;
+      const textarea = this.$refs.blockTextarea;
+      const content = this.block.content || "";
+      const caret = textarea ? textarea.selectionEnd : content.length;
+      const before = content.slice(0, this.tagQueryStart);
+      const after = content.slice(caret);
+      const inserted = `#${page.slug} `;
+      const newContent = before + inserted + after;
+      this.onBlockContentChange(this.block, newContent);
+      this.closeTagSuggestions();
+      // Restore caret just after the inserted tag+space.
+      this.$nextTick(() => {
+        if (textarea) {
+          const pos = before.length + inserted.length;
+          textarea.focus();
+          textarea.setSelectionRange(pos, pos);
+        }
+      });
+    },
+    handleTextareaInput(event) {
+      const value = event.target.value;
+      this.onBlockContentChange(this.block, value);
+      this.updateTagSuggestions(value, event.target.selectionEnd);
+    },
+    handleTextareaKeydown(event) {
+      if (this.showTagSuggestions) {
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          event.stopPropagation();
+          this.tagSelectedIndex =
+            (this.tagSelectedIndex + 1) % this.tagSuggestions.length;
+          return;
+        }
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          event.stopPropagation();
+          this.tagSelectedIndex =
+            (this.tagSelectedIndex - 1 + this.tagSuggestions.length) %
+            this.tagSuggestions.length;
+          return;
+        }
+        if (event.key === "Enter" || event.key === "Tab") {
+          const choice = this.tagSuggestions[this.tagSelectedIndex];
+          if (choice) {
+            event.preventDefault();
+            event.stopPropagation();
+            this.insertTagSuggestion(choice);
+            return;
+          }
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          this.closeTagSuggestions();
+          return;
+        }
+      }
+      this.onBlockKeyDown(event, this.block);
+    },
+    handleTextareaBlur() {
+      // Delay close so a click on a suggestion item still registers.
+      setTimeout(() => this.closeTagSuggestions(), 150);
+      this.stopEditing(this.block);
+    },
+
     handleContextMenuAction(action) {
       this.hideContextMenu();
 
@@ -484,15 +606,17 @@ const BlockComponent = {
           class="block-bullet"
           :class="{
             'todo': block.block_type === 'todo',
+            'doing': block.block_type === 'doing',
             'done': block.block_type === 'done',
             'later': block.block_type === 'later',
             'wontdo': block.block_type === 'wontdo'
           }"
-          @click="['todo', 'done', 'later', 'wontdo'].includes(block.block_type) ? toggleBlockTodo(block) : null"
+          @click="['todo', 'doing', 'done', 'later', 'wontdo'].includes(block.block_type) ? toggleBlockTodo(block) : null"
           @touchstart="handleTouchStart"
           @touchend="handleTodoTouchEnd"
         >
           <span v-if="block.block_type === 'todo'">☐</span>
+          <span v-else-if="block.block_type === 'doing'">◐</span>
           <span v-else-if="block.block_type === 'done'">☑</span>
           <span v-else-if="block.block_type === 'later'">☐</span>
           <span v-else-if="block.block_type === 'wontdo'">⊘</span>
@@ -511,19 +635,41 @@ const BlockComponent = {
           @touchend="handleContentTouchEnd"
           v-html="formatContentWithTags(block.content, block.block_type, block.properties)"
         ></div>
-        <textarea
-          v-else
-          :value="block.content"
-          @input="onBlockContentChange(block, $event.target.value)"
-          @keydown="onBlockKeyDown($event, block)"
-          @paste="onBlockPaste($event, block)"
-          @blur="stopEditing(block)"
-          class="block-content"
-          :class="{ 'completed': ['done', 'wontdo'].includes(block.block_type) }"
-          rows="1"
-          placeholder="start writing..."
-          ref="blockTextarea"
-        ></textarea>
+        <div v-else class="block-content-wrapper">
+          <textarea
+            :value="block.content"
+            @input="handleTextareaInput"
+            @keydown="handleTextareaKeydown"
+            @paste="onBlockPaste($event, block)"
+            @blur="handleTextareaBlur"
+            class="block-content"
+            :class="{ 'completed': ['done', 'wontdo'].includes(block.block_type) }"
+            rows="1"
+            placeholder="start writing..."
+            ref="blockTextarea"
+          ></textarea>
+          <div
+            v-if="showTagSuggestions"
+            class="tag-suggestions"
+            @mousedown.prevent
+            role="listbox"
+          >
+            <button
+              v-for="(page, idx) in tagSuggestions"
+              :key="page.uuid || page.slug"
+              type="button"
+              role="option"
+              :aria-selected="idx === tagSelectedIndex"
+              class="tag-suggestion-item"
+              :class="{ 'is-selected': idx === tagSelectedIndex }"
+              @click="insertTagSuggestion(page)"
+              @mouseenter="tagSelectedIndex = idx"
+            >
+              <span class="tag-suggestion-slug">#{{ page.slug }}</span>
+              <span v-if="page.title && page.title !== page.slug" class="tag-suggestion-title">{{ page.title }}</span>
+            </button>
+          </div>
+        </div>
         <button
           v-if="hasChildren && isCollapsed"
           @click="toggleCollapse"

@@ -21,7 +21,7 @@ class TestTodoContentIntegration(TestCase):
             block_type="todo",
         )
 
-        # Toggle to done
+        # Toggle to doing
         form_data = {"user": self.user.id, "block": str(block.uuid)}
         form = ToggleBlockTodoForm(form_data)
         form.is_valid()
@@ -29,30 +29,30 @@ class TestTodoContentIntegration(TestCase):
         updated_block = command.execute()
 
         # Verify content and type changed
-        self.assertEqual(updated_block.content, "DONE google tasks integration")
-        self.assertEqual(updated_block.block_type, "done")
+        self.assertEqual(updated_block.content, "DOING google tasks integration")
+        self.assertEqual(updated_block.block_type, "doing")
 
-        # Toggle to later (next state after done)
+        # Toggle to done (next state after doing)
         form_data = {"user": self.user.id, "block": str(block.uuid)}
         form = ToggleBlockTodoForm(form_data)
         form.is_valid()
         command2 = ToggleBlockTodoCommand(form)
         updated_block2 = command2.execute()
 
-        # Verify content and type changed to later
-        self.assertEqual(updated_block2.content, "LATER google tasks integration")
-        self.assertEqual(updated_block2.block_type, "later")
+        # Verify content and type changed to done
+        self.assertEqual(updated_block2.content, "DONE google tasks integration")
+        self.assertEqual(updated_block2.block_type, "done")
 
     def test_should_handle_todo_content_replacement_patterns(self):
-        """Test various todo content replacement patterns"""
+        """Test various todo content replacement patterns (todo -> doing)"""
         test_cases = [
-            ("TODO simple task", "DONE simple task"),
-            ("TODO: task with colon", "DONE: task with colon"),
-            ("todo lowercase", "DONE lowercase"),
-            ("Todo mixed case", "DONE mixed case"),
+            ("TODO simple task", "DOING simple task"),
+            ("TODO: task with colon", "DOING: task with colon"),
+            ("todo lowercase", "DOING lowercase"),
+            ("Todo mixed case", "DOING mixed case"),
         ]
 
-        for original_content, expected_done_content in test_cases:
+        for original_content, expected_doing_content in test_cases:
             with self.subTest(content=original_content):
                 # Create block with original content
                 block = BlockFactory(
@@ -62,7 +62,7 @@ class TestTodoContentIntegration(TestCase):
                     block_type="todo",
                 )
 
-                # Toggle to done
+                # Toggle to doing
                 form_data = {"user": self.user.id, "block": str(block.uuid)}
                 form = ToggleBlockTodoForm(form_data)
                 form.is_valid()
@@ -70,8 +70,8 @@ class TestTodoContentIntegration(TestCase):
                 updated_block = command.execute()
 
                 # Verify content transformation
-                self.assertEqual(updated_block.content, expected_done_content)
-                self.assertEqual(updated_block.block_type, "done")
+                self.assertEqual(updated_block.content, expected_doing_content)
+                self.assertEqual(updated_block.block_type, "doing")
 
     def test_should_handle_done_content_replacement_patterns(self):
         """Test various done content replacement patterns - done goes to later first"""
@@ -120,8 +120,8 @@ class TestTodoContentIntegration(TestCase):
         updated_block = command.execute()
 
         # Replaces all occurrences of TODO
-        self.assertEqual(updated_block.content, "DONE: Review DONE items in the code")
-        self.assertEqual(updated_block.block_type, "done")
+        self.assertEqual(updated_block.content, "DOING: Review DOING items in the code")
+        self.assertEqual(updated_block.block_type, "doing")
 
     def test_should_handle_content_with_special_characters(self):
         """Test content replacement with special characters"""
@@ -144,9 +144,9 @@ class TestTodoContentIntegration(TestCase):
                 command = ToggleBlockTodoCommand(form)
                 updated_block = command.execute()
 
-                expected_content = content.replace("TODO", "DONE", 1)
+                expected_content = content.replace("TODO", "DOING", 1)
                 self.assertEqual(updated_block.content, expected_content)
-                self.assertEqual(updated_block.block_type, "done")
+                self.assertEqual(updated_block.block_type, "doing")
 
     def test_should_preserve_formatting_in_content(self):
         """Test that formatting and whitespace is preserved in content"""
@@ -165,9 +165,9 @@ class TestTodoContentIntegration(TestCase):
 
         # Verify spacing is preserved
         self.assertEqual(
-            updated_block.content, "DONE:   spaced    content   with    gaps"
+            updated_block.content, "DOING:   spaced    content   with    gaps"
         )
-        self.assertEqual(updated_block.block_type, "done")
+        self.assertEqual(updated_block.block_type, "doing")
 
     def test_later_and_wontdo_content_replacement(self):
         """Test content replacement for later and wontdo states"""

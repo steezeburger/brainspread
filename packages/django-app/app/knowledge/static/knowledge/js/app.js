@@ -526,6 +526,24 @@ const KnowledgeApp = createApp({
         }
       }
 
+      // Sidebar toggles — Obsidian-style Cmd/Ctrl+\ (left/history) and
+      // Cmd/Ctrl+Shift+\ (right/ai). No editable-target guard because
+      // backslash isn't a text-editing shortcut, so it's safe to intercept
+      // even when focus is in the block editor or chat input.
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key === "\\" &&
+        this.isAuthenticated
+      ) {
+        event.preventDefault();
+        if (event.shiftKey) {
+          this.toggleChatPanel();
+        } else {
+          this.toggleHistorySidebar();
+        }
+        return;
+      }
+
       if (event.key === "Escape") {
         if (this.showSpotlight) {
           this.closeSpotlight();
@@ -534,8 +552,54 @@ const KnowledgeApp = createApp({
           this.$nextTick(() => {
             if (this.$refs.menuBtn) this.$refs.menuBtn.focus();
           });
+        } else if (this._isInsideHistorySidebar(event.target)) {
+          // If Escape fires from inside the history sidebar (e.g., its
+          // filter selects have focus), close that sidebar directly.
+          // Skips the editable-target guard because the sidebar itself
+          // doesn't host any serious editing surface.
+          if (this._closeHistoryIfOpen()) event.preventDefault();
+        } else if (!this._isEditableTarget(event.target)) {
+          // Escape dismisses any open sidebars, but only when the user isn't
+          // typing in a real editor (blocks, chat input). Those have their
+          // own Escape handlers.
+          const closedHistory = this._closeHistoryIfOpen();
+          const closedChat = this._closeChatIfOpen();
+          if (closedHistory || closedChat) {
+            event.preventDefault();
+          }
         }
       }
+    },
+
+    _isInsideHistorySidebar(el) {
+      const sidebar = this.$refs.historicalSidebar;
+      return !!(sidebar && sidebar.$el && sidebar.$el.contains(el));
+    },
+
+    _closeHistoryIfOpen() {
+      const sidebar = this.$refs.historicalSidebar;
+      if (sidebar && sidebar.isOpen) {
+        sidebar.toggleSidebar();
+        return true;
+      }
+      return false;
+    },
+
+    _closeChatIfOpen() {
+      const panel = this.$refs.chatPanel;
+      if (panel && panel.isOpen) {
+        panel.togglePanel();
+        return true;
+      }
+      return false;
+    },
+
+    _isEditableTarget(el) {
+      if (!el) return false;
+      const tag = el.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT")
+        return true;
+      return el.isContentEditable === true;
     },
 
     // Spotlight search methods
@@ -592,6 +656,18 @@ const KnowledgeApp = createApp({
           label: "graph",
           description: "view the knowledge graph",
           icon: "◉",
+        },
+        {
+          id: "toggle-history",
+          label: this.isHistorySidebarOpen() ? "close history" : "open history",
+          description: "toggle the history sidebar (⌘\\)",
+          icon: "⧉",
+        },
+        {
+          id: "toggle-ai",
+          label: this.isChatPanelOpen() ? "close ai" : "open ai",
+          description: "toggle the ai chat panel (⌘⇧\\)",
+          icon: "✦",
         },
         {
           id: "settings",
@@ -746,6 +822,28 @@ const KnowledgeApp = createApp({
       }
     },
 
+    isHistorySidebarOpen() {
+      return this.$refs.historicalSidebar?.isOpen === true;
+    },
+
+    isChatPanelOpen() {
+      return this.$refs.chatPanel?.isOpen === true;
+    },
+
+    toggleHistorySidebar() {
+      const sidebar = this.$refs.historicalSidebar;
+      if (sidebar && typeof sidebar.toggleSidebar === "function") {
+        sidebar.toggleSidebar();
+      }
+    },
+
+    toggleChatPanel() {
+      const panel = this.$refs.chatPanel;
+      if (panel && typeof panel.togglePanel === "function") {
+        panel.togglePanel();
+      }
+    },
+
     executeSpotlightCommand(commandId, arg) {
       if (commandId.startsWith("theme-")) {
         this.setTheme(commandId.slice("theme-".length));
@@ -766,6 +864,12 @@ const KnowledgeApp = createApp({
           break;
         case "graph":
           this.navigateToGraph();
+          break;
+        case "toggle-history":
+          this.toggleHistorySidebar();
+          break;
+        case "toggle-ai":
+          this.toggleChatPanel();
           break;
         case "settings":
           this.openSettings();
@@ -885,6 +989,7 @@ const KnowledgeApp = createApp({
                     </div>
                     <div v-else class="content-layout">
                         <HistoricalSidebar
+                            ref="historicalSidebar"
                             @navigate-to-date="onNavigateToDate"
                             @navigate-to-slug="onNavigateToSlug" />
                         <div class="main-content-area">
@@ -899,6 +1004,7 @@ const KnowledgeApp = createApp({
                         </div>
                         <ChatPanel
                             v-if="showChatPanel"
+                            ref="chatPanel"
                             :chat-context-blocks="chatContextBlocks"
                             :visible-blocks="visibleBlocks"
                             @open-settings="onChatPanelOpenSettings"

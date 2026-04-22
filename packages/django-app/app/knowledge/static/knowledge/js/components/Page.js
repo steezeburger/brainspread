@@ -90,6 +90,11 @@ const Page = {
       "spotlight:new-block",
       this.handleSpotlightNewBlock
     );
+    // Re-enter editing after the AI chat panel closes (restores block focus).
+    document.addEventListener(
+      "resume-block-editing",
+      this.handleResumeBlockEditing
+    );
     // AI chat write tools dispatch this when they touch a page; reload
     // silently if it's the page we're viewing so the user sees the new
     // state without refreshing.
@@ -111,6 +116,10 @@ const Page = {
     document.removeEventListener(
       "spotlight:new-block",
       this.handleSpotlightNewBlock
+    );
+    document.removeEventListener(
+      "resume-block-editing",
+      this.handleResumeBlockEditing
     );
     window.removeEventListener(
       "brainspread:notes-modified",
@@ -876,9 +885,12 @@ const Page = {
       // Strip todo-state prefix from display since the checkbox already shows state
       if (
         blockType &&
-        ["todo", "done", "later", "wontdo"].includes(blockType)
+        ["todo", "doing", "done", "later", "wontdo"].includes(blockType)
       ) {
-        formatted = formatted.replace(/^(WONTDO|LATER|DONE|TODO)\s*:?\s*/i, "");
+        formatted = formatted.replace(
+          /^(WONTDO|LATER|DOING|DONE|TODO)\s*:?\s*/i,
+          ""
+        );
       }
 
       // Extract backtick code spans first to protect them from other formatting
@@ -1048,6 +1060,13 @@ const Page = {
           this.startEditing(block);
         }
       }
+    },
+
+    handleResumeBlockEditing(event) {
+      const uuid = event?.detail?.uuid;
+      if (!uuid) return;
+      const block = this.getAllBlocks().find((b) => b.uuid === uuid);
+      if (block) this.startEditing(block);
     },
 
     startEditing(block) {

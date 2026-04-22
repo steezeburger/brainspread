@@ -35,12 +35,32 @@ class TestToggleBlockTodoCommand:
         block.refresh_from_db()
         assert block.block_type == "todo"
 
-    def test_toggle_todo_to_done(self):
-        """Test toggling a todo block to done"""
+    def test_toggle_todo_to_doing(self):
+        """Test toggling a todo block to doing"""
         user = User.objects.create_user(email="test@example.com", password="password")
         page = Page.objects.create(title="Test Page", user=user)
         block = Block.objects.create(
             page=page, user=user, content="Test todo", block_type="todo", order=0
+        )
+
+        form_data = {"user": user.id, "block": str(block.uuid)}
+        form = ToggleBlockTodoForm(form_data)
+        form.is_valid()
+        command = ToggleBlockTodoCommand(form)
+        result = command.execute()
+
+        assert result.block_type == "doing"
+
+        # Verify in database
+        block.refresh_from_db()
+        assert block.block_type == "doing"
+
+    def test_toggle_doing_to_done(self):
+        """Test toggling a doing block to done"""
+        user = User.objects.create_user(email="test@example.com", password="password")
+        page = Page.objects.create(title="Test Page", user=user)
+        block = Block.objects.create(
+            page=page, user=user, content="Test doing", block_type="doing", order=0
         )
 
         form_data = {"user": user.id, "block": str(block.uuid)}
@@ -76,7 +96,7 @@ class TestToggleBlockTodoCommand:
         assert block.block_type == "later"
 
     def test_full_cycle_toggle(self):
-        """Test the full cycle: bullet -> todo -> done -> later -> wontdo -> todo"""
+        """Test the full cycle: bullet -> todo -> doing -> done -> later -> wontdo -> todo"""
         user = User.objects.create_user(email="test@example.com", password="password")
         page = Page.objects.create(title="Test Page", user=user)
         block = Block.objects.create(
@@ -91,7 +111,15 @@ class TestToggleBlockTodoCommand:
         result = command.execute()
         assert result.block_type == "todo"
 
-        # todo -> done
+        # todo -> doing
+        form_data = {"user": user.id, "block": str(block.uuid)}
+        form = ToggleBlockTodoForm(form_data)
+        form.is_valid()
+        command = ToggleBlockTodoCommand(form)
+        result = command.execute()
+        assert result.block_type == "doing"
+
+        # doing -> done
         form_data = {"user": user.id, "block": str(block.uuid)}
         form = ToggleBlockTodoForm(form_data)
         form.is_valid()
@@ -123,8 +151,8 @@ class TestToggleBlockTodoCommand:
         result = command.execute()
         assert result.block_type == "todo"
 
-    def test_content_update_todo_to_done(self):
-        """Test that content is updated when toggling from todo to done"""
+    def test_content_update_todo_to_doing(self):
+        """Test that content is updated when toggling from todo to doing"""
         user = User.objects.create_user(email="test@example.com", password="password")
         page = Page.objects.create(title="Test Page", user=user)
         block = Block.objects.create(
@@ -132,6 +160,31 @@ class TestToggleBlockTodoCommand:
             user=user,
             content="TODO write documentation",
             block_type="todo",
+            order=0,
+        )
+
+        form_data = {"user": user.id, "block": str(block.uuid)}
+        form = ToggleBlockTodoForm(form_data)
+        form.is_valid()
+        command = ToggleBlockTodoCommand(form)
+        result = command.execute()
+
+        assert result.block_type == "doing"
+        assert result.content == "DOING write documentation"
+
+        # Verify in database
+        block.refresh_from_db()
+        assert block.content == "DOING write documentation"
+
+    def test_content_update_doing_to_done(self):
+        """Test that content is updated when toggling from doing to done"""
+        user = User.objects.create_user(email="test@example.com", password="password")
+        page = Page.objects.create(title="Test Page", user=user)
+        block = Block.objects.create(
+            page=page,
+            user=user,
+            content="DOING write documentation",
+            block_type="doing",
             order=0,
         )
 
@@ -173,7 +226,7 @@ class TestToggleBlockTodoCommand:
         block.refresh_from_db()
         assert block.content == "LATER write documentation"
 
-    def test_content_with_colon_todo_to_done(self):
+    def test_content_with_colon_todo_to_doing(self):
         """Test that content with colon is updated correctly"""
         user = User.objects.create_user(email="test@example.com", password="password")
         page = Page.objects.create(title="Test Page", user=user)
@@ -191,8 +244,8 @@ class TestToggleBlockTodoCommand:
         command = ToggleBlockTodoCommand(form)
         result = command.execute()
 
-        assert result.block_type == "done"
-        assert result.content == "DONE: write documentation"
+        assert result.block_type == "doing"
+        assert result.content == "DOING: write documentation"
 
     def test_toggle_nonexistent_block(self):
         """Test toggling a non-existent block raises ValidationError"""

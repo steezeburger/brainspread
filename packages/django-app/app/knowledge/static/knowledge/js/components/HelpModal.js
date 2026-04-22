@@ -127,6 +127,27 @@ window.HelpModal = {
           </div>
 
           <div class="help-section">
+            <h3>sidebars</h3>
+            <table class="help-table">
+              <tbody>
+                <tr>
+                  <td><kbd>⌘</kbd> + <kbd>\\</kbd> / <kbd>Ctrl</kbd> + <kbd>\\</kbd></td>
+                  <td>toggle history sidebar</td>
+                </tr>
+                <tr>
+                  <td><kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>\\</kbd> / <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>\\</kbd></td>
+                  <td>toggle ai chat panel</td>
+                </tr>
+                <tr>
+                  <td><kbd>Esc</kbd></td>
+                  <td>close any open sidebar (when not typing)</td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="help-hint">the command palette also has "open/close history" and "open/close ai" entries, which flip labels to match the current state.</p>
+          </div>
+
+          <div class="help-section">
             <h3>block editing</h3>
             <table class="help-table">
               <tbody>
