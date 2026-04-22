@@ -32,6 +32,7 @@ const ChatPanel = {
       messageMenus: {},
       expandedThinking: {},
       enableNotesTools: this.loadNotesToolsPref(),
+      showToolsMenu: false,
     };
   },
   mounted() {
@@ -87,6 +88,9 @@ const ChatPanel = {
     hasSessionStats() {
       return this.sessionStats.turns > 0;
     },
+    hasActiveTools() {
+      return this.enableNotesTools;
+    },
   },
   methods: {
     loadOpenState() {
@@ -120,6 +124,9 @@ const ChatPanel = {
         "chatPanel.enableNotesTools",
         JSON.stringify(this.enableNotesTools)
       );
+    },
+    toggleToolsMenu() {
+      this.showToolsMenu = !this.showToolsMenu;
     },
     saveWidth() {
       localStorage.setItem("chatPanel.width", this.width.toString());
@@ -678,6 +685,13 @@ const ChatPanel = {
     // Click outside to close panel
     setupClickOutsideListener() {
       this.clickOutsideHandler = (e) => {
+        // Close the tools popover when clicking anywhere outside it.
+        // Clicks on menu items (inside .tools-container) are allowed so
+        // users can flip multiple toggles in one session.
+        if (this.showToolsMenu && !e.target.closest(".tools-container")) {
+          this.showToolsMenu = false;
+        }
+
         // Only close if panel is open and click is outside the panel
         if (this.isOpen && !this.$el.contains(e.target)) {
           // Check if click is within the history dropdown (teleported content)
@@ -847,14 +861,30 @@ const ChatPanel = {
             >
               ctx
             </button>
-            <button
-              class="notes-tools-btn"
-              @click="toggleNotesTools"
-              :class="{ active: enableNotesTools }"
-              :title="enableNotesTools ? 'Notes tools enabled (Anthropic)' : 'Enable notes tools (Anthropic)'"
-            >
-              notes
-            </button>
+            <div class="tools-container">
+              <button
+                class="tools-btn"
+                @click="toggleToolsMenu"
+                :class="{ active: hasActiveTools, open: showToolsMenu }"
+                :title="hasActiveTools ? 'Tools (some active)' : 'Tools'"
+              >
+                tools
+                <span v-if="hasActiveTools" class="tools-btn-indicator" aria-hidden="true"></span>
+              </button>
+              <div v-if="showToolsMenu" class="tools-menu">
+                <label class="tools-menu-item">
+                  <input
+                    type="checkbox"
+                    :checked="enableNotesTools"
+                    @change="toggleNotesTools"
+                  />
+                  <span class="tools-menu-label">
+                    <span class="tools-menu-name">search notes</span>
+                    <span class="tools-menu-hint">Let the assistant search your notes (Anthropic only).</span>
+                  </span>
+                </label>
+              </div>
+            </div>
             <button class="settings-btn" @click="openSettings" title="AI Settings">cfg</button>
           </div>
           <div class="message-input">

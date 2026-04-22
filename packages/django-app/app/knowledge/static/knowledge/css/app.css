@@ -435,7 +435,7 @@ body {
 /* Chat controls buttons - FORCE same height as model selector */
 .chat-controls .settings-btn,
 .chat-controls .context-btn,
-.chat-controls .notes-tools-btn {
+.chat-controls .tools-btn {
   background: var(--bg-primary) !important;
   border: 1px solid var(--border-secondary) !important;
   color: var(--text-primary) !important;
@@ -446,7 +446,7 @@ body {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  gap: 0.25rem !important;
+  gap: 0.3rem !important;
   min-width: 35px !important;
   height: 36px !important;
   box-sizing: border-box !important;
@@ -454,32 +454,94 @@ body {
   letter-spacing: 0.5px !important;
 }
 
-.chat-controls .settings-btn:hover {
-  color: var(--text-primary) !important;
-  border-color: var(--border-primary) !important;
-  background: var(--hover-bg) !important;
-}
-
+.chat-controls .settings-btn:hover,
 .chat-controls .context-btn:hover,
-.chat-controls .notes-tools-btn:hover {
+.chat-controls .tools-btn:hover {
   color: var(--text-primary) !important;
   border-color: var(--border-primary) !important;
   background: var(--hover-bg) !important;
 }
 
-/* Active capability chips invert fg/bg so the on-state is obvious at a glance */
-.chat-controls .context-btn.active,
-.chat-controls .notes-tools-btn.active {
+/* Context chip inverts when active so users can see attach-mode on at a glance */
+.chat-controls .context-btn.active {
   background: var(--text-primary) !important;
   color: var(--bg-primary) !important;
   border-color: var(--text-primary) !important;
 }
 
-.chat-controls .context-btn.active:hover,
-.chat-controls .notes-tools-btn.active:hover {
+.chat-controls .context-btn.active:hover {
   background: var(--text-primary) !important;
   color: var(--bg-primary) !important;
   border-color: var(--text-primary) !important;
+  opacity: 0.85;
+}
+
+/* Tools chip: low-key border + small indicator dot when any tool is on.
+   We don't invert fg/bg like ctx because the indicator + popover carry the
+   state and full inversion would compete with the context chip visually. */
+.chat-controls .tools-btn.active,
+.chat-controls .tools-btn.open {
+  border-color: var(--text-primary) !important;
+}
+
+.tools-btn-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  display: inline-block;
+}
+
+/* Tools popover — anchored above the trigger since controls sit at the bottom */
+.tools-container {
+  position: relative;
+}
+
+.tools-menu {
+  position: absolute;
+  bottom: calc(100% + 0.25rem);
+  right: 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  box-shadow: 0 -4px 6px rgba(0, 0, 0, 0.1);
+  min-width: 260px;
+  z-index: 1000;
+  padding: 0.25rem;
+}
+
+.tools-menu-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.tools-menu-item:hover {
+  background: var(--hover-bg);
+}
+
+.tools-menu-item input[type="checkbox"] {
+  margin-top: 0.15rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.tools-menu-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.tools-menu-name {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.tools-menu-hint {
+  color: var(--text-secondary);
+  font-size: 0.7rem;
   opacity: 0.85;
 }
 
