@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from common.repositories.base_repository import BaseRepository
 
@@ -18,6 +18,7 @@ class ChatMessageRepository(BaseRepository):
         ai_model: Optional[AIModel] = None,
         thinking: str = "",
         usage: Optional[AIUsage] = None,
+        tool_events: Optional[List[Dict[str, Any]]] = None,
     ) -> ChatMessage:
         fields = {
             "session": session,
@@ -25,6 +26,7 @@ class ChatMessageRepository(BaseRepository):
             "content": content,
             "ai_model": ai_model,
             "thinking": thinking or "",
+            "tool_events": tool_events or [],
         }
         if usage is not None:
             fields.update(

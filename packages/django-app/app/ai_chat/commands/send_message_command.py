@@ -71,8 +71,16 @@ class SendMessageCommand(AbstractBaseCommand):
                 model=model,
             )
             enable_notes_tools = self.form.cleaned_data.get("enable_notes_tools")
+            enable_notes_write_tools = self.form.cleaned_data.get(
+                "enable_notes_write_tools"
+            )
+            enable_web_search = self.form.cleaned_data.get("enable_web_search", True)
             tools, tool_executor = SendMessageCommand._build_tools(
-                provider_name, user, enable_notes_tools
+                provider_name,
+                user,
+                enable_notes_tools,
+                enable_web_search,
+                enable_notes_write_tools=enable_notes_write_tools,
             )
 
             result = service.send_message(
@@ -91,6 +99,7 @@ class SendMessageCommand(AbstractBaseCommand):
                 ai_model=ai_model,
                 thinking=result.thinking or "",
                 usage=result.usage,
+                tool_events=result.tool_events,
             )
 
             return {
@@ -132,6 +141,7 @@ class SendMessageCommand(AbstractBaseCommand):
             "content": message.content,
             "thinking": message.thinking or None,
             "created_at": message.created_at.isoformat(),
+            "tool_events": list(message.tool_events or []),
             "usage": {
                 "input_tokens": message.input_tokens,
                 "output_tokens": message.output_tokens,
@@ -192,7 +202,13 @@ class SendMessageCommand(AbstractBaseCommand):
         return None
 
     @staticmethod
-    def _build_tools(provider_name, user, enable_notes_tools):
+    def _build_tools(
+        provider_name,
+        user,
+        enable_notes_tools,
+        enable_web_search: bool = True,
+        enable_notes_write_tools: bool = False,
+    ):
         """Combine provider-native web search with optional notes tools.
 
         Returns the tools payload plus a ToolExecutor if custom tools are
@@ -200,20 +216,28 @@ class SendMessageCommand(AbstractBaseCommand):
         so for other providers notes tools are skipped.
         """
         tools: List[Dict[str, Any]] = []
-        web_tools = SendMessageCommand._get_web_search_tools(provider_name)
-        if web_tools:
-            tools.extend(web_tools)
+        if enable_web_search:
+            web_tools = SendMessageCommand._get_web_search_tools(provider_name)
+            if web_tools:
+                tools.extend(web_tools)
 
         tool_executor = None
-        if enable_notes_tools:
+        any_notes = enable_notes_tools or enable_notes_write_tools
+        if any_notes:
             if provider_name == "anthropic":
-                tools.extend(anthropic_notes_tools())
-                tool_executor = NotesToolExecutor(user)
+                tools.extend(
+                    anthropic_notes_tools(include_writes=enable_notes_write_tools)
+                )
+                tool_executor = NotesToolExecutor(
+                    user, allow_writes=enable_notes_write_tools
+                )
             elif provider_name == "openai":
                 # OpenAI's Responses API is only invoked when tools are present;
                 # mixing function-calling with the Responses web_search path is
                 # brittle, so we only surface notes tools here for Anthropic
                 # until the tool loop is implemented for OpenAI.
-                tools.extend(openai_notes_tools())
+                tools.extend(
+                    openai_notes_tools(include_writes=enable_notes_write_tools)
+                )
 
         return (tools or None), tool_executor

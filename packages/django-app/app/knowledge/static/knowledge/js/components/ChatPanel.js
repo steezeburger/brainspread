@@ -31,8 +31,14 @@ const ChatPanel = {
       showContextArea: false,
       messageMenus: {},
       expandedThinking: {},
+      expandedToolCalls: {},
+      expandedToolCall: {},
       enableNotesTools: this.loadNotesToolsPref(),
+      enableNotesWriteTools: this.loadNotesWriteToolsPref(),
+      enableWebSearch: this.loadWebSearchPref(),
       showToolsMenu: false,
+      // { [assistantMsgIndex]: { approval_id, tool_uses, decisions: {tool_use_id: "approve"|"reject"}, submitting } }
+      pendingApprovals: {},
     };
   },
   mounted() {
@@ -89,7 +95,9 @@ const ChatPanel = {
       return this.sessionStats.turns > 0;
     },
     hasActiveTools() {
-      return this.enableNotesTools;
+      return (
+        this.enableNotesTools || this.enableNotesWriteTools || this.enableWebSearch
+      );
     },
   },
   methods: {
@@ -118,11 +126,33 @@ const ChatPanel = {
       const saved = localStorage.getItem("chatPanel.enableNotesTools");
       return saved === null ? false : JSON.parse(saved);
     },
+    loadNotesWriteToolsPref() {
+      const saved = localStorage.getItem("chatPanel.enableNotesWriteTools");
+      return saved === null ? false : JSON.parse(saved);
+    },
+    loadWebSearchPref() {
+      const saved = localStorage.getItem("chatPanel.enableWebSearch");
+      return saved === null ? true : JSON.parse(saved);
+    },
     toggleNotesTools() {
       this.enableNotesTools = !this.enableNotesTools;
       localStorage.setItem(
         "chatPanel.enableNotesTools",
         JSON.stringify(this.enableNotesTools)
+      );
+    },
+    toggleNotesWriteTools() {
+      this.enableNotesWriteTools = !this.enableNotesWriteTools;
+      localStorage.setItem(
+        "chatPanel.enableNotesWriteTools",
+        JSON.stringify(this.enableNotesWriteTools)
+      );
+    },
+    toggleWebSearch() {
+      this.enableWebSearch = !this.enableWebSearch;
+      localStorage.setItem(
+        "chatPanel.enableWebSearch",
+        JSON.stringify(this.enableWebSearch)
       );
     },
     toggleToolsMenu() {
@@ -159,6 +189,8 @@ const ChatPanel = {
         session_id: this.currentSessionId,
         context_blocks: this.chatContextBlocks,
         enable_notes_tools: this.enableNotesTools,
+        enable_notes_write_tools: this.enableNotesWriteTools,
+        enable_web_search: this.enableWebSearch,
       };
       this.message = "";
       this.loading = true;
@@ -167,6 +199,7 @@ const ChatPanel = {
         role: "assistant",
         content: "",
         thinking: "",
+        tool_events: [],
         created_at: new Date().toISOString(),
         usage: null,
         ai_model: null,
@@ -190,6 +223,32 @@ const ChatPanel = {
             this.messages[assistantIndex].thinking =
               (this.messages[assistantIndex].thinking || "") +
               (event.delta || "");
+          } else if (event.type === "tool_use") {
+            if (!this.messages[assistantIndex].tool_events) {
+              this.messages[assistantIndex].tool_events = [];
+            }
+            this.messages[assistantIndex].tool_events.push({
+              type: "tool_use",
+              tool_use_id: event.tool_use_id,
+              name: event.name,
+              input: event.input || {},
+            });
+          } else if (event.type === "tool_result") {
+            if (!this.messages[assistantIndex].tool_events) {
+              this.messages[assistantIndex].tool_events = [];
+            }
+            this.messages[assistantIndex].tool_events.push({
+              type: "tool_result",
+              tool_use_id: event.tool_use_id,
+              name: event.name,
+              result: event.result || {},
+            });
+          } else if (event.type === "approval_required") {
+            if (event.session_id && !this.currentSessionId) {
+              this.currentSessionId = event.session_id;
+              this.saveLastSessionId(event.session_id);
+            }
+            this.attachPendingApproval(assistantIndex, event);
           } else if (event.type === "done") {
             if (event.message) {
               this.messages.splice(assistantIndex, 1, {
@@ -591,6 +650,256 @@ const ChatPanel = {
       };
     },
 
+    toggleToolCalls(messageIndex) {
+      this.expandedToolCalls = {
+        ...this.expandedToolCalls,
+        [messageIndex]: !this.expandedToolCalls[messageIndex],
+      };
+    },
+
+    toggleToolCall(messageIndex, eventIndex) {
+      const key = `${messageIndex}:${eventIndex}`;
+      this.expandedToolCall = {
+        ...this.expandedToolCall,
+        [key]: !this.expandedToolCall[key],
+      };
+    },
+
+    isToolCallExpanded(messageIndex, eventIndex) {
+      return !!this.expandedToolCall[`${messageIndex}:${eventIndex}`];
+    },
+
+    toolCallPairs(msg) {
+      const events = msg && msg.tool_events ? msg.tool_events : [];
+      const byId = {};
+      const order = [];
+      for (const ev of events) {
+        if (!ev || !ev.tool_use_id) continue;
+        if (!byId[ev.tool_use_id]) {
+          byId[ev.tool_use_id] = {
+            tool_use_id: ev.tool_use_id,
+            name: ev.name || "",
+            input: null,
+            result: null,
+          };
+          order.push(ev.tool_use_id);
+        }
+        if (ev.type === "tool_use") {
+          byId[ev.tool_use_id].input = ev.input || {};
+          if (ev.name) byId[ev.tool_use_id].name = ev.name;
+        } else if (ev.type === "tool_result") {
+          byId[ev.tool_use_id].result = ev.result ?? null;
+          if (ev.name && !byId[ev.tool_use_id].name)
+            byId[ev.tool_use_id].name = ev.name;
+        }
+      }
+      return order.map((id) => byId[id]);
+    },
+
+    summarizeToolInput(input) {
+      if (!input || typeof input !== "object") return "";
+      const entries = Object.entries(input);
+      if (!entries.length) return "()";
+      const body = entries
+        .map(([k, v]) => {
+          let display;
+          if (typeof v === "string") {
+            display = v.length > 40 ? JSON.stringify(v.slice(0, 40)) + "…" : JSON.stringify(v);
+          } else {
+            try {
+              display = JSON.stringify(v);
+            } catch (_) {
+              display = String(v);
+            }
+            if (display.length > 40) display = display.slice(0, 40) + "…";
+          }
+          return `${k}=${display}`;
+        })
+        .join(", ");
+      return `(${body})`;
+    },
+
+    summarizeToolResult(result) {
+      if (result == null) return "…";
+      if (typeof result !== "object") return String(result);
+      if (result.error) return `error: ${result.error}`;
+      if (typeof result.count === "number") {
+        return `${result.count} result${result.count === 1 ? "" : "s"}`;
+      }
+      if (Array.isArray(result.results)) {
+        return `${result.results.length} result${result.results.length === 1 ? "" : "s"}`;
+      }
+      if (result.block || result.page) return "ok";
+      return "ok";
+    },
+
+    formatToolJson(value) {
+      try {
+        return JSON.stringify(value, null, 2);
+      } catch (_) {
+        return String(value);
+      }
+    },
+
+    attachPendingApproval(assistantIndex, event) {
+      const toolUses = event.tool_uses || [];
+      const decisions = {};
+      for (const tu of toolUses) {
+        if (tu.requires_approval) {
+          // Default to approve so the user can confirm all with one click,
+          // but nothing executes until they submit.
+          decisions[tu.tool_use_id] = "approve";
+        }
+      }
+      this.pendingApprovals = {
+        ...this.pendingApprovals,
+        [assistantIndex]: {
+          approval_id: event.approval_id,
+          tool_uses: toolUses,
+          decisions,
+          submitting: false,
+          error: null,
+        },
+      };
+      this.messages[assistantIndex].pending_approval_id = event.approval_id;
+      this.messages[assistantIndex].streaming = false;
+      if (event.partial_text) {
+        this.messages[assistantIndex].content = event.partial_text;
+      }
+      if (event.partial_thinking) {
+        this.messages[assistantIndex].thinking = event.partial_thinking;
+      }
+      if (Array.isArray(event.tool_events) && event.tool_events.length) {
+        this.messages[assistantIndex].tool_events = event.tool_events;
+      }
+    },
+
+    setApprovalDecision(messageIndex, toolUseId, decision) {
+      const pa = this.pendingApprovals[messageIndex];
+      if (!pa) return;
+      this.pendingApprovals = {
+        ...this.pendingApprovals,
+        [messageIndex]: {
+          ...pa,
+          decisions: { ...pa.decisions, [toolUseId]: decision },
+        },
+      };
+    },
+
+    getApprovalState(messageIndex) {
+      return this.pendingApprovals[messageIndex] || null;
+    },
+
+    writeToolUses(pa) {
+      if (!pa) return [];
+      return (pa.tool_uses || []).filter((tu) => tu.requires_approval);
+    },
+
+    async submitApproval(messageIndex) {
+      const pa = this.pendingApprovals[messageIndex];
+      if (!pa || pa.submitting) return;
+      this.pendingApprovals = {
+        ...this.pendingApprovals,
+        [messageIndex]: { ...pa, submitting: true, error: null },
+      };
+      this.messages[messageIndex].streaming = true;
+
+      const payload = { decisions: pa.decisions };
+      try {
+        for await (const event of window.apiService.resumeApproval(
+          pa.approval_id,
+          payload
+        )) {
+          if (event.type === "session") {
+            if (event.session_id && !this.currentSessionId) {
+              this.currentSessionId = event.session_id;
+              this.saveLastSessionId(event.session_id);
+            }
+          } else if (event.type === "text") {
+            this.messages[messageIndex].content =
+              (this.messages[messageIndex].content || "") + (event.delta || "");
+          } else if (event.type === "thinking") {
+            this.messages[messageIndex].thinking =
+              (this.messages[messageIndex].thinking || "") +
+              (event.delta || "");
+          } else if (event.type === "tool_use") {
+            if (!this.messages[messageIndex].tool_events) {
+              this.messages[messageIndex].tool_events = [];
+            }
+            this.messages[messageIndex].tool_events.push({
+              type: "tool_use",
+              tool_use_id: event.tool_use_id,
+              name: event.name,
+              input: event.input || {},
+            });
+          } else if (event.type === "tool_result") {
+            if (!this.messages[messageIndex].tool_events) {
+              this.messages[messageIndex].tool_events = [];
+            }
+            this.messages[messageIndex].tool_events.push({
+              type: "tool_result",
+              tool_use_id: event.tool_use_id,
+              name: event.name,
+              result: event.result || {},
+            });
+          } else if (event.type === "approval_required") {
+            this.attachPendingApproval(messageIndex, event);
+            return;
+          } else if (event.type === "done") {
+            if (event.message) {
+              this.messages.splice(messageIndex, 1, {
+                ...event.message,
+                streaming: false,
+              });
+            } else {
+              this.messages[messageIndex].streaming = false;
+            }
+            const next = { ...this.pendingApprovals };
+            delete next[messageIndex];
+            this.pendingApprovals = next;
+          } else if (event.type === "error") {
+            this.pendingApprovals = {
+              ...this.pendingApprovals,
+              [messageIndex]: {
+                ...this.pendingApprovals[messageIndex],
+                submitting: false,
+                error: event.error || "Failed to resume",
+              },
+            };
+            this.messages[messageIndex].streaming = false;
+            return;
+          }
+        }
+      } catch (err) {
+        console.error(err);
+        this.pendingApprovals = {
+          ...this.pendingApprovals,
+          [messageIndex]: {
+            ...this.pendingApprovals[messageIndex],
+            submitting: false,
+            error: "Failed to resume approval.",
+          },
+        };
+        this.messages[messageIndex].streaming = false;
+      }
+    },
+
+    rejectAllApproval(messageIndex) {
+      const pa = this.pendingApprovals[messageIndex];
+      if (!pa) return;
+      const decisions = { ...pa.decisions };
+      for (const tu of pa.tool_uses || []) {
+        if (tu.requires_approval) {
+          decisions[tu.tool_use_id] = "reject";
+        }
+      }
+      this.pendingApprovals = {
+        ...this.pendingApprovals,
+        [messageIndex]: { ...pa, decisions },
+      };
+      this.submitApproval(messageIndex);
+    },
+
     formatTokens(n) {
       if (n == null) return "0";
       if (n >= 1000) return (n / 1000).toFixed(1) + "k";
@@ -739,6 +1048,92 @@ const ChatPanel = {
               </button>
               <div v-if="expandedThinking[index]" class="thinking-content" v-html="parseMarkdown(msg.thinking)"></div>
             </div>
+            <div v-if="msg.role === 'assistant' && toolCallPairs(msg).length" class="tool-calls-block">
+              <button class="tool-calls-toggle" @click="toggleToolCalls(index)">
+                {{ expandedToolCalls[index] ? '▾' : '▸' }} tools ({{ toolCallPairs(msg).length }})
+              </button>
+              <div v-if="expandedToolCalls[index]" class="tool-calls-list">
+                <div
+                  v-for="(call, callIndex) in toolCallPairs(msg)"
+                  :key="call.tool_use_id"
+                  class="tool-call"
+                >
+                  <button class="tool-call-summary" @click="toggleToolCall(index, callIndex)">
+                    <span class="tool-call-chevron">{{ isToolCallExpanded(index, callIndex) ? '▾' : '▸' }}</span>
+                    <span class="tool-call-name">{{ call.name }}</span>
+                    <span class="tool-call-args">{{ summarizeToolInput(call.input) }}</span>
+                    <span class="tool-call-arrow">→</span>
+                    <span class="tool-call-result-summary" v-if="call.result !== null">
+                      {{ summarizeToolResult(call.result) }}
+                    </span>
+                    <span class="tool-call-result-summary pending" v-else>running…</span>
+                  </button>
+                  <div v-if="isToolCallExpanded(index, callIndex)" class="tool-call-details">
+                    <div class="tool-call-detail-label">input</div>
+                    <pre class="tool-call-detail-body">{{ formatToolJson(call.input) }}</pre>
+                    <template v-if="call.result !== null">
+                      <div class="tool-call-detail-label">result</div>
+                      <pre class="tool-call-detail-body">{{ formatToolJson(call.result) }}</pre>
+                    </template>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div v-if="msg.role === 'assistant' && getApprovalState(index)" class="approval-block">
+              <div class="approval-header">
+                ⚠ Assistant wants to make changes to your notes. Review and approve:
+              </div>
+              <div
+                v-for="tu in writeToolUses(getApprovalState(index))"
+                :key="tu.tool_use_id"
+                class="approval-tool-call"
+              >
+                <div class="approval-tool-head">
+                  <span class="approval-tool-name">{{ tu.name }}</span>
+                  <span class="approval-tool-args">{{ summarizeToolInput(tu.input) }}</span>
+                </div>
+                <pre class="approval-tool-body">{{ formatToolJson(tu.input) }}</pre>
+                <div class="approval-tool-actions">
+                  <label class="approval-choice">
+                    <input
+                      type="radio"
+                      :name="'approval-' + index + '-' + tu.tool_use_id"
+                      :checked="getApprovalState(index).decisions[tu.tool_use_id] === 'approve'"
+                      @change="setApprovalDecision(index, tu.tool_use_id, 'approve')"
+                    />
+                    approve
+                  </label>
+                  <label class="approval-choice">
+                    <input
+                      type="radio"
+                      :name="'approval-' + index + '-' + tu.tool_use_id"
+                      :checked="getApprovalState(index).decisions[tu.tool_use_id] === 'reject'"
+                      @change="setApprovalDecision(index, tu.tool_use_id, 'reject')"
+                    />
+                    reject
+                  </label>
+                </div>
+              </div>
+              <div v-if="getApprovalState(index).error" class="approval-error">
+                {{ getApprovalState(index).error }}
+              </div>
+              <div class="approval-footer">
+                <button
+                  class="approval-submit"
+                  @click="submitApproval(index)"
+                  :disabled="getApprovalState(index).submitting"
+                >
+                  {{ getApprovalState(index).submitting ? 'applying…' : 'apply decisions' }}
+                </button>
+                <button
+                  class="approval-reject-all"
+                  @click="rejectAllApproval(index)"
+                  :disabled="getApprovalState(index).submitting"
+                >
+                  reject all
+                </button>
+              </div>
+            </div>
             <div v-if="msg.role === 'assistant' && msg.streaming && !msg.content" class="message-content loading-content">
               <div class="typing-indicator">
                 <span></span>
@@ -880,6 +1275,28 @@ const ChatPanel = {
                   <span class="tools-menu-label">
                     <span class="tools-menu-name">search notes</span>
                     <span class="tools-menu-hint">Let the assistant search your notes (Anthropic only).</span>
+                  </span>
+                </label>
+                <label class="tools-menu-item">
+                  <input
+                    type="checkbox"
+                    :checked="enableNotesWriteTools"
+                    @change="toggleNotesWriteTools"
+                  />
+                  <span class="tools-menu-label">
+                    <span class="tools-menu-name">edit notes</span>
+                    <span class="tools-menu-hint">Let the assistant create, edit, and move notes. Every write pauses for your approval (Anthropic only).</span>
+                  </span>
+                </label>
+                <label class="tools-menu-item">
+                  <input
+                    type="checkbox"
+                    :checked="enableWebSearch"
+                    @change="toggleWebSearch"
+                  />
+                  <span class="tools-menu-label">
+                    <span class="tools-menu-name">web search</span>
+                    <span class="tools-menu-hint">Let the assistant query the web. Each turn adds ~600-1500 tokens to the prompt even when unused.</span>
                   </span>
                 </label>
               </div>
