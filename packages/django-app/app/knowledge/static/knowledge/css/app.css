@@ -3685,6 +3685,12 @@ kbd {
   font-size: 0.9rem !important;
 }
 
+/* A bit more breathing room between header text and the animated dots
+   — tight-fit inside inline body text, looser in the banner header. */
+.tool-calls-toggle .loading-dots {
+  margin-left: 0.5em;
+}
+
 /* Inline three-dot loader used in place of a static ellipsis wherever we
    want to signal "still working". currentColor so it picks up the
    surrounding text's color — banner header, per-row pending text, etc. */

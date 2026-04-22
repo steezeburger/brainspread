@@ -292,6 +292,9 @@ const ChatPanel = {
               this.currentSessionId = event.session_id;
               this.saveLastSessionId(event.session_id);
             }
+            this.maybeNavigateToToolTarget(
+              this.messages[assistantIndex].tool_events
+            );
           } else if (event.type === "error") {
             this.messages[assistantIndex].content =
               `Error: ${event.error || "Failed to send message"}`;
@@ -687,6 +690,39 @@ const ChatPanel = {
       };
     },
 
+    maybeNavigateToToolTarget(toolEvents) {
+      // After a chat turn ends, if the last write tool landed on a page
+      // different from the one the user is viewing, navigate there. We
+      // only nav at turn-end so a multi-step flow like
+      // create_page -> create_block doesn't thrash mid-stream, and only
+      // if the target differs so adding a block to the current page
+      // doesn't trigger a pointless reload (that's covered by
+      // auto-refresh on notes-modified).
+      if (!Array.isArray(toolEvents)) return;
+      let targetSlug = null;
+      for (const ev of toolEvents) {
+        if (ev.type !== "tool_result" || !ev.result) continue;
+        const r = ev.result;
+        if (r.page && r.page.slug && r.created) {
+          targetSlug = r.page.slug;
+        } else if (r.block && r.block.page_slug && r.created) {
+          targetSlug = r.block.page_slug;
+        }
+      }
+      if (!targetSlug) return;
+
+      // Only navigate from within a knowledge page view — leave admin /
+      // settings / etc. alone.
+      const match = window.location.pathname.match(
+        /^\/knowledge\/(?:page\/([^/]+)\/?|today\/?|$)/
+      );
+      if (!match) return;
+      const currentSlug = match[1] ? decodeURIComponent(match[1]) : null;
+      if (currentSlug === targetSlug) return;
+
+      window.location.href = `/knowledge/page/${encodeURIComponent(targetSlug)}/`;
+    },
+
     broadcastNotesModified(toolResult) {
       // Write tools surface `affected_page_uuids`. Fire a window event so
       // the Page component (or anything else viewing notes) can refresh
@@ -950,6 +986,9 @@ const ChatPanel = {
             const next = { ...this.pendingApprovals };
             delete next[messageIndex];
             this.pendingApprovals = next;
+            this.maybeNavigateToToolTarget(
+              this.messages[messageIndex].tool_events
+            );
           } else if (event.type === "error") {
             this.pendingApprovals = {
               ...this.pendingApprovals,

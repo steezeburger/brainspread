@@ -265,6 +265,7 @@ class NotesToolExecutor:
             "block": {
                 "block_uuid": str(block.uuid),
                 "page_uuid": str(page.uuid),
+                "page_slug": page.slug,
                 "content": block.content,
                 "block_type": block.block_type,
                 "order": block.order,
