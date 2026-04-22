@@ -48,10 +48,9 @@ class NotesToolExecutorWriteTestCase(TestCase):
         self.assertEqual(result["page"]["title"], "Roadmap 2026")
         self.assertEqual(result["page"]["page_type"], "page")
         page = Page.objects.get(user=self.user, title="Roadmap 2026")
-        # The body is stored as Block rows, not on Page.content. The tool
-        # leaves Page.content empty by design — the model creates blocks
-        # in a follow-up call if it wants to seed body content.
-        self.assertEqual(page.content, "")
+        # Body content lives in Block rows. Page.whiteboard_snapshot is
+        # whiteboard-only and stays empty for regular pages.
+        self.assertEqual(page.whiteboard_snapshot, "")
 
     def test_create_page_rejects_daily_type(self):
         ex = NotesToolExecutor(self.user, allow_writes=True)

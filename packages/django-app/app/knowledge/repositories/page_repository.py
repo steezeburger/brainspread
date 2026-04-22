@@ -136,8 +136,8 @@ class PageRepository(BaseRepository):
         """Get the most recently modified pages that have meaningful content.
 
         Includes pages that have blocks as well as whiteboard pages (whose
-        content lives in Page.content as a tldraw snapshot rather than in
-        Block rows).
+        content lives in Page.whiteboard_snapshot as a tldraw snapshot
+        rather than in Block rows).
         """
         return (
             cls.get_queryset()

@@ -176,8 +176,7 @@ class NotesToolExecutor:
         # `daily` is keyed on a specific date and auto-created elsewhere;
         # synthesizing one here would produce a dateless daily the rest of
         # the app can't navigate. `whiteboard` needs a tldraw JSON snapshot
-        # in Page.content that the model can't produce — block-based pages
-        # ignore Page.content entirely, so it's the only safe shape here.
+        # in Page.whiteboard_snapshot that the model can't produce.
         if page_type not in ("page", "template"):
             return {
                 "error": (

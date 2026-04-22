@@ -13,7 +13,8 @@ class PageFactory(DjangoModelFactory):
     slug = factory.LazyAttribute(
         lambda obj: obj.title.lower().replace(" ", "-").replace(".", "")
     )
-    content = Faker("text", max_nb_chars=200)
+    # whiteboard_snapshot deliberately defaults to "" — only whiteboard
+    # pages populate it, and tests that need one should pass it explicitly.
     is_published = True
     page_type = "page"
 

@@ -362,7 +362,6 @@ const KnowledgeApp = createApp({
 
         const result = await window.apiService.createPage(
           title.trim(),
-          "",
           slug,
           true,
           pageType

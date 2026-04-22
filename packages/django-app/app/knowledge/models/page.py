@@ -20,7 +20,12 @@ class Page(UUIDModelMixin, CRUDTimestampsMixin):
     )
     title = models.CharField(max_length=200, help_text="Human-readable page title")
     slug = models.SlugField(max_length=200, help_text="URL-friendly identifier")
-    content = models.TextField(blank=True, help_text="Text content of the page")
+    # Used only by `whiteboard` page types — stores a tldraw store snapshot
+    # as JSON. All other page types render their body from Block rows and
+    # leave this field blank.
+    whiteboard_snapshot = models.TextField(
+        blank=True, help_text="Tldraw JSON snapshot for whiteboard pages"
+    )
     is_published = models.BooleanField(
         default=True, help_text="Whether the page is published"
     )
@@ -70,7 +75,7 @@ class Page(UUIDModelMixin, CRUDTimestampsMixin):
             "uuid": str(self.uuid),
             "title": self.title,
             "slug": self.slug,
-            "content": self.content,
+            "whiteboard_snapshot": self.whiteboard_snapshot,
             "is_published": self.is_published,
             "page_type": self.page_type,
             "date": self.date.isoformat() if self.date else None,
@@ -86,7 +91,7 @@ class PageData(TypedDict):
     uuid: str
     title: str
     slug: str
-    content: str
+    whiteboard_snapshot: str
     is_published: bool
     page_type: str
     date: Optional[str]

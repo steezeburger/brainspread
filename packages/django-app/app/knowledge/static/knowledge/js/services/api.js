@@ -108,18 +108,11 @@ class ApiService {
     return await this.request("/api/auth/me/");
   }
 
-  async createPage(
-    title,
-    content,
-    slug,
-    isPublished = true,
-    pageType = "page"
-  ) {
+  async createPage(title, slug, isPublished = true, pageType = "page") {
     return await this.request("/knowledge/api/pages/", {
       method: "POST",
       body: JSON.stringify({
         title,
-        content,
         slug,
         is_published: isPublished,
         page_type: pageType,
