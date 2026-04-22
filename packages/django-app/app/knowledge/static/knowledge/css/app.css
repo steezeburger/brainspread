@@ -483,9 +483,19 @@ body {
   border-color: var(--text-primary) !important;
 }
 
+/* Always reserved to keep the button width constant whether or not any
+   tool is active — avoids layout jitter when toggling. */
 .tools-btn-check {
   font-weight: bold;
   color: var(--text-primary);
+  display: inline-block;
+  width: 0.7rem;
+  text-align: center;
+  visibility: hidden;
+}
+
+.tools-btn-check.active {
+  visibility: visible;
 }
 
 /* Tools popover — anchored above the trigger since controls sit at the bottom */
@@ -547,9 +557,10 @@ body {
 .tools-menu-item input[type="checkbox"]:checked::after {
   content: "✓";
   position: absolute;
-  top: -3px;
-  left: 1px;
-  font-size: 0.85rem;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.8rem;
   color: var(--bg-primary);
   font-weight: bold;
   line-height: 1;
