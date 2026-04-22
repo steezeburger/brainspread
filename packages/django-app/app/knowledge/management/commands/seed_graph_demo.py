@@ -229,7 +229,6 @@ class Command(BaseCommand):
                     "title": title,
                     "page_type": "page",
                     "is_published": True,
-                    "content": "",
                 },
             )
             pages[slug] = page
