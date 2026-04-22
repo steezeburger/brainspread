@@ -34,3 +34,6 @@ Brainspread is a Django web application that provides:
 ## Development Setup
 
 See `.ai/PROJECT_SETUP.md` for detailed development instructions and setup guides.
+
+
+<!-- Fix #51 -->
