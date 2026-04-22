@@ -4,13 +4,14 @@ from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from ai_chat.commands.send_message_command import (
+    BRAINSPREAD_SYSTEM_PROMPT,
     SendMessageCommand,
     SendMessageCommandError,
 )
 from ai_chat.forms import SendMessageForm
 from ai_chat.models import AIModel
 from ai_chat.services.ai_service_factory import AIServiceFactoryError
-from ai_chat.services.base_ai_service import AIServiceError
+from ai_chat.services.base_ai_service import AIServiceError, AIServiceResult, AIUsage
 from ai_chat.test.helpers import (
     ChatSessionFactory,
     OpenAIProviderFactory,
@@ -101,7 +102,10 @@ class SendMessageCommandTestCase(TestCase):
         mock_get_messages.return_value = [mock_message]
 
         mock_service = Mock()
-        mock_service.send_message.return_value = "Hello! How can I help you?"
+        mock_service.send_message.return_value = AIServiceResult(
+            content="Hello! How can I help you?",
+            usage=AIUsage(input_tokens=3, output_tokens=5),
+        )
         mock_create_service.return_value = mock_service
 
         # Execute command
@@ -124,6 +128,8 @@ class SendMessageCommandTestCase(TestCase):
         mock_service.send_message.assert_called_once_with(
             [{"role": "user", "content": "Hello, AI!"}],
             [{"type": "web_search_preview", "search_context_size": "medium"}],
+            system=BRAINSPREAD_SYSTEM_PROMPT,
+            tool_executor=None,
         )
 
     @patch("ai_chat.services.ai_service_factory.AIServiceFactory.create_service")
@@ -149,7 +155,9 @@ class SendMessageCommandTestCase(TestCase):
         mock_get_messages.return_value = mock_messages
 
         mock_service = Mock()
-        mock_service.send_message.return_value = "Follow-up response"
+        mock_service.send_message.return_value = AIServiceResult(
+            content="Follow-up response"
+        )
         mock_create_service.return_value = mock_service
 
         # Execute command
@@ -233,7 +241,6 @@ class SendMessageCommandTestCase(TestCase):
         self.assertIn("AI service error", str(context.exception))
 
         # Verify error message was added to session
-        # The last call should include the AI model parameter
         calls = mock_add_message.call_args_list
         last_call = calls[-1]
         self.assertEqual(last_call[0][0], session)
@@ -242,7 +249,7 @@ class SendMessageCommandTestCase(TestCase):
             last_call[0][2],
             "Sorry, I'm experiencing technical difficulties: API rate limit exceeded",
         )
-        self.assertEqual(last_call[0][3], self.gpt4_model)
+        self.assertEqual(last_call.kwargs["ai_model"], self.gpt4_model)
 
     @patch("ai_chat.services.ai_service_factory.AIServiceFactory.create_service")
     @patch(
@@ -365,8 +372,8 @@ class SendMessageCommandTestCase(TestCase):
         mock_get_messages.return_value = [mock_message]
 
         mock_service = Mock()
-        mock_service.send_message.return_value = (
-            "Based on your notes, here's what I suggest..."
+        mock_service.send_message.return_value = AIServiceResult(
+            content="Based on your notes, here's what I suggest..."
         )
         mock_create_service.return_value = mock_service
 

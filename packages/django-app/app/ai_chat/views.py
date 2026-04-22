@@ -1,12 +1,16 @@
+import json
 import logging
 from typing import TypedDict
 
+from django.http import StreamingHttpResponse
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.renderers import BaseRenderer
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from .commands import SendMessageCommand
+from .commands import SendMessageCommand, StreamSendMessageCommand
 from .commands.send_message_command import SendMessageCommandError
 from .forms import SendMessageForm
 from .models import (
@@ -84,6 +88,77 @@ def send_message(request):
         )
 
 
+def _sse_event(payload: dict) -> bytes:
+    """Encode a dict as a single `data:` SSE frame."""
+    return f"data: {json.dumps(payload)}\n\n".encode("utf-8")
+
+
+class ServerSentEventRenderer(BaseRenderer):
+    """Allow DRF content negotiation to accept `text/event-stream` clients.
+
+    The view returns a StreamingHttpResponse directly, so this renderer is
+    never invoked — it only exists to make negotiation match.
+    """
+
+    media_type = "text/event-stream"
+    format = "sse"
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        return data
+
+
+class StreamSendMessageView(APIView):
+    """SSE endpoint for streaming assistant responses."""
+
+    permission_classes = [IsAuthenticated]
+    renderer_classes = [ServerSentEventRenderer]
+
+    def post(self, request):
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = SendMessageForm(data)
+        if not form.is_valid():
+            error_message = (
+                str(list(form.errors.values())[0][0])
+                if form.errors
+                else "Invalid form data"
+            )
+            return Response(
+                {
+                    "success": False,
+                    "error": error_message,
+                    "error_type": "configuration_error",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        command = StreamSendMessageCommand(form)
+
+        def event_stream():
+            try:
+                for event in command.execute():
+                    yield _sse_event(event)
+            except SendMessageCommandError as e:
+                logger.warning(
+                    f"Stream command error for user {request.user.id}: {str(e)}"
+                )
+                yield _sse_event({"type": "error", "error": str(e)})
+            except Exception as e:
+                logger.error(
+                    f"Unexpected error in stream_send_message for user {request.user.id}: {str(e)}"
+                )
+                yield _sse_event(
+                    {"type": "error", "error": "An unexpected error occurred."}
+                )
+
+        response = StreamingHttpResponse(
+            event_stream(), content_type="text/event-stream"
+        )
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def chat_sessions(request):
@@ -142,7 +217,14 @@ def chat_session_detail(request, session_id):
             {
                 "role": msg.role,
                 "content": msg.content,
+                "thinking": msg.thinking or None,
                 "created_at": msg.created_at.isoformat(),
+                "usage": {
+                    "input_tokens": msg.input_tokens,
+                    "output_tokens": msg.output_tokens,
+                    "cache_creation_input_tokens": msg.cache_creation_input_tokens,
+                    "cache_read_input_tokens": msg.cache_read_input_tokens,
+                },
                 "ai_model": (
                     {
                         "name": msg.ai_model.name,

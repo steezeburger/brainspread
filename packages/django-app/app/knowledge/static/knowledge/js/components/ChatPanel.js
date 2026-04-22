@@ -30,6 +30,9 @@ const ChatPanel = {
       selectedModel: null,
       showContextArea: false,
       messageMenus: {},
+      expandedThinking: {},
+      enableNotesTools: this.loadNotesToolsPref(),
+      showToolsMenu: false,
     };
   },
   mounted() {
@@ -55,6 +58,40 @@ const ChatPanel = {
       deep: true,
     },
   },
+  computed: {
+    sessionStats() {
+      let inputTokens = 0;
+      let outputTokens = 0;
+      let cacheRead = 0;
+      let cacheCreation = 0;
+      let turns = 0;
+      for (const msg of this.messages) {
+        if (msg.role !== "assistant" || !msg.usage) continue;
+        turns += 1;
+        inputTokens += msg.usage.input_tokens || 0;
+        outputTokens += msg.usage.output_tokens || 0;
+        cacheRead += msg.usage.cache_read_input_tokens || 0;
+        cacheCreation += msg.usage.cache_creation_input_tokens || 0;
+      }
+      const totalInput = inputTokens + cacheRead + cacheCreation;
+      const cacheRatio = totalInput > 0 ? cacheRead / totalInput : 0;
+      return {
+        turns,
+        inputTokens,
+        outputTokens,
+        cacheRead,
+        cacheCreation,
+        totalInput,
+        cacheRatio,
+      };
+    },
+    hasSessionStats() {
+      return this.sessionStats.turns > 0;
+    },
+    hasActiveTools() {
+      return this.enableNotesTools;
+    },
+  },
   methods: {
     loadOpenState() {
       const saved = localStorage.getItem("chatPanel.isOpen");
@@ -76,6 +113,20 @@ const ChatPanel = {
     },
     saveOpenState() {
       localStorage.setItem("chatPanel.isOpen", JSON.stringify(this.isOpen));
+    },
+    loadNotesToolsPref() {
+      const saved = localStorage.getItem("chatPanel.enableNotesTools");
+      return saved === null ? false : JSON.parse(saved);
+    },
+    toggleNotesTools() {
+      this.enableNotesTools = !this.enableNotesTools;
+      localStorage.setItem(
+        "chatPanel.enableNotesTools",
+        JSON.stringify(this.enableNotesTools)
+      );
+    },
+    toggleToolsMenu() {
+      this.showToolsMenu = !this.showToolsMenu;
     },
     saveWidth() {
       localStorage.setItem("chatPanel.width", this.width.toString());
@@ -107,44 +158,65 @@ const ChatPanel = {
         model: this.selectedModel,
         session_id: this.currentSessionId,
         context_blocks: this.chatContextBlocks,
+        enable_notes_tools: this.enableNotesTools,
       };
       this.message = "";
       this.loading = true;
+
+      const assistantMsg = {
+        role: "assistant",
+        content: "",
+        thinking: "",
+        created_at: new Date().toISOString(),
+        usage: null,
+        ai_model: null,
+        streaming: true,
+      };
+      this.messages.push(assistantMsg);
+      const assistantIndex = this.messages.length - 1;
+
       try {
-        const result = await window.apiService.sendAIMessage(payload);
-        if (result.success) {
-          // Use the complete message data from the API response
-          if (result.data.message) {
-            this.messages.push(result.data.message);
-          } else {
-            // Fallback for backward compatibility
-            this.messages.push({
-              role: "assistant",
-              content: result.data.response,
-              created_at: new Date().toISOString(),
-            });
+        let streamed = false;
+        for await (const event of window.apiService.streamAIMessage(payload)) {
+          streamed = true;
+          if (event.type === "session") {
+            if (event.session_id && !this.currentSessionId) {
+              this.currentSessionId = event.session_id;
+              this.saveLastSessionId(event.session_id);
+            }
+          } else if (event.type === "text") {
+            this.messages[assistantIndex].content += event.delta || "";
+          } else if (event.type === "thinking") {
+            this.messages[assistantIndex].thinking =
+              (this.messages[assistantIndex].thinking || "") +
+              (event.delta || "");
+          } else if (event.type === "done") {
+            if (event.message) {
+              this.messages.splice(assistantIndex, 1, {
+                ...event.message,
+                streaming: false,
+              });
+            } else {
+              this.messages[assistantIndex].streaming = false;
+            }
+            if (event.session_id && !this.currentSessionId) {
+              this.currentSessionId = event.session_id;
+              this.saveLastSessionId(event.session_id);
+            }
+          } else if (event.type === "error") {
+            this.messages[assistantIndex].content =
+              `Error: ${event.error || "Failed to send message"}`;
+            this.messages[assistantIndex].streaming = false;
           }
-          if (result.data.session_id && !this.currentSessionId) {
-            this.currentSessionId = result.data.session_id;
-            this.saveLastSessionId(result.data.session_id);
-          }
-        } else {
-          // Handle error response
-          const errorMsg = result.error || "Failed to send message";
-          this.messages.push({
-            role: "assistant",
-            content: `Error: ${errorMsg}`,
-            created_at: new Date().toISOString(),
-          });
+        }
+        if (!streamed) {
+          throw new Error("Empty stream response");
         }
       } catch (err) {
         console.error(err);
-        this.messages.push({
-          role: "assistant",
-          content:
-            "Error: Failed to send message. Please check your connection and try again.",
-          created_at: new Date().toISOString(),
-        });
+        this.messages[assistantIndex].content =
+          "Error: Failed to send message. Please check your connection and try again.";
+        this.messages[assistantIndex].streaming = false;
       } finally {
         this.loading = false;
       }
@@ -512,6 +584,47 @@ const ChatPanel = {
       }
     },
 
+    toggleThinking(messageIndex) {
+      this.expandedThinking = {
+        ...this.expandedThinking,
+        [messageIndex]: !this.expandedThinking[messageIndex],
+      };
+    },
+
+    formatTokens(n) {
+      if (n == null) return "0";
+      if (n >= 1000) return (n / 1000).toFixed(1) + "k";
+      return String(n);
+    },
+
+    formatUsage(usage) {
+      if (!usage) return "";
+      const input = usage.input_tokens || 0;
+      const output = usage.output_tokens || 0;
+      const cacheRead = usage.cache_read_input_tokens || 0;
+      const cacheCreation = usage.cache_creation_input_tokens || 0;
+      const parts = [
+        `in ${this.formatTokens(input + cacheRead + cacheCreation)}`,
+        `out ${this.formatTokens(output)}`,
+      ];
+      const totalInput = input + cacheRead + cacheCreation;
+      if (totalInput > 0 && cacheRead > 0) {
+        const pct = Math.round((cacheRead / totalInput) * 100);
+        parts.push(`${pct}% cached`);
+      }
+      return parts.join(" · ");
+    },
+
+    hasUsage(usage) {
+      if (!usage) return false;
+      return (
+        (usage.input_tokens != null && usage.input_tokens > 0) ||
+        (usage.output_tokens != null && usage.output_tokens > 0) ||
+        (usage.cache_read_input_tokens != null &&
+          usage.cache_read_input_tokens > 0)
+      );
+    },
+
     // Message menu methods
     toggleMessageMenu(messageIndex) {
       // Close all other menus first
@@ -572,6 +685,13 @@ const ChatPanel = {
     // Click outside to close panel
     setupClickOutsideListener() {
       this.clickOutsideHandler = (e) => {
+        // Close the tools popover when clicking anywhere outside it.
+        // Clicks on menu items (inside .tools-container) are allowed so
+        // users can flip multiple toggles in one session.
+        if (this.showToolsMenu && !e.target.closest(".tools-container")) {
+          this.showToolsMenu = false;
+        }
+
         // Only close if panel is open and click is outside the panel
         if (this.isOpen && !this.$el.contains(e.target)) {
           // Check if click is within the history dropdown (teleported content)
@@ -613,12 +733,28 @@ const ChatPanel = {
         </div>
         <div class="messages">
           <div v-for="(msg, index) in messages" :key="index" :class="['message-bubble', msg.role]">
-            <div class="message-content" v-html="parseMarkdown(msg.content)"></div>
+            <div v-if="msg.role === 'assistant' && msg.thinking" class="thinking-block">
+              <button class="thinking-toggle" @click="toggleThinking(index)">
+                {{ expandedThinking[index] ? '▾' : '▸' }} thinking
+              </button>
+              <div v-if="expandedThinking[index]" class="thinking-content" v-html="parseMarkdown(msg.thinking)"></div>
+            </div>
+            <div v-if="msg.role === 'assistant' && msg.streaming && !msg.content" class="message-content loading-content">
+              <div class="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+            <div v-else class="message-content" v-html="parseMarkdown(msg.content)"></div>
             <div class="message-footer">
               <div class="message-timestamp">
                 {{ formatTimestamp(msg.created_at) }}
                 <span v-if="msg.role === 'assistant' && msg.ai_model" class="model-info">
                   · {{ msg.ai_model.display_name || msg.ai_model.name }}
+                </span>
+                <span v-if="msg.role === 'assistant' && hasUsage(msg.usage)" class="usage-info" :title="'Token usage'">
+                  · {{ formatUsage(msg.usage) }}
                 </span>
               </div>
               <div class="message-menu-container" v-if="msg.role === 'assistant'">
@@ -637,15 +773,6 @@ const ChatPanel = {
                     copy message
                   </button>
                 </div>
-              </div>
-            </div>
-          </div>
-          <div v-if="loading" class="message-bubble assistant loading">
-            <div class="message-content loading-content">
-              <div class="typing-indicator">
-                <span></span>
-                <span></span>
-                <span></span>
               </div>
             </div>
           </div>
@@ -689,6 +816,17 @@ const ChatPanel = {
         </div>
         
         <div class="input-area">
+          <div v-if="hasSessionStats" class="session-stats" title="Session token usage">
+            <span>{{ sessionStats.turns }} turn{{ sessionStats.turns === 1 ? '' : 's' }}</span>
+            <span class="session-stats-sep">·</span>
+            <span>in {{ formatTokens(sessionStats.totalInput) }}</span>
+            <span class="session-stats-sep">·</span>
+            <span>out {{ formatTokens(sessionStats.outputTokens) }}</span>
+            <template v-if="sessionStats.cacheRead > 0">
+              <span class="session-stats-sep">·</span>
+              <span>{{ Math.round(sessionStats.cacheRatio * 100) }}% cached</span>
+            </template>
+          </div>
           <div class="chat-controls">
             <div class="model-selector" v-if="aiSettings">
               <button 
@@ -715,14 +853,37 @@ const ChatPanel = {
                 </div>
               </div>
             </div>
-            <button 
-              class="context-btn" 
-              @click="toggleContextArea" 
+            <button
+              class="context-btn"
+              @click="toggleContextArea"
               :class="{ active: hasContext() }"
               :title="hasContext() ? 'Context (' + getContextCount() + ')' : 'Add context'"
             >
               ctx
             </button>
+            <div class="tools-container">
+              <button
+                class="tools-btn"
+                @click="toggleToolsMenu"
+                :class="{ active: hasActiveTools }"
+                :title="hasActiveTools ? 'Tools (some active)' : 'Tools'"
+              >
+                tools
+              </button>
+              <div v-if="showToolsMenu" class="tools-menu">
+                <label class="tools-menu-item">
+                  <input
+                    type="checkbox"
+                    :checked="enableNotesTools"
+                    @change="toggleNotesTools"
+                  />
+                  <span class="tools-menu-label">
+                    <span class="tools-menu-name">search notes</span>
+                    <span class="tools-menu-hint">Let the assistant search your notes (Anthropic only).</span>
+                  </span>
+                </label>
+              </div>
+            </div>
             <button class="settings-btn" @click="openSettings" title="AI Settings">cfg</button>
           </div>
           <div class="message-input">

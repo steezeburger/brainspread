@@ -6,6 +6,11 @@ app_name = "ai_chat"
 
 urlpatterns = [
     path("send/", views.send_message, name="send_message"),
+    path(
+        "stream/",
+        views.StreamSendMessageView.as_view(),
+        name="stream_send_message",
+    ),
     path("sessions/", views.chat_sessions, name="chat_sessions"),
     path(
         "sessions/<str:session_id>/",
