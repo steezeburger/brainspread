@@ -13,8 +13,10 @@ from typing import Any, Dict, List
 
 from core.models import User
 from knowledge.commands.create_block_command import CreateBlockCommand
+from knowledge.commands.create_page_command import CreatePageCommand
 from knowledge.commands.update_block_command import UpdateBlockCommand
 from knowledge.forms.create_block_form import CreateBlockForm
+from knowledge.forms.create_page_form import CreatePageForm
 from knowledge.forms.update_block_form import UpdateBlockForm
 from knowledge.repositories.block_repository import BlockRepository
 from knowledge.repositories.page_repository import PageRepository
@@ -61,6 +63,8 @@ class NotesToolExecutor:
                 return self._get_page_by_title(args)
             if name == "get_block_by_id":
                 return self._get_block_by_id(args)
+            if name == "create_page":
+                return self._create_page(args)
             if name == "create_block":
                 return self._create_block(args)
             if name == "edit_block":
@@ -161,6 +165,46 @@ class NotesToolExecutor:
                 }
                 for child in children
             ],
+        }
+
+    def _create_page(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        title = (args.get("title") or "").strip()
+        if not title:
+            return {"error": "title is required"}
+
+        page_type = (args.get("page_type") or "page").strip() or "page"
+        if page_type == "daily":
+            # Daily notes are keyed on a specific date and auto-created by
+            # other flows — letting the model synthesize one would produce a
+            # dateless daily that the rest of the app doesn't know how to
+            # navigate.
+            return {
+                "error": (
+                    "Cannot create a 'daily' page via this tool. Use page,"
+                    " template, or whiteboard."
+                )
+            }
+
+        form = CreatePageForm(
+            {
+                "user": self.user.id,
+                "title": title,
+                "content": args.get("content") or "",
+                "page_type": page_type,
+            }
+        )
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+
+        page = CreatePageCommand(form).execute()
+        return {
+            "created": True,
+            "page": {
+                "uuid": str(page.uuid),
+                "title": page.title,
+                "slug": page.slug,
+                "page_type": page.page_type,
+            },
         }
 
     def _create_block(self, args: Dict[str, Any]) -> Dict[str, Any]:

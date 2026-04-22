@@ -2,7 +2,7 @@ from django.test import TestCase
 
 from ai_chat.tools.notes_tool_executor import NotesToolExecutor
 from core.test.helpers import UserFactory
-from knowledge.models import Block
+from knowledge.models import Block, Page
 from knowledge.test.helpers import BlockFactory, PageFactory
 
 
@@ -23,7 +23,9 @@ class NotesToolExecutorWriteTestCase(TestCase):
 
         self.assertTrue(read_only.is_known("search_notes"))
         self.assertFalse(read_only.is_known("create_block"))
+        self.assertFalse(read_only.is_known("create_page"))
         self.assertFalse(read_only.is_known("edit_block"))
+        self.assertTrue(writable.is_known("create_page"))
         self.assertTrue(writable.is_known("create_block"))
         self.assertTrue(writable.is_known("edit_block"))
         self.assertTrue(writable.is_known("move_blocks"))
@@ -32,9 +34,40 @@ class NotesToolExecutorWriteTestCase(TestCase):
         ex = NotesToolExecutor(self.user, allow_writes=True)
 
         self.assertFalse(ex.requires_approval("search_notes"))
+        self.assertTrue(ex.requires_approval("create_page"))
         self.assertTrue(ex.requires_approval("create_block"))
         self.assertTrue(ex.requires_approval("edit_block"))
         self.assertTrue(ex.requires_approval("move_blocks"))
+
+    def test_create_page_creates_page_for_user(self):
+        ex = NotesToolExecutor(self.user, allow_writes=True)
+
+        result = ex.execute(
+            "create_page",
+            {"title": "Roadmap 2026", "content": "## Q1"},
+        )
+
+        self.assertTrue(result.get("created"))
+        self.assertEqual(result["page"]["title"], "Roadmap 2026")
+        self.assertEqual(result["page"]["page_type"], "page")
+        self.assertTrue(
+            Page.objects.filter(user=self.user, title="Roadmap 2026").exists()
+        )
+
+    def test_create_page_rejects_daily_type(self):
+        ex = NotesToolExecutor(self.user, allow_writes=True)
+
+        result = ex.execute("create_page", {"title": "Today", "page_type": "daily"})
+
+        self.assertIn("error", result)
+        self.assertFalse(Page.objects.filter(user=self.user, title="Today").exists())
+
+    def test_create_page_requires_title(self):
+        ex = NotesToolExecutor(self.user, allow_writes=True)
+
+        result = ex.execute("create_page", {"title": "   "})
+
+        self.assertIn("error", result)
 
     def test_create_block_adds_block_to_page(self):
         ex = NotesToolExecutor(self.user, allow_writes=True)

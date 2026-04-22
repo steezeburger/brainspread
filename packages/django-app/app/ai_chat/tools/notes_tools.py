@@ -77,6 +77,37 @@ NOTES_READ_TOOLS: List[Dict[str, Any]] = [
 
 NOTES_WRITE_TOOLS: List[Dict[str, Any]] = [
     {
+        "name": "create_page",
+        "description": (
+            "Create a new page for the user. Use this before create_block if"
+            " the target page doesn't exist yet. Every call pauses for"
+            " explicit user approval before execution. Returns the new"
+            " page's uuid and slug."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Title for the new page.",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "Optional markdown body for the page.",
+                },
+                "page_type": {
+                    "type": "string",
+                    "description": (
+                        "Optional page type. Allowed: page (default),"
+                        " template, whiteboard. Do not use 'daily' — daily"
+                        " notes are auto-created per date."
+                    ),
+                },
+            },
+            "required": ["title"],
+        },
+    },
+    {
         "name": "create_block",
         "description": (
             "Create a new block on a page. Use after confirming the target"
