@@ -105,7 +105,14 @@ class GraphDataResponse(TypedDict):
 
 
 def index(request, date=None, tag_name=None, slug=None):
-    return render(request, "knowledge/index.html")
+    # The HTML shell references hashed/versioned asset URLs, so it must
+    # never be cached - otherwise mobile browsers keep serving stale script
+    # tags and never pick up new deploys.
+    response = render(request, "knowledge/index.html")
+    response["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    response["Pragma"] = "no-cache"
+    response["Expires"] = "0"
+    return response
 
 
 # Page management endpoints

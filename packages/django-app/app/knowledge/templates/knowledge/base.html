@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{% block title %}brainspread{% endblock %}</title>
     {% load static %} {% csrf_token %}
-    <link rel="stylesheet" href="{% static 'knowledge/css/app.css' %}" />
+    <link rel="stylesheet" href="{% static 'knowledge/css/app.css' %}?v={{ STATIC_VERSION }}" />
     <link rel="stylesheet" href="https://esm.sh/tldraw@3/tldraw.css" />
     {% block extra_css %}{% endblock %}
   </head>
@@ -20,30 +20,30 @@
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
-    
+
     <!-- Prism CSS Theme -->
     <link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
 
     <!-- API Service -->
-    <script src="{% static 'knowledge/js/services/api.js' %}?v=3"></script>
+    <script src="{% static 'knowledge/js/services/api.js' %}?v={{ STATIC_VERSION }}"></script>
 
     <!-- Vue Components -->
-    <script src="{% static 'knowledge/js/components/BlockComponent.js' %}"></script>
-    <script src="{% static 'knowledge/js/components/LoginForm.js' %}"></script>
-    <script src="{% static 'knowledge/js/components/Whiteboard.js' %}"></script>
-    <script src="{% static 'knowledge/js/components/Page.js' %}"></script>
-    <script src="{% static 'knowledge/js/components/TaggedBlockDisplay.js' %}"></script>
-    <script src="{% static 'knowledge/js/components/HistoricalSidebar.js' %}"></script>
-    <script src="{% static 'knowledge/js/components/SettingsModal.js' %}"></script>
-    <script src="{% static 'knowledge/js/components/HelpModal.js' %}"></script>
-    <script src="{% static 'knowledge/js/components/ChatHistory.js' %}"></script>
-    <script src="{% static 'knowledge/js/components/ChatPanel.js' %}"></script>
-    <script src="{% static 'knowledge/js/components/ToastNotifications.js' %}"></script>
-    <script src="{% static 'knowledge/js/components/SpotlightSearch.js' %}"></script>
-    <script src="{% static 'knowledge/js/components/GraphView.js' %}"></script>
+    <script src="{% static 'knowledge/js/components/BlockComponent.js' %}?v={{ STATIC_VERSION }}"></script>
+    <script src="{% static 'knowledge/js/components/LoginForm.js' %}?v={{ STATIC_VERSION }}"></script>
+    <script src="{% static 'knowledge/js/components/Whiteboard.js' %}?v={{ STATIC_VERSION }}"></script>
+    <script src="{% static 'knowledge/js/components/Page.js' %}?v={{ STATIC_VERSION }}"></script>
+    <script src="{% static 'knowledge/js/components/TaggedBlockDisplay.js' %}?v={{ STATIC_VERSION }}"></script>
+    <script src="{% static 'knowledge/js/components/HistoricalSidebar.js' %}?v={{ STATIC_VERSION }}"></script>
+    <script src="{% static 'knowledge/js/components/SettingsModal.js' %}?v={{ STATIC_VERSION }}"></script>
+    <script src="{% static 'knowledge/js/components/HelpModal.js' %}?v={{ STATIC_VERSION }}"></script>
+    <script src="{% static 'knowledge/js/components/ChatHistory.js' %}?v={{ STATIC_VERSION }}"></script>
+    <script src="{% static 'knowledge/js/components/ChatPanel.js' %}?v={{ STATIC_VERSION }}"></script>
+    <script src="{% static 'knowledge/js/components/ToastNotifications.js' %}?v={{ STATIC_VERSION }}"></script>
+    <script src="{% static 'knowledge/js/components/SpotlightSearch.js' %}?v={{ STATIC_VERSION }}"></script>
+    <script src="{% static 'knowledge/js/components/GraphView.js' %}?v={{ STATIC_VERSION }}"></script>
 
     <!-- Main App -->
-    <script src="{% static 'knowledge/js/app.js' %}"></script>
+    <script src="{% static 'knowledge/js/app.js' %}?v={{ STATIC_VERSION }}"></script>
     {% block extra_js %}{% endblock %}
   </body>
 </html>
