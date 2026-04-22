@@ -25,6 +25,18 @@ THINKING_CAPABLE_MODEL_PREFIXES = (
     "claude-haiku-4-5",
 )
 
+# Subset that accepts `thinking: {type: "adaptive"}`. Haiku 4.5 supports
+# extended thinking but only in `enabled` mode — adaptive returns a 400.
+ADAPTIVE_THINKING_CAPABLE_MODEL_PREFIXES = (
+    "claude-opus-4-7",
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+)
+
+# Budget for `thinking: {type: "enabled"}` — must be strictly less than
+# max_tokens on the request.
+ENABLED_THINKING_BUDGET_TOKENS = 4096
+
 # Models that accept `output_config.effort`. Sending it to Haiku 4.5 (or older
 # non-4.6 models) returns a 400.
 EFFORT_CAPABLE_MODEL_PREFIXES = (
@@ -59,6 +71,9 @@ class AnthropicService(BaseAIService):
 
     def _supports_thinking(self) -> bool:
         return self.model.startswith(THINKING_CAPABLE_MODEL_PREFIXES)
+
+    def _supports_adaptive_thinking(self) -> bool:
+        return self.model.startswith(ADAPTIVE_THINKING_CAPABLE_MODEL_PREFIXES)
 
     def _supports_effort(self) -> bool:
         return self.model.startswith(EFFORT_CAPABLE_MODEL_PREFIXES)
@@ -480,10 +495,19 @@ class AnthropicService(BaseAIService):
         if tools:
             kwargs["tools"] = tools
         if thinking_enabled:
-            # Adaptive thinking — Claude decides when and how much to reason.
-            # `display: "summarized"` surfaces the reasoning trace; the 4.7
-            # default is "omitted" which would make thinking blocks empty.
-            kwargs["thinking"] = {"type": "adaptive", "display": "summarized"}
+            if self._supports_adaptive_thinking():
+                # Adaptive thinking — Claude decides when and how much to
+                # reason. `display: "summarized"` surfaces the reasoning
+                # trace; the 4.7 default is "omitted" which would make
+                # thinking blocks empty.
+                kwargs["thinking"] = {"type": "adaptive", "display": "summarized"}
+            else:
+                # Haiku 4.5 supports extended thinking only in `enabled`
+                # mode with an explicit budget (< max_tokens).
+                kwargs["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": ENABLED_THINKING_BUDGET_TOKENS,
+                }
         if self._supports_effort():
             kwargs["output_config"] = {"effort": "high"}
         return kwargs

@@ -95,7 +95,11 @@ class TestAnthropicServiceThinking:
         assert result.usage.cache_read_input_tokens == 500
 
     @patch("anthropic.Anthropic")
-    def test_haiku_gets_thinking_but_no_effort(self, mock_anthropic_cls):
+    def test_haiku_uses_enabled_thinking_not_adaptive(self, mock_anthropic_cls):
+        # Haiku 4.5 supports extended thinking but NOT adaptive — the API
+        # returns a 400 ("adaptive thinking is not supported on this model")
+        # if we send `type: "adaptive"`. It needs `type: "enabled"` with an
+        # explicit budget smaller than max_tokens.
         mock_client = Mock()
         mock_client.messages.create.return_value = _build_response()
         mock_anthropic_cls.return_value = mock_client
@@ -104,8 +108,9 @@ class TestAnthropicServiceThinking:
         service.send_message([{"role": "user", "content": "Hi"}])
 
         kwargs = mock_client.messages.create.call_args.kwargs
-        assert kwargs["thinking"] == {"type": "adaptive", "display": "summarized"}
-        # effort would 400 on Haiku — make sure we don't send it.
+        assert kwargs["thinking"] == {"type": "enabled", "budget_tokens": 4096}
+        assert kwargs["thinking"]["budget_tokens"] < kwargs["max_tokens"]
+        # effort would also 400 on Haiku — make sure we don't send it.
         assert "output_config" not in kwargs
 
     @patch("anthropic.Anthropic")
