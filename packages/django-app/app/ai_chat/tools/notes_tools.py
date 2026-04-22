@@ -127,7 +127,7 @@ NOTES_WRITE_TOOLS: List[Dict[str, Any]] = [
                     "type": "string",
                     "description": (
                         "Block type. Defaults to 'bullet'. Allowed: bullet,"
-                        " todo, done, later, wontdo, heading, code."
+                        " todo, doing, done, later, wontdo, heading, code."
                     ),
                 },
                 "parent_uuid": {
@@ -168,8 +168,7 @@ NOTES_WRITE_TOOLS: List[Dict[str, Any]] = [
                 "block_type": {
                     "type": "string",
                     "description": (
-                        "Optional new block type. Same allowed values as"
-                        " create_block."
+                        "Optional new block type. Same allowed values as create_block."
                     ),
                 },
                 "parent_uuid": {

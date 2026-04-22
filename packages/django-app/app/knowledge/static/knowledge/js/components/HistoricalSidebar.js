@@ -139,21 +139,31 @@ window.HistoricalSidebar = {
       document.removeEventListener("mouseup", this.stopResizeHandler);
     },
 
-    openPage(page) {
-      // Emit event to parent component to navigate to this slug
-      // All pages now use the unified /knowledge/page/{slug}/ pattern
-      this.$emit("navigate-to-slug", page.slug);
+    pageUrl(slug) {
+      // All pages use the unified /knowledge/page/{slug}/ pattern
+      return `/knowledge/page/${encodeURIComponent(slug)}/`;
     },
 
-    openBlockPage(block) {
-      // Navigate to the page containing this block
-      // All pages now use the unified /knowledge/page/{slug}/ pattern
-      this.$emit("navigate-to-slug", block.page_slug);
+    // Returns true when the click should defer to browser-native behavior:
+    // modifier keys, middle-click, or an anchor that already has a target.
+    // In that case we do nothing and let the <a href> handle navigation
+    // (new tab / new window).
+    shouldDeferToBrowser(event) {
+      if (!event) return false;
+      if (event.defaultPrevented) return true;
+      if (event.button !== undefined && event.button !== 0) return true;
+      return !!(
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        event.altKey
+      );
     },
 
-    openTag(tagName) {
-      // Navigate to the tag page
-      this.$emit("navigate-to-slug", tagName);
+    handleNavClick(event, slug) {
+      if (this.shouldDeferToBrowser(event)) return;
+      event.preventDefault();
+      this.$emit("navigate-to-slug", slug);
     },
 
     async toggleBlockTodo(block, event) {
@@ -184,9 +194,12 @@ window.HistoricalSidebar = {
       // Strip todo-state prefix from display since the checkbox already shows state
       if (
         blockType &&
-        ["todo", "done", "later", "wontdo"].includes(blockType)
+        ["todo", "doing", "done", "later", "wontdo"].includes(blockType)
       ) {
-        formatted = formatted.replace(/^(WONTDO|LATER|DONE|TODO)\s*:?\s*/i, "");
+        formatted = formatted.replace(
+          /^(WONTDO|LATER|DOING|DONE|TODO)\s*:?\s*/i,
+          ""
+        );
       }
 
       // Extract backtick code spans first to protect them from other formatting
@@ -287,10 +300,14 @@ window.HistoricalSidebar = {
         formatted = formatted.split(`\x00LINK${idx}\x00`).join(replacement);
       });
 
-      // Replace hashtags with clickable styled spans
+      // Replace hashtags with clickable anchor links so users can Cmd/Ctrl-click
+      // or middle-click to open a tag in a new tab.
       return formatted.replace(
         /#([a-zA-Z0-9_-]+)/g,
-        '<span class="inline-tag clickable-tag" data-tag="$1">#$1</span>'
+        (_m, tag) =>
+          `<a class="inline-tag clickable-tag" href="${this.escapeAttr(
+            this.pageUrl(tag)
+          )}" data-tag="${tag}">#${tag}</a>`
       );
     },
 
@@ -323,10 +340,11 @@ window.HistoricalSidebar = {
 
     handleTagClick(event) {
       const tagName = event.target.getAttribute("data-tag");
-      if (tagName) {
-        event.stopPropagation();
-        this.openTag(tagName);
-      }
+      if (!tagName) return;
+      event.stopPropagation();
+      if (this.shouldDeferToBrowser(event)) return;
+      event.preventDefault();
+      this.$emit("navigate-to-slug", tagName);
     },
 
     // Click outside to close sidebar
@@ -414,12 +432,14 @@ window.HistoricalSidebar = {
             <div v-if="historicalData.pages && historicalData.pages.length" class="sidebar-section">
               <h4>Recent Pages ({{ historicalData.pages.length }})</h4>
               <div class="sidebar-items">
-                <div
+                <a
                   v-for="page in historicalData.pages"
                   :key="page.uuid"
+                  :href="pageUrl(page.slug)"
                   class="sidebar-item page-item clickable"
-                  @click="openPage(page)"
-                  :title="'Click to open ' + page.title"
+                  @click="handleNavClick($event, page.slug)"
+                  @auxclick="handleNavClick($event, page.slug)"
+                  :title="'Click to open ' + page.title + ' (Cmd/Ctrl-click for new tab)'"
                 >
                   <div class="page-card-vertical">
                     <!-- First row: title on left, label on right -->
@@ -427,19 +447,19 @@ window.HistoricalSidebar = {
                       <div class="item-title">{{ formatPageTitle(page) }}</div>
                       <div class="item-type">{{ page.page_type }}</div>
                     </div>
-                    
+
                     <!-- Second row: date (only for non-daily pages) -->
                     <div v-if="page.page_type !== 'daily'" class="page-date-row">
                       <div class="item-date">{{ formatDate(page.modified_at || page.created_at) }}</div>
                     </div>
-                    
+
                     <!-- Content rows: recent blocks -->
                     <div v-if="page.recent_blocks && page.recent_blocks.length" class="page-content-rows" @click="handleTagClick">
                       <div v-for="block in page.recent_blocks.slice(0, 2)" :key="block.uuid" class="block-preview" :class="{ 'completed': block.block_type === 'done' }" v-html="formatContentWithTags(truncateContent(block.content, 60), block.block_type)">
                       </div>
                     </div>
                   </div>
-                </div>
+                </a>
               </div>
             </div>
 
@@ -447,12 +467,14 @@ window.HistoricalSidebar = {
             <div v-if="historicalData.blocks && historicalData.blocks.length" class="sidebar-section">
               <h4>Recent Blocks ({{ historicalData.blocks.length }})</h4>
               <div class="sidebar-items">
-                <div
+                <a
                   v-for="block in historicalData.blocks"
                   :key="block.uuid"
+                  :href="pageUrl(block.page_slug)"
                   class="sidebar-item block-item clickable"
-                  @click="openBlockPage(block)"
-                  :title="'Click to open ' + block.page_title"
+                  @click="handleNavClick($event, block.page_slug)"
+                  @auxclick="handleNavClick($event, block.page_slug)"
+                  :title="'Click to open ' + block.page_title + ' (Cmd/Ctrl-click for new tab)'"
                 >
                   <div class="item-header">
                     <span class="item-page">{{ block.page_title }}</span>
@@ -460,16 +482,17 @@ window.HistoricalSidebar = {
                   <div class="item-meta">{{ formatTime(block.modified_at || block.created_at) }}</div>
                   <div class="item-content-row" @click="handleTagClick">
                     <span
-                      v-if="block.block_type === 'todo' || block.block_type === 'done'"
+                      v-if="block.block_type === 'todo' || block.block_type === 'doing' || block.block_type === 'done'"
                       @click="toggleBlockTodo(block, $event)"
                       :class="['block-bullet', block.block_type]"
                       :title="'Toggle ' + (block.block_type === 'done' ? 'undone' : 'done')"
                     >
-                      {{ block.block_type === 'done' ? '☑' : '☐' }}
+                      <span v-if="block.block_type === 'doing'">◐</span>
+                      <span v-else>{{ block.block_type === 'done' ? '☑' : '☐' }}</span>
                     </span>
                     <span class="item-content" :class="{ 'completed': block.block_type === 'done' }" v-html="formatContentWithTags(truncateContent(block.content, 100), block.block_type)"></span>
                   </div>
-                </div>
+                </a>
               </div>
             </div>
           </div>

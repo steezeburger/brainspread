@@ -64,6 +64,7 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
         choices=[
             ("bullet", "Bullet Point"),
             ("todo", "Todo"),
+            ("doing", "Doing"),
             ("done", "Done"),
             ("later", "Later"),
             ("wontdo", "Won't Do"),

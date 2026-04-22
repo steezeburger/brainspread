@@ -1272,6 +1272,7 @@ kbd {
 }
 
 .block-bullet.todo,
+.block-bullet.doing,
 .block-bullet.done,
 .block-bullet.later,
 .block-bullet.wontdo {
@@ -1285,6 +1286,7 @@ kbd {
 }
 
 .block-bullet.todo:active,
+.block-bullet.doing:active,
 .block-bullet.done:active,
 .block-bullet.later:active,
 .block-bullet.wontdo:active {
@@ -1292,6 +1294,15 @@ kbd {
 }
 
 .block-bullet.todo:hover {
+  color: var(--text-primary);
+  transform: scale(1.1);
+}
+
+.block-bullet.doing {
+  color: var(--tag-hover, var(--text-primary));
+}
+
+.block-bullet.doing:hover {
   color: var(--text-primary);
   transform: scale(1.1);
 }
@@ -1365,6 +1376,67 @@ kbd {
 
 .block-content:hover {
   background-color: var(--hover-bg-light);
+}
+
+.block-content-wrapper {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.block-content-wrapper .block-content {
+  width: 100%;
+}
+
+.tag-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1000;
+  margin-top: 2px;
+  min-width: 200px;
+  max-width: 360px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  padding: 2px;
+}
+
+.tag-suggestion-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.tag-suggestion-item:hover,
+.tag-suggestion-item.is-selected {
+  background: var(--hover-bg, rgba(0, 0, 0, 0.08));
+}
+
+.tag-suggestion-slug {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tag-suggestion-title {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .block-content-display:hover {
@@ -2144,6 +2216,21 @@ kbd {
   border: 1px solid var(--border-secondary);
   padding: 0.8rem;
   background: var(--bg-primary);
+}
+
+/* When sidebar items are rendered as anchor tags, strip default link styling
+   so they look identical to the original div-based items. */
+a.sidebar-item {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+a.sidebar-item:hover,
+a.sidebar-item:focus,
+a.sidebar-item:visited {
+  color: inherit;
+  text-decoration: none;
 }
 
 .sidebar-item:hover {

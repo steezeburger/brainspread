@@ -18,10 +18,13 @@ class ToggleBlockTodoCommand(AbstractBaseCommand):
 
         block = self.form.cleaned_data["block"]
 
-        # Cycle through todo states: bullet -> todo -> done -> later -> wontdo -> todo
+        # Cycle through todo states: bullet -> todo -> doing -> done -> later -> wontdo -> todo
         if block.block_type == "todo":
+            block.block_type = "doing"
+            block.content = self._replace_content_prefix(block.content, "TODO", "DOING")
+        elif block.block_type == "doing":
             block.block_type = "done"
-            block.content = self._replace_content_prefix(block.content, "TODO", "DONE")
+            block.content = self._replace_content_prefix(block.content, "DOING", "DONE")
         elif block.block_type == "done":
             block.block_type = "later"
             block.content = self._replace_content_prefix(block.content, "DONE", "LATER")
