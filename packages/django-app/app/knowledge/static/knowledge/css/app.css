@@ -3683,33 +3683,47 @@ kbd {
   color: var(--text-primary) !important;
   font-weight: 600 !important;
   font-size: 0.9rem !important;
-  text-transform: uppercase;
-  letter-spacing: 0.05em !important;
 }
 
-.tool-calls-running-dot {
-  display: inline-block;
-  width: 0.6rem;
-  height: 0.6rem;
-  border-radius: 50%;
-  background: var(--text-primary);
-  margin: 0 0.45rem 0 0.2rem;
+/* Inline three-dot loader used in place of a static ellipsis wherever we
+   want to signal "still working". currentColor so it picks up the
+   surrounding text's color — banner header, per-row pending text, etc. */
+.loading-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15em;
+  margin-left: 0.25em;
   vertical-align: middle;
-  box-shadow: 0 0 0 0 var(--text-primary);
-  animation: tool-calls-pulse 1.1s ease-in-out infinite;
 }
 
-@keyframes tool-calls-pulse {
+.loading-dots span {
+  display: inline-block;
+  width: 0.28em;
+  height: 0.28em;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.3;
+  animation: loading-dots-bounce 1.2s ease-in-out infinite;
+}
+
+.loading-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.loading-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes loading-dots-bounce {
   0%,
+  60%,
   100% {
-    opacity: 0.45;
-    transform: scale(0.85);
-    box-shadow: 0 0 0 0 var(--text-primary);
+    opacity: 0.3;
+    transform: translateY(0);
   }
-  50% {
+  30% {
     opacity: 1;
-    transform: scale(1.15);
-    box-shadow: 0 0 0 4px rgba(128, 128, 128, 0);
+    transform: translateY(-0.2em);
   }
 }
 
