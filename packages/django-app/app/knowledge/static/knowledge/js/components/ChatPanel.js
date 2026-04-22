@@ -1127,10 +1127,10 @@ const ChatPanel = {
                 <template v-if="msg.streaming">
                   <span class="tool-calls-running-dot"></span>
                   <template v-if="runningToolName(msg)">
-                    running {{ runningToolName(msg) }}<span class="loading-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+                    running {{ runningToolName(msg) }}
                   </template>
                   <template v-else>
-                    tools ({{ toolCallPairs(msg).length }})<span class="loading-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+                    tools ({{ toolCallPairs(msg).length }})
                   </template>
                 </template>
                 <template v-else>
@@ -1152,9 +1152,7 @@ const ChatPanel = {
                     <span class="tool-call-result-summary" v-if="call.result !== null">
                       {{ summarizeToolResult(call.result) }}
                     </span>
-                    <span class="tool-call-result-summary pending" v-else>
-                      running<span class="loading-dots" aria-hidden="true"><span></span><span></span><span></span></span>
-                    </span>
+                    <span class="tool-call-result-summary pending" v-else>running…</span>
                   </button>
                   <div v-if="isToolCallExpanded(index, callIndex)" class="tool-call-details">
                     <div class="tool-call-detail-label">input</div>

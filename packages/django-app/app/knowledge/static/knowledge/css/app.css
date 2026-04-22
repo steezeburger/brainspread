@@ -3713,48 +3713,6 @@ kbd {
   }
 }
 
-/* Inline animated three-dot loader. Uses currentColor so it reads in
-   both the strip header (text-primary) and the per-row pending text
-   (text-secondary). */
-.loading-dots {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.15em;
-  margin-left: 0.2em;
-  vertical-align: middle;
-}
-
-.loading-dots span {
-  display: inline-block;
-  width: 0.28em;
-  height: 0.28em;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.3;
-  animation: loading-dots-bounce 1.2s ease-in-out infinite;
-}
-
-.loading-dots span:nth-child(2) {
-  animation-delay: 0.15s;
-}
-
-.loading-dots span:nth-child(3) {
-  animation-delay: 0.3s;
-}
-
-@keyframes loading-dots-bounce {
-  0%,
-  60%,
-  100% {
-    opacity: 0.3;
-    transform: translateY(0);
-  }
-  30% {
-    opacity: 1;
-    transform: translateY(-0.2em);
-  }
-}
-
 /* Slow background blink on the row whose tool call is in flight, so
    the eye lands on it among any already-completed calls above it. */
 .tool-call.tool-call-running {
