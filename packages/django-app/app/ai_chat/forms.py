@@ -119,11 +119,17 @@ class ResumeApprovalForm(BaseForm):
       - approval_id: uuid of the paused approval.
       - decisions: {tool_use_id: "approve"|"reject"} covering every write
         tool in the pending approval. Read-only tools are auto-approved.
+      - auto_approve_notes_writes: optional override of the persisted
+        preference. Lets the user toggle auto-approve after a pause has
+        already happened — without this, the approval row's stale value
+        from the original request would win and the next pause would
+        block again.
     """
 
     user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
     approval_id = forms.CharField(required=True)
     decisions = forms.JSONField(required=False)
+    auto_approve_notes_writes = forms.NullBooleanField(required=False)
 
     def clean_user(self) -> User:
         user = self.cleaned_data.get("user")

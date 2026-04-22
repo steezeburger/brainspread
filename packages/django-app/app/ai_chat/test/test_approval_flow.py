@@ -252,6 +252,49 @@ class ResumeApprovalCommandTestCase(TestCase):
 
         self.assertTrue(json.loads(result_block["content"]).get("declined"))
 
+    @patch("ai_chat.services.ai_service_factory.AIServiceFactory.create_service")
+    def test_resume_honors_auto_approve_override_from_payload(
+        self, mock_create_service
+    ):
+        # The user toggled auto-approve ON between the original send and
+        # this resume. The persisted approval row still has False, but the
+        # resume payload sends True — the executor must come out in
+        # auto-approve mode and the row should be updated.
+        session, approval = self._create_pending()
+        self.assertFalse(approval.auto_approve_notes_writes)
+
+        captured_executor = {}
+
+        def fake_stream(messages, tools, system=None, tool_executor=None):
+            captured_executor["e"] = tool_executor
+            yield {
+                "type": "done",
+                "content": "",
+                "thinking": None,
+                "usage": AIUsage(),
+                "tool_events": [],
+                "pending_approval": None,
+            }
+
+        mock_service = Mock()
+        mock_service.stream_message.side_effect = fake_stream
+        mock_create_service.return_value = mock_service
+
+        form = ResumeApprovalForm(
+            {
+                "user": self.user.id,
+                "approval_id": str(approval.uuid),
+                "decisions": {"tu_1": "approve"},
+                "auto_approve_notes_writes": True,
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        list(ResumeApprovalCommand(form).execute())
+
+        self.assertTrue(captured_executor["e"].auto_approve_writes)
+        approval.refresh_from_db()
+        self.assertTrue(approval.auto_approve_notes_writes)
+
 
 class ResumeApprovalFormValidationTestCase(TestCase):
     @classmethod

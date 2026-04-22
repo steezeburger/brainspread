@@ -47,6 +47,20 @@ class ResumeApprovalCommand(AbstractBaseCommand):
         user = self.form.cleaned_data["user"]
         session = approval.session
 
+        # Honor a fresh auto_approve preference if the user toggled it
+        # between the original send and this resume. BaseForm.clean() drops
+        # keys not present in self.data, so a missing flag falls back to
+        # whatever was persisted on the approval row.
+        auto_approve_override = self.form.cleaned_data.get("auto_approve_notes_writes")
+        effective_auto_approve = (
+            bool(auto_approve_override)
+            if auto_approve_override is not None
+            else approval.auto_approve_notes_writes
+        )
+        if effective_auto_approve != approval.auto_approve_notes_writes:
+            approval.auto_approve_notes_writes = effective_auto_approve
+            approval.save(update_fields=["auto_approve_notes_writes", "modified_at"])
+
         if approval.status != PendingToolApproval.STATUS_PENDING:
             yield {
                 "type": "error",
@@ -86,7 +100,7 @@ class ResumeApprovalCommand(AbstractBaseCommand):
         tool_executor = NotesToolExecutor(
             user,
             allow_writes=approval.enable_notes_write_tools,
-            auto_approve_writes=approval.auto_approve_notes_writes,
+            auto_approve_writes=effective_auto_approve,
         )
 
         tool_results, executed_events = self._execute_paused_tools(
@@ -107,7 +121,7 @@ class ResumeApprovalCommand(AbstractBaseCommand):
             approval.enable_notes_tools,
             approval.enable_web_search,
             enable_notes_write_tools=approval.enable_notes_write_tools,
-            auto_approve_notes_writes=approval.auto_approve_notes_writes,
+            auto_approve_notes_writes=effective_auto_approve,
         )
 
         yield {
@@ -210,7 +224,7 @@ class ResumeApprovalCommand(AbstractBaseCommand):
                     cache_read_input_tokens=final_usage.cache_read_input_tokens,
                     enable_notes_tools=approval.enable_notes_tools,
                     enable_notes_write_tools=approval.enable_notes_write_tools,
-                    auto_approve_notes_writes=approval.auto_approve_notes_writes,
+                    auto_approve_notes_writes=effective_auto_approve,
                     enable_web_search=approval.enable_web_search,
                 )
             except Exception as e:  # pragma: no cover - defensive

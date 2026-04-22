@@ -835,7 +835,13 @@ const ChatPanel = {
       };
       this.messages[messageIndex].streaming = true;
 
-      const payload = { decisions: pa.decisions };
+      const payload = {
+        decisions: pa.decisions,
+        // Send the user's CURRENT auto-approve preference so a toggle
+        // between the original send and this approval takes effect on
+        // any follow-up writes the model emits during resume.
+        auto_approve_notes_writes: this.autoApproveActive,
+      };
       try {
         for await (const event of window.apiService.resumeApproval(
           pa.approval_id,
