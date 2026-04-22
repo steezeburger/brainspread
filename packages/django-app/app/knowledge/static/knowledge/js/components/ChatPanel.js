@@ -865,11 +865,11 @@ const ChatPanel = {
               <button
                 class="tools-btn"
                 @click="toggleToolsMenu"
-                :class="{ active: hasActiveTools, open: showToolsMenu }"
+                :class="{ open: showToolsMenu }"
                 :title="hasActiveTools ? 'Tools (some active)' : 'Tools'"
               >
                 tools
-                <span v-if="hasActiveTools" class="tools-btn-indicator" aria-hidden="true"></span>
+                <span v-if="hasActiveTools" class="tools-btn-check" aria-label="tool active">✓</span>
               </button>
               <div v-if="showToolsMenu" class="tools-menu">
                 <label class="tools-menu-item">
