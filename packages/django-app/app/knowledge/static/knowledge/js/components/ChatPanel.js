@@ -55,11 +55,18 @@ const ChatPanel = {
     this.removeClickOutsideListener();
   },
   watch: {
+    // Only trigger the "pin last message to top" behavior when a new
+    // message is actually added. Watching with deep: true would re-fire
+    // on every text delta and every tool event inside an existing
+    // message, which fights the in-message tool auto-scroll below and
+    // can jerk the view.
+    "messages.length": function () {
+      this.scrollToBottom();
+    },
     messages: {
       handler() {
-        // Auto-scroll when messages array changes (new messages added)
-        this.scrollToBottom();
-        // Apply syntax highlighting to new messages
+        // Still re-run highlighting when content within a message changes
+        // (streamed text appending new markdown).
         this.highlightCode();
       },
       deep: true,
@@ -262,6 +269,7 @@ const ChatPanel = {
               input: event.input || {},
             });
             this.autoExpandToolCalls(assistantIndex);
+            this.scrollLatestToolIntoView(assistantIndex);
           } else if (event.type === "tool_result") {
             if (!this.messages[assistantIndex].tool_events) {
               this.messages[assistantIndex].tool_events = [];
@@ -272,6 +280,7 @@ const ChatPanel = {
               name: event.name,
               result: event.result || {},
             });
+            this.scrollLatestToolIntoView(assistantIndex);
             this.broadcastNotesModified(event.result);
           } else if (event.type === "approval_required") {
             if (event.session_id && !this.currentSessionId) {
@@ -390,6 +399,23 @@ const ChatPanel = {
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
           }
         }
+      });
+    },
+
+    scrollLatestToolIntoView(messageIndex) {
+      // Keep the most recently-fired tool call visible while a message
+      // streams. We intentionally don't scroll the whole message —
+      // long replies should still read top-to-bottom, so we only nudge
+      // the tools area when a new tool event is added.
+      this.$nextTick(() => {
+        const messagesContainer = this.$el.querySelector(".messages");
+        if (!messagesContainer) return;
+        const bubbles = messagesContainer.querySelectorAll(".message-bubble");
+        if (messageIndex < 0 || messageIndex >= bubbles.length) return;
+        const list = bubbles[messageIndex].querySelector(".tool-calls-list");
+        const lastRow = list && list.lastElementChild;
+        if (!lastRow) return;
+        lastRow.scrollIntoView({ behavior: "smooth", block: "nearest" });
       });
     },
     formatTimestamp(timestamp) {
@@ -960,6 +986,7 @@ const ChatPanel = {
               input: event.input || {},
             });
             this.autoExpandToolCalls(messageIndex);
+            this.scrollLatestToolIntoView(messageIndex);
           } else if (event.type === "tool_result") {
             if (!this.messages[messageIndex].tool_events) {
               this.messages[messageIndex].tool_events = [];
@@ -970,6 +997,7 @@ const ChatPanel = {
               name: event.name,
               result: event.result || {},
             });
+            this.scrollLatestToolIntoView(messageIndex);
             this.broadcastNotesModified(event.result);
           } else if (event.type === "approval_required") {
             this.attachPendingApproval(messageIndex, event);
