@@ -120,3 +120,99 @@ class TestAnthropicServiceThinking:
 
         with pytest.raises(AnthropicServiceError):
             service.send_message([{"role": "user"}])
+
+
+class TestSerializeBlock:
+    """`_serialize_block` must round-trip every block type Anthropic emits
+    so the next messages.create call accepts the replayed assistant turn.
+    """
+
+    def test_text_block(self):
+        block = SimpleNamespace(type="text", text="hello")
+        assert AnthropicService._serialize_block(block) == {
+            "type": "text",
+            "text": "hello",
+        }
+
+    def test_thinking_block_includes_signature(self):
+        block = SimpleNamespace(type="thinking", thinking="reason", signature="sig")
+        assert AnthropicService._serialize_block(block) == {
+            "type": "thinking",
+            "thinking": "reason",
+            "signature": "sig",
+        }
+
+    def test_tool_use_block_keeps_id(self):
+        block = SimpleNamespace(
+            type="tool_use", id="tu_1", name="search_notes", input={"query": "x"}
+        )
+        assert AnthropicService._serialize_block(block) == {
+            "type": "tool_use",
+            "id": "tu_1",
+            "name": "search_notes",
+            "input": {"query": "x"},
+        }
+
+    def test_server_tool_use_block_keeps_id(self):
+        # Regression: native web_search tool blocks were falling through to
+        # the generic fallback, dropping `id`/`name`/`input`. Anthropic
+        # then 400'd the next round-trip with
+        # "server_tool_use.id: Field required".
+        block = SimpleNamespace(
+            type="server_tool_use",
+            id="srvtu_1",
+            name="web_search",
+            input={"query": "weather sf"},
+        )
+        assert AnthropicService._serialize_block(block) == {
+            "type": "server_tool_use",
+            "id": "srvtu_1",
+            "name": "web_search",
+            "input": {"query": "weather sf"},
+        }
+
+    def test_web_search_tool_result_block_includes_results(self):
+        result_item = SimpleNamespace(
+            type="web_search_result",
+            url="https://example.com",
+            title="Example",
+            encrypted_content="enc",
+            page_age="2 days",
+        )
+        block = SimpleNamespace(
+            type="web_search_tool_result",
+            tool_use_id="srvtu_1",
+            content=[result_item],
+        )
+        serialized = AnthropicService._serialize_block(block)
+        assert serialized["type"] == "web_search_tool_result"
+        assert serialized["tool_use_id"] == "srvtu_1"
+        assert serialized["content"] == [
+            {
+                "type": "web_search_result",
+                "url": "https://example.com",
+                "title": "Example",
+                "encrypted_content": "enc",
+                "page_age": "2 days",
+            }
+        ]
+
+    def test_web_search_tool_result_error_content(self):
+        err = SimpleNamespace(
+            type="web_search_tool_result_error", error_code="too_many_requests"
+        )
+        block = SimpleNamespace(
+            type="web_search_tool_result", tool_use_id="srvtu_1", content=err
+        )
+        serialized = AnthropicService._serialize_block(block)
+        assert serialized["content"] == {
+            "type": "web_search_tool_result_error",
+            "error_code": "too_many_requests",
+        }
+
+    def test_redacted_thinking_block(self):
+        block = SimpleNamespace(type="redacted_thinking", data="opaque")
+        assert AnthropicService._serialize_block(block) == {
+            "type": "redacted_thinking",
+            "data": "opaque",
+        }

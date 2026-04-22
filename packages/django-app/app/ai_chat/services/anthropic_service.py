@@ -58,6 +58,61 @@ class AnthropicServiceError(AIServiceError):
     pass
 
 
+def _serialize_web_search_content(content: Any) -> Any:
+    """Round-trip a web_search_tool_result.content payload back to dict form.
+
+    The SDK returns either a list of result objects (each with type, url,
+    title, encrypted_content, page_age) or an error object with a code.
+    Either shape needs to come back as JSON-friendly dicts so the next
+    messages.create round-trip accepts the assistant turn verbatim.
+    """
+    if content is None:
+        return []
+    if isinstance(content, dict):
+        return content
+    if isinstance(content, list):
+        serialized: List[Dict[str, Any]] = []
+        for item in content:
+            if isinstance(item, dict):
+                serialized.append(item)
+                continue
+            item_type = getattr(item, "type", None)
+            if item_type == "web_search_result":
+                serialized.append(
+                    {
+                        "type": "web_search_result",
+                        "url": getattr(item, "url", "") or "",
+                        "title": getattr(item, "title", "") or "",
+                        "encrypted_content": getattr(item, "encrypted_content", "")
+                        or "",
+                        "page_age": getattr(item, "page_age", None),
+                    }
+                )
+            elif item_type == "web_search_tool_result_error":
+                serialized.append(
+                    {
+                        "type": "web_search_tool_result_error",
+                        "error_code": getattr(item, "error_code", "") or "",
+                    }
+                )
+            else:
+                serialized.append(
+                    {
+                        "type": item_type or "unknown",
+                        "raw": str(item),
+                    }
+                )
+        return serialized
+    # Single error object (not wrapped in a list)
+    err_type = getattr(content, "type", None)
+    if err_type == "web_search_tool_result_error":
+        return {
+            "type": "web_search_tool_result_error",
+            "error_code": getattr(content, "error_code", "") or "",
+        }
+    return {"raw": str(content)}
+
+
 class AnthropicService(BaseAIService):
     def __init__(self, api_key: str, model: str = "claude-opus-4-7") -> None:
         super().__init__(api_key, model)
@@ -228,7 +283,14 @@ class AnthropicService(BaseAIService):
 
     @staticmethod
     def _serialize_block(block: Any) -> Dict[str, Any]:
-        """Serialize a response content block back to the dict shape the API accepts."""
+        """Serialize a response content block back to the dict shape the API accepts.
+
+        Handles every block type Anthropic can emit on an assistant turn,
+        including server-side tool blocks (web_search). Replaying the
+        assistant turn verbatim is required when we send tool_results back
+        for our custom tools — the API rejects the next request if any
+        block is missing its identifying fields (e.g. server_tool_use.id).
+        """
         block_type = getattr(block, "type", None)
         if block_type == "text":
             return {"type": "text", "text": getattr(block, "text", "") or ""}
@@ -238,12 +300,32 @@ class AnthropicService(BaseAIService):
                 "thinking": getattr(block, "thinking", "") or "",
                 "signature": getattr(block, "signature", "") or "",
             }
+        if block_type == "redacted_thinking":
+            return {
+                "type": "redacted_thinking",
+                "data": getattr(block, "data", "") or "",
+            }
         if block_type == "tool_use":
             return {
                 "type": "tool_use",
                 "id": getattr(block, "id", ""),
                 "name": getattr(block, "name", ""),
                 "input": getattr(block, "input", {}) or {},
+            }
+        if block_type == "server_tool_use":
+            return {
+                "type": "server_tool_use",
+                "id": getattr(block, "id", ""),
+                "name": getattr(block, "name", ""),
+                "input": getattr(block, "input", {}) or {},
+            }
+        if block_type == "web_search_tool_result":
+            return {
+                "type": "web_search_tool_result",
+                "tool_use_id": getattr(block, "tool_use_id", ""),
+                "content": _serialize_web_search_content(
+                    getattr(block, "content", None)
+                ),
             }
         return {"type": block_type or "text", "text": str(block)}
 
