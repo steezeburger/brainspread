@@ -3651,37 +3651,65 @@ kbd {
   margin-bottom: 0.5rem;
   border-left: 2px solid var(--border-primary);
   padding-left: 0.5rem;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    padding 0.2s ease;
 }
 
+/* Elevate the whole block to a visible status banner while a tool is in
+   flight. Fast tools (edit_block, search_notes) otherwise flash this
+   state for a frame and you'd miss it. */
 .tool-calls-block.tool-calls-running {
-  border-left-color: var(--text-primary);
+  border: 1px solid var(--text-primary);
+  border-left: 3px solid var(--text-primary);
+  background: var(--hover-bg);
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+  animation: tool-calls-banner-glow 2.2s ease-in-out infinite;
+}
+
+@keyframes tool-calls-banner-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 0 2px var(--hover-bg);
+  }
 }
 
 .tool-calls-block.tool-calls-running .tool-calls-toggle {
-  color: var(--text-primary);
-  font-weight: 500;
+  color: var(--text-primary) !important;
+  font-weight: 600 !important;
+  font-size: 0.9rem !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em !important;
 }
 
 .tool-calls-running-dot {
   display: inline-block;
-  width: 0.45rem;
-  height: 0.45rem;
+  width: 0.6rem;
+  height: 0.6rem;
   border-radius: 50%;
   background: var(--text-primary);
-  margin: 0 0.35rem 0 0.15rem;
+  margin: 0 0.45rem 0 0.2rem;
   vertical-align: middle;
+  box-shadow: 0 0 0 0 var(--text-primary);
   animation: tool-calls-pulse 1.1s ease-in-out infinite;
 }
 
 @keyframes tool-calls-pulse {
   0%,
   100% {
-    opacity: 0.35;
+    opacity: 0.45;
     transform: scale(0.85);
+    box-shadow: 0 0 0 0 var(--text-primary);
   }
   50% {
     opacity: 1;
     transform: scale(1.15);
+    box-shadow: 0 0 0 4px rgba(128, 128, 128, 0);
   }
 }
 

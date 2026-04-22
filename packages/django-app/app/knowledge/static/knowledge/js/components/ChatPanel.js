@@ -1121,12 +1121,17 @@ const ChatPanel = {
               </button>
               <div v-if="expandedThinking[index]" class="thinking-content" v-html="parseMarkdown(msg.thinking)"></div>
             </div>
-            <div v-if="msg.role === 'assistant' && toolCallPairs(msg).length" class="tool-calls-block" :class="{ 'tool-calls-running': msg.streaming && runningToolName(msg) }">
+            <div v-if="msg.role === 'assistant' && toolCallPairs(msg).length" class="tool-calls-block" :class="{ 'tool-calls-running': msg.streaming }">
               <button class="tool-calls-toggle" @click="toggleToolCalls(index)">
                 {{ expandedToolCalls[index] ? '▾' : '▸' }}
-                <template v-if="msg.streaming && runningToolName(msg)">
+                <template v-if="msg.streaming">
                   <span class="tool-calls-running-dot"></span>
-                  running {{ runningToolName(msg) }}<span class="loading-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+                  <template v-if="runningToolName(msg)">
+                    running {{ runningToolName(msg) }}<span class="loading-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+                  </template>
+                  <template v-else>
+                    tools ({{ toolCallPairs(msg).length }})<span class="loading-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+                  </template>
                 </template>
                 <template v-else>
                   tools ({{ toolCallPairs(msg).length }})
