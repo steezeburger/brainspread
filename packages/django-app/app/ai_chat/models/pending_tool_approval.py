@@ -55,6 +55,7 @@ class PendingToolApproval(UUIDModelMixin, CRUDTimestampsMixin):
     # model sees the same tool set after continuation.
     enable_notes_tools = models.BooleanField(default=False)
     enable_notes_write_tools = models.BooleanField(default=False)
+    auto_approve_notes_writes = models.BooleanField(default=False)
     enable_web_search = models.BooleanField(default=True)
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING

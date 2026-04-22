@@ -23,6 +23,9 @@ class SendMessageForm(BaseForm):
     # Independent of enable_notes_tools so users can grant reads without
     # writes (or writes without reads, though the model rarely needs that).
     enable_notes_write_tools = forms.BooleanField(required=False)
+    # Skip the per-call approval gate for write tools. Opt-in per request;
+    # callers should surface a visible warning when this is on.
+    auto_approve_notes_writes = forms.BooleanField(required=False)
     # NullBooleanField so we can distinguish "omitted" (legacy clients that
     # never send this flag expect web search on) from an explicit false.
     enable_web_search = forms.NullBooleanField(required=False)

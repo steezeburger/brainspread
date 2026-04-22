@@ -35,6 +35,7 @@ const ChatPanel = {
       expandedToolCall: {},
       enableNotesTools: this.loadNotesToolsPref(),
       enableNotesWriteTools: this.loadNotesWriteToolsPref(),
+      autoApproveNotesWrites: this.loadAutoApprovePref(),
       enableWebSearch: this.loadWebSearchPref(),
       showToolsMenu: false,
       // { [assistantMsgIndex]: { approval_id, tool_uses, decisions: {tool_use_id: "approve"|"reject"}, submitting } }
@@ -101,6 +102,10 @@ const ChatPanel = {
         this.enableWebSearch
       );
     },
+    autoApproveActive() {
+      // Only meaningful when write tools are actually granted.
+      return this.enableNotesWriteTools && this.autoApproveNotesWrites;
+    },
   },
   methods: {
     loadOpenState() {
@@ -132,6 +137,10 @@ const ChatPanel = {
       const saved = localStorage.getItem("chatPanel.enableNotesWriteTools");
       return saved === null ? false : JSON.parse(saved);
     },
+    loadAutoApprovePref() {
+      const saved = localStorage.getItem("chatPanel.autoApproveNotesWrites");
+      return saved === null ? false : JSON.parse(saved);
+    },
     loadWebSearchPref() {
       const saved = localStorage.getItem("chatPanel.enableWebSearch");
       return saved === null ? true : JSON.parse(saved);
@@ -148,6 +157,22 @@ const ChatPanel = {
       localStorage.setItem(
         "chatPanel.enableNotesWriteTools",
         JSON.stringify(this.enableNotesWriteTools)
+      );
+      // Disabling write tools makes auto-approve meaningless; clear it so
+      // the toggle's persisted state stays consistent with the gate.
+      if (!this.enableNotesWriteTools && this.autoApproveNotesWrites) {
+        this.autoApproveNotesWrites = false;
+        localStorage.setItem(
+          "chatPanel.autoApproveNotesWrites",
+          JSON.stringify(false)
+        );
+      }
+    },
+    toggleAutoApproveNotesWrites() {
+      this.autoApproveNotesWrites = !this.autoApproveNotesWrites;
+      localStorage.setItem(
+        "chatPanel.autoApproveNotesWrites",
+        JSON.stringify(this.autoApproveNotesWrites)
       );
     },
     toggleWebSearch() {
@@ -192,6 +217,7 @@ const ChatPanel = {
         context_blocks: this.chatContextBlocks,
         enable_notes_tools: this.enableNotesTools,
         enable_notes_write_tools: this.enableNotesWriteTools,
+        auto_approve_notes_writes: this.autoApproveActive,
         enable_web_search: this.enableWebSearch,
       };
       this.message = "";
@@ -1265,9 +1291,10 @@ const ChatPanel = {
               <button
                 class="tools-btn"
                 @click="toggleToolsMenu"
-                :class="{ active: hasActiveTools }"
-                :title="hasActiveTools ? 'Tools (some active)' : 'Tools'"
+                :class="{ active: hasActiveTools, 'auto-approve-warning': autoApproveActive }"
+                :title="autoApproveActive ? 'Tools — AUTO-APPROVE WRITES is on; the assistant can edit your notes without confirmation' : (hasActiveTools ? 'Tools (some active)' : 'Tools')"
               >
+                <span v-if="autoApproveActive" class="tools-btn-warning-glyph">⚠</span>
                 tools
               </button>
               <div v-if="showToolsMenu" class="tools-menu">
@@ -1291,6 +1318,21 @@ const ChatPanel = {
                   <span class="tools-menu-label">
                     <span class="tools-menu-name">edit notes</span>
                     <span class="tools-menu-hint">Let the assistant create, edit, and move notes. Every write pauses for your approval (Anthropic only).</span>
+                  </span>
+                </label>
+                <label
+                  class="tools-menu-item"
+                  :class="{ disabled: !enableNotesWriteTools }"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="autoApproveNotesWrites"
+                    :disabled="!enableNotesWriteTools"
+                    @change="toggleAutoApproveNotesWrites"
+                  />
+                  <span class="tools-menu-label">
+                    <span class="tools-menu-name">auto-approve writes</span>
+                    <span class="tools-menu-hint">⚠ Skip the per-call approval gate — writes execute immediately. Only takes effect when "edit notes" is on.</span>
                   </span>
                 </label>
                 <label class="tools-menu-item">

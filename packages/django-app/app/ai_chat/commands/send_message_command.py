@@ -74,6 +74,9 @@ class SendMessageCommand(AbstractBaseCommand):
             enable_notes_write_tools = self.form.cleaned_data.get(
                 "enable_notes_write_tools"
             )
+            auto_approve_notes_writes = self.form.cleaned_data.get(
+                "auto_approve_notes_writes"
+            )
             enable_web_search = self.form.cleaned_data.get("enable_web_search", True)
             tools, tool_executor = SendMessageCommand._build_tools(
                 provider_name,
@@ -81,6 +84,7 @@ class SendMessageCommand(AbstractBaseCommand):
                 enable_notes_tools,
                 enable_web_search,
                 enable_notes_write_tools=enable_notes_write_tools,
+                auto_approve_notes_writes=auto_approve_notes_writes,
             )
 
             result = service.send_message(
@@ -208,6 +212,7 @@ class SendMessageCommand(AbstractBaseCommand):
         enable_notes_tools,
         enable_web_search: bool = True,
         enable_notes_write_tools: bool = False,
+        auto_approve_notes_writes: bool = False,
     ):
         """Combine provider-native web search with optional notes tools.
 
@@ -229,7 +234,11 @@ class SendMessageCommand(AbstractBaseCommand):
                     anthropic_notes_tools(include_writes=enable_notes_write_tools)
                 )
                 tool_executor = NotesToolExecutor(
-                    user, allow_writes=enable_notes_write_tools
+                    user,
+                    allow_writes=enable_notes_write_tools,
+                    auto_approve_writes=(
+                        enable_notes_write_tools and auto_approve_notes_writes
+                    ),
                 )
             elif provider_name == "openai":
                 # OpenAI's Responses API is only invoked when tools are present;

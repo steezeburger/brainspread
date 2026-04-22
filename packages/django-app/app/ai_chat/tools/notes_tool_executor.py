@@ -35,15 +35,21 @@ MAX_SEARCH_LIMIT = 25
 class NotesToolExecutor:
     """Dispatches a custom tool call against the user's knowledge graph.
 
-    `allow_writes` controls whether write tools are known at all. The
-    service additionally calls `requires_approval(name)` before executing
-    and pauses the tool loop when it returns True — writes only run after
-    the user confirms them in the approval UI.
+    `allow_writes` controls whether write tools are known at all.
+    `auto_approve_writes` opts out of the per-call approval gate — writes
+    execute inline like reads. This is opt-in per request; default keeps
+    the safer manual-approval flow.
     """
 
-    def __init__(self, user: User, allow_writes: bool = False) -> None:
+    def __init__(
+        self,
+        user: User,
+        allow_writes: bool = False,
+        auto_approve_writes: bool = False,
+    ) -> None:
         self.user = user
         self.allow_writes = allow_writes
+        self.auto_approve_writes = auto_approve_writes
 
     def is_known(self, name: str) -> bool:
         if name in NOTES_READ_TOOL_NAMES:
@@ -53,6 +59,8 @@ class NotesToolExecutor:
         return False
 
     def requires_approval(self, name: str) -> bool:
+        if self.auto_approve_writes:
+            return False
         return name in NOTES_WRITE_TOOL_NAMES
 
     def execute(self, name: str, args: Dict[str, Any]) -> Dict[str, Any]:

@@ -39,6 +39,18 @@ class NotesToolExecutorWriteTestCase(TestCase):
         self.assertTrue(ex.requires_approval("edit_block"))
         self.assertTrue(ex.requires_approval("move_blocks"))
 
+    def test_auto_approve_writes_skips_approval_gate(self):
+        # Opt-in: when auto_approve_writes is True, requires_approval
+        # returns False for every tool, so the service runs them inline
+        # like reads. is_known is unchanged.
+        ex = NotesToolExecutor(self.user, allow_writes=True, auto_approve_writes=True)
+
+        self.assertFalse(ex.requires_approval("create_block"))
+        self.assertFalse(ex.requires_approval("edit_block"))
+        self.assertFalse(ex.requires_approval("move_blocks"))
+        self.assertFalse(ex.requires_approval("create_page"))
+        self.assertTrue(ex.is_known("edit_block"))
+
     def test_create_page_creates_page_for_user(self):
         ex = NotesToolExecutor(self.user, allow_writes=True)
 

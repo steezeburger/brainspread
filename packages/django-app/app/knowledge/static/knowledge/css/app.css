@@ -522,6 +522,24 @@ body {
   background: var(--hover-bg);
 }
 
+.tools-menu-item.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tools-menu-item.disabled input[type="checkbox"] {
+  cursor: not-allowed;
+}
+
+.tools-btn.auto-approve-warning {
+  border-color: #b00020;
+  color: #b00020;
+}
+
+.tools-btn-warning-glyph {
+  margin-right: 0.25rem;
+}
+
 /* Mirror the SettingsModal .model-checkbox styling so tool toggles use the
    same custom checkmark glyph as the rest of the app. */
 .tools-menu-item input[type="checkbox"] {

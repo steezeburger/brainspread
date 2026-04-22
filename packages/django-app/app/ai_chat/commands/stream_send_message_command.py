@@ -49,6 +49,7 @@ class StreamSendMessageCommand(AbstractBaseCommand):
         usage: AIUsage,
         enable_notes_tools: bool,
         enable_notes_write_tools: bool,
+        auto_approve_notes_writes: bool,
         enable_web_search: bool,
     ) -> PendingToolApproval:
         try:
@@ -69,6 +70,7 @@ class StreamSendMessageCommand(AbstractBaseCommand):
                 cache_read_input_tokens=usage.cache_read_input_tokens,
                 enable_notes_tools=enable_notes_tools,
                 enable_notes_write_tools=enable_notes_write_tools,
+                auto_approve_notes_writes=auto_approve_notes_writes,
                 enable_web_search=enable_web_search,
             )
         except Exception as e:
@@ -110,6 +112,9 @@ class StreamSendMessageCommand(AbstractBaseCommand):
             enable_notes_write_tools = self.form.cleaned_data.get(
                 "enable_notes_write_tools"
             )
+            auto_approve_notes_writes = self.form.cleaned_data.get(
+                "auto_approve_notes_writes"
+            )
             enable_web_search = self.form.cleaned_data.get("enable_web_search", True)
             tools, tool_executor = SendMessageCommand._build_tools(
                 provider_name,
@@ -117,6 +122,7 @@ class StreamSendMessageCommand(AbstractBaseCommand):
                 enable_notes_tools,
                 enable_web_search,
                 enable_notes_write_tools=enable_notes_write_tools,
+                auto_approve_notes_writes=auto_approve_notes_writes,
             )
 
             yield {
@@ -180,6 +186,7 @@ class StreamSendMessageCommand(AbstractBaseCommand):
                     usage=final_usage,
                     enable_notes_tools=bool(enable_notes_tools),
                     enable_notes_write_tools=bool(enable_notes_write_tools),
+                    auto_approve_notes_writes=bool(auto_approve_notes_writes),
                     enable_web_search=bool(enable_web_search),
                 )
                 yield {

@@ -84,7 +84,9 @@ class ResumeApprovalCommand(AbstractBaseCommand):
             return
 
         tool_executor = NotesToolExecutor(
-            user, allow_writes=approval.enable_notes_write_tools
+            user,
+            allow_writes=approval.enable_notes_write_tools,
+            auto_approve_writes=approval.auto_approve_notes_writes,
         )
 
         tool_results, executed_events = self._execute_paused_tools(
@@ -105,6 +107,7 @@ class ResumeApprovalCommand(AbstractBaseCommand):
             approval.enable_notes_tools,
             approval.enable_web_search,
             enable_notes_write_tools=approval.enable_notes_write_tools,
+            auto_approve_notes_writes=approval.auto_approve_notes_writes,
         )
 
         yield {
@@ -207,6 +210,7 @@ class ResumeApprovalCommand(AbstractBaseCommand):
                     cache_read_input_tokens=final_usage.cache_read_input_tokens,
                     enable_notes_tools=approval.enable_notes_tools,
                     enable_notes_write_tools=approval.enable_notes_write_tools,
+                    auto_approve_notes_writes=approval.auto_approve_notes_writes,
                     enable_web_search=approval.enable_web_search,
                 )
             except Exception as e:  # pragma: no cover - defensive
