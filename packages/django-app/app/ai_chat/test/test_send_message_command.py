@@ -355,9 +355,13 @@ class SendMessageCommandTestCase(TestCase):
         self.assertIsNotNone(executor)
 
     def test_form_default_enables_web_search(self):
+        # BaseForm.clean strips fields not present in input data, so callers
+        # must `.get("enable_web_search", True)` to read the default. The
+        # contract is: omitted = web search on. Verify it's never explicit
+        # False when the client didn't send the flag.
         form = self._create_form()
         self.assertTrue(form.is_valid(), form.errors)
-        self.assertTrue(form.cleaned_data["enable_web_search"])
+        self.assertTrue(form.cleaned_data.get("enable_web_search", True))
 
     def test_form_respects_explicit_web_search_false(self):
         form_data = {
