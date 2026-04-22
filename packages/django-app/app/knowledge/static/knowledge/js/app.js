@@ -557,8 +557,35 @@ const KnowledgeApp = createApp({
           this.$nextTick(() => {
             if (this.$refs.menuBtn) this.$refs.menuBtn.focus();
           });
+        } else if (!this._isEditableTarget(event.target)) {
+          // Escape dismisses any open sidebars, but only when the user isn't
+          // typing — otherwise hitting Escape in the chat input or a block
+          // would surprise-close the panel they're working in.
+          const closedHistory = this._closeHistoryIfOpen();
+          const closedChat = this._closeChatIfOpen();
+          if (closedHistory || closedChat) {
+            event.preventDefault();
+          }
         }
       }
+    },
+
+    _closeHistoryIfOpen() {
+      const sidebar = this.$refs.historicalSidebar;
+      if (sidebar && sidebar.isOpen) {
+        sidebar.toggleSidebar();
+        return true;
+      }
+      return false;
+    },
+
+    _closeChatIfOpen() {
+      const panel = this.$refs.chatPanel;
+      if (panel && panel.isOpen) {
+        panel.togglePanel();
+        return true;
+      }
+      return false;
     },
 
     _isEditableTarget(el) {

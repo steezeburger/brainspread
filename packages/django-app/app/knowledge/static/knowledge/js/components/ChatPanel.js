@@ -201,6 +201,18 @@ const ChatPanel = {
     togglePanel() {
       this.isOpen = !this.isOpen;
       this.saveOpenState();
+      if (this.isOpen) {
+        this.focusMessageInput();
+      }
+    },
+    focusMessageInput() {
+      // Wait for the panel transition / v-if mount before focusing.
+      this.$nextTick(() => {
+        const input = this.$refs.messageInput;
+        if (input && typeof input.focus === "function") {
+          input.focus();
+        }
+      });
     },
     async sendMessage() {
       if (!this.message) return;
@@ -1501,7 +1513,7 @@ const ChatPanel = {
             <button class="settings-btn" @click="openSettings" title="AI Settings">cfg</button>
           </div>
           <div class="message-input">
-            <textarea v-model="message" placeholder="ask something..." @keydown="handleKeydown"></textarea>
+            <textarea ref="messageInput" v-model="message" placeholder="ask something..." @keydown="handleKeydown"></textarea>
             <button @click="sendMessage" :disabled="loading">
               {{ loading ? 'sending...' : 'send' }}
             </button>
