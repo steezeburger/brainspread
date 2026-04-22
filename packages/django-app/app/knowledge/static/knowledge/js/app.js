@@ -528,25 +528,22 @@ const KnowledgeApp = createApp({
 
       // Sidebar toggles — only when the user isn't editing text, so we don't
       // hijack shortcuts used inside the note editor or chat input.
+      // Uses Obsidian-style Cmd/Ctrl+\ (left/history) and Cmd/Ctrl+Shift+\
+      // (right/ai) to avoid clashing with browser shortcuts (Cmd+Shift+H
+      // is "Home" in Chrome, Cmd+Shift+A is "Search Tabs").
       if (
         (event.metaKey || event.ctrlKey) &&
-        event.shiftKey &&
+        event.key === "\\" &&
         this.isAuthenticated &&
         !this._isEditableTarget(event.target)
       ) {
-        // Key comparison is lowercase because shiftKey uppercases letter keys
-        // on some platforms (event.key === "H") but not others.
-        const key = event.key.toLowerCase();
-        if (key === "h") {
-          event.preventDefault();
-          this.toggleHistorySidebar();
-          return;
-        }
-        if (key === "a") {
-          event.preventDefault();
+        event.preventDefault();
+        if (event.shiftKey) {
           this.toggleChatPanel();
-          return;
+        } else {
+          this.toggleHistorySidebar();
         }
+        return;
       }
 
       if (event.key === "Escape") {
@@ -654,13 +651,13 @@ const KnowledgeApp = createApp({
         {
           id: "toggle-history",
           label: this.isHistorySidebarOpen() ? "close history" : "open history",
-          description: "toggle the history sidebar (⌘⇧H)",
+          description: "toggle the history sidebar (⌘\\)",
           icon: "⧉",
         },
         {
           id: "toggle-ai",
           label: this.isChatPanelOpen() ? "close ai" : "open ai",
-          description: "toggle the ai chat panel (⌘⇧A)",
+          description: "toggle the ai chat panel (⌘⇧\\)",
           icon: "✦",
         },
         {
