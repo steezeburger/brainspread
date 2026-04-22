@@ -32,6 +32,9 @@ const ChatPanel = {
       messageMenus: {},
       expandedThinking: {},
       expandedToolCalls: {},
+      // Tracks whether the user has explicitly toggled the tools strip
+      // for this message. When true, auto-expand/auto-collapse skip it.
+      userToggledToolCalls: {},
       expandedToolCall: {},
       enableNotesTools: this.loadNotesToolsPref(),
       enableNotesWriteTools: this.loadNotesWriteToolsPref(),
@@ -301,6 +304,7 @@ const ChatPanel = {
               this.currentSessionId = event.session_id;
               this.saveLastSessionId(event.session_id);
             }
+            this.autoCollapseToolCalls(assistantIndex);
             this.maybeNavigateToToolTarget(
               this.messages[assistantIndex].tool_events
             );
@@ -714,6 +718,11 @@ const ChatPanel = {
         ...this.expandedToolCalls,
         [messageIndex]: !this.expandedToolCalls[messageIndex],
       };
+      // Once the user clicks, stop auto-managing this strip.
+      this.userToggledToolCalls = {
+        ...this.userToggledToolCalls,
+        [messageIndex]: true,
+      };
     },
 
     maybeNavigateToToolTarget(toolEvents) {
@@ -771,12 +780,26 @@ const ChatPanel = {
       // Open the tools strip the first time a tool fires on this message
       // so the user can see what's happening live (especially important
       // with auto-approve, where there's no other surface for tool work).
-      // We only flip from undefined → true; an explicit user collapse
-      // (false) is preserved.
-      if (this.expandedToolCalls[messageIndex] === undefined) {
+      // Skip if the user has already toggled this strip — their choice
+      // wins.
+      if (this.userToggledToolCalls[messageIndex]) return;
+      if (!this.expandedToolCalls[messageIndex]) {
         this.expandedToolCalls = {
           ...this.expandedToolCalls,
           [messageIndex]: true,
+        };
+      }
+    },
+
+    autoCollapseToolCalls(messageIndex) {
+      // Stream ended: the tool activity is over and keeping the strip
+      // open clutters the reply. Collapse back to the summary line
+      // unless the user explicitly toggled it open.
+      if (this.userToggledToolCalls[messageIndex]) return;
+      if (this.expandedToolCalls[messageIndex]) {
+        this.expandedToolCalls = {
+          ...this.expandedToolCalls,
+          [messageIndex]: false,
         };
       }
     },
@@ -1014,6 +1037,7 @@ const ChatPanel = {
             const next = { ...this.pendingApprovals };
             delete next[messageIndex];
             this.pendingApprovals = next;
+            this.autoCollapseToolCalls(messageIndex);
             this.maybeNavigateToToolTarget(
               this.messages[messageIndex].tool_events
             );
