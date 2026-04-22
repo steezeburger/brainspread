@@ -153,7 +153,7 @@ window.SpotlightSearch = {
               :key="result.type === 'command' ? result.commandId : result.slug"
               class="spotlight-result"
               :class="{ 'selected': index === selectedIndex, 'spotlight-command': result.type === 'command' }"
-              @click="handleResultClick(index)"
+              @click.stop="handleResultClick(index)"
             >
               <div class="spotlight-result-icon spotlight-command-icon" v-if="result.type === 'command'">
                 {{ result.icon }}
