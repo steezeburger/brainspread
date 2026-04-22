@@ -2,6 +2,7 @@ from .create_block_form import CreateBlockForm
 from .create_page_form import CreatePageForm
 from .delete_block_form import DeleteBlockForm
 from .delete_page_form import DeletePageForm
+from .get_graph_data_form import GetGraphDataForm
 from .get_historical_data_form import GetHistoricalDataForm
 from .get_page_with_blocks_form import GetPageWithBlocksForm
 from .get_tag_content_form import GetTagContentForm

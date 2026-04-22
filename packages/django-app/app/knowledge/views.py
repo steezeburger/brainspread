@@ -12,6 +12,7 @@ from knowledge.commands import (
     CreatePageCommand,
     DeleteBlockCommand,
     DeletePageCommand,
+    GetGraphDataCommand,
     GetHistoricalDataCommand,
     GetPageWithBlocksCommand,
     GetTagContentCommand,
@@ -23,6 +24,7 @@ from knowledge.commands import (
     UpdateBlockCommand,
     UpdatePageCommand,
 )
+from knowledge.commands.get_graph_data_command import GraphData
 from knowledge.commands.get_historical_data_command import HistoricalData
 from knowledge.commands.get_tag_content_command import TagContentData
 from knowledge.commands.move_undone_todos_command import MoveUndoneTodosData
@@ -31,6 +33,7 @@ from knowledge.forms import (
     CreatePageForm,
     DeleteBlockForm,
     DeletePageForm,
+    GetGraphDataForm,
     GetHistoricalDataForm,
     GetPageWithBlocksForm,
     GetTagContentForm,
@@ -92,6 +95,12 @@ class GetPageWithBlocksResponse(TypedDict):
 class MoveUndoneTodosResponse(TypedDict):
     success: bool
     data: Optional[MoveUndoneTodosData]
+    errors: Optional[Dict[str, List[str]]]
+
+
+class GraphDataResponse(TypedDict):
+    success: bool
+    data: Optional[GraphData]
     errors: Optional[Dict[str, List[str]]]
 
 
@@ -691,6 +700,42 @@ def move_undone_todos(request):
 
     except Exception as e:
         response: MoveUndoneTodosResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_graph_data(request):
+    """Return the user's pages and their connections as a node/edge graph."""
+    try:
+        data = request.query_params.copy()
+        data["user"] = request.user.id
+        form = GetGraphDataForm(data)
+
+        if not form.is_valid():
+            response: GraphDataResponse = {
+                "success": False,
+                "data": None,
+                "errors": form.errors,
+            }
+            return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+        command = GetGraphDataCommand(form)
+        result: GraphData = command.execute()
+
+        response: GraphDataResponse = {
+            "success": True,
+            "data": result,
+            "errors": None,
+        }
+        return Response(response)
+
+    except Exception as e:
+        response: GraphDataResponse = {
             "success": False,
             "data": None,
             "errors": {"non_field_errors": [str(e)]},
