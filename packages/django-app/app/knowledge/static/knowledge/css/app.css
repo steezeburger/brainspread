@@ -4394,6 +4394,15 @@ kbd {
   padding: 0.05em 0.2em;
 }
 
+.markdown-link {
+  color: var(--link-color, #0a66c2);
+  text-decoration: underline;
+}
+
+.markdown-link:hover {
+  text-decoration: none;
+}
+
 .block-code-wrapper {
   position: relative;
   display: block;
