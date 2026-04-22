@@ -3746,18 +3746,26 @@ kbd {
   }
 }
 
+/* `.chat-content button` (~line 2734) is a CTA-style rule meant for the
+   send button — it inverts background/color and adds a border. Without
+   !important here, that rule wins on specificity and turns the toggle
+   into a bright bar that swallows the inner colored spans. */
 .tool-calls-toggle {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
+  background: none !important;
+  border: none !important;
+  color: var(--text-secondary) !important;
   font-size: 0.75rem;
   cursor: pointer;
-  padding: 0;
+  padding: 0 !important;
   font-family: inherit;
+  font-weight: normal !important;
+  letter-spacing: normal !important;
+  align-self: auto !important;
 }
 
 .tool-calls-toggle:hover {
-  color: var(--text-primary);
+  color: var(--text-primary) !important;
+  background: none !important;
 }
 
 .tool-calls-list {
@@ -3773,23 +3781,30 @@ kbd {
   color: var(--text-secondary);
 }
 
+/* See note on .tool-calls-toggle — same global-button override needed
+   here, otherwise the button background becomes var(--text-primary) and
+   .tool-call-name (also var(--text-primary)) becomes invisible. */
 .tool-call-summary {
-  background: none;
-  border: none;
-  color: inherit;
+  background: none !important;
+  border: none !important;
+  color: inherit !important;
   font: inherit;
   cursor: pointer;
-  padding: 0.1rem 0;
+  padding: 0.1rem 0 !important;
   display: flex;
   align-items: baseline;
   gap: 0.35rem;
   text-align: left;
   width: 100%;
   flex-wrap: wrap;
+  font-weight: normal !important;
+  letter-spacing: normal !important;
+  align-self: auto !important;
 }
 
 .tool-call-summary:hover {
-  color: var(--text-primary);
+  color: var(--text-primary) !important;
+  background: none !important;
 }
 
 .tool-call-chevron {
@@ -3931,20 +3946,27 @@ kbd {
   margin-top: 0.25rem;
 }
 
+/* See note on .tool-calls-toggle — these buttons live inside .chat-content
+   and need !important to win against the CTA-style global button rule. */
 .approval-submit,
 .approval-reject-all {
   font-size: 0.8rem;
-  padding: 0.35rem 0.75rem;
-  border: 1px solid var(--border-primary);
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  padding: 0.35rem 0.75rem !important;
+  border: 1px solid var(--border-primary) !important;
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
   cursor: pointer;
   font-family: inherit;
+  font-weight: normal !important;
+  letter-spacing: normal !important;
+  align-self: auto !important;
+  border-radius: 0;
 }
 
 .approval-submit:hover,
 .approval-reject-all:hover {
-  background: var(--hover-bg);
+  background: var(--hover-bg) !important;
+  color: var(--text-primary) !important;
 }
 
 .approval-submit:disabled,
