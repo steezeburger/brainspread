@@ -1126,7 +1126,7 @@ const ChatPanel = {
                 {{ expandedToolCalls[index] ? '▾' : '▸' }}
                 <template v-if="msg.streaming && runningToolName(msg)">
                   <span class="tool-calls-running-dot"></span>
-                  running {{ runningToolName(msg) }}…
+                  running {{ runningToolName(msg) }}<span class="loading-dots" aria-hidden="true"><span></span><span></span><span></span></span>
                 </template>
                 <template v-else>
                   tools ({{ toolCallPairs(msg).length }})
@@ -1137,6 +1137,7 @@ const ChatPanel = {
                   v-for="(call, callIndex) in toolCallPairs(msg)"
                   :key="call.tool_use_id"
                   class="tool-call"
+                  :class="{ 'tool-call-running': msg.streaming && call.result === null }"
                 >
                   <button class="tool-call-summary" @click="toggleToolCall(index, callIndex)">
                     <span class="tool-call-chevron">{{ isToolCallExpanded(index, callIndex) ? '▾' : '▸' }}</span>
@@ -1146,7 +1147,9 @@ const ChatPanel = {
                     <span class="tool-call-result-summary" v-if="call.result !== null">
                       {{ summarizeToolResult(call.result) }}
                     </span>
-                    <span class="tool-call-result-summary pending" v-else>running…</span>
+                    <span class="tool-call-result-summary pending" v-else>
+                      running<span class="loading-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+                    </span>
                   </button>
                   <div v-if="isToolCallExpanded(index, callIndex)" class="tool-call-details">
                     <div class="tool-call-detail-label">input</div>
