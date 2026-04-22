@@ -2766,12 +2766,12 @@ kbd {
 .typing-indicator {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
 }
 
 .typing-indicator span {
-  width: 8px;
-  height: 8px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background-color: var(--text-secondary);
   animation: typing 1.4s infinite ease-in-out;
@@ -2797,7 +2797,7 @@ kbd {
     opacity: 0.4;
   }
   30% {
-    transform: translateY(-10px);
+    transform: translateY(-4px);
     opacity: 1;
   }
 }

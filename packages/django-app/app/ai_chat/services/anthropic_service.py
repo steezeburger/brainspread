@@ -362,7 +362,7 @@ class AnthropicService(BaseAIService):
 
             for _ in range(MAX_TOOL_ITERATIONS + 1):
                 turn_text, turn_thinking, turn_usage, final_message = (
-                    yield from self._stream_single_turn(kwargs)
+                    yield from self._stream_single_turn(kwargs, tool_executor)
                 )
                 if turn_text:
                     content_parts.append(turn_text)
@@ -469,11 +469,22 @@ class AnthropicService(BaseAIService):
                 raise
             raise AnthropicServiceError(f"Anthropic streaming call failed: {e}") from e
 
-    def _stream_single_turn(self, kwargs: Dict[str, Any]):
-        """Stream one Anthropic turn, yielding text/thinking deltas.
+    def _stream_single_turn(
+        self,
+        kwargs: Dict[str, Any],
+        tool_executor: Optional[ToolExecutor] = None,
+    ):
+        """Stream one Anthropic turn, yielding text/thinking/tool_use deltas.
 
         Returns (turn_text, turn_thinking, turn_usage, final_message) via
         StopIteration value so the tool loop can decide whether to continue.
+
+        For custom tools the model calls, we yield an early `tool_use`
+        event as soon as content_block_start fires — the model signals the
+        tool at block-start but the arguments stream in via later
+        input_json_delta events. Emitting early makes the "running <tool>"
+        UI appear the moment the model commits to calling the tool, not
+        at turn-end.
         """
         text_parts: List[str] = []
         thinking_parts: List[str] = []
@@ -499,6 +510,24 @@ class AnthropicService(BaseAIService):
                         cache_read = (
                             getattr(start_usage, "cache_read_input_tokens", 0) or 0
                         )
+
+                elif event_type == "content_block_start":
+                    block = getattr(event, "content_block", None)
+                    block_type = getattr(block, "type", None)
+                    if block_type == "tool_use":
+                        tool_name = getattr(block, "name", "") or ""
+                        # Only announce tools we can actually execute — an
+                        # unknown tool would leave the "running" indicator
+                        # stuck until some final event clears it.
+                        if tool_executor is not None and tool_executor.is_known(
+                            tool_name
+                        ):
+                            yield {
+                                "type": "tool_use",
+                                "tool_use_id": getattr(block, "id", "") or "",
+                                "name": tool_name,
+                                "input": {},
+                            }
 
                 elif event_type == "content_block_delta":
                     delta = getattr(event, "delta", None)

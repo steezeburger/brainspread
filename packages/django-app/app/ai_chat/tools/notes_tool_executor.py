@@ -342,9 +342,7 @@ class NotesToolExecutor:
                 "order": updated.order,
                 "page_uuid": str(updated.page.uuid) if updated.page else None,
             },
-            "affected_page_uuids": (
-                [str(updated.page.uuid)] if updated.page else []
-            ),
+            "affected_page_uuids": ([str(updated.page.uuid)] if updated.page else []),
         }
 
     def _reorder_blocks(self, args: Dict[str, Any]) -> Dict[str, Any]:
