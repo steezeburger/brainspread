@@ -63,3 +63,5 @@ class PendingToolApproval(UUIDModelMixin, CRUDTimestampsMixin):
     class Meta:
         db_table = "ai_chat_pending_tool_approvals"
         ordering = ("-created_at",)
+        verbose_name = "Pending Tool Approval"
+        verbose_name_plural = "Pending Tool Approvals"

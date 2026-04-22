@@ -12,6 +12,8 @@ class ChatSession(UUIDModelMixin, CRUDTimestampsMixin):
     class Meta:
         db_table = "ai_chat_sessions"
         ordering = ("-created_at",)
+        verbose_name = "Chat Session"
+        verbose_name_plural = "Chat Sessions"
 
 
 class ChatMessage(UUIDModelMixin, CRUDTimestampsMixin):
@@ -37,3 +39,5 @@ class ChatMessage(UUIDModelMixin, CRUDTimestampsMixin):
     class Meta:
         db_table = "ai_chat_messages"
         ordering = ("created_at",)
+        verbose_name = "Chat Message"
+        verbose_name_plural = "Chat Messages"

@@ -13,6 +13,8 @@ class AIProvider(UUIDModelMixin, CRUDTimestampsMixin):
     class Meta:
         db_table = "ai_providers"
         ordering = ("name",)
+        verbose_name = "AI Provider"
+        verbose_name_plural = "AI Providers"
 
     def __str__(self) -> str:
         return self.name
