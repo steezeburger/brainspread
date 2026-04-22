@@ -199,11 +199,62 @@ const ChatPanel = {
       localStorage.setItem("chatPanel.width", this.width.toString());
     },
     togglePanel() {
-      this.isOpen = !this.isOpen;
-      this.saveOpenState();
       if (this.isOpen) {
-        this.focusMessageInput();
+        this.closePanel();
+      } else {
+        this.openPanel();
       }
+    },
+    openPanel() {
+      if (this.isOpen) return;
+      // Remember what had focus so we can return to it on close. If focus
+      // was inside a block textarea, remember the block uuid instead — the
+      // textarea unmounts on blur (@blur → stopEditing), so we need to
+      // re-enter editing mode rather than focus a stale element.
+      const active = document.activeElement;
+      this._returnFocusEl = null;
+      this._returnFocusBlockUuid = null;
+      if (active && active !== document.body && !this.$el?.contains(active)) {
+        const blockWrapper = active.closest?.("[data-block-uuid]");
+        if (blockWrapper && active.tagName === "TEXTAREA") {
+          this._returnFocusBlockUuid =
+            blockWrapper.getAttribute("data-block-uuid");
+        } else {
+          this._returnFocusEl = active;
+        }
+      }
+      this.isOpen = true;
+      this.saveOpenState();
+      this.focusMessageInput();
+    },
+    closePanel() {
+      if (!this.isOpen) return;
+      this.isOpen = false;
+      this.saveOpenState();
+      const targetEl = this._returnFocusEl;
+      const targetUuid = this._returnFocusBlockUuid;
+      this._returnFocusEl = null;
+      this._returnFocusBlockUuid = null;
+      this.$nextTick(() => {
+        if (targetUuid) {
+          // Ask whoever owns the block to restart editing it; Page.js
+          // listens for this event. Best-effort — if the block has been
+          // navigated away or deleted, the listener is a no-op.
+          document.dispatchEvent(
+            new CustomEvent("resume-block-editing", {
+              detail: { uuid: targetUuid },
+            })
+          );
+          return;
+        }
+        if (
+          targetEl &&
+          document.body.contains(targetEl) &&
+          typeof targetEl.focus === "function"
+        ) {
+          targetEl.focus();
+        }
+      });
     },
     focusMessageInput() {
       // Wait for the panel transition / v-if mount before focusing.
@@ -404,8 +455,7 @@ const ChatPanel = {
         // event; the app-level handler already skips editable targets.
         e.preventDefault();
         e.stopPropagation();
-        this.isOpen = false;
-        this.saveOpenState();
+        this.closePanel();
       }
       // Shift+Enter will naturally create a newline (default behavior)
     },
@@ -1205,8 +1255,7 @@ const ChatPanel = {
             return; // Don't close if clicking within model dropdown
           }
 
-          this.isOpen = false;
-          this.saveOpenState();
+          this.closePanel();
         }
       };
       document.addEventListener("click", this.clickOutsideHandler);

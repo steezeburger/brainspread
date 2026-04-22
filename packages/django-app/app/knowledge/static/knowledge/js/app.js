@@ -552,10 +552,16 @@ const KnowledgeApp = createApp({
           this.$nextTick(() => {
             if (this.$refs.menuBtn) this.$refs.menuBtn.focus();
           });
+        } else if (this._isInsideHistorySidebar(event.target)) {
+          // If Escape fires from inside the history sidebar (e.g., its
+          // filter selects have focus), close that sidebar directly.
+          // Skips the editable-target guard because the sidebar itself
+          // doesn't host any serious editing surface.
+          if (this._closeHistoryIfOpen()) event.preventDefault();
         } else if (!this._isEditableTarget(event.target)) {
           // Escape dismisses any open sidebars, but only when the user isn't
-          // typing — otherwise hitting Escape in the chat input or a block
-          // would surprise-close the panel they're working in.
+          // typing in a real editor (blocks, chat input). Those have their
+          // own Escape handlers.
           const closedHistory = this._closeHistoryIfOpen();
           const closedChat = this._closeChatIfOpen();
           if (closedHistory || closedChat) {
@@ -563,6 +569,11 @@ const KnowledgeApp = createApp({
           }
         }
       }
+    },
+
+    _isInsideHistorySidebar(el) {
+      const sidebar = this.$refs.historicalSidebar;
+      return !!(sidebar && sidebar.$el && sidebar.$el.contains(el));
     },
 
     _closeHistoryIfOpen() {
