@@ -20,8 +20,14 @@ class SearchPagesCommand(AbstractBaseCommand):
         query = self.form.cleaned_data.get("query")
         limit = self.form.cleaned_data.get("limit", 10)
 
-        # Search in title and slug only (case-insensitive)
-        search_q = Q(title__icontains=query) | Q(slug__icontains=query)
+        # For single-character queries we match by prefix only — a bare "c"
+        # matching "roam research" is more noise than signal. Multi-character
+        # queries fall back to substring search so that typing in the middle
+        # of a title still surfaces relevant pages.
+        if len(query) == 1:
+            search_q = Q(title__istartswith=query) | Q(slug__istartswith=query)
+        else:
+            search_q = Q(title__icontains=query) | Q(slug__icontains=query)
 
         queryset = (
             Page.objects.filter(user=user, is_published=True)
