@@ -90,6 +90,13 @@ const Page = {
       "spotlight:new-block",
       this.handleSpotlightNewBlock
     );
+    // AI chat write tools dispatch this when they touch a page; reload
+    // silently if it's the page we're viewing so the user sees the new
+    // state without refreshing.
+    window.addEventListener(
+      "brainspread:notes-modified",
+      this.handleNotesModified
+    );
     // Load page data
     await this.loadPage();
   },
@@ -104,6 +111,10 @@ const Page = {
     document.removeEventListener(
       "spotlight:new-block",
       this.handleSpotlightNewBlock
+    );
+    window.removeEventListener(
+      "brainspread:notes-modified",
+      this.handleNotesModified
     );
   },
 
@@ -123,6 +134,35 @@ const Page = {
         return slug;
       }
       return null;
+    },
+
+    handleNotesModified(event) {
+      // AI chat edited blocks / pages. Reload silently if the affected set
+      // includes this page. Debounce so bursts of tool calls (common with
+      // auto-approve) only trigger one reload.
+      if (!this.page || !this.page.uuid) return;
+      const pages = event?.detail?.page_uuids || [];
+      if (!pages.includes(this.page.uuid)) return;
+      if (this._notesModifiedTimer) {
+        clearTimeout(this._notesModifiedTimer);
+      }
+      this._notesModifiedTimer = setTimeout(() => {
+        this._notesModifiedTimer = null;
+        // If the user is actively typing in a block on this page, skip
+        // the reload — clobbering an in-progress edit would be worse than
+        // showing stale state. They'll see the AI's changes the next time
+        // they finish editing (which saves and reloads).
+        const active = document.activeElement;
+        if (
+          active &&
+          active.tagName === "TEXTAREA" &&
+          this.$el &&
+          this.$el.contains(active)
+        ) {
+          return;
+        }
+        this.loadPage({ silent: true });
+      }, 300);
     },
 
     async loadPage({ silent = false } = {}) {

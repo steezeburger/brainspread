@@ -272,6 +272,7 @@ const ChatPanel = {
               name: event.name,
               result: event.result || {},
             });
+            this.broadcastNotesModified(event.result);
           } else if (event.type === "approval_required") {
             if (event.session_id && !this.currentSessionId) {
               this.currentSessionId = event.session_id;
@@ -686,6 +687,24 @@ const ChatPanel = {
       };
     },
 
+    broadcastNotesModified(toolResult) {
+      // Write tools surface `affected_page_uuids`. Fire a window event so
+      // the Page component (or anything else viewing notes) can refresh
+      // without the user having to reload.
+      if (!toolResult || typeof toolResult !== "object") return;
+      const pages = toolResult.affected_page_uuids;
+      if (!Array.isArray(pages) || !pages.length) return;
+      try {
+        window.dispatchEvent(
+          new CustomEvent("brainspread:notes-modified", {
+            detail: { page_uuids: pages.map(String) },
+          })
+        );
+      } catch (err) {
+        console.error("Failed to dispatch notes-modified event:", err);
+      }
+    },
+
     autoExpandToolCalls(messageIndex) {
       // Open the tools strip the first time a tool fires on this message
       // so the user can see what's happening live (especially important
@@ -915,6 +934,7 @@ const ChatPanel = {
               name: event.name,
               result: event.result || {},
             });
+            this.broadcastNotesModified(event.result);
           } else if (event.type === "approval_required") {
             this.attachPendingApproval(messageIndex, event);
             return;

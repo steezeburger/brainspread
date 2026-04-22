@@ -214,6 +214,7 @@ class NotesToolExecutor:
                 "slug": page.slug,
                 "page_type": page.page_type,
             },
+            "affected_page_uuids": [str(page.uuid)],
         }
 
     def _create_block(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -268,6 +269,7 @@ class NotesToolExecutor:
                 "block_type": block.block_type,
                 "order": block.order,
             },
+            "affected_page_uuids": [str(page.uuid)],
         }
 
     def _edit_block(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -340,6 +342,9 @@ class NotesToolExecutor:
                 "order": updated.order,
                 "page_uuid": str(updated.page.uuid) if updated.page else None,
             },
+            "affected_page_uuids": (
+                [str(updated.page.uuid)] if updated.page else []
+            ),
         }
 
     def _reorder_blocks(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -369,7 +374,20 @@ class NotesToolExecutor:
         if not ok:
             # Repository returns False when ownership/lookup fails too.
             return {"error": "Reorder failed (block missing or not owned by user)"}
-        return {"reordered": True, "count": len(reorder_payload)}
+
+        # Collect the distinct pages these blocks belong to so the frontend
+        # can refresh whichever page is currently open.
+        affected = list(
+            BlockRepository.get_queryset()
+            .filter(uuid__in=[item["uuid"] for item in reorder_payload])
+            .values_list("page__uuid", flat=True)
+            .distinct()
+        )
+        return {
+            "reordered": True,
+            "count": len(reorder_payload),
+            "affected_page_uuids": [str(u) for u in affected if u is not None],
+        }
 
     def _move_blocks(self, args: Dict[str, Any]) -> Dict[str, Any]:
         block_uuids = args.get("block_uuids") or []
@@ -385,22 +403,30 @@ class NotesToolExecutor:
 
         blocks = []
         missing: List[str] = []
+        # Capture the source pages BEFORE the move so the frontend can refresh
+        # whichever the user had open.
+        source_page_uuids: set = set()
         for uuid_value in block_uuids:
             block = BlockRepository.get_by_uuid(str(uuid_value).strip(), user=self.user)
             if block is None:
                 missing.append(str(uuid_value))
             else:
                 blocks.append(block)
+                if block.page is not None:
+                    source_page_uuids.add(str(block.page.uuid))
         if missing:
             return {"error": f"Blocks not found: {', '.join(missing)}"}
 
         ok = BlockRepository.move_blocks_to_page(blocks, target_page)
         if not ok:
             return {"error": "Move failed"}
+
+        affected = source_page_uuids | {str(target_page.uuid)}
         return {
             "moved": True,
             "count": len(blocks),
             "target_page_uuid": str(target_page.uuid),
+            "affected_page_uuids": sorted(affected),
         }
 
 
