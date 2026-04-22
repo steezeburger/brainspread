@@ -173,15 +173,16 @@ class NotesToolExecutor:
             return {"error": "title is required"}
 
         page_type = (args.get("page_type") or "page").strip() or "page"
-        if page_type == "daily":
-            # Daily notes are keyed on a specific date and auto-created by
-            # other flows — letting the model synthesize one would produce a
-            # dateless daily that the rest of the app doesn't know how to
-            # navigate.
+        # `daily` is keyed on a specific date and auto-created elsewhere;
+        # synthesizing one here would produce a dateless daily the rest of
+        # the app can't navigate. `whiteboard` needs a tldraw JSON snapshot
+        # in Page.content that the model can't produce — block-based pages
+        # ignore Page.content entirely, so it's the only safe shape here.
+        if page_type not in ("page", "template"):
             return {
                 "error": (
-                    "Cannot create a 'daily' page via this tool. Use page,"
-                    " template, or whiteboard."
+                    f"Cannot create a '{page_type}' page via this tool."
+                    " Use 'page' or 'template'."
                 )
             }
 
@@ -189,7 +190,6 @@ class NotesToolExecutor:
             {
                 "user": self.user.id,
                 "title": title,
-                "content": args.get("content") or "",
                 "page_type": page_type,
             }
         )

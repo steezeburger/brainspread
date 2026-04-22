@@ -42,17 +42,16 @@ class NotesToolExecutorWriteTestCase(TestCase):
     def test_create_page_creates_page_for_user(self):
         ex = NotesToolExecutor(self.user, allow_writes=True)
 
-        result = ex.execute(
-            "create_page",
-            {"title": "Roadmap 2026", "content": "## Q1"},
-        )
+        result = ex.execute("create_page", {"title": "Roadmap 2026"})
 
         self.assertTrue(result.get("created"))
         self.assertEqual(result["page"]["title"], "Roadmap 2026")
         self.assertEqual(result["page"]["page_type"], "page")
-        self.assertTrue(
-            Page.objects.filter(user=self.user, title="Roadmap 2026").exists()
-        )
+        page = Page.objects.get(user=self.user, title="Roadmap 2026")
+        # The body is stored as Block rows, not on Page.content. The tool
+        # leaves Page.content empty by design — the model creates blocks
+        # in a follow-up call if it wants to seed body content.
+        self.assertEqual(page.content, "")
 
     def test_create_page_rejects_daily_type(self):
         ex = NotesToolExecutor(self.user, allow_writes=True)
@@ -61,6 +60,17 @@ class NotesToolExecutorWriteTestCase(TestCase):
 
         self.assertIn("error", result)
         self.assertFalse(Page.objects.filter(user=self.user, title="Today").exists())
+
+    def test_create_page_rejects_whiteboard_type(self):
+        # Whiteboards need a tldraw snapshot the model can't produce.
+        ex = NotesToolExecutor(self.user, allow_writes=True)
+
+        result = ex.execute(
+            "create_page", {"title": "Sketch", "page_type": "whiteboard"}
+        )
+
+        self.assertIn("error", result)
+        self.assertFalse(Page.objects.filter(user=self.user, title="Sketch").exists())
 
     def test_create_page_requires_title(self):
         ex = NotesToolExecutor(self.user, allow_writes=True)

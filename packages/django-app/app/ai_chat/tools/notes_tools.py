@@ -82,7 +82,8 @@ NOTES_WRITE_TOOLS: List[Dict[str, Any]] = [
             "Create a new page for the user. Use this before create_block if"
             " the target page doesn't exist yet. Every call pauses for"
             " explicit user approval before execution. Returns the new"
-            " page's uuid and slug."
+            " page's uuid and slug — pass that uuid to create_block to seed"
+            " body content."
         ),
         "input_schema": {
             "type": "object",
@@ -91,16 +92,13 @@ NOTES_WRITE_TOOLS: List[Dict[str, Any]] = [
                     "type": "string",
                     "description": "Title for the new page.",
                 },
-                "content": {
-                    "type": "string",
-                    "description": "Optional markdown body for the page.",
-                },
                 "page_type": {
                     "type": "string",
                     "description": (
-                        "Optional page type. Allowed: page (default),"
-                        " template, whiteboard. Do not use 'daily' — daily"
-                        " notes are auto-created per date."
+                        "Optional page type. Allowed: page (default) or"
+                        " template. Do not use 'daily' (auto-created per"
+                        " date) or 'whiteboard' (requires a tldraw snapshot"
+                        " this tool can't produce)."
                     ),
                 },
             },
