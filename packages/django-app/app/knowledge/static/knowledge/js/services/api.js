@@ -233,6 +233,14 @@ class ApiService {
     );
   }
 
+  async getGraphData({ includeDaily = false, includeOrphans = true } = {}) {
+    const params = new URLSearchParams({
+      include_daily: includeDaily ? "true" : "false",
+      include_orphans: includeOrphans ? "true" : "false",
+    });
+    return await this.request(`/knowledge/api/graph/?${params.toString()}`);
+  }
+
   // Utility methods
   isAuthenticated() {
     return !!this.token;

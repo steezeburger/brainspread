@@ -3817,6 +3817,7 @@ kbd {
   border: none;
   padding: 0.75rem 1rem;
   text-align: left;
+  white-space: nowrap;
   cursor: pointer;
   font-size: 1rem;
   font-family: inherit;
@@ -4273,4 +4274,122 @@ kbd {
 
 .whiteboard-status-error {
   color: var(--danger-color, #d33);
+}
+
+/* Graph view */
+.graph-layout {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 64px);
+  padding: 0.5rem 1rem 1rem 1rem;
+  box-sizing: border-box;
+}
+
+.graph-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-primary);
+}
+
+.graph-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border-secondary);
+  flex-wrap: wrap;
+}
+
+.graph-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.graph-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.graph-status {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.graph-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.graph-toggle input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.graph-btn {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  padding: 0.25rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.graph-btn:hover {
+  background: var(--hover-bg);
+}
+
+.graph-canvas-container {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+.graph-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+.graph-canvas:active {
+  cursor: grabbing;
+}
+
+.graph-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  text-align: center;
+  pointer-events: none;
+  padding: 0.5rem 1rem;
+}
+
+.graph-overlay-error {
+  color: var(--error-color);
+}
+
+.graph-help {
+  padding: 0.4rem 0.75rem;
+  border-top: 1px solid var(--border-secondary);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }

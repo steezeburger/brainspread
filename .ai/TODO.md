@@ -22,6 +22,8 @@
   - [ ] move multiple blocks to current day
 - [ ] support for [[this syntax of tags]] in blocks
 - [ ] spotlight should allow for actions to, like creating a new page
+- [x] graph view of blocks/pages (#39) - force-directed canvas at `/knowledge/graph/`,
+  built from block→page tag M2M and `[[title]]` wiki links
 
 # Optimizations
 - [ ] need to cleanup frontend routes, django templates, and the vue app

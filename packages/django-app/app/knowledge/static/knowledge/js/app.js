@@ -15,10 +15,13 @@ const KnowledgeApp = createApp({
     const isAuth = window.apiService.isAuthenticated();
     const cachedUser = window.apiService.getCurrentUser();
 
+    const isGraphRoute = window.location.pathname === "/knowledge/graph/";
+    const initialView = isAuth ? (isGraphRoute ? "graph" : "journal") : "login";
+
     return {
       user: cachedUser, // Load user immediately from cache
       isAuthenticated: isAuth, // Check immediately
-      currentView: isAuth ? "journal" : "login", // Set view immediately
+      currentView: initialView, // Set view immediately
       loading: isAuth && !cachedUser, // Only show loading if we have token but no cached user
       showSettings: false, // Settings modal state
       settingsActiveTab: "general", // Default tab for settings modal
@@ -50,6 +53,7 @@ const KnowledgeApp = createApp({
     ChatPanel: window.ChatPanel,
     ToastNotifications: window.ToastNotifications,
     SpotlightSearch: window.SpotlightSearch,
+    GraphView: window.GraphView,
   },
 
   computed: {
@@ -71,7 +75,8 @@ const KnowledgeApp = createApp({
     },
 
     showChatPanel() {
-      // Whiteboards benefit from the full column width; chat is noise on them.
+      // Whiteboards and the graph view use the full column width; chat is noise there.
+      if (this.currentView === "graph") return false;
       return this.currentPagePageType !== "whiteboard";
     },
   },
@@ -105,6 +110,13 @@ const KnowledgeApp = createApp({
     if (this.isAuthenticated && window.location.pathname === "/knowledge/") {
       this.redirectToToday();
       return;
+    }
+
+    if (
+      this.isAuthenticated &&
+      window.location.pathname === "/knowledge/graph/"
+    ) {
+      this.currentView = "graph";
     }
 
     // Reapply theme after auth check in case user data was updated
@@ -449,6 +461,15 @@ const KnowledgeApp = createApp({
       this.createNewWhiteboard();
     },
 
+    onMenuGraph() {
+      this.closeMenu();
+      this.navigateToGraph();
+    },
+
+    navigateToGraph() {
+      window.location.href = "/knowledge/graph/";
+    },
+
     onMenuSettings() {
       this.closeMenu();
       this.openSettings();
@@ -566,6 +587,12 @@ const KnowledgeApp = createApp({
           label: "today",
           description: "go to today's daily note",
           icon: "→",
+        },
+        {
+          id: "graph",
+          label: "graph",
+          description: "view the knowledge graph",
+          icon: "◉",
         },
         {
           id: "settings",
@@ -738,6 +765,9 @@ const KnowledgeApp = createApp({
         case "today":
           this.redirectToToday();
           break;
+        case "graph":
+          this.navigateToGraph();
+          break;
         case "settings":
           this.openSettings();
           break;
@@ -823,6 +853,9 @@ const KnowledgeApp = createApp({
                                     <button @click="onMenuCreateWhiteboard" class="menu-item" role="menuitem">
                                         + whiteboard
                                     </button>
+                                    <button @click="onMenuGraph" class="menu-item" role="menuitem">
+                                        graph
+                                    </button>
                                     <button @click="onMenuSettings" class="menu-item" role="menuitem">
                                         settings
                                     </button>
@@ -848,8 +881,11 @@ const KnowledgeApp = createApp({
                     <div v-if="loading" class="loading-container">
                         <div class="loading">Loading...</div>
                     </div>
+                    <div v-else-if="currentView === 'graph'" class="graph-layout">
+                        <GraphView />
+                    </div>
                     <div v-else class="content-layout">
-                        <HistoricalSidebar 
+                        <HistoricalSidebar
                             @navigate-to-date="onNavigateToDate"
                             @navigate-to-slug="onNavigateToSlug" />
                         <div class="main-content-area">
