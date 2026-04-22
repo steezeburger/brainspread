@@ -79,6 +79,8 @@ class NotesToolExecutor:
                 return self._edit_block(args)
             if name == "move_blocks":
                 return self._move_blocks(args)
+            if name == "reorder_blocks":
+                return self._reorder_blocks(args)
             return {"error": f"Unknown tool: {name}"}
         except Exception as e:
             logger.exception("Notes tool %s failed", name)
@@ -272,22 +274,58 @@ class NotesToolExecutor:
         block_uuid = (args.get("block_uuid") or "").strip()
         if not block_uuid:
             return {"error": "block_uuid is required"}
-        content = args.get("content")
-        if content is None:
-            return {"error": "content is required"}
 
         block = BlockRepository.get_by_uuid(block_uuid, user=self.user)
         if not block:
             return {"error": f"No block found with uuid {block_uuid}"}
 
-        form_data = {
+        # Build the form payload only from keys the caller actually sent.
+        # UpdateBlockCommand has a quirk: when "parent" is missing from
+        # cleaned_data it sets block.parent = None (orphans to root). So we
+        # must always include the existing parent_uuid unless the caller is
+        # explicitly re-parenting.
+        form_data: Dict[str, Any] = {
             "user": self.user.id,
             "block": block.uuid,
-            "content": content,
         }
+
+        if "content" in args and args["content"] is not None:
+            form_data["content"] = args["content"]
+
         block_type = args.get("block_type")
         if block_type:
             form_data["block_type"] = block_type
+
+        order_value = args.get("order")
+        if order_value is not None:
+            try:
+                form_data["order"] = int(order_value)
+            except (TypeError, ValueError):
+                return {"error": "order must be an integer"}
+
+        if "parent_uuid" in args:
+            new_parent_uuid = args["parent_uuid"]
+            if new_parent_uuid in (None, "", "null"):
+                # Explicitly root the block.
+                form_data["parent"] = ""
+            else:
+                new_parent = BlockRepository.get_by_uuid(
+                    str(new_parent_uuid).strip(), user=self.user
+                )
+                if not new_parent:
+                    return {"error": f"Parent block {new_parent_uuid} not found"}
+                if new_parent.page_id != block.page_id:
+                    return {"error": "parent block belongs to a different page"}
+                form_data["parent"] = new_parent.uuid
+        elif block.parent_id is not None:
+            # Preserve current parent so UpdateBlockCommand doesn't orphan
+            # this block when the caller only wanted to change content/type.
+            form_data["parent"] = block.parent.uuid
+
+        if len(form_data) == 2:
+            # Only user + block — nothing to update.
+            return {"error": "no fields provided to update"}
+
         form = UpdateBlockForm(form_data)
         if not form.is_valid():
             return {"error": _first_form_error(form)}
@@ -298,8 +336,40 @@ class NotesToolExecutor:
                 "block_uuid": str(updated.uuid),
                 "content": updated.content,
                 "block_type": updated.block_type,
+                "parent_uuid": (str(updated.parent.uuid) if updated.parent else None),
+                "order": updated.order,
+                "page_uuid": str(updated.page.uuid) if updated.page else None,
             },
         }
+
+    def _reorder_blocks(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        items = args.get("blocks") or []
+        if not isinstance(items, list) or not items:
+            return {"error": "blocks must be a non-empty list"}
+
+        reorder_payload: List[Dict[str, Any]] = []
+        seen: set = set()
+        for item in items:
+            if not isinstance(item, dict):
+                return {"error": "each blocks entry must be an object"}
+            uuid_value = (item.get("block_uuid") or "").strip()
+            if not uuid_value:
+                return {"error": "each entry needs block_uuid"}
+            if uuid_value in seen:
+                return {"error": f"duplicate block_uuid {uuid_value}"}
+            seen.add(uuid_value)
+            order_value = item.get("order")
+            try:
+                order_int = int(order_value)
+            except (TypeError, ValueError):
+                return {"error": "each entry needs an integer order"}
+            reorder_payload.append({"uuid": uuid_value, "order": order_int})
+
+        ok = BlockRepository.reorder_blocks(reorder_payload, user=self.user)
+        if not ok:
+            # Repository returns False when ownership/lookup fails too.
+            return {"error": "Reorder failed (block missing or not owned by user)"}
+        return {"reordered": True, "count": len(reorder_payload)}
 
     def _move_blocks(self, args: Dict[str, Any]) -> Dict[str, Any]:
         block_uuids = args.get("block_uuids") or []

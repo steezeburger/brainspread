@@ -148,8 +148,11 @@ NOTES_WRITE_TOOLS: List[Dict[str, Any]] = [
     {
         "name": "edit_block",
         "description": (
-            "Edit an existing block's content and/or type. Every call pauses"
-            " for explicit user approval before execution."
+            "Update an existing block: change its content, type, parent"
+            " (re-nest), or order. All fields except block_uuid are"
+            " optional — supply only what you want to change. To move a"
+            " block to the page root pass parent_uuid=null. Every call"
+            " pauses for explicit user approval before execution."
         ),
         "input_schema": {
             "type": "object",
@@ -169,8 +172,48 @@ NOTES_WRITE_TOOLS: List[Dict[str, Any]] = [
                         " create_block."
                     ),
                 },
+                "parent_uuid": {
+                    "type": ["string", "null"],
+                    "description": (
+                        "Optional new parent block UUID. Pass null to make"
+                        " the block a root-level block on its current page."
+                        " Cannot create a cycle."
+                    ),
+                },
+                "order": {
+                    "type": "integer",
+                    "description": "Optional new order within the parent.",
+                },
             },
-            "required": ["block_uuid", "content"],
+            "required": ["block_uuid"],
+        },
+    },
+    {
+        "name": "reorder_blocks",
+        "description": (
+            "Reorder several sibling blocks in one call. Pass a list of"
+            " {block_uuid, order} pairs — every listed block must already"
+            " exist and belong to the user. This does NOT change parents"
+            " or pages; use edit_block for that. Every call pauses for"
+            " explicit user approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "blocks": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "block_uuid": {"type": "string"},
+                            "order": {"type": "integer"},
+                        },
+                        "required": ["block_uuid", "order"],
+                    },
+                    "description": "List of block_uuid + order pairs.",
+                },
+            },
+            "required": ["blocks"],
         },
     },
     {

@@ -137,6 +137,84 @@ class NotesToolExecutorWriteTestCase(TestCase):
         self.block.refresh_from_db()
         self.assertEqual(self.block.content, "updated")
 
+    def test_edit_block_preserves_parent_when_only_changing_content(self):
+        # Regression: UpdateBlockCommand orphans a block to root if "parent"
+        # is missing from the form. The executor must always pass the
+        # current parent unless the caller is explicitly re-parenting.
+        parent = BlockFactory(user=self.user, page=self.page, content="parent")
+        child = BlockFactory(
+            user=self.user, page=self.page, parent=parent, content="child"
+        )
+        ex = NotesToolExecutor(self.user, allow_writes=True)
+
+        result = ex.execute(
+            "edit_block",
+            {"block_uuid": str(child.uuid), "content": "child renamed"},
+        )
+
+        self.assertTrue(result.get("updated"))
+        child.refresh_from_db()
+        self.assertEqual(child.content, "child renamed")
+        self.assertEqual(child.parent_id, parent.id)
+
+    def test_edit_block_can_re_parent_to_another_block(self):
+        new_parent = BlockFactory(user=self.user, page=self.page, content="new parent")
+        ex = NotesToolExecutor(self.user, allow_writes=True)
+
+        result = ex.execute(
+            "edit_block",
+            {
+                "block_uuid": str(self.block.uuid),
+                "parent_uuid": str(new_parent.uuid),
+            },
+        )
+
+        self.assertTrue(result.get("updated"))
+        self.block.refresh_from_db()
+        self.assertEqual(self.block.parent_id, new_parent.id)
+
+    def test_edit_block_can_root_with_explicit_null_parent(self):
+        parent = BlockFactory(user=self.user, page=self.page, content="parent")
+        nested = BlockFactory(
+            user=self.user, page=self.page, parent=parent, content="nested"
+        )
+        ex = NotesToolExecutor(self.user, allow_writes=True)
+
+        result = ex.execute(
+            "edit_block",
+            {"block_uuid": str(nested.uuid), "parent_uuid": None},
+        )
+
+        self.assertTrue(result.get("updated"))
+        nested.refresh_from_db()
+        self.assertIsNone(nested.parent_id)
+
+    def test_edit_block_rejects_parent_on_different_page(self):
+        other_page = PageFactory(user=self.user, title="Other", slug="other")
+        wrong_parent = BlockFactory(
+            user=self.user, page=other_page, content="elsewhere"
+        )
+        ex = NotesToolExecutor(self.user, allow_writes=True)
+
+        result = ex.execute(
+            "edit_block",
+            {
+                "block_uuid": str(self.block.uuid),
+                "parent_uuid": str(wrong_parent.uuid),
+            },
+        )
+
+        self.assertIn("error", result)
+        self.block.refresh_from_db()
+        self.assertIsNone(self.block.parent_id)
+
+    def test_edit_block_no_op_payload_returns_error(self):
+        ex = NotesToolExecutor(self.user, allow_writes=True)
+
+        result = ex.execute("edit_block", {"block_uuid": str(self.block.uuid)})
+
+        self.assertIn("error", result)
+
     def test_edit_block_rejects_other_users_block(self):
         ex = NotesToolExecutor(self.other_user, allow_writes=True)
 
@@ -148,6 +226,53 @@ class NotesToolExecutorWriteTestCase(TestCase):
         self.assertIn("error", result)
         self.block.refresh_from_db()
         self.assertEqual(self.block.content, "original")
+
+    def test_reorder_blocks_updates_orders(self):
+        a = BlockFactory(user=self.user, page=self.page, content="a", order=0)
+        b = BlockFactory(user=self.user, page=self.page, content="b", order=1)
+        c = BlockFactory(user=self.user, page=self.page, content="c", order=2)
+        ex = NotesToolExecutor(self.user, allow_writes=True)
+
+        result = ex.execute(
+            "reorder_blocks",
+            {
+                "blocks": [
+                    {"block_uuid": str(c.uuid), "order": 0},
+                    {"block_uuid": str(a.uuid), "order": 1},
+                    {"block_uuid": str(b.uuid), "order": 2},
+                ]
+            },
+        )
+
+        self.assertTrue(result.get("reordered"))
+        self.assertEqual(result["count"], 3)
+        a.refresh_from_db()
+        b.refresh_from_db()
+        c.refresh_from_db()
+        self.assertEqual(a.order, 1)
+        self.assertEqual(b.order, 2)
+        self.assertEqual(c.order, 0)
+
+    def test_reorder_blocks_rejects_other_users_block(self):
+        a = BlockFactory(user=self.user, page=self.page, content="a", order=0)
+        foreign = BlockFactory(
+            user=self.other_user,
+            page=PageFactory(user=self.other_user, title="X", slug="x"),
+            content="x",
+        )
+        ex = NotesToolExecutor(self.user, allow_writes=True)
+
+        result = ex.execute(
+            "reorder_blocks",
+            {
+                "blocks": [
+                    {"block_uuid": str(a.uuid), "order": 0},
+                    {"block_uuid": str(foreign.uuid), "order": 1},
+                ]
+            },
+        )
+
+        self.assertIn("error", result)
 
     def test_move_blocks_changes_page(self):
         ex = NotesToolExecutor(self.user, allow_writes=True)
