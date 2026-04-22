@@ -21,6 +21,4 @@ class SearchPagesForm(BaseForm):
         query = self.cleaned_data.get("query", "").strip()
         if not query:
             raise ValidationError("Search query is required")
-        if len(query) < 2:
-            raise ValidationError("Search query must be at least 2 characters long")
         return query
