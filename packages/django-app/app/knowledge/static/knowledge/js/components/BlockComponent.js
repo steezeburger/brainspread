@@ -95,6 +95,13 @@ const BlockComponent = {
       tagQuery: "",
       tagSelectedIndex: 0,
       tagSearchToken: 0,
+      // Web archive state (loaded lazily for embed blocks)
+      webArchive: null,
+      webArchiveLoading: false,
+      // When an embed block enters edit mode, the textarea operates on the
+      // URL (not the extracted title). This buffer holds the in-progress
+      // URL edit so we don't clobber block.media_url mid-typing.
+      urlEditBuffer: null,
     };
   },
   computed: {
@@ -132,13 +139,16 @@ const BlockComponent = {
       }
     },
     embedTitle() {
-      // After snapshot capture completes, the backend overwrites
+      // After archive capture completes, the backend overwrites
       // block.content with the extracted title. Before that, content is
       // just the URL, so fall back to the hostname for a cleaner card.
       const c = (this.block.content || "").trim();
       if (!c) return this.embedHostname;
       if (c === this.block.media_url) return this.embedHostname;
       return c;
+    },
+    webArchiveReady() {
+      return !!(this.webArchive && this.webArchive.status === "ready");
     },
   },
   watch: {
@@ -152,6 +162,15 @@ const BlockComponent = {
         this.contextMenuFocusedIndex = -1;
       }
     },
+    // Seed the URL edit buffer whenever an embed block enters edit mode so
+    // the textarea can show the current URL (not the extracted title).
+    "block.isEditing"(isEditing) {
+      if (isEditing && this.isEmbed) {
+        this.urlEditBuffer = this.block.media_url || "";
+      } else if (!isEditing) {
+        this.urlEditBuffer = null;
+      }
+    },
   },
 
   mounted() {
@@ -161,6 +180,13 @@ const BlockComponent = {
       "openBlockContextMenu",
       this.handleOpenContextMenuEvent
     );
+    document.addEventListener(
+      "brainspread:archive-updated",
+      this.handleArchiveUpdated
+    );
+    if (this.isEmbed) {
+      this.loadWebArchive();
+    }
   },
   beforeUnmount() {
     // Clean up event listener
@@ -169,8 +195,56 @@ const BlockComponent = {
       "openBlockContextMenu",
       this.handleOpenContextMenuEvent
     );
+    document.removeEventListener(
+      "brainspread:archive-updated",
+      this.handleArchiveUpdated
+    );
   },
   methods: {
+    async loadWebArchive() {
+      if (this.webArchiveLoading) return;
+      this.webArchiveLoading = true;
+      try {
+        const result = await window.apiService.getWebArchive(this.block.uuid);
+        if (result && result.success && result.data) {
+          this.webArchive = result.data;
+        }
+      } catch (_) {
+        // 404 is expected when capture hasn't happened yet; other errors
+        // we'd rather ignore than show a scary error in the page.
+      } finally {
+        this.webArchiveLoading = false;
+      }
+    },
+
+    handleArchiveUpdated(event) {
+      const detail = event?.detail || {};
+      if (detail.blockUuid === this.block.uuid) {
+        this.loadWebArchive();
+      }
+    },
+
+    async openArchivedCopy() {
+      if (!this.webArchiveReady) return;
+      try {
+        const blob = await window.apiService.fetchWebArchiveReadableBlob(
+          this.block.uuid
+        );
+        const objectUrl = URL.createObjectURL(blob);
+        // Revoke after the tab had time to load; browsers will keep the
+        // object alive while the tab is using it.
+        window.open(objectUrl, "_blank", "noopener,noreferrer");
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+      } catch (error) {
+        console.error("failed to open archived copy:", error);
+        document.dispatchEvent(
+          new CustomEvent("brainspread:toast", {
+            detail: { message: "could not open archive", type: "error" },
+          })
+        );
+      }
+    },
+
     toggleBlockContext() {
       if (this.blockInContext) {
         this.onBlockRemoveFromContext(this.block.uuid);
@@ -585,6 +659,82 @@ const BlockComponent = {
       this.stopEditing(this.block);
     },
 
+    handleEmbedUrlInput(event) {
+      this.urlEditBuffer = event.target.value;
+    },
+
+    handleEmbedUrlKeydown(event) {
+      // Enter saves + exits (via blur); Escape cancels without persisting.
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        event.target.blur();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        this.urlEditBuffer = this.block.media_url || "";
+        this.block.isEditing = false;
+      }
+    },
+
+    async handleEmbedUrlBlur() {
+      const next = (this.urlEditBuffer || "").trim();
+      const prev = this.block.media_url || "";
+      this.block.isEditing = false;
+
+      if (next === prev) {
+        this.urlEditBuffer = null;
+        return;
+      }
+
+      const isUrl = /^https?:\/\/[^\s<>"']+$/i.test(next);
+
+      // Emptied or replaced with non-URL text - demote the block back to
+      // a plain text block. Preserve whatever the user typed as content.
+      if (!isUrl) {
+        try {
+          await window.apiService.updateBlock(this.block.uuid, {
+            content: next,
+            content_type: "text",
+            media_url: "",
+          });
+          this.block.content = next;
+          this.block.content_type = "text";
+          this.block.media_url = "";
+          this.webArchive = null;
+        } catch (error) {
+          console.error("failed to demote embed to text:", error);
+        }
+        this.urlEditBuffer = null;
+        return;
+      }
+
+      // URL swapped for a new URL. Update the block, reset display title
+      // to the new URL (will be replaced by capture), and re-trigger
+      // capture via Page.js so toasts + polling stay in one place.
+      try {
+        await window.apiService.updateBlock(this.block.uuid, {
+          content: next,
+          content_type: "embed",
+          media_url: next,
+        });
+        this.block.content = next;
+        this.block.media_url = next;
+        this.webArchive = null;
+        document.dispatchEvent(
+          new CustomEvent("brainspread:recapture-archive", {
+            detail: { blockUuid: this.block.uuid, url: next },
+          })
+        );
+      } catch (error) {
+        console.error("failed to update embed URL:", error);
+        document.dispatchEvent(
+          new CustomEvent("brainspread:toast", {
+            detail: { message: "could not update URL", type: "error" },
+          })
+        );
+      }
+      this.urlEditBuffer = null;
+    },
+
     handleContextMenuAction(action) {
       this.hideContextMenu();
 
@@ -675,8 +825,20 @@ const BlockComponent = {
           />
           <div class="block-embed-body">
             <div class="block-embed-title">{{ embedTitle }}</div>
-            <div class="block-embed-host">{{ embedHostname }}</div>
+            <div class="block-embed-host">
+              {{ embedHostname }}
+              <span v-if="webArchive && webArchive.status === 'pending'" class="block-embed-status">· capturing…</span>
+              <span v-else-if="webArchive && webArchive.status === 'in_progress'" class="block-embed-status">· capturing…</span>
+              <span v-else-if="webArchive && webArchive.status === 'failed'" class="block-embed-status block-embed-status-failed">· capture failed</span>
+            </div>
           </div>
+          <button
+            v-if="webArchiveReady"
+            type="button"
+            class="block-embed-link"
+            title="Open saved archive"
+            @click.stop="openArchivedCopy"
+          >📄</button>
           <a
             :href="block.media_url"
             target="_blank"
@@ -701,6 +863,18 @@ const BlockComponent = {
         ></div>
         <div v-else class="block-content-wrapper">
           <textarea
+            v-if="isEmbed"
+            :value="urlEditBuffer"
+            @input="handleEmbedUrlInput"
+            @keydown="handleEmbedUrlKeydown"
+            @blur="handleEmbedUrlBlur"
+            class="block-content"
+            rows="1"
+            placeholder="paste a URL…"
+            ref="blockTextarea"
+          ></textarea>
+          <textarea
+            v-else
             :value="block.content"
             @input="handleTextareaInput"
             @keydown="handleTextareaKeydown"

@@ -102,6 +102,13 @@ const Page = {
       "brainspread:notes-modified",
       this.handleNotesModified
     );
+    // Re-capture a web archive when an embed block's URL is edited. The
+    // BlockComponent fires this after updating media_url; we own the
+    // capture/poll/toast flow so everything funnels through one place.
+    document.addEventListener(
+      "brainspread:recapture-archive",
+      this.handleRecaptureArchive
+    );
     // Load page data
     await this.loadPage();
   },
@@ -124,6 +131,10 @@ const Page = {
     window.removeEventListener(
       "brainspread:notes-modified",
       this.handleNotesModified
+    );
+    document.removeEventListener(
+      "brainspread:recapture-archive",
+      this.handleRecaptureArchive
     );
   },
 
@@ -1756,6 +1767,13 @@ const Page = {
         // Poll for completion. Capture usually finishes in 2-5s; give up
         // after ~30s so a slow site doesn't spin the UI forever.
         const finalStatus = await this.pollWebArchiveUntilDone(blockUuid);
+        // Let open BlockComponents refresh their cached archive state so
+        // the "view archive" button lights up without a page reload.
+        document.dispatchEvent(
+          new CustomEvent("brainspread:archive-updated", {
+            detail: { blockUuid, status: finalStatus },
+          })
+        );
         if (finalStatus === "ready") {
           this.emitToast("archive saved", "success", 3000);
           await this.loadPage({ silent: true });
@@ -1798,6 +1816,12 @@ const Page = {
       } catch (_) {
         return url;
       }
+    },
+
+    handleRecaptureArchive(event) {
+      const detail = event?.detail || {};
+      if (!detail.blockUuid || !detail.url) return;
+      this.triggerWebArchiveCapture(detail.blockUuid, detail.url);
     },
 
     async onBlockPaste(event, block) {

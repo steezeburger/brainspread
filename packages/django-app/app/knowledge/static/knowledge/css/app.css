@@ -4902,8 +4902,20 @@ kbd {
   padding: 0 0.25rem;
   font-size: 0.95rem;
   flex-shrink: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
 }
 
 .block-embed-link:hover {
   color: var(--text-primary);
+}
+
+.block-embed-status {
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.block-embed-status-failed {
+  color: var(--error-color, #c0392b);
 }

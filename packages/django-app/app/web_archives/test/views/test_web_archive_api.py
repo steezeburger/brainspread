@@ -1,10 +1,12 @@
 from unittest.mock import patch
 
+from django.core.files.base import ContentFile
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
+from core.models import Asset
 from core.test.helpers import UserFactory
 from web_archives.models import WebArchive
 
@@ -98,3 +100,53 @@ class WebArchiveAPITestCase(TestCase):
         response = self.client.get(f"/api/web-archives/by-block/{block.uuid}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["data"]["title"], "hello")
+
+    def test_readable_endpoint_streams_stored_html(self):
+        block = BlockFactory(user=self.user, page=self.page)
+        asset = Asset.objects.create(
+            user=self.user,
+            kind="web_archive_readable_html",
+            source_url="https://example.com/a",
+            mime_type="text/html; charset=utf-8",
+        )
+        asset.file.save("test.html", ContentFile(b"<p>hi</p>"), save=True)
+        WebArchive.objects.create(
+            user=self.user,
+            block=block,
+            source_url="https://example.com/a",
+            status="ready",
+            readable_asset=asset,
+        )
+
+        response = self.client.get(f"/api/web-archives/by-block/{block.uuid}/readable/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.content, b"<p>hi</p>")
+        self.assertIn("text/html", response["Content-Type"])
+
+    def test_readable_endpoint_404_when_no_archive(self):
+        block = BlockFactory(user=self.user, page=self.page)
+        response = self.client.get(f"/api/web-archives/by-block/{block.uuid}/readable/")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_readable_endpoint_rejects_other_users_archive(self):
+        other_user = UserFactory()
+        other_page = PageFactory(user=other_user)
+        other_block = BlockFactory(user=other_user, page=other_page)
+        asset = Asset.objects.create(
+            user=other_user,
+            kind="web_archive_readable_html",
+            source_url="https://example.com/a",
+        )
+        asset.file.save("other.html", ContentFile(b"secret"), save=True)
+        WebArchive.objects.create(
+            user=other_user,
+            block=other_block,
+            source_url="https://example.com/a",
+            status="ready",
+            readable_asset=asset,
+        )
+
+        response = self.client.get(
+            f"/api/web-archives/by-block/{other_block.uuid}/readable/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
