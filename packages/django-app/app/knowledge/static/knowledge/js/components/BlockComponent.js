@@ -835,10 +835,10 @@ const BlockComponent = {
           <button
             v-if="webArchiveReady"
             type="button"
-            class="block-embed-link"
+            class="block-embed-link block-embed-link-text"
             title="Open saved archive"
             @click.stop="openArchivedCopy"
-          >📄</button>
+          >archive</button>
           <a
             :href="block.media_url"
             target="_blank"
