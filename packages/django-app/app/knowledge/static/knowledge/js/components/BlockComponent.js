@@ -154,13 +154,18 @@ const BlockComponent = {
       );
     },
     canRequestArchive() {
-      // Show the "archive" CTA only once we've confirmed there's no
-      // archive yet. While the initial lookup is in flight we don't know,
-      // so render nothing to avoid a flash of the button that then
-      // disappears.
-      return (
-        !this.webArchiveLoading && !this.webArchive && !!this.block.media_url
-      );
+      // Show the "archive" CTA when we've confirmed there's no archive
+      // yet, OR when the previous capture failed (acts as a retry). While
+      // the initial lookup is in flight we don't know, so render nothing
+      // to avoid a flash of the button that then disappears.
+      if (this.webArchiveLoading || !this.block.media_url) return false;
+      if (!this.webArchive) return true;
+      return this.webArchive.status === "failed";
+    },
+    archiveButtonLabel() {
+      return this.webArchive && this.webArchive.status === "failed"
+        ? "retry"
+        : "archive";
     },
   },
   watch: {
@@ -801,9 +806,9 @@ const BlockComponent = {
             v-if="canRequestArchive"
             type="button"
             class="block-embed-link block-embed-link-text"
-            title="Archive this page for later"
+            :title="archiveButtonLabel === 'retry' ? 'Retry capture' : 'Archive this page for later'"
             @click.stop="requestArchive"
-          >archive</button>
+          >{{ archiveButtonLabel }}</button>
           <button
             v-else-if="webArchiveReady"
             type="button"
