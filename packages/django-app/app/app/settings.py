@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     "corsheaders",
     # own
     "core",
+    "assets",
     "knowledge",
     "ai_chat",
     "web_archives",

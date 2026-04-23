@@ -10,10 +10,11 @@ from common.models.uuid_mixin import UUIDModelMixin
 class Asset(UUIDModelMixin, CRUDTimestampsMixin):
     """
     A stored binary file owned by a user. Generic container for any kind of
-    captured or uploaded artifact (snapshot HTML, screenshots, user uploads,
-    etc.). Consumers reference Assets via FK to keep storage concerns in one
-    place; future migrations to S3/Filebase only need to flip Django's
-    DEFAULT_FILE_STORAGE without touching the consumer models.
+    captured or uploaded artifact (web archive HTML, screenshots, user
+    uploads, etc.). Consumers reference Assets via FK to keep storage
+    concerns in one place; future migrations to S3/Filebase only need to
+    flip Django's DEFAULT_FILE_STORAGE without touching the consumer
+    models.
     """
 
     KIND_CHOICES = [

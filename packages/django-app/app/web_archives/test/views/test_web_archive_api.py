@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
-from core.models import Asset
+from assets.models import Asset
 from core.test.helpers import UserFactory
 from web_archives.models import WebArchive
 

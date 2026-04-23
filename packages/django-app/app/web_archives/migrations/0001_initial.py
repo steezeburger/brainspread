@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ("core", "0010_asset"),
+        ("assets", "0001_initial"),
         ("knowledge", "0021_alter_block_block_type"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
@@ -84,7 +84,7 @@ class Migration(migrations.Migration):
                         null=True,
                         on_delete=models.deletion.SET_NULL,
                         related_name="+",
-                        to="core.asset",
+                        to="assets.asset",
                     ),
                 ),
                 (
@@ -94,7 +94,7 @@ class Migration(migrations.Migration):
                         null=True,
                         on_delete=models.deletion.SET_NULL,
                         related_name="+",
-                        to="core.asset",
+                        to="assets.asset",
                     ),
                 ),
                 (
@@ -104,7 +104,7 @@ class Migration(migrations.Migration):
                         null=True,
                         on_delete=models.deletion.SET_NULL,
                         related_name="+",
-                        to="core.asset",
+                        to="assets.asset",
                     ),
                 ),
                 (

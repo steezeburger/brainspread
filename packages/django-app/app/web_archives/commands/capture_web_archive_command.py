@@ -9,8 +9,8 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 
+from assets.models import Asset
 from common.commands.abstract_base_command import AbstractBaseCommand
-from core.models import Asset
 from knowledge.models import Block
 
 from ..forms.capture_web_archive_form import CaptureWebArchiveForm

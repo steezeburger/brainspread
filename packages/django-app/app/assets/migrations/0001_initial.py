@@ -6,8 +6,10 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
 
+    initial = True
+
     dependencies = [
-        ("core", "0009_alter_user_theme"),
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [

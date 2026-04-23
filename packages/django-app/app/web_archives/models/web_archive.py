@@ -58,21 +58,21 @@ class WebArchive(UUIDModelMixin, CRUDTimestampsMixin):
 
     # Artifact references
     readable_asset = models.ForeignKey(
-        "core.Asset",
+        "assets.Asset",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="+",
     )
     raw_asset = models.ForeignKey(
-        "core.Asset",
+        "assets.Asset",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="+",
     )
     screenshot_asset = models.ForeignKey(
-        "core.Asset",
+        "assets.Asset",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
