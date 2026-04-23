@@ -70,7 +70,6 @@ class SyncBlockTagsCommand(AbstractBaseCommand):
                 title=human_title,
                 slug=tag_name,
                 user=user,
-                content=f"Tag page for {human_title}",
                 is_published=True,
             )
         return tag_page
