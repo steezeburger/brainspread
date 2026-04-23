@@ -757,7 +757,26 @@ const BlockComponent = {
             @error="$event.target.style.display='none'"
           />
           <div class="block-embed-body">
-            <div class="block-embed-title">{{ embedTitle }}</div>
+            <textarea
+              v-if="block.isEditing"
+              :value="block.content"
+              @input="handleTextareaInput"
+              @keydown="handleTextareaKeydown"
+              @blur="handleTextareaBlur"
+              class="block-embed-title-input"
+              rows="1"
+              placeholder="label this link…"
+              ref="blockTextarea"
+            ></textarea>
+            <div
+              v-else
+              class="block-embed-title block-embed-title-clickable"
+              tabindex="0"
+              role="button"
+              :aria-label="'Edit label: ' + embedTitle"
+              @click.stop="startEditing(block)"
+              @keydown="handleBlockDisplayKeydown"
+            >{{ embedTitle }}</div>
             <div class="block-embed-host">
               <span class="block-embed-url">{{ block.media_url }}</span>
               <span v-if="webArchive && (webArchive.status === 'pending' || webArchive.status === 'in_progress')" class="block-embed-status">· capturing…</span>

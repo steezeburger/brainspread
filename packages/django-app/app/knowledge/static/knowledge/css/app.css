@@ -4888,6 +4888,38 @@ kbd {
   text-overflow: ellipsis;
 }
 
+.block-embed-title-clickable {
+  cursor: text;
+  padding: 0.1rem 0.2rem;
+  margin: -0.1rem -0.2rem;
+  border-radius: 2px;
+}
+
+.block-embed-title-clickable:hover,
+.block-embed-title-clickable:focus {
+  background: var(--hover-bg, rgba(0, 0, 0, 0.08));
+  outline: none;
+}
+
+.block-embed-title-input {
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 2px;
+  padding: 0.1rem 0.3rem;
+  width: 100%;
+  resize: none;
+  line-height: 1.3;
+}
+
+.block-embed-title-input:focus {
+  outline: none;
+  border-color: var(--border-primary);
+}
+
 .block-embed-host {
   font-size: 0.8rem;
   color: var(--text-muted);
