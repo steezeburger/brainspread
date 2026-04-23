@@ -7,10 +7,17 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from web_archives.commands import CaptureWebArchiveCommand, GetWebArchiveCommand
-from web_archives.forms import CaptureWebArchiveForm, GetWebArchiveForm
+from web_archives.commands import (
+    CaptureWebArchiveCommand,
+    GetWebArchiveCommand,
+    GetWebArchiveReadableCommand,
+)
+from web_archives.forms import (
+    CaptureWebArchiveForm,
+    GetWebArchiveForm,
+    GetWebArchiveReadableForm,
+)
 from web_archives.models import WebArchiveData
-from web_archives.repositories import WebArchiveRepository
 
 
 class WebArchiveResponse(TypedDict):
@@ -99,25 +106,19 @@ def get_web_archive(request, block_uuid: str):
 @permission_classes([IsAuthenticated])
 def get_web_archive_readable(request, block_uuid: str):
     """
-    Stream the stored readable HTML for an archive. Served through Django
-    rather than via MEDIA_URL so we can enforce the per-user ownership
-    check and keep working when MEDIA is not statically served (prod).
+    Stream the stored readable bytes for an archive. Served through
+    Django rather than via MEDIA_URL so the per-user ownership check
+    stays on the request path and prod doesn't need static MEDIA.
     """
-    archive = WebArchiveRepository.get_by_block_uuid(
-        block_uuid=block_uuid, user=request.user
-    )
-    if archive is None or archive.readable_asset_id is None:
+    form = GetWebArchiveReadableForm({"user": request.user.id, "block": block_uuid})
+    if not form.is_valid():
         raise Http404("readable archive not available")
 
-    asset = archive.readable_asset
-    try:
-        with asset.file.open("rb") as fh:
-            body = fh.read()
-    except FileNotFoundError:
-        raise Http404("archive file missing on disk")
+    payload = GetWebArchiveReadableCommand(form).execute()
+    if payload is None:
+        raise Http404("readable archive not available")
 
-    content_type = asset.mime_type or "text/html; charset=utf-8"
-    response = HttpResponse(body, content_type=content_type)
+    response = HttpResponse(payload.body, content_type=payload.mime_type)
     # Inline, not download - user opens in a new tab.
     response["Content-Disposition"] = "inline"
     return response

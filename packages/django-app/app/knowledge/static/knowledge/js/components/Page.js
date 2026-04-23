@@ -1810,14 +1810,6 @@ const Page = {
       return "pending";
     },
 
-    hostnameOf(url) {
-      try {
-        return new URL(url).hostname.replace(/^www\./, "");
-      } catch (_) {
-        return url;
-      }
-    },
-
     handleRecaptureArchive(event) {
       const detail = event?.detail || {};
       if (!detail.blockUuid || !detail.url) return;
