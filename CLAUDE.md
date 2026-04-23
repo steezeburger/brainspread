@@ -35,8 +35,6 @@ Navigate to `packages/django-app/` for most development tasks.
 - **Django App**: Main application in `packages/django-app/app/`
 - **Custom User Model**: Uses `core.User` as AUTH_USER_MODEL
 - **Docker Compose**: PostgreSQL database + Django web service
-- .ai/TODO.md - Contains todos, feature requests, bugs, etc. Update this file 
-  with any new tasks or issues you complete.
 
 ### Code Organization
 - `app/` - Main Django project
@@ -78,4 +76,3 @@ Navigate to `packages/django-app/` for most development tasks.
 ### Always load information from extra files in .ai/
 - .ai/DEBUGGING.md contains debugging tips and tricks
 - .ai/PROJECT_SETUP.md is a guide for setting up the project
-- .ai/TODO.md contains todos, feature requests, bugs, etc
