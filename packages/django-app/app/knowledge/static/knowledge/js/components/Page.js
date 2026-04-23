@@ -1754,7 +1754,7 @@ const Page = {
     },
 
     async triggerWebArchiveCapture(blockUuid, url) {
-      const toastId = this.emitToast(`archiving ${this.hostnameOf(url)}…`);
+      const toastId = this.emitToast(`archiving ${url}…`);
       try {
         const result = await window.apiService.captureWebArchive(
           blockUuid,
