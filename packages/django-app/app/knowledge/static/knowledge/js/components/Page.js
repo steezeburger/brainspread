@@ -2310,7 +2310,7 @@ const Page = {
         <!-- Linked References Section -->
         <div v-if="hasReferencedBlocks" class="linked-references-section">
           <h3 class="linked-references-title">
-            {{ totalReferencedBlocks }} Linked Reference{{ totalReferencedBlocks !== 1 ? 's' : '' }}
+            {{ totalReferencedBlocks }} linked reference{{ totalReferencedBlocks !== 1 ? 's' : '' }}
           </h3>
           
           <div class="referenced-blocks-container">
