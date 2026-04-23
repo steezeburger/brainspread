@@ -1,3 +1,4 @@
+from .capture_url_snapshot_command import CaptureUrlSnapshotCommand
 from .create_block_command import CreateBlockCommand
 from .create_page_command import CreatePageCommand
 from .delete_block_command import DeleteBlockCommand
@@ -5,6 +6,7 @@ from .delete_page_command import DeletePageCommand
 from .get_graph_data_command import GetGraphDataCommand
 from .get_historical_data_command import GetHistoricalDataCommand
 from .get_page_with_blocks_command import GetPageWithBlocksCommand
+from .get_snapshot_command import GetSnapshotCommand
 from .get_tag_content_command import GetTagContentCommand
 from .get_user_pages_command import GetUserPagesCommand
 from .move_undone_todos_command import MoveUndoneTodosCommand

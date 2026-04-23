@@ -226,6 +226,19 @@ class ApiService {
     );
   }
 
+  async captureSnapshot(blockUuid, url) {
+    return await this.request("/knowledge/api/snapshots/capture/", {
+      method: "POST",
+      body: JSON.stringify({ block: blockUuid, url }),
+    });
+  }
+
+  async getSnapshot(blockUuid) {
+    return await this.request(
+      `/knowledge/api/snapshots/by-block/${blockUuid}/`
+    );
+  }
+
   async getGraphData({ includeDaily = false, includeOrphans = true } = {}) {
     const params = new URLSearchParams({
       include_daily: includeDaily ? "true" : "false",

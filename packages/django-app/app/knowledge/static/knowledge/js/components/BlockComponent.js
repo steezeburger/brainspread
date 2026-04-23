@@ -113,6 +113,33 @@ const BlockComponent = {
     showTagSuggestions() {
       return this.tagQueryStart >= 0 && this.tagSuggestions.length > 0;
     },
+    isEmbed() {
+      return this.block.content_type === "embed" && !!this.block.media_url;
+    },
+    embedHostname() {
+      try {
+        return new URL(this.block.media_url).hostname.replace(/^www\./, "");
+      } catch (_) {
+        return this.block.media_url || "";
+      }
+    },
+    embedFaviconUrl() {
+      try {
+        const u = new URL(this.block.media_url);
+        return `${u.origin}/favicon.ico`;
+      } catch (_) {
+        return "";
+      }
+    },
+    embedTitle() {
+      // After snapshot capture completes, the backend overwrites
+      // block.content with the extracted title. Before that, content is
+      // just the URL, so fall back to the hostname for a cleaner card.
+      const c = (this.block.content || "").trim();
+      if (!c) return this.embedHostname;
+      if (c === this.block.media_url) return this.embedHostname;
+      return c;
+    },
   },
   watch: {
     showContextMenu(val) {
@@ -176,6 +203,14 @@ const BlockComponent = {
       const TAP_THRESHOLD = 10;
       return deltaX < TAP_THRESHOLD && deltaY < TAP_THRESHOLD;
     },
+    handleEmbedClick(event) {
+      // Let the explicit "open original" anchor through. Otherwise treat a
+      // click on the embed card as "edit this block" so embeds behave
+      // like any other block.
+      if (event.target.closest(".block-embed-link")) return;
+      this.startEditing(this.block);
+    },
+
     handleContentTouchEnd(event) {
       if (this.isTapGesture(event)) {
         if (event.target.closest(".clickable-tag")) return;
@@ -623,7 +658,36 @@ const BlockComponent = {
           <span v-else>•</span>
         </div>
         <div
-          v-if="!block.isEditing"
+          v-if="!block.isEditing && isEmbed"
+          class="block-embed-card"
+          tabindex="0"
+          role="button"
+          :aria-label="'Open article: ' + embedTitle"
+          @click="handleEmbedClick($event)"
+          @keydown="handleBlockDisplayKeydown"
+        >
+          <img
+            v-if="embedFaviconUrl"
+            class="block-embed-favicon"
+            :src="embedFaviconUrl"
+            alt=""
+            @error="$event.target.style.display='none'"
+          />
+          <div class="block-embed-body">
+            <div class="block-embed-title">{{ embedTitle }}</div>
+            <div class="block-embed-host">{{ embedHostname }}</div>
+          </div>
+          <a
+            :href="block.media_url"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="block-embed-link"
+            title="Open original"
+            @click.stop
+          >↗</a>
+        </div>
+        <div
+          v-else-if="!block.isEditing"
           class="block-content-display"
           :class="{ 'completed': ['done', 'wontdo'].includes(block.block_type) }"
           tabindex="0"

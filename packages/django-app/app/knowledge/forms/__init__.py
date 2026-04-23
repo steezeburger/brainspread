@@ -1,3 +1,4 @@
+from .capture_url_snapshot_form import CaptureUrlSnapshotForm
 from .create_block_form import CreateBlockForm
 from .create_page_form import CreatePageForm
 from .delete_block_form import DeleteBlockForm
@@ -5,6 +6,7 @@ from .delete_page_form import DeletePageForm
 from .get_graph_data_form import GetGraphDataForm
 from .get_historical_data_form import GetHistoricalDataForm
 from .get_page_with_blocks_form import GetPageWithBlocksForm
+from .get_snapshot_form import GetSnapshotForm
 from .get_tag_content_form import GetTagContentForm
 from .get_user_pages_form import GetUserPagesForm
 from .move_undone_todos_form import MoveUndoneTodosForm
