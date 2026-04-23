@@ -146,6 +146,22 @@ const BlockComponent = {
     webArchiveReady() {
       return !!(this.webArchive && this.webArchive.status === "ready");
     },
+    webArchiveInFlight() {
+      return !!(
+        this.webArchive &&
+        (this.webArchive.status === "pending" ||
+          this.webArchive.status === "in_progress")
+      );
+    },
+    canRequestArchive() {
+      // Show the "archive" CTA only once we've confirmed there's no
+      // archive yet. While the initial lookup is in flight we don't know,
+      // so render nothing to avoid a flash of the button that then
+      // disappears.
+      return (
+        !this.webArchiveLoading && !this.webArchive && !!this.block.media_url
+      );
+    },
   },
   watch: {
     showContextMenu(val) {
@@ -209,6 +225,23 @@ const BlockComponent = {
       if (detail.blockUuid === this.block.uuid) {
         this.loadWebArchive();
       }
+    },
+
+    requestArchive() {
+      if (!this.block.media_url) return;
+      // Page.js owns the capture/poll/toast flow. We just ask for it and
+      // optimistically flip local state to "pending" so the button swaps
+      // to "capturing…" immediately; the next archive-updated event
+      // reconciles with whatever the server returns.
+      this.webArchive = { status: "pending" };
+      document.dispatchEvent(
+        new CustomEvent("brainspread:request-archive", {
+          detail: {
+            blockUuid: this.block.uuid,
+            url: this.block.media_url,
+          },
+        })
+      );
     },
 
     async openArchivedCopy() {
@@ -732,7 +765,14 @@ const BlockComponent = {
             </div>
           </div>
           <button
-            v-if="webArchiveReady"
+            v-if="canRequestArchive"
+            type="button"
+            class="block-embed-link block-embed-link-text"
+            title="Archive this page for later"
+            @click.stop="requestArchive"
+          >archive</button>
+          <button
+            v-else-if="webArchiveReady"
             type="button"
             class="block-embed-link block-embed-link-text"
             title="Open saved archive"

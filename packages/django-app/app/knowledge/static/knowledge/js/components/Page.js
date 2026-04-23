@@ -102,6 +102,12 @@ const Page = {
       "brainspread:notes-modified",
       this.handleNotesModified
     );
+    // Embed cards fire this when the user clicks "archive". Archiving is
+    // opt-in - we don't capture on paste/drop/save, only on request.
+    document.addEventListener(
+      "brainspread:request-archive",
+      this.handleRequestArchive
+    );
     // Load page data
     await this.loadPage();
   },
@@ -124,6 +130,10 @@ const Page = {
     window.removeEventListener(
       "brainspread:notes-modified",
       this.handleNotesModified
+    );
+    document.removeEventListener(
+      "brainspread:request-archive",
+      this.handleRequestArchive
     );
   },
 
@@ -321,27 +331,22 @@ const Page = {
             block.block_type = result.data.block_type;
           }
           // Inline URL detection on save: if the user typed (or pasted
-          // without the paste handler firing, e.g. mobile) a bare URL and
-          // we haven't already captured for this block, kick off a capture.
+          // without the paste handler firing, e.g. mobile) a bare URL,
+          // promote the block to an embed so the card renders. Archiving
+          // is opt-in via the card's "archive" button.
           const trimmed = (newContent || "").trim();
-          if (
-            this.isBareUrl(trimmed) &&
-            block.content_type !== "embed" &&
-            !block.__archiveKicked
-          ) {
-            block.__archiveKicked = true;
+          if (this.isBareUrl(trimmed) && block.content_type !== "embed") {
             block.content_type = "embed";
             block.media_url = trimmed;
             // Persist the embed flag so re-renders don't regress; don't
-            // await - the capture runs async and we don't want to block
-            // the caller's flow (e.g. Enter to create next block).
+            // await - we don't want to block the caller's flow (e.g. Enter
+            // to create next block).
             window.apiService
               .updateBlock(block.uuid, {
                 content_type: "embed",
                 media_url: trimmed,
               })
               .catch((err) => console.error("embed flag save failed", err));
-            this.triggerWebArchiveCapture(block.uuid, trimmed);
           }
           if (!skipReload) {
             await this.loadPage();
@@ -1688,8 +1693,8 @@ const Page = {
           if (!createResult.success) throw new Error("create block failed");
           targetBlock = { uuid: createResult.data.uuid };
         }
-
-        await this.triggerWebArchiveCapture(targetBlock.uuid, url);
+        // Archiving is opt-in - user clicks "archive" on the embed card.
+        void targetBlock;
       } catch (error) {
         console.error("url paste failed:", error);
         this.emitToast("could not save URL", "error");
@@ -1719,8 +1724,7 @@ const Page = {
           order: newOrder,
         });
         if (!createResult.success) throw new Error("create block failed");
-
-        await this.triggerWebArchiveCapture(createResult.data.uuid, url);
+        // Archiving is opt-in - user clicks "archive" on the embed card.
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("url drop failed:", error);
@@ -1797,6 +1801,12 @@ const Page = {
         }
       }
       return "pending";
+    },
+
+    handleRequestArchive(event) {
+      const detail = event?.detail || {};
+      if (!detail.blockUuid || !detail.url) return;
+      this.triggerWebArchiveCapture(detail.blockUuid, detail.url);
     },
 
     async onBlockPaste(event, block) {
