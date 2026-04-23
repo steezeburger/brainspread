@@ -1,29 +1,12 @@
 # Features
 
-## ai features
-- [ ] tim as mcp accessible via ai chat to take actions on the database
-  - [ ] could organize TODOs, cleanup data, etc. can do things i would have had
-    to do manually through django admin or write a mgmt command for
-- [ ] when a user submits a web link, it should be accessed and summarized with
-  tags auto-generated from the content
-- [ ] when a user submits a web link use semantic search to find similar blocks
-  and pages and show them in sidebar
-
 ## general usage
-- [ ] reminders/notifications? kinda useless without push notifications which
-  require a mobile app i think?
-  - maybe can use something like Pusher? i still think you need APN details for
-    that
-  - maybe can use Twilio? though Sam did say recently that you have to jump
-    through some hoops to get a phone number now
 - [ ] should be able to drag and move block ordering and nestings around
 - [ ] ability to select multiple blocks and perform actions on them
   - [ ] delete multiple blocks
   - [ ] move multiple blocks to current day
 - [ ] support for [[this syntax of tags]] in blocks
 - [ ] spotlight should allow for actions to, like creating a new page
-- [x] graph view of blocks/pages (#39) - force-directed canvas at `/knowledge/graph/`,
-  built from block→page tag M2M and `[[title]]` wiki links
 
 # Optimizations
 - [ ] need to cleanup frontend routes, django templates, and the vue app
