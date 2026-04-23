@@ -35,14 +35,21 @@ SAMPLE_HTML = """
 """
 
 
-def make_fake_fetcher(html: str = SAMPLE_HTML, final_url: str = None):
+def make_fake_fetcher(
+    html: str = SAMPLE_HTML,
+    final_url: str = None,
+    content_type: str = "text/html; charset=utf-8",
+    content_bytes: bytes = None,
+):
     def fake_fetch(url: str, **_):
+        body = content_bytes if content_bytes is not None else html.encode("utf-8")
         return FetchedPage(
             url=url,
             final_url=final_url or url,
             status_code=200,
-            content_type="text/html; charset=utf-8",
-            html=html,
+            content_type=content_type,
+            content_bytes=body,
+            html=html if "text/html" in content_type else "",
         )
 
     return fake_fetch
@@ -178,3 +185,37 @@ class TestCaptureWebArchiveCommand(TestCase):
 
         self.assertEqual(archive.source_url, "https://example.com/article")
         self.assertEqual(archive.status, "pending")
+
+    def test_should_store_pdf_bytes_verbatim_for_non_html_content(self):
+        # PDFs and other binary payloads bypass the HTML extractor. The
+        # bytes land in an Asset with the correct mime type so the
+        # "open archive" UI can actually render them.
+        block = BlockFactory(user=self.user, page=self.page, content="")
+        form = self._make_form(
+            block_uuid=block.uuid,
+            url="https://example.com/papers/liquidtext.pdf",
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+        pdf_bytes = b"%PDF-1.4 stub body"
+        fetcher = make_fake_fetcher(
+            content_type="application/pdf",
+            content_bytes=pdf_bytes,
+            html="",
+        )
+
+        command = CaptureWebArchiveCommand(form, run_async=False, fetcher=fetcher)
+        archive = command.execute()
+
+        self.assertEqual(archive.status, "ready")
+        self.assertEqual(archive.title, "liquidtext.pdf")
+        self.assertTrue(archive.readable_asset_id)
+        # Readable and raw should point at the same blob so the reader
+        # endpoint has something to serve.
+        self.assertEqual(archive.readable_asset_id, archive.raw_asset_id)
+        self.assertEqual(archive.readable_asset.mime_type, "application/pdf")
+        with archive.readable_asset.file.open("rb") as fh:
+            self.assertEqual(fh.read(), pdf_bytes)
+
+        block.refresh_from_db()
+        self.assertEqual(block.content, "liquidtext.pdf")

@@ -16,7 +16,24 @@ class FetchedPage:
     final_url: str
     status_code: int
     content_type: str
+    # Raw bytes as delivered by the server. Used when the response isn't
+    # HTML (PDF, image, etc.) so we can store the real file instead of a
+    # mojibake UTF-8 decode of it.
+    content_bytes: bytes
+    # UTF-8 / declared-charset decoding of the body. Only meaningful for
+    # text/html-ish responses; for binary content this is best-effort and
+    # should not be saved.
     html: str
+
+    @property
+    def is_html_like(self) -> bool:
+        ct = (self.content_type or "").lower()
+        return (
+            "text/html" in ct
+            or "application/xhtml" in ct
+            or "text/plain" in ct
+            or not ct
+        )
 
 
 def fetch_url(
@@ -25,13 +42,13 @@ def fetch_url(
     user_agent: Optional[str] = None,
 ) -> FetchedPage:
     """
-    Fetch a URL and return the decoded HTML body. Raises httpx.HTTPError on
-    network / non-2xx / oversized responses; callers translate those into a
-    web archive failure state.
+    Fetch a URL and return both the raw body bytes and a best-effort
+    decoded string. Raises httpx.HTTPError on network / non-2xx /
+    oversized responses; callers translate those into a failure state.
     """
     headers = {
         "User-Agent": user_agent or DEFAULT_USER_AGENT,
-        "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
+        "Accept": ("text/html,application/xhtml+xml,application/pdf,image/*,*/*;q=0.8"),
         "Accept-Language": "en-US,en;q=0.9",
     }
     with httpx.Client(
@@ -42,11 +59,11 @@ def fetch_url(
         if len(response.content) > MAX_RESPONSE_BYTES:
             raise httpx.HTTPError(f"Response too large: {len(response.content)} bytes")
         content_type = response.headers.get("content-type", "")
-        # httpx's .text uses the declared encoding; good enough for HTML.
         return FetchedPage(
             url=url,
             final_url=str(response.url),
             status_code=response.status_code,
             content_type=content_type,
+            content_bytes=response.content,
             html=response.text,
         )

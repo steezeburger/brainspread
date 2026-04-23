@@ -1,7 +1,9 @@
 import hashlib
 import logging
+import mimetypes
 import threading
 from typing import Callable, Optional
+from urllib.parse import unquote, urlparse
 
 from django.core.files.base import ContentFile
 from django.db import transaction
@@ -110,6 +112,13 @@ def _run_capture(archive_uuid, fetcher: Callable) -> None:
         )
         return
 
+    if fetched.is_html_like:
+        _capture_html(archive, fetched)
+    else:
+        _capture_binary(archive, fetched)
+
+
+def _capture_html(archive: WebArchive, fetched) -> None:
     try:
         extracted = extract_readable(fetched.html, final_url=fetched.final_url)
     except Exception as exc:  # noqa: BLE001 - extractor is best-effort
@@ -126,7 +135,7 @@ def _run_capture(archive_uuid, fetcher: Callable) -> None:
             user=archive.user,
             kind="web_archive_readable_html",
             source_url=archive.source_url,
-            content=extracted.readable_html or "",
+            content_bytes=(extracted.readable_html or "").encode("utf-8"),
             mime_type="text/html; charset=utf-8",
             filename=f"{archive.uuid}.readable.html",
         )
@@ -134,7 +143,7 @@ def _run_capture(archive_uuid, fetcher: Callable) -> None:
             user=archive.user,
             kind="web_archive_raw_html",
             source_url=archive.source_url,
-            content=fetched.html,
+            content_bytes=fetched.content_bytes,
             mime_type=fetched.content_type or "text/html; charset=utf-8",
             filename=f"{archive.uuid}.raw.html",
         )
@@ -171,23 +180,65 @@ def _run_capture(archive_uuid, fetcher: Callable) -> None:
         )
 
 
+def _capture_binary(archive: WebArchive, fetched) -> None:
+    """
+    Non-HTML payload (PDF, image, etc.). Store the exact bytes so the user
+    can view the original document through the readable endpoint; don't try
+    to run the HTML extractor. The readable asset and raw asset point at the
+    same file so every code path stays simple.
+    """
+    parsed = urlparse(fetched.final_url or archive.source_url)
+    url_basename = unquote(parsed.path.rsplit("/", 1)[-1]) or "download"
+    mime = (fetched.content_type or "application/octet-stream").split(";", 1)[0]
+    extension = mimetypes.guess_extension(mime) or ""
+    stored_name = f"{archive.uuid}{extension}"
+
+    with transaction.atomic():
+        archive = WebArchive.objects.select_for_update().get(pk=archive.pk)
+
+        asset = _store_asset(
+            user=archive.user,
+            kind="web_archive_raw_html",
+            source_url=archive.source_url,
+            content_bytes=fetched.content_bytes,
+            mime_type=fetched.content_type or mime,
+            filename=stored_name,
+        )
+
+        archive.canonical_url = fetched.final_url
+        # Best we can do without extraction: filename as the title so the
+        # block renders as something readable.
+        archive.title = url_basename[:500]
+        archive.site_name = (parsed.netloc or "").replace("www.", "")[:200]
+        archive.readable_asset = asset
+        archive.raw_asset = asset
+        archive.status = "ready"
+        archive.failure_reason = ""
+        archive.captured_at = timezone.now()
+        archive.save()
+
+    if url_basename:
+        Block.objects.filter(pk=archive.block_id).update(
+            content=url_basename, modified_at=timezone.now()
+        )
+
+
 def _store_asset(
     *,
     user,
     kind: str,
     source_url: str,
-    content: str,
+    content_bytes: bytes,
     mime_type: str,
     filename: str,
 ) -> Asset:
-    encoded = content.encode("utf-8")
     asset = Asset.objects.create(
         user=user,
         kind=kind,
         source_url=source_url,
         mime_type=mime_type,
-        byte_size=len(encoded),
-        sha256=hashlib.sha256(encoded).hexdigest(),
+        byte_size=len(content_bytes),
+        sha256=hashlib.sha256(content_bytes).hexdigest(),
     )
-    asset.file.save(filename, ContentFile(encoded), save=True)
+    asset.file.save(filename, ContentFile(content_bytes), save=True)
     return asset
