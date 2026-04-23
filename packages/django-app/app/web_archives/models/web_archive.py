@@ -4,15 +4,21 @@ from django.conf import settings
 from django.db import models
 
 from common.models.crud_timestamps_mixin import CRUDTimestampsMixin
+from common.models.soft_delete_timestamp_mixin import SoftDeleteTimestampMixin
 from common.models.uuid_mixin import UUIDModelMixin
 
 
-class WebArchive(UUIDModelMixin, CRUDTimestampsMixin):
+class WebArchive(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
     """
     A captured copy of a webpage, tied to a Block. Stores extracted metadata
     plus FKs to Asset rows for the readable HTML, raw HTML, and (eventually)
     a screenshot. Capture runs asynchronously: rows start in `pending`,
     flip to `ready` or `failed`.
+
+    Soft-deleted: when the anchor block is deleted we soft-delete the
+    archive row (via DeleteBlockCommand -> SoftDeleteWebArchiveCommand)
+    and null out the block FK so the Asset bytes stay on disk for a
+    future library / restore view.
     """
 
     STATUS_CHOICES = [
@@ -27,10 +33,16 @@ class WebArchive(UUIDModelMixin, CRUDTimestampsMixin):
         on_delete=models.CASCADE,
         related_name="web_archives",
     )
-    # One archive per Block. If we ever want versioned re-captures, switch
-    # to FK + a latest_per_block filter; for v1 keep it one-to-one.
+    # One archive per Block while the block exists. When the block is
+    # deleted, SoftDeleteWebArchiveCommand marks the archive inactive and
+    # Django sets block to NULL via on_delete=SET_NULL - the archive
+    # survives for history even though the anchor block is gone.
     block = models.OneToOneField(
-        "knowledge.Block", on_delete=models.CASCADE, related_name="web_archive"
+        "knowledge.Block",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="web_archive",
     )
 
     source_url = models.URLField(max_length=2048)
@@ -95,7 +107,9 @@ class WebArchive(UUIDModelMixin, CRUDTimestampsMixin):
     def to_dict(self) -> "WebArchiveData":
         return {
             "uuid": str(self.uuid),
-            "block_uuid": str(self.block.uuid),
+            # block may be NULL for archives whose anchor block has been
+            # deleted - they're soft-deleted but still serializable.
+            "block_uuid": str(self.block.uuid) if self.block_id else None,
             "source_url": self.source_url,
             "canonical_url": self.canonical_url,
             "status": self.status,
@@ -120,7 +134,7 @@ class WebArchive(UUIDModelMixin, CRUDTimestampsMixin):
 
 class WebArchiveData(TypedDict):
     uuid: str
-    block_uuid: str
+    block_uuid: Optional[str]
     source_url: str
     canonical_url: str
     status: str

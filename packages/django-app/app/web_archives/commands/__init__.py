@@ -4,10 +4,12 @@ from .get_web_archive_readable_command import (
     GetWebArchiveReadableCommand,
     ReadableArchivePayload,
 )
+from .soft_delete_web_archive_command import SoftDeleteWebArchiveCommand
 
 __all__ = [
     "CaptureWebArchiveCommand",
     "GetWebArchiveCommand",
     "GetWebArchiveReadableCommand",
     "ReadableArchivePayload",
+    "SoftDeleteWebArchiveCommand",
 ]
