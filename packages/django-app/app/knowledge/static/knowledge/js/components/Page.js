@@ -102,13 +102,6 @@ const Page = {
       "brainspread:notes-modified",
       this.handleNotesModified
     );
-    // Re-capture a web archive when an embed block's URL is edited. The
-    // BlockComponent fires this after updating media_url; we own the
-    // capture/poll/toast flow so everything funnels through one place.
-    document.addEventListener(
-      "brainspread:recapture-archive",
-      this.handleRecaptureArchive
-    );
     // Load page data
     await this.loadPage();
   },
@@ -131,10 +124,6 @@ const Page = {
     window.removeEventListener(
       "brainspread:notes-modified",
       this.handleNotesModified
-    );
-    document.removeEventListener(
-      "brainspread:recapture-archive",
-      this.handleRecaptureArchive
     );
   },
 
@@ -1808,12 +1797,6 @@ const Page = {
         }
       }
       return "pending";
-    },
-
-    handleRecaptureArchive(event) {
-      const detail = event?.detail || {};
-      if (!detail.blockUuid || !detail.url) return;
-      this.triggerWebArchiveCapture(detail.blockUuid, detail.url);
     },
 
     async onBlockPaste(event, block) {
