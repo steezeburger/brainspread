@@ -174,6 +174,20 @@ const BlockComponent = {
         this.contextMenuFocusedIndex = -1;
       }
     },
+    // For unarchived embeds, block.content holds the raw URL (paste
+    // flow). Showing that in the label editor is confusing - the user
+    // expects the visible label (hostname). Clear content on edit entry
+    // so they get an empty textarea + placeholder; on blur, empty
+    // content falls back to the hostname display via embedTitle.
+    "block.isEditing"(isEditing) {
+      if (
+        isEditing &&
+        this.isEmbed &&
+        this.block.content === this.block.media_url
+      ) {
+        this.block.content = "";
+      }
+    },
   },
 
   mounted() {
