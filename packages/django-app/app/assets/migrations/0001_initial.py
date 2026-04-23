@@ -8,6 +8,17 @@ class Migration(migrations.Migration):
 
     initial = True
 
+    # The Asset model originally lived in core/ as migration 0010_asset.
+    # When we split it out into the `assets` app, DBs that had already
+    # applied the old migration would fail the consistency check because
+    # web_archives.0001_initial (already applied) now declares a
+    # dependency on assets.0001_initial (never applied).
+    #
+    # `replaces` tells Django: if core.0010_asset is marked applied,
+    # treat this migration as applied too - no CreateModel runs on envs
+    # that already have the table, and fresh envs run it normally.
+    replaces = [("core", "0010_asset")]
+
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
