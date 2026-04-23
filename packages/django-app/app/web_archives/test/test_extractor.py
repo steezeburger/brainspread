@@ -1,6 +1,6 @@
 from django.test import SimpleTestCase
 
-from knowledge.snapshots import extract_readable
+from web_archives.pipeline import extract_readable
 
 
 class TestExtractor(SimpleTestCase):

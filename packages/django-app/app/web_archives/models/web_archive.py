@@ -7,7 +7,7 @@ from common.models.crud_timestamps_mixin import CRUDTimestampsMixin
 from common.models.uuid_mixin import UUIDModelMixin
 
 
-class Snapshot(UUIDModelMixin, CRUDTimestampsMixin):
+class WebArchive(UUIDModelMixin, CRUDTimestampsMixin):
     """
     A captured copy of a webpage, tied to a Block. Stores extracted metadata
     plus FKs to Asset rows for the readable HTML, raw HTML, and (eventually)
@@ -23,12 +23,14 @@ class Snapshot(UUIDModelMixin, CRUDTimestampsMixin):
     ]
 
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="snapshots"
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="web_archives",
     )
-    # One Snapshot per Block. If we ever want versioned re-captures, switch to
-    # FK + a latest_per_block filter; for v1 keep it one-to-one for simplicity.
+    # One archive per Block. If we ever want versioned re-captures, switch
+    # to FK + a latest_per_block filter; for v1 keep it one-to-one.
     block = models.OneToOneField(
-        "Block", on_delete=models.CASCADE, related_name="snapshot"
+        "knowledge.Block", on_delete=models.CASCADE, related_name="web_archive"
     )
 
     source_url = models.URLField(max_length=2048)
@@ -80,19 +82,17 @@ class Snapshot(UUIDModelMixin, CRUDTimestampsMixin):
     captured_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        db_table = "snapshots"
+        db_table = "web_archives"
         ordering = ("-created_at",)
         indexes = [
-            models.Index(
-                fields=["user", "status"], name="snapshots_user_id_status_idx"
-            ),
-            models.Index(fields=["text_sha256"], name="snapshots_text_sha256_idx"),
+            models.Index(fields=["user", "status"], name="webarchives_user_status_idx"),
+            models.Index(fields=["text_sha256"], name="webarchives_text_sha256_idx"),
         ]
 
     def __str__(self) -> str:
-        return f"Snapshot {self.uuid} ({self.status}): {self.source_url[:80]}"
+        return f"WebArchive {self.uuid} ({self.status}): {self.source_url[:80]}"
 
-    def to_dict(self) -> "SnapshotData":
+    def to_dict(self) -> "WebArchiveData":
         return {
             "uuid": str(self.uuid),
             "block_uuid": str(self.block.uuid),
@@ -118,7 +118,7 @@ class Snapshot(UUIDModelMixin, CRUDTimestampsMixin):
         }
 
 
-class SnapshotData(TypedDict):
+class WebArchiveData(TypedDict):
     uuid: str
     block_uuid: str
     source_url: str
@@ -138,6 +138,6 @@ class SnapshotData(TypedDict):
     captured_at: Optional[str]
 
 
-class SnapshotListData(TypedDict):
-    snapshots: List[SnapshotData]
+class WebArchiveListData(TypedDict):
+    web_archives: List[WebArchiveData]
     total_count: int

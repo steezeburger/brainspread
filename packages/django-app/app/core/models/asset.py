@@ -17,9 +17,9 @@ class Asset(UUIDModelMixin, CRUDTimestampsMixin):
     """
 
     KIND_CHOICES = [
-        ("snapshot_readable_html", "Snapshot Readable HTML"),
-        ("snapshot_raw_html", "Snapshot Raw HTML"),
-        ("snapshot_screenshot", "Snapshot Screenshot"),
+        ("web_archive_readable_html", "Web Archive Readable HTML"),
+        ("web_archive_raw_html", "Web Archive Raw HTML"),
+        ("web_archive_screenshot", "Web Archive Screenshot"),
         ("upload", "User Upload"),
     ]
 

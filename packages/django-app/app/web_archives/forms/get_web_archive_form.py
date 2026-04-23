@@ -5,15 +5,14 @@ from common.forms import UUIDModelChoiceField
 from common.forms.base_form import BaseForm
 from core.models import User
 from core.repositories import UserRepository
+from knowledge.models import Block
+from knowledge.repositories import BlockRepository
 
-from ..models import Block
-from ..repositories import BlockRepository
 
-
-class GetSnapshotForm(BaseForm):
+class GetWebArchiveForm(BaseForm):
     """
-    Fetch a snapshot by its anchor block UUID. Used by the frontend to poll
-    for capture completion after triggering CaptureUrlSnapshot.
+    Fetch a web archive by its anchor block UUID. Used by the frontend to
+    poll for capture completion after CaptureWebArchive kicks off.
     """
 
     user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())

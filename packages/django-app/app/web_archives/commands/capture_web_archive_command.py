@@ -9,27 +9,29 @@ from django.utils import timezone
 
 from common.commands.abstract_base_command import AbstractBaseCommand
 from core.models import Asset
+from knowledge.models import Block
 
-from ..forms.capture_url_snapshot_form import CaptureUrlSnapshotForm
-from ..models import Block, Snapshot
-from ..snapshots import extract_readable, fetch_url
+from ..forms.capture_web_archive_form import CaptureWebArchiveForm
+from ..models import WebArchive
+from ..pipeline import extract_readable, fetch_url
 
 logger = logging.getLogger(__name__)
 
 
-class CaptureUrlSnapshotCommand(AbstractBaseCommand):
+class CaptureWebArchiveCommand(AbstractBaseCommand):
     """
-    Create (or reset) a Snapshot row for a block and run the capture pipeline.
+    Create (or reset) a WebArchive row for a block and run the capture
+    pipeline.
 
     By default the capture runs in a background thread so the API returns
-    immediately with the pending row; callers then poll for completion. Tests
-    (and any synchronous caller) can pass run_async=False to get the capture
-    inline.
+    immediately with the pending row; callers then poll for completion.
+    Tests (and any synchronous caller) can pass run_async=False to get
+    the capture inline.
     """
 
     def __init__(
         self,
-        form: CaptureUrlSnapshotForm,
+        form: CaptureWebArchiveForm,
         run_async: bool = True,
         fetcher: Optional[Callable] = None,
     ) -> None:
@@ -38,7 +40,7 @@ class CaptureUrlSnapshotCommand(AbstractBaseCommand):
         # Injected so tests can mock network fetches without patching imports.
         self._fetcher = fetcher or fetch_url
 
-    def execute(self) -> Snapshot:
+    def execute(self) -> WebArchive:
         super().execute()
 
         user = self.form.cleaned_data["user"]
@@ -46,13 +48,13 @@ class CaptureUrlSnapshotCommand(AbstractBaseCommand):
         url: str = self.form.cleaned_data["url"]
 
         # Mirror the URL onto the block so render-time lookups don't need a
-        # join; keep snapshot row canonical though.
+        # join; the archive row still holds the canonical copy.
         if block.media_url != url or block.content_type != "embed":
             block.media_url = url
             block.content_type = "embed"
             block.save(update_fields=["media_url", "content_type", "modified_at"])
 
-        snapshot, _ = Snapshot.objects.update_or_create(
+        archive, _ = WebArchive.objects.update_or_create(
             block=block,
             defaults={
                 "user": user,
@@ -65,18 +67,18 @@ class CaptureUrlSnapshotCommand(AbstractBaseCommand):
         if self.run_async:
             thread = threading.Thread(
                 target=_run_capture_threadsafe,
-                args=(snapshot.uuid, self._fetcher),
+                args=(archive.uuid, self._fetcher),
                 daemon=True,
             )
             thread.start()
         else:
-            _run_capture(snapshot.uuid, fetcher=self._fetcher)
-            snapshot.refresh_from_db()
+            _run_capture(archive.uuid, fetcher=self._fetcher)
+            archive.refresh_from_db()
 
-        return snapshot
+        return archive
 
 
-def _run_capture_threadsafe(snapshot_uuid, fetcher: Callable) -> None:
+def _run_capture_threadsafe(archive_uuid, fetcher: Callable) -> None:
     """
     Thread entrypoint. Needs its own DB connection (Django opens one per
     thread) and must swallow exceptions - there's no one to log them to
@@ -85,24 +87,24 @@ def _run_capture_threadsafe(snapshot_uuid, fetcher: Callable) -> None:
     from django.db import connection
 
     try:
-        _run_capture(snapshot_uuid, fetcher=fetcher)
+        _run_capture(archive_uuid, fetcher=fetcher)
     except Exception as exc:  # noqa: BLE001 - last line of defence in worker
-        logger.exception("snapshot capture crashed: %s", exc)
+        logger.exception("web archive capture crashed: %s", exc)
     finally:
         connection.close()
 
 
-def _run_capture(snapshot_uuid, fetcher: Callable) -> None:
-    snapshot = Snapshot.objects.filter(uuid=snapshot_uuid).first()
-    if snapshot is None:
+def _run_capture(archive_uuid, fetcher: Callable) -> None:
+    archive = WebArchive.objects.filter(uuid=archive_uuid).first()
+    if archive is None:
         return
 
-    Snapshot.objects.filter(pk=snapshot.pk).update(status="in_progress")
+    WebArchive.objects.filter(pk=archive.pk).update(status="in_progress")
 
     try:
-        fetched = fetcher(snapshot.source_url)
+        fetched = fetcher(archive.source_url)
     except Exception as exc:  # noqa: BLE001 - any network/HTTP failure
-        Snapshot.objects.filter(pk=snapshot.pk).update(
+        WebArchive.objects.filter(pk=archive.pk).update(
             status="failed",
             failure_reason=f"fetch failed: {exc}"[:2000],
         )
@@ -111,30 +113,30 @@ def _run_capture(snapshot_uuid, fetcher: Callable) -> None:
     try:
         extracted = extract_readable(fetched.html, final_url=fetched.final_url)
     except Exception as exc:  # noqa: BLE001 - extractor is best-effort
-        Snapshot.objects.filter(pk=snapshot.pk).update(
+        WebArchive.objects.filter(pk=archive.pk).update(
             status="failed",
             failure_reason=f"extract failed: {exc}"[:2000],
         )
         return
 
     with transaction.atomic():
-        snapshot = Snapshot.objects.select_for_update().get(pk=snapshot.pk)
+        archive = WebArchive.objects.select_for_update().get(pk=archive.pk)
 
         readable_asset = _store_asset(
-            user=snapshot.user,
-            kind="snapshot_readable_html",
-            source_url=snapshot.source_url,
+            user=archive.user,
+            kind="web_archive_readable_html",
+            source_url=archive.source_url,
             content=extracted.readable_html or "",
             mime_type="text/html; charset=utf-8",
-            filename=f"{snapshot.uuid}.readable.html",
+            filename=f"{archive.uuid}.readable.html",
         )
         raw_asset = _store_asset(
-            user=snapshot.user,
-            kind="snapshot_raw_html",
-            source_url=snapshot.source_url,
+            user=archive.user,
+            kind="web_archive_raw_html",
+            source_url=archive.source_url,
             content=fetched.html,
             mime_type=fetched.content_type or "text/html; charset=utf-8",
-            filename=f"{snapshot.uuid}.raw.html",
+            filename=f"{archive.uuid}.raw.html",
         )
 
         text_sha = (
@@ -143,28 +145,28 @@ def _run_capture(snapshot_uuid, fetcher: Callable) -> None:
             else ""
         )
 
-        snapshot.canonical_url = extracted.canonical_url or fetched.final_url
-        snapshot.title = extracted.title[:500]
-        snapshot.site_name = extracted.site_name[:200]
-        snapshot.author = extracted.author[:200]
-        snapshot.published_at = extracted.published_at
-        snapshot.og_image_url = extracted.og_image_url[:2048]
-        snapshot.favicon_url = extracted.favicon_url[:2048]
-        snapshot.excerpt = extracted.excerpt
-        snapshot.word_count = extracted.word_count
-        snapshot.extracted_text = extracted.plain_text
-        snapshot.text_sha256 = text_sha
-        snapshot.readable_asset = readable_asset
-        snapshot.raw_asset = raw_asset
-        snapshot.status = "ready"
-        snapshot.failure_reason = ""
-        snapshot.captured_at = timezone.now()
-        snapshot.save()
+        archive.canonical_url = extracted.canonical_url or fetched.final_url
+        archive.title = extracted.title[:500]
+        archive.site_name = extracted.site_name[:200]
+        archive.author = extracted.author[:200]
+        archive.published_at = extracted.published_at
+        archive.og_image_url = extracted.og_image_url[:2048]
+        archive.favicon_url = extracted.favicon_url[:2048]
+        archive.excerpt = extracted.excerpt
+        archive.word_count = extracted.word_count
+        archive.extracted_text = extracted.plain_text
+        archive.text_sha256 = text_sha
+        archive.readable_asset = readable_asset
+        archive.raw_asset = raw_asset
+        archive.status = "ready"
+        archive.failure_reason = ""
+        archive.captured_at = timezone.now()
+        archive.save()
 
     # Mirror the extracted title onto the block so the embed renders with
     # real text as soon as capture finishes.
     if extracted.title:
-        Block.objects.filter(pk=snapshot.block_id).update(
+        Block.objects.filter(pk=archive.block_id).update(
             content=extracted.title, modified_at=timezone.now()
         )
 

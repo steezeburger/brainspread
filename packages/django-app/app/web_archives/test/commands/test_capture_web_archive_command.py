@@ -1,9 +1,9 @@
 from django.test import TestCase
 
-from knowledge.commands import CaptureUrlSnapshotCommand
-from knowledge.forms import CaptureUrlSnapshotForm
-from knowledge.models import Snapshot
-from knowledge.snapshots.fetcher import FetchedPage
+from web_archives.commands import CaptureWebArchiveCommand
+from web_archives.forms import CaptureWebArchiveForm
+from web_archives.models import WebArchive
+from web_archives.pipeline.fetcher import FetchedPage
 
 from ..helpers import BlockFactory, PageFactory, UserFactory
 
@@ -48,7 +48,7 @@ def make_fake_fetcher(html: str = SAMPLE_HTML, final_url: str = None):
     return fake_fetch
 
 
-class TestCaptureUrlSnapshotCommand(TestCase):
+class TestCaptureWebArchiveCommand(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.user = UserFactory()
@@ -61,44 +61,44 @@ class TestCaptureUrlSnapshotCommand(TestCase):
             "url": overrides.pop("url", "https://example.com/article"),
         }
         data.update(overrides)
-        return CaptureUrlSnapshotForm(data)
+        return CaptureWebArchiveForm(data)
 
-    def test_should_create_pending_snapshot_and_mark_block_embed(self):
+    def test_should_create_pending_archive_and_mark_block_embed(self):
         block = BlockFactory(user=self.user, page=self.page, content="")
         form = self._make_form(block_uuid=block.uuid)
         self.assertTrue(form.is_valid(), form.errors)
 
         # run_async=False so we capture synchronously in tests, and inject
         # a fake fetcher so we don't hit the network.
-        command = CaptureUrlSnapshotCommand(
+        command = CaptureWebArchiveCommand(
             form, run_async=False, fetcher=make_fake_fetcher()
         )
-        snapshot = command.execute()
+        archive = command.execute()
 
         block.refresh_from_db()
         self.assertEqual(block.content_type, "embed")
         self.assertEqual(block.media_url, "https://example.com/article")
 
-        self.assertEqual(snapshot.status, "ready")
-        self.assertEqual(snapshot.source_url, "https://example.com/article")
+        self.assertEqual(archive.status, "ready")
+        self.assertEqual(archive.source_url, "https://example.com/article")
         # og:title wins over <title> when present
-        self.assertEqual(snapshot.title, "Example Article - OG")
-        self.assertEqual(snapshot.site_name, "Example Blog")
-        self.assertEqual(snapshot.author, "Jane Doe")
-        self.assertEqual(snapshot.canonical_url, "https://example.com/article")
-        self.assertTrue(snapshot.favicon_url.endswith("/favicon.ico"))
-        self.assertEqual(snapshot.og_image_url, "https://example.com/images/hero.png")
-        self.assertIsNotNone(snapshot.published_at)
-        self.assertTrue(snapshot.excerpt)
-        self.assertTrue(snapshot.word_count and snapshot.word_count > 0)
-        self.assertIn("First paragraph", snapshot.extracted_text)
-        self.assertNotIn("skip me", snapshot.extracted_text)
-        self.assertNotIn("alert", snapshot.extracted_text)
-        self.assertTrue(snapshot.readable_asset_id)
-        self.assertTrue(snapshot.raw_asset_id)
-        self.assertEqual(len(snapshot.text_sha256), 64)
+        self.assertEqual(archive.title, "Example Article - OG")
+        self.assertEqual(archive.site_name, "Example Blog")
+        self.assertEqual(archive.author, "Jane Doe")
+        self.assertEqual(archive.canonical_url, "https://example.com/article")
+        self.assertTrue(archive.favicon_url.endswith("/favicon.ico"))
+        self.assertEqual(archive.og_image_url, "https://example.com/images/hero.png")
+        self.assertIsNotNone(archive.published_at)
+        self.assertTrue(archive.excerpt)
+        self.assertTrue(archive.word_count and archive.word_count > 0)
+        self.assertIn("First paragraph", archive.extracted_text)
+        self.assertNotIn("skip me", archive.extracted_text)
+        self.assertNotIn("alert", archive.extracted_text)
+        self.assertTrue(archive.readable_asset_id)
+        self.assertTrue(archive.raw_asset_id)
+        self.assertEqual(len(archive.text_sha256), 64)
 
-    def test_should_mark_snapshot_failed_on_fetch_error(self):
+    def test_should_mark_archive_failed_on_fetch_error(self):
         block = BlockFactory(user=self.user, page=self.page)
         form = self._make_form(block_uuid=block.uuid)
         self.assertTrue(form.is_valid())
@@ -106,18 +106,18 @@ class TestCaptureUrlSnapshotCommand(TestCase):
         def broken_fetcher(url: str, **_):
             raise RuntimeError("boom")
 
-        command = CaptureUrlSnapshotCommand(
+        command = CaptureWebArchiveCommand(
             form, run_async=False, fetcher=broken_fetcher
         )
-        snapshot = command.execute()
+        archive = command.execute()
 
-        self.assertEqual(snapshot.status, "failed")
-        self.assertIn("boom", snapshot.failure_reason)
-        self.assertFalse(snapshot.readable_asset_id)
+        self.assertEqual(archive.status, "failed")
+        self.assertIn("boom", archive.failure_reason)
+        self.assertFalse(archive.readable_asset_id)
 
-    def test_should_update_existing_snapshot_when_recapturing(self):
+    def test_should_update_existing_archive_when_recapturing(self):
         block = BlockFactory(user=self.user, page=self.page)
-        Snapshot.objects.create(
+        WebArchive.objects.create(
             user=self.user,
             block=block,
             source_url="https://old.example.com",
@@ -128,16 +128,16 @@ class TestCaptureUrlSnapshotCommand(TestCase):
         form = self._make_form(block_uuid=block.uuid, url="https://example.com/article")
         self.assertTrue(form.is_valid())
 
-        CaptureUrlSnapshotCommand(
+        CaptureWebArchiveCommand(
             form, run_async=False, fetcher=make_fake_fetcher()
         ).execute()
 
-        # Still one snapshot per block - old row got updated in place.
-        self.assertEqual(Snapshot.objects.filter(block=block).count(), 1)
-        snapshot = Snapshot.objects.get(block=block)
-        self.assertEqual(snapshot.status, "ready")
-        self.assertEqual(snapshot.source_url, "https://example.com/article")
-        self.assertEqual(snapshot.failure_reason, "")
+        # Still one archive per block - old row got updated in place.
+        self.assertEqual(WebArchive.objects.filter(block=block).count(), 1)
+        archive = WebArchive.objects.get(block=block)
+        self.assertEqual(archive.status, "ready")
+        self.assertEqual(archive.source_url, "https://example.com/article")
+        self.assertEqual(archive.failure_reason, "")
 
     def test_should_update_block_content_to_extracted_title(self):
         block = BlockFactory(
@@ -146,7 +146,7 @@ class TestCaptureUrlSnapshotCommand(TestCase):
         form = self._make_form(block_uuid=block.uuid)
         self.assertTrue(form.is_valid())
 
-        CaptureUrlSnapshotCommand(
+        CaptureWebArchiveCommand(
             form, run_async=False, fetcher=make_fake_fetcher()
         ).execute()
 
@@ -162,7 +162,7 @@ class TestCaptureUrlSnapshotCommand(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("block", form.errors)
 
-    def test_returns_pending_snapshot_immediately_when_async(self):
+    def test_returns_pending_archive_immediately_when_async(self):
         # Verifies run_async=True path creates a pending row synchronously
         # and returns before capture completes. We don't join the thread
         # because DB state across threads is not guaranteed inside the
@@ -171,10 +171,10 @@ class TestCaptureUrlSnapshotCommand(TestCase):
         form = self._make_form(block_uuid=block.uuid)
         self.assertTrue(form.is_valid())
 
-        command = CaptureUrlSnapshotCommand(
+        command = CaptureWebArchiveCommand(
             form, run_async=True, fetcher=make_fake_fetcher()
         )
-        snapshot = command.execute()
+        archive = command.execute()
 
-        self.assertEqual(snapshot.source_url, "https://example.com/article")
-        self.assertEqual(snapshot.status, "pending")
+        self.assertEqual(archive.source_url, "https://example.com/article")
+        self.assertEqual(archive.status, "pending")

@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     "core",
     "knowledge",
     "ai_chat",
+    "web_archives",
 ]
 
 MIDDLEWARE = [

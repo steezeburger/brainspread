@@ -30,15 +30,4 @@ urlpatterns = [
     path("api/historical/", views.get_historical_data, name="get_historical_data"),
     path("api/graph/", views.get_graph_data, name="get_graph_data"),
     path("api/tag/<str:tag_name>/", views.get_tag_content, name="get_tag_content"),
-    # Snapshot endpoints
-    path(
-        "api/snapshots/capture/",
-        views.capture_url_snapshot,
-        name="capture_url_snapshot",
-    ),
-    path(
-        "api/snapshots/by-block/<str:block_uuid>/",
-        views.get_snapshot,
-        name="get_snapshot",
-    ),
 ]

@@ -6,14 +6,17 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
 
+    initial = True
+
     dependencies = [
         ("core", "0010_asset"),
         ("knowledge", "0021_alter_block_block_type"),
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name="Snapshot",
+            name="WebArchive",
             fields=[
                 (
                     "id",
@@ -70,7 +73,7 @@ class Migration(migrations.Migration):
                     "block",
                     models.OneToOneField(
                         on_delete=models.deletion.CASCADE,
-                        related_name="snapshot",
+                        related_name="web_archive",
                         to="knowledge.block",
                     ),
                 ),
@@ -108,26 +111,26 @@ class Migration(migrations.Migration):
                     "user",
                     models.ForeignKey(
                         on_delete=models.deletion.CASCADE,
-                        related_name="snapshots",
+                        related_name="web_archives",
                         to=settings.AUTH_USER_MODEL,
                     ),
                 ),
             ],
             options={
-                "db_table": "snapshots",
+                "db_table": "web_archives",
                 "ordering": ("-created_at",),
             },
         ),
         migrations.AddIndex(
-            model_name="snapshot",
+            model_name="webarchive",
             index=models.Index(
-                fields=["user", "status"], name="snapshots_user_id_status_idx"
+                fields=["user", "status"], name="webarchives_user_status_idx"
             ),
         ),
         migrations.AddIndex(
-            model_name="snapshot",
+            model_name="webarchive",
             index=models.Index(
-                fields=["text_sha256"], name="snapshots_text_sha256_idx"
+                fields=["text_sha256"], name="webarchives_text_sha256_idx"
             ),
         ),
     ]

@@ -5,18 +5,17 @@ from common.forms import UUIDModelChoiceField
 from common.forms.base_form import BaseForm
 from core.models import User
 from core.repositories import UserRepository
+from knowledge.models import Block
+from knowledge.repositories import BlockRepository
 
-from ..models import Block
-from ..repositories import BlockRepository
 
-
-class CaptureUrlSnapshotForm(BaseForm):
+class CaptureWebArchiveForm(BaseForm):
     """
-    Capture a webpage snapshot for an existing block.
+    Capture a webpage archive for an existing block.
 
     The block is the anchor - callers create the embed block first (through
     the normal CreateBlock flow) then kick off capture. That keeps the block
-    on screen immediately and lets snapshot state load in asynchronously.
+    on screen immediately and lets archive state load in asynchronously.
     """
 
     user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())

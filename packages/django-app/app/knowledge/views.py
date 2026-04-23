@@ -8,7 +8,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from knowledge.commands import (
-    CaptureUrlSnapshotCommand,
     CreateBlockCommand,
     CreatePageCommand,
     DeleteBlockCommand,
@@ -16,7 +15,6 @@ from knowledge.commands import (
     GetGraphDataCommand,
     GetHistoricalDataCommand,
     GetPageWithBlocksCommand,
-    GetSnapshotCommand,
     GetTagContentCommand,
     GetUserPagesCommand,
     MoveUndoneTodosCommand,
@@ -31,7 +29,6 @@ from knowledge.commands.get_historical_data_command import HistoricalData
 from knowledge.commands.get_tag_content_command import TagContentData
 from knowledge.commands.move_undone_todos_command import MoveUndoneTodosData
 from knowledge.forms import (
-    CaptureUrlSnapshotForm,
     CreateBlockForm,
     CreatePageForm,
     DeleteBlockForm,
@@ -39,7 +36,6 @@ from knowledge.forms import (
     GetGraphDataForm,
     GetHistoricalDataForm,
     GetPageWithBlocksForm,
-    GetSnapshotForm,
     GetTagContentForm,
     GetUserPagesForm,
     MoveUndoneTodosForm,
@@ -49,7 +45,7 @@ from knowledge.forms import (
     UpdateBlockForm,
     UpdatePageForm,
 )
-from knowledge.models import BlockData, PageData, PagesData, SnapshotData
+from knowledge.models import BlockData, PageData, PagesData
 from knowledge.models.page import PageWithBlocksData
 
 
@@ -105,12 +101,6 @@ class MoveUndoneTodosResponse(TypedDict):
 class GraphDataResponse(TypedDict):
     success: bool
     data: Optional[GraphData]
-    errors: Optional[Dict[str, List[str]]]
-
-
-class SnapshotResponse(TypedDict):
-    success: bool
-    data: Optional[SnapshotData]
     errors: Optional[Dict[str, List[str]]]
 
 
@@ -758,78 +748,6 @@ def get_graph_data(request):
             "errors": {"non_field_errors": [str(e)]},
         }
         return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def capture_url_snapshot(request):
-    """Kick off a capture for an existing block + URL and return the pending row."""
-    try:
-        data = request.data.copy()
-        data["user"] = request.user.id
-        form = CaptureUrlSnapshotForm(data)
-
-        if form.is_valid():
-            command = CaptureUrlSnapshotCommand(form)
-            snapshot = command.execute()
-            response: SnapshotResponse = {
-                "success": True,
-                "data": snapshot.to_dict(),
-                "errors": None,
-            }
-            return Response(response)
-
-        response: SnapshotResponse = {
-            "success": False,
-            "data": None,
-            "errors": form.errors,
-        }
-        return Response(response, status=status.HTTP_400_BAD_REQUEST)
-
-    except ValidationError as e:
-        return Response(
-            {"success": False, "data": None, "errors": {"non_field_errors": [str(e)]}},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    except Exception as e:
-        return Response(
-            {"success": False, "data": None, "errors": {"non_field_errors": [str(e)]}},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
-
-
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def get_snapshot(request, block_uuid: str):
-    """Return the snapshot for a block (for polling after capture_url_snapshot)."""
-    try:
-        form = GetSnapshotForm({"user": request.user.id, "block": block_uuid})
-        if not form.is_valid():
-            return Response(
-                {"success": False, "data": None, "errors": form.errors},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        snapshot = GetSnapshotCommand(form).execute()
-        if snapshot is None:
-            return Response(
-                {"success": False, "data": None, "errors": {"block": ["No snapshot"]}},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        response: SnapshotResponse = {
-            "success": True,
-            "data": snapshot.to_dict(),
-            "errors": None,
-        }
-        return Response(response)
-
-    except Exception as e:
-        return Response(
-            {"success": False, "data": None, "errors": {"non_field_errors": [str(e)]}},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
 
 
 @api_view(["GET"])

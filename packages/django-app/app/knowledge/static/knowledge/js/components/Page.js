@@ -327,9 +327,9 @@ const Page = {
           if (
             this.isBareUrl(trimmed) &&
             block.content_type !== "embed" &&
-            !block.__snapshotKicked
+            !block.__archiveKicked
           ) {
-            block.__snapshotKicked = true;
+            block.__archiveKicked = true;
             block.content_type = "embed";
             block.media_url = trimmed;
             // Persist the embed flag so re-renders don't regress; don't
@@ -341,7 +341,7 @@ const Page = {
                 media_url: trimmed,
               })
               .catch((err) => console.error("embed flag save failed", err));
-            this.triggerSnapshotCapture(block.uuid, trimmed);
+            this.triggerWebArchiveCapture(block.uuid, trimmed);
           }
           if (!skipReload) {
             await this.loadPage();
@@ -1624,7 +1624,7 @@ const Page = {
       return createdUuid;
     },
 
-    // ---- URL snapshot helpers -------------------------------------------
+    // ---- Web archive helpers --------------------------------------------
     isBareUrl(text) {
       if (!text) return false;
       // Single token, http(s), no whitespace. Strict so inline URLs in text
@@ -1689,7 +1689,7 @@ const Page = {
           targetBlock = { uuid: createResult.data.uuid };
         }
 
-        await this.triggerSnapshotCapture(targetBlock.uuid, url);
+        await this.triggerWebArchiveCapture(targetBlock.uuid, url);
       } catch (error) {
         console.error("url paste failed:", error);
         this.emitToast("could not save URL", "error");
@@ -1720,7 +1720,7 @@ const Page = {
         });
         if (!createResult.success) throw new Error("create block failed");
 
-        await this.triggerSnapshotCapture(createResult.data.uuid, url);
+        await this.triggerWebArchiveCapture(createResult.data.uuid, url);
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("url drop failed:", error);
@@ -1742,48 +1742,51 @@ const Page = {
       }
     },
 
-    async triggerSnapshotCapture(blockUuid, url) {
-      const toastId = this.emitToast(`capturing ${this.hostnameOf(url)}…`);
+    async triggerWebArchiveCapture(blockUuid, url) {
+      const toastId = this.emitToast(`archiving ${this.hostnameOf(url)}…`);
       try {
-        const result = await window.apiService.captureSnapshot(blockUuid, url);
+        const result = await window.apiService.captureWebArchive(
+          blockUuid,
+          url
+        );
         if (!result.success) {
-          this.emitToast("snapshot capture failed", "error");
+          this.emitToast("archive capture failed", "error");
           return;
         }
         // Poll for completion. Capture usually finishes in 2-5s; give up
         // after ~30s so a slow site doesn't spin the UI forever.
-        const finalStatus = await this.pollSnapshotUntilDone(blockUuid);
+        const finalStatus = await this.pollWebArchiveUntilDone(blockUuid);
         if (finalStatus === "ready") {
-          this.emitToast("snapshot saved", "success", 3000);
+          this.emitToast("archive saved", "success", 3000);
           await this.loadPage({ silent: true });
         } else if (finalStatus === "failed") {
-          this.emitToast("snapshot capture failed", "error");
+          this.emitToast("archive capture failed", "error");
         }
         // "pending"/"in_progress" fall through - user can reload later.
       } catch (error) {
-        console.error("capture snapshot failed:", error);
-        this.emitToast("snapshot capture failed", "error");
+        console.error("capture web archive failed:", error);
+        this.emitToast("archive capture failed", "error");
       }
       // toastId currently unused by app.js (auto-dismiss by duration), kept
       // for when we add dismissal-by-id support.
       void toastId;
     },
 
-    async pollSnapshotUntilDone(
+    async pollWebArchiveUntilDone(
       blockUuid,
       { maxAttempts = 15, intervalMs = 2000 } = {}
     ) {
       for (let i = 0; i < maxAttempts; i++) {
         await new Promise((resolve) => setTimeout(resolve, intervalMs));
         try {
-          const result = await window.apiService.getSnapshot(blockUuid);
+          const result = await window.apiService.getWebArchive(blockUuid);
           if (result && result.success && result.data) {
             const status = result.data.status;
             if (status === "ready" || status === "failed") return status;
           }
         } catch (error) {
           // 404 while we wait for the row to settle - just keep trying.
-          console.debug("snapshot poll error", error);
+          console.debug("web archive poll error", error);
         }
       }
       return "pending";
@@ -1805,7 +1808,7 @@ const Page = {
       if (!text) return;
 
       // URL paste gets first shot. If the clipboard is a bare URL, create an
-      // embed block and kick off a snapshot capture in the background.
+      // embed block and kick off an archive capture in the background.
       const trimmed = text.trim();
       if (this.isBareUrl(trimmed)) {
         event.preventDefault();

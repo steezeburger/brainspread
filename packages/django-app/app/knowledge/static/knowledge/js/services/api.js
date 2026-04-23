@@ -226,17 +226,15 @@ class ApiService {
     );
   }
 
-  async captureSnapshot(blockUuid, url) {
-    return await this.request("/knowledge/api/snapshots/capture/", {
+  async captureWebArchive(blockUuid, url) {
+    return await this.request("/api/web-archives/capture/", {
       method: "POST",
       body: JSON.stringify({ block: blockUuid, url }),
     });
   }
 
-  async getSnapshot(blockUuid) {
-    return await this.request(
-      `/knowledge/api/snapshots/by-block/${blockUuid}/`
-    );
+  async getWebArchive(blockUuid) {
+    return await this.request(`/api/web-archives/by-block/${blockUuid}/`);
   }
 
   async getGraphData({ includeDaily = false, includeOrphans = true } = {}) {

@@ -5,7 +5,7 @@ import httpx
 
 DEFAULT_TIMEOUT_SECONDS = 15
 DEFAULT_USER_AGENT = (
-    "Mozilla/5.0 (compatible; brainspread-snapshot/1.0; +https://brainspread.app)"
+    "Mozilla/5.0 (compatible; brainspread-archiver/1.0; +https://brainspread.app)"
 )
 MAX_RESPONSE_BYTES = 10 * 1024 * 1024  # 10 MB - refuse absurd payloads
 
@@ -27,7 +27,7 @@ def fetch_url(
     """
     Fetch a URL and return the decoded HTML body. Raises httpx.HTTPError on
     network / non-2xx / oversized responses; callers translate those into a
-    snapshot failure state.
+    web archive failure state.
     """
     headers = {
         "User-Agent": user_agent or DEFAULT_USER_AGENT,
