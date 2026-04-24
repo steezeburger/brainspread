@@ -32,6 +32,8 @@ jobs:
           key: ${{ secrets.DO_SSH_KEY }}
           envs: GITHUB_TOKEN,PR_NUM,PR_BRANCH,PORT,STAGING_BASE_DIR,DJANGO_SUPERUSER_EMAIL,DJANGO_SUPERUSER_PASSWORD
           script: |
+            set -euo pipefail
+
             STAGING_DIR="${STAGING_BASE_DIR}/pr-${PR_NUM}"
             PG_PORT=$((5500 + PR_NUM))
             PROJECT="brainspread_pr_${PR_NUM}"
@@ -117,6 +119,8 @@ jobs:
           key: ${{ secrets.DO_SSH_KEY }}
           envs: PR_NUM,STAGING_BASE_DIR
           script: |
+            set -euo pipefail
+
             STAGING_DIR="${STAGING_BASE_DIR}/pr-${PR_NUM}"
             PROJECT="brainspread_pr_${PR_NUM}"
             VOLUME="${PROJECT}_postgres"

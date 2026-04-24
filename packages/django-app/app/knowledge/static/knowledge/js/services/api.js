@@ -226,6 +226,35 @@ class ApiService {
     );
   }
 
+  async captureWebArchive(blockUuid, url) {
+    return await this.request("/api/web-archives/capture/", {
+      method: "POST",
+      body: JSON.stringify({ block: blockUuid, url }),
+    });
+  }
+
+  async getWebArchive(blockUuid) {
+    return await this.request(`/api/web-archives/by-block/${blockUuid}/`);
+  }
+
+  async fetchWebArchiveReadableBlob(blockUuid) {
+    // Token auth lives in localStorage, so we can't just <a target="_blank"> -
+    // that GET wouldn't carry the Authorization header. Fetch here, hand the
+    // caller a Blob, and they turn it into an object URL to open in a tab.
+    const headers = {};
+    if (this.token) {
+      headers["Authorization"] = `Token ${this.token}`;
+    }
+    const response = await fetch(
+      `${this.baseURL}/api/web-archives/by-block/${blockUuid}/readable/`,
+      { headers }
+    );
+    if (!response.ok) {
+      throw new Error(`archive fetch failed: ${response.status}`);
+    }
+    return await response.blob();
+  }
+
   async getGraphData({ includeDaily = false, includeOrphans = true } = {}) {
     const params = new URLSearchParams({
       include_daily: includeDaily ? "true" : "false",

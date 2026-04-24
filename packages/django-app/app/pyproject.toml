@@ -44,4 +44,13 @@ ignore = [
 "**/tests.py" = ["F841"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["app", "core", "common", "knowledge", "tagging"]
+known-first-party = [
+    "ai_chat",
+    "app",
+    "assets",
+    "common",
+    "core",
+    "knowledge",
+    "tagging",
+    "web_archives",
+]

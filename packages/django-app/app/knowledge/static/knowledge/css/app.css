@@ -4847,3 +4847,124 @@ kbd {
   color: var(--text-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+.block-embed-card {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border-secondary);
+  border-radius: 4px;
+  background: var(--hover-bg-light);
+  cursor: pointer;
+  color: var(--text-primary);
+  min-width: 0;
+}
+
+.block-embed-card:hover {
+  background: var(--hover-bg);
+}
+
+.block-embed-favicon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.block-embed-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.block-embed-title {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.block-embed-title-clickable {
+  cursor: text;
+  padding: 0.1rem 0.2rem;
+  margin: -0.1rem -0.2rem;
+  border-radius: 2px;
+}
+
+.block-embed-title-clickable:hover,
+.block-embed-title-clickable:focus {
+  background: var(--hover-bg, rgba(0, 0, 0, 0.08));
+  outline: none;
+}
+
+.block-embed-title-input {
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 2px;
+  padding: 0.1rem 0.3rem;
+  width: 100%;
+  resize: none;
+  line-height: 1.3;
+}
+
+.block-embed-title-input:focus {
+  outline: none;
+  border-color: var(--border-primary);
+}
+
+.block-embed-host {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.block-embed-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.block-embed-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 0 0.25rem;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.block-embed-link:hover {
+  color: var(--text-primary);
+}
+
+.block-embed-link-text {
+  font-size: 0.8rem;
+  font-family: inherit;
+}
+
+.block-embed-status {
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.block-embed-status-failed {
+  color: var(--error-color, #c0392b);
+}

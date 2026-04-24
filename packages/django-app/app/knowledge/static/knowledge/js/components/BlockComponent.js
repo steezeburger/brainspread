@@ -95,6 +95,9 @@ const BlockComponent = {
       tagQuery: "",
       tagSelectedIndex: 0,
       tagSearchToken: 0,
+      // Web archive state (loaded lazily for embed blocks)
+      webArchive: null,
+      webArchiveLoading: false,
     };
   },
   computed: {
@@ -113,6 +116,57 @@ const BlockComponent = {
     showTagSuggestions() {
       return this.tagQueryStart >= 0 && this.tagSuggestions.length > 0;
     },
+    isEmbed() {
+      return this.block.content_type === "embed" && !!this.block.media_url;
+    },
+    embedHostname() {
+      try {
+        return new URL(this.block.media_url).hostname.replace(/^www\./, "");
+      } catch (_) {
+        return this.block.media_url || "";
+      }
+    },
+    embedFaviconUrl() {
+      try {
+        const u = new URL(this.block.media_url);
+        return `${u.origin}/favicon.ico`;
+      } catch (_) {
+        return "";
+      }
+    },
+    embedTitle() {
+      // After archive capture completes, the backend overwrites
+      // block.content with the extracted title. Before that, content is
+      // just the URL, so fall back to the hostname for a cleaner card.
+      const c = (this.block.content || "").trim();
+      if (!c) return this.embedHostname;
+      if (c === this.block.media_url) return this.embedHostname;
+      return c;
+    },
+    webArchiveReady() {
+      return !!(this.webArchive && this.webArchive.status === "ready");
+    },
+    webArchiveInFlight() {
+      return !!(
+        this.webArchive &&
+        (this.webArchive.status === "pending" ||
+          this.webArchive.status === "in_progress")
+      );
+    },
+    canRequestArchive() {
+      // Show the "archive" CTA when we've confirmed there's no archive
+      // yet, OR when the previous capture failed (acts as a retry). While
+      // the initial lookup is in flight we don't know, so render nothing
+      // to avoid a flash of the button that then disappears.
+      if (this.webArchiveLoading || !this.block.media_url) return false;
+      if (!this.webArchive) return true;
+      return this.webArchive.status === "failed";
+    },
+    archiveButtonLabel() {
+      return this.webArchive && this.webArchive.status === "failed"
+        ? "retry"
+        : "archive";
+    },
   },
   watch: {
     showContextMenu(val) {
@@ -125,6 +179,20 @@ const BlockComponent = {
         this.contextMenuFocusedIndex = -1;
       }
     },
+    // For unarchived embeds, block.content holds the raw URL (paste
+    // flow). Showing that in the label editor is confusing - the user
+    // expects the visible label (hostname). Clear content on edit entry
+    // so they get an empty textarea + placeholder; on blur, empty
+    // content falls back to the hostname display via embedTitle.
+    "block.isEditing"(isEditing) {
+      if (
+        isEditing &&
+        this.isEmbed &&
+        this.block.content === this.block.media_url
+      ) {
+        this.block.content = "";
+      }
+    },
   },
 
   mounted() {
@@ -134,6 +202,13 @@ const BlockComponent = {
       "openBlockContextMenu",
       this.handleOpenContextMenuEvent
     );
+    document.addEventListener(
+      "brainspread:archive-updated",
+      this.handleArchiveUpdated
+    );
+    if (this.isEmbed) {
+      this.loadWebArchive();
+    }
   },
   beforeUnmount() {
     // Clean up event listener
@@ -142,8 +217,73 @@ const BlockComponent = {
       "openBlockContextMenu",
       this.handleOpenContextMenuEvent
     );
+    document.removeEventListener(
+      "brainspread:archive-updated",
+      this.handleArchiveUpdated
+    );
   },
   methods: {
+    async loadWebArchive() {
+      if (this.webArchiveLoading) return;
+      this.webArchiveLoading = true;
+      try {
+        const result = await window.apiService.getWebArchive(this.block.uuid);
+        if (result && result.success && result.data) {
+          this.webArchive = result.data;
+        }
+      } catch (_) {
+        // 404 is expected when capture hasn't happened yet; other errors
+        // we'd rather ignore than show a scary error in the page.
+      } finally {
+        this.webArchiveLoading = false;
+      }
+    },
+
+    handleArchiveUpdated(event) {
+      const detail = event?.detail || {};
+      if (detail.blockUuid === this.block.uuid) {
+        this.loadWebArchive();
+      }
+    },
+
+    requestArchive() {
+      if (!this.block.media_url) return;
+      // Page.js owns the capture/poll/toast flow. We just ask for it and
+      // optimistically flip local state to "pending" so the button swaps
+      // to "capturing…" immediately; the next archive-updated event
+      // reconciles with whatever the server returns.
+      this.webArchive = { status: "pending" };
+      document.dispatchEvent(
+        new CustomEvent("brainspread:request-archive", {
+          detail: {
+            blockUuid: this.block.uuid,
+            url: this.block.media_url,
+          },
+        })
+      );
+    },
+
+    async openArchivedCopy() {
+      if (!this.webArchiveReady) return;
+      try {
+        const blob = await window.apiService.fetchWebArchiveReadableBlob(
+          this.block.uuid
+        );
+        const objectUrl = URL.createObjectURL(blob);
+        // Revoke after the tab had time to load; browsers will keep the
+        // object alive while the tab is using it.
+        window.open(objectUrl, "_blank", "noopener,noreferrer");
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+      } catch (error) {
+        console.error("failed to open archived copy:", error);
+        document.dispatchEvent(
+          new CustomEvent("brainspread:toast", {
+            detail: { message: "could not open archive", type: "error" },
+          })
+        );
+      }
+    },
+
     toggleBlockContext() {
       if (this.blockInContext) {
         this.onBlockRemoveFromContext(this.block.uuid);
@@ -623,7 +763,70 @@ const BlockComponent = {
           <span v-else>•</span>
         </div>
         <div
-          v-if="!block.isEditing"
+          v-if="isEmbed"
+          class="block-embed-card"
+          tabindex="0"
+          :aria-label="'Embed: ' + embedTitle + ' — ' + block.media_url"
+        >
+          <img
+            v-if="embedFaviconUrl"
+            class="block-embed-favicon"
+            :src="embedFaviconUrl"
+            alt=""
+            @error="$event.target.style.display='none'"
+          />
+          <div class="block-embed-body">
+            <textarea
+              v-if="block.isEditing"
+              :value="block.content"
+              @input="handleTextareaInput"
+              @keydown="handleTextareaKeydown"
+              @blur="handleTextareaBlur"
+              class="block-embed-title-input"
+              rows="1"
+              placeholder="label this link…"
+              ref="blockTextarea"
+            ></textarea>
+            <div
+              v-else
+              class="block-embed-title block-embed-title-clickable"
+              tabindex="0"
+              role="button"
+              :aria-label="'Edit label: ' + embedTitle"
+              @click.stop="startEditing(block)"
+              @keydown="handleBlockDisplayKeydown"
+            >{{ embedTitle }}</div>
+            <div class="block-embed-host">
+              <span class="block-embed-url">{{ block.media_url }}</span>
+              <span v-if="webArchive && (webArchive.status === 'pending' || webArchive.status === 'in_progress')" class="block-embed-status">· capturing…</span>
+              <span v-else-if="webArchive && webArchive.status === 'failed'" class="block-embed-status block-embed-status-failed">· capture failed</span>
+            </div>
+          </div>
+          <button
+            v-if="canRequestArchive"
+            type="button"
+            class="block-embed-link block-embed-link-text"
+            :title="archiveButtonLabel === 'retry' ? 'Retry capture' : 'Archive this page for later'"
+            @click.stop="requestArchive"
+          >{{ archiveButtonLabel }}</button>
+          <button
+            v-else-if="webArchiveReady"
+            type="button"
+            class="block-embed-link block-embed-link-text"
+            title="Open saved archive"
+            @click.stop="openArchivedCopy"
+          >open archive</button>
+          <a
+            :href="block.media_url"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="block-embed-link"
+            title="Open original"
+            @click.stop
+          >↗</a>
+        </div>
+        <div
+          v-else-if="!block.isEditing"
           class="block-content-display"
           :class="{ 'completed': ['done', 'wontdo'].includes(block.block_type) }"
           tabindex="0"

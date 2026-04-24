@@ -102,6 +102,12 @@ const Page = {
       "brainspread:notes-modified",
       this.handleNotesModified
     );
+    // Embed cards fire this when the user clicks "archive". Archiving is
+    // opt-in - we don't capture on paste/drop/save, only on request.
+    document.addEventListener(
+      "brainspread:request-archive",
+      this.handleRequestArchive
+    );
     // Load page data
     await this.loadPage();
   },
@@ -124,6 +130,10 @@ const Page = {
     window.removeEventListener(
       "brainspread:notes-modified",
       this.handleNotesModified
+    );
+    document.removeEventListener(
+      "brainspread:request-archive",
+      this.handleRequestArchive
     );
   },
 
@@ -319,6 +329,24 @@ const Page = {
           block.content = newContent;
           if (result.data && result.data.block_type) {
             block.block_type = result.data.block_type;
+          }
+          // Inline URL detection on save: if the user typed (or pasted
+          // without the paste handler firing, e.g. mobile) a bare URL,
+          // promote the block to an embed so the card renders. Archiving
+          // is opt-in via the card's "archive" button.
+          const trimmed = (newContent || "").trim();
+          if (this.isBareUrl(trimmed) && block.content_type !== "embed") {
+            block.content_type = "embed";
+            block.media_url = trimmed;
+            // Persist the embed flag so re-renders don't regress; don't
+            // await - we don't want to block the caller's flow (e.g. Enter
+            // to create next block).
+            window.apiService
+              .updateBlock(block.uuid, {
+                content_type: "embed",
+                media_url: trimmed,
+              })
+              .catch((err) => console.error("embed flag save failed", err));
           }
           if (!skipReload) {
             await this.loadPage();
@@ -1601,12 +1629,201 @@ const Page = {
       return createdUuid;
     },
 
+    // ---- Web archive helpers --------------------------------------------
+    isBareUrl(text) {
+      if (!text) return false;
+      // Single token, http(s), no whitespace. Strict so inline URLs in text
+      // don't accidentally trigger capture on paste.
+      return /^https?:\/\/[^\s<>"']+$/i.test(text);
+    },
+
+    emitToast(message, type = "info", duration = 4000) {
+      document.dispatchEvent(
+        new CustomEvent("brainspread:toast", {
+          detail: { message, type, duration },
+        })
+      );
+    },
+
+    async handleUrlPaste(block, url) {
+      // Empty block: promote it to an embed in place. Otherwise append a
+      // sibling embed block after the current one (matches paste-as-list
+      // behaviour for consistency).
+      const blockIsEmpty = !block.content || block.content.trim() === "";
+      let targetBlock = block;
+
+      try {
+        if (blockIsEmpty) {
+          const result = await window.apiService.updateBlock(block.uuid, {
+            content: url,
+            content_type: "embed",
+            media_url: url,
+          });
+          if (!result.success) throw new Error("update block failed");
+          block.content = url;
+          block.content_type = "embed";
+          block.media_url = url;
+        } else {
+          const parentUuid = block.parent ? block.parent.uuid : null;
+          const newOrder = block.order + 1;
+          const siblings = block.parent
+            ? block.parent.children
+            : this.directBlocks;
+          const blocksToShift = siblings.filter(
+            (b) => b.uuid !== block.uuid && b.order >= newOrder
+          );
+          if (blocksToShift.length > 0) {
+            const reorderPayload = blocksToShift.map((b) => ({
+              uuid: b.uuid,
+              order: b.order + 1,
+            }));
+            const reorderResult =
+              await window.apiService.reorderBlocks(reorderPayload);
+            if (!reorderResult.success) throw new Error("reorder failed");
+          }
+          const createResult = await window.apiService.createBlock({
+            page: this.page.uuid,
+            parent: parentUuid,
+            content: url,
+            content_type: "embed",
+            block_type: "bullet",
+            media_url: url,
+            order: newOrder,
+          });
+          if (!createResult.success) throw new Error("create block failed");
+          targetBlock = { uuid: createResult.data.uuid };
+        }
+        // Archiving is opt-in - user clicks "archive" on the embed card.
+        void targetBlock;
+      } catch (error) {
+        console.error("url paste failed:", error);
+        this.emitToast("could not save URL", "error");
+      }
+    },
+
+    async handleUrlDrop(event) {
+      // Accept URLs from browser drag-drop (link drags, images with links).
+      const dt = event.dataTransfer;
+      if (!dt) return;
+
+      let url = dt.getData("text/uri-list") || dt.getData("text/plain") || "";
+      url = (url || "").split(/[\r\n]/)[0].trim();
+      if (!this.isBareUrl(url)) return;
+
+      event.preventDefault();
+
+      try {
+        const newOrder = this.getNextOrder(null);
+        const createResult = await window.apiService.createBlock({
+          page: this.page.uuid,
+          parent: null,
+          content: url,
+          content_type: "embed",
+          block_type: "bullet",
+          media_url: url,
+          order: newOrder,
+        });
+        if (!createResult.success) throw new Error("create block failed");
+        // Archiving is opt-in - user clicks "archive" on the embed card.
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("url drop failed:", error);
+        this.emitToast("could not save dropped URL", "error");
+      }
+    },
+
+    handleUrlDragOver(event) {
+      const dt = event.dataTransfer;
+      if (!dt) return;
+      // Only claim the event when the payload looks like a URL, so normal
+      // text drags inside the page still behave as usual.
+      const hasUrl =
+        dt.types &&
+        (Array.from(dt.types).includes("text/uri-list") ||
+          Array.from(dt.types).includes("text/plain"));
+      if (hasUrl) {
+        event.preventDefault();
+      }
+    },
+
+    async triggerWebArchiveCapture(blockUuid, url) {
+      const toastId = this.emitToast(`archiving ${url}…`);
+      try {
+        const result = await window.apiService.captureWebArchive(
+          blockUuid,
+          url
+        );
+        if (!result.success) {
+          this.emitToast("archive capture failed", "error");
+          return;
+        }
+        // Poll for completion. Capture usually finishes in 2-5s; give up
+        // after ~30s so a slow site doesn't spin the UI forever.
+        const finalStatus = await this.pollWebArchiveUntilDone(blockUuid);
+        // Let open BlockComponents refresh their cached archive state so
+        // the "view archive" button lights up without a page reload.
+        document.dispatchEvent(
+          new CustomEvent("brainspread:archive-updated", {
+            detail: { blockUuid, status: finalStatus },
+          })
+        );
+        if (finalStatus === "ready") {
+          this.emitToast("archive saved", "success", 3000);
+          await this.loadPage({ silent: true });
+        } else if (finalStatus === "failed") {
+          this.emitToast("archive capture failed", "error");
+        }
+        // "pending"/"in_progress" fall through - user can reload later.
+      } catch (error) {
+        console.error("capture web archive failed:", error);
+        this.emitToast("archive capture failed", "error");
+      }
+      // toastId currently unused by app.js (auto-dismiss by duration), kept
+      // for when we add dismissal-by-id support.
+      void toastId;
+    },
+
+    async pollWebArchiveUntilDone(
+      blockUuid,
+      { maxAttempts = 15, intervalMs = 2000 } = {}
+    ) {
+      for (let i = 0; i < maxAttempts; i++) {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        try {
+          const result = await window.apiService.getWebArchive(blockUuid);
+          if (result && result.success && result.data) {
+            const status = result.data.status;
+            if (status === "ready" || status === "failed") return status;
+          }
+        } catch (error) {
+          // 404 while we wait for the row to settle - just keep trying.
+          console.debug("web archive poll error", error);
+        }
+      }
+      return "pending";
+    },
+
+    handleRequestArchive(event) {
+      const detail = event?.detail || {};
+      if (!detail.blockUuid || !detail.url) return;
+      this.triggerWebArchiveCapture(detail.blockUuid, detail.url);
+    },
+
     async onBlockPaste(event, block) {
       const clipboardData = event.clipboardData || window.clipboardData;
       if (!clipboardData) return;
 
       const text = clipboardData.getData("text/plain");
       if (!text) return;
+
+      // URL paste gets first shot. If the clipboard is a bare URL, create an
+      // embed block and kick off an archive capture in the background.
+      const trimmed = text.trim();
+      if (this.isBareUrl(trimmed)) {
+        event.preventDefault();
+        await this.handleUrlPaste(block, trimmed);
+        return;
+      }
 
       const items = this.parseMarkdownList(text);
       if (items.length === 0) return;
@@ -2041,7 +2258,11 @@ const Page = {
 
         <!-- Direct Blocks Section -->
         <div class="direct-blocks-section">
-          <div class="blocks-container">
+          <div
+            class="blocks-container"
+            @dragover="handleUrlDragOver"
+            @drop="handleUrlDrop"
+          >
             <BlockComponent
               v-for="block in directBlocks"
               :key="block.uuid"
@@ -2074,7 +2295,7 @@ const Page = {
         <!-- Linked References Section -->
         <div v-if="hasReferencedBlocks" class="linked-references-section">
           <h3 class="linked-references-title">
-            {{ totalReferencedBlocks }} Linked Reference{{ totalReferencedBlocks !== 1 ? 's' : '' }}
+            {{ totalReferencedBlocks }} linked reference{{ totalReferencedBlocks !== 1 ? 's' : '' }}
           </h3>
           
           <div class="referenced-blocks-container">

@@ -93,6 +93,10 @@ const KnowledgeApp = createApp({
     // Add global keyboard shortcut listener
     document.addEventListener("keydown", this.handleGlobalKeydown);
 
+    // Toast bridge: child components dispatch 'brainspread:toast' with detail
+    // { message, type, duration } rather than reaching into this component.
+    document.addEventListener("brainspread:toast", this.handleToastEvent);
+
     // If we have cached user data, we can show the app immediately
     if (this.isAuthenticated && this.user) {
       this.loading = false;
@@ -127,6 +131,7 @@ const KnowledgeApp = createApp({
     // Clean up event listeners
     document.removeEventListener("click", this.handleDocumentClick);
     document.removeEventListener("keydown", this.handleGlobalKeydown);
+    document.removeEventListener("brainspread:toast", this.handleToastEvent);
   },
 
   methods: {
@@ -482,6 +487,14 @@ const KnowledgeApp = createApp({
     onMenuLogout() {
       this.closeMenu();
       this.handleLogout();
+    },
+
+    // Fired by child components (CustomEvent 'brainspread:toast', detail = {message, type, duration}).
+    // Bridges DOM events into the toast state without coupling the children to this component.
+    handleToastEvent(event) {
+      const detail = event?.detail || {};
+      if (!detail.message) return;
+      this.addToast(detail.message, detail.type || "info", detail.duration);
     },
 
     // Toast notification methods
