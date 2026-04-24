@@ -1,5 +1,6 @@
 import re
 from collections import defaultdict
+from itertools import combinations
 from typing import Dict, List, Tuple, TypedDict
 
 from django.db.models import Count
@@ -59,6 +60,7 @@ class GetGraphDataCommand(AbstractBaseCommand):
         edge_weights: Dict[Tuple[str, str], int] = defaultdict(int)
 
         self._collect_tag_edges(user, allowed_page_uuids, edge_weights)
+        self._collect_cooccurrence_edges(user, allowed_page_uuids, edge_weights)
         self._collect_wiki_link_edges(user, pages, edge_weights)
 
         degree: Dict[str, int] = defaultdict(int)
@@ -108,6 +110,36 @@ class GetGraphDataCommand(AbstractBaseCommand):
             if source not in allowed_page_uuids or target not in allowed_page_uuids:
                 continue
             edge_weights[(source, target)] += 1
+
+    def _collect_cooccurrence_edges(
+        self,
+        user: User,
+        allowed_page_uuids: set,
+        edge_weights: Dict[Tuple[str, str], int],
+    ) -> None:
+        """Edges between every pair of tag pages that co-occur on a block.
+
+        Pairs are normalized (sorted) so the edge is the same regardless of
+        which tag was listed first in the block.
+        """
+        through = Block.pages.through
+        rows = through.objects.filter(block__user=user).values_list(
+            "block_id", "page__uuid"
+        )
+        block_tags: Dict[int, List[str]] = defaultdict(list)
+        for block_id, page_uuid in rows:
+            tag_uuid = str(page_uuid)
+            if tag_uuid in allowed_page_uuids:
+                block_tags[block_id].append(tag_uuid)
+
+        for tags in block_tags.values():
+            if len(tags) < 2:
+                continue
+            for a, b in combinations(tags, 2):
+                if a == b:
+                    continue
+                pair = (a, b) if a < b else (b, a)
+                edge_weights[pair] += 1
 
     def _collect_wiki_link_edges(
         self,

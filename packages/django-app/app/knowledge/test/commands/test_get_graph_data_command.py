@@ -110,6 +110,52 @@ class TestGetGraphDataCommand(TestCase):
         # two tag edges + one wiki-link match = weight 3
         self.assertEqual(matching[0]["weight"], 3)
 
+    def test_links_cooccurring_tags_even_when_host_page_is_excluded(self):
+        page_a = PageFactory(user=self.user, title="Alpha", slug="alpha")
+        page_b = PageFactory(user=self.user, title="Beta", slug="beta")
+        daily = PageFactory(
+            user=self.user, title="Daily", slug="2024-01-01", page_type="daily"
+        )
+
+        block = BlockFactory(user=self.user, page=daily, content="#alpha #beta")
+        block.pages.add(page_a)
+        block.pages.add(page_b)
+
+        form = self._build_form()
+        result = GetGraphDataCommand(form).execute()
+
+        a_uuid = str(page_a.uuid)
+        b_uuid = str(page_b.uuid)
+        expected_src, expected_tgt = (
+            (a_uuid, b_uuid) if a_uuid < b_uuid else (b_uuid, a_uuid)
+        )
+        edges = [(e["source"], e["target"], e["weight"]) for e in result["edges"]]
+        self.assertIn((expected_src, expected_tgt, 1), edges)
+
+    def test_cooccurrence_edges_scale_with_tag_count(self):
+        page_a = PageFactory(user=self.user, title="Alpha", slug="alpha")
+        page_b = PageFactory(user=self.user, title="Beta", slug="beta")
+        page_c = PageFactory(user=self.user, title="Gamma", slug="gamma")
+        host = PageFactory(user=self.user, title="Host", slug="host")
+
+        block = BlockFactory(
+            user=self.user, page=host, content="#alpha #beta #gamma"
+        )
+        block.pages.add(page_a)
+        block.pages.add(page_b)
+        block.pages.add(page_c)
+
+        form = self._build_form()
+        result = GetGraphDataCommand(form).execute()
+
+        tag_uuids = {str(page_a.uuid), str(page_b.uuid), str(page_c.uuid)}
+        cooccurrence_edges = [
+            e
+            for e in result["edges"]
+            if e["source"] in tag_uuids and e["target"] in tag_uuids
+        ]
+        self.assertEqual(len(cooccurrence_edges), 3)
+
     def test_excludes_self_loops(self):
         page_a = PageFactory(user=self.user, title="Alpha", slug="alpha")
         block = BlockFactory(
