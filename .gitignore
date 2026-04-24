@@ -138,3 +138,6 @@ GitHub.sublime-settings
 
 # javascript
 node_modules
+
+# claude
+.claude/settings.local.json
