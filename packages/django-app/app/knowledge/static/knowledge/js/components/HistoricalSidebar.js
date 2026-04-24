@@ -265,11 +265,6 @@ window.HistoricalSidebar = {
         '<span class="markdown-highlight">$1</span>'
       );
 
-      // Restore escaped characters as literal text
-      escapedChars.forEach((char, idx) => {
-        formatted = formatted.split(`\x00ESC${idx}\x00`).join(char);
-      });
-
       // Restore code spans as inline code elements
       codeSegments.forEach((code, idx) => {
         const safeCode = code
@@ -302,13 +297,21 @@ window.HistoricalSidebar = {
 
       // Replace hashtags with clickable anchor links so users can Cmd/Ctrl-click
       // or middle-click to open a tag in a new tab.
-      return formatted.replace(
+      formatted = formatted.replace(
         /#([a-zA-Z0-9_-]+)/g,
         (_m, tag) =>
           `<a class="inline-tag clickable-tag" href="${this.escapeAttr(
             this.pageUrl(tag)
           )}" data-tag="${tag}">#${tag}</a>`
       );
+
+      // Restore escaped characters as literal text (done last so escaped `#`
+      // doesn't get re-matched by the hashtag regex).
+      escapedChars.forEach((char, idx) => {
+        formatted = formatted.split(`\x00ESC${idx}\x00`).join(char);
+      });
+
+      return formatted;
     },
 
     safeUrl(rawUrl) {
