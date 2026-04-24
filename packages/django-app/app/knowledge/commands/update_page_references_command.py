@@ -87,9 +87,7 @@ class UpdatePageReferencesCommand(AbstractBaseCommand):
         """Update all hashtag references from #old-slug to #new-slug"""
         # Find blocks with the old hashtag pattern. Negative lookbehind skips
         # `\#slug` so backslash-escaped hashtags aren't rewritten.
-        old_hashtag_pattern = (
-            r"(?<!\\)#" + re.escape(old_slug) + r"(?=\s|$|[^\w-])"
-        )
+        old_hashtag_pattern = r"(?<!\\)#" + re.escape(old_slug) + r"(?=\s|$|[^\w-])"
         blocks_with_old_hashtags = Block.objects.filter(
             content__iregex=old_hashtag_pattern, user=user
         )

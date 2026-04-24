@@ -138,9 +138,7 @@ class TestGetGraphDataCommand(TestCase):
         page_c = PageFactory(user=self.user, title="Gamma", slug="gamma")
         host = PageFactory(user=self.user, title="Host", slug="host")
 
-        block = BlockFactory(
-            user=self.user, page=host, content="#alpha #beta #gamma"
-        )
+        block = BlockFactory(user=self.user, page=host, content="#alpha #beta #gamma")
         block.pages.add(page_a)
         block.pages.add(page_b)
         block.pages.add(page_c)
