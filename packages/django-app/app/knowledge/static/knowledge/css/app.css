@@ -4986,7 +4986,7 @@ kbd {
   align-items: center;
   gap: 0.15rem;
   padding: 0.1rem 0.4rem;
-  border-radius: 999px;
+  border-radius: 3px;
   background-color: var(--tag-bg);
   color: var(--tag-text);
   border: 1px solid var(--tag-bg);
@@ -5021,7 +5021,7 @@ kbd {
 .block-embed-tag-add {
   background: transparent;
   border: 1px dashed var(--border-secondary);
-  border-radius: 999px;
+  border-radius: 3px;
   padding: 0.1rem 0.5rem;
   font-size: 0.75rem;
   color: var(--text-muted);
@@ -5046,7 +5046,7 @@ kbd {
   color: var(--text-primary);
   background: var(--bg-primary);
   border: 1px solid var(--border-secondary);
-  border-radius: 999px;
+  border-radius: 3px;
   padding: 0.1rem 0.5rem;
   min-width: 6rem;
   max-width: 12rem;
