@@ -160,6 +160,25 @@ class TestCaptureWebArchiveCommand(TestCase):
         block.refresh_from_db()
         self.assertEqual(block.content, "Example Article - OG")
 
+    def test_should_preserve_trailing_tags_when_overwriting_title(self):
+        # User can tag an embed via the chip UI before capture finishes;
+        # those trailing hashtags must survive the title overwrite so we
+        # don't silently drop their work.
+        block = BlockFactory(
+            user=self.user,
+            page=self.page,
+            content="https://example.com/article #news #ai-research",
+        )
+        form = self._make_form(block_uuid=block.uuid)
+        self.assertTrue(form.is_valid())
+
+        CaptureWebArchiveCommand(
+            form, run_async=False, fetcher=make_fake_fetcher()
+        ).execute()
+
+        block.refresh_from_db()
+        self.assertEqual(block.content, "Example Article - OG #news #ai-research")
+
     def test_should_reject_block_owned_by_other_user(self):
         other_user = UserFactory()
         other_page = PageFactory(user=other_user)
