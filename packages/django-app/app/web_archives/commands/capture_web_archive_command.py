@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import mimetypes
+import re
 import threading
 from typing import Callable, Optional
 from urllib.parse import unquote, urlparse
@@ -173,11 +174,35 @@ def _capture_html(archive: WebArchive, fetched) -> None:
         archive.save()
 
     # Mirror the extracted title onto the block so the embed renders with
-    # real text as soon as capture finishes.
+    # real text as soon as capture finishes. If the user added trailing
+    # hashtags before capture finished (via the embed tag chips), preserve
+    # them so we don't silently drop their tagging work.
     if extracted.title:
-        Block.objects.filter(pk=archive.block_id).update(
-            content=extracted.title, modified_at=timezone.now()
-        )
+        block = Block.objects.filter(pk=archive.block_id).first()
+        if block is not None:
+            trailing_tags = _extract_trailing_hashtags(block.content)
+            new_content = (
+                f"{extracted.title} {trailing_tags}".rstrip()
+                if trailing_tags
+                else extracted.title
+            )
+            Block.objects.filter(pk=archive.block_id).update(
+                content=new_content, modified_at=timezone.now()
+            )
+
+
+# Match a run of trailing hashtags so we can carry tags across the
+# title-overwrite that happens when capture completes.
+_TRAILING_HASHTAGS_RE = re.compile(r"(?:(?:^|\s)#[a-zA-Z0-9_-]+)+\s*$")
+
+
+def _extract_trailing_hashtags(content: Optional[str]) -> str:
+    if not content:
+        return ""
+    match = _TRAILING_HASHTAGS_RE.search(content)
+    if not match:
+        return ""
+    return match.group(0).strip()
 
 
 def _capture_binary(archive: WebArchive, fetched) -> None:

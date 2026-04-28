@@ -98,6 +98,12 @@ const BlockComponent = {
       // Web archive state (loaded lazily for embed blocks)
       webArchive: null,
       webArchiveLoading: false,
+      // Embed tag chip UI state
+      addingEmbedTag: false,
+      embedTagInputValue: "",
+      embedTagSuggestions: [],
+      embedTagSelectedIndex: 0,
+      embedTagSearchToken: 0,
     };
   },
   computed: {
@@ -134,14 +140,26 @@ const BlockComponent = {
         return "";
       }
     },
+    embedContentParts() {
+      // Split block.content into a "title" part and a list of trailing
+      // hashtag slugs. Trailing tags are rendered as chips so the user can
+      // tag a link without polluting the visible label.
+      return BlockComponent.parseEmbedContent(this.block.content);
+    },
     embedTitle() {
       // After archive capture completes, the backend overwrites
       // block.content with the extracted title. Before that, content is
       // just the URL, so fall back to the hostname for a cleaner card.
-      const c = (this.block.content || "").trim();
-      if (!c) return this.embedHostname;
-      if (c === this.block.media_url) return this.embedHostname;
-      return c;
+      const t = (this.embedContentParts.title || "").trim();
+      if (!t) return this.embedHostname;
+      if (t === this.block.media_url) return this.embedHostname;
+      return t;
+    },
+    embedTags() {
+      return this.embedContentParts.tags;
+    },
+    showEmbedTagSuggestions() {
+      return this.addingEmbedTag && this.embedTagSuggestions.length > 0;
     },
     webArchiveReady() {
       return !!(this.webArchive && this.webArchive.status === "ready");
@@ -690,6 +708,128 @@ const BlockComponent = {
       this.stopEditing(this.block);
     },
 
+    // --- Embed tag chips ---
+    startAddEmbedTag() {
+      this.addingEmbedTag = true;
+      this.embedTagInputValue = "";
+      this.embedTagSuggestions = [];
+      this.embedTagSelectedIndex = 0;
+      this.$nextTick(() => {
+        const input = this.$refs.embedTagInput;
+        if (input) input.focus();
+      });
+    },
+    cancelAddEmbedTag() {
+      this.addingEmbedTag = false;
+      this.embedTagInputValue = "";
+      this.embedTagSuggestions = [];
+      this.embedTagSelectedIndex = 0;
+    },
+    handleEmbedTagInputBlur() {
+      // Delay so a click on a suggestion still registers before close.
+      setTimeout(() => this.cancelAddEmbedTag(), 150);
+    },
+    async handleEmbedTagInputChange() {
+      const raw = (this.embedTagInputValue || "").trim();
+      if (!raw) {
+        this.embedTagSuggestions = [];
+        this.embedTagSelectedIndex = 0;
+        return;
+      }
+      const token = ++this.embedTagSearchToken;
+      try {
+        const result = await window.apiService.searchPages(raw, 8);
+        if (token !== this.embedTagSearchToken) return;
+        const pages = (result && result.data && result.data.pages) || [];
+        // Hide pages already attached as a trailing tag on this embed.
+        const existing = new Set(this.embedTags);
+        this.embedTagSuggestions = pages.filter((p) => !existing.has(p.slug));
+        if (this.embedTagSelectedIndex >= this.embedTagSuggestions.length) {
+          this.embedTagSelectedIndex = 0;
+        }
+      } catch (error) {
+        console.error("embed tag search failed:", error);
+        if (token === this.embedTagSearchToken) {
+          this.embedTagSuggestions = [];
+        }
+      }
+    },
+    handleEmbedTagInputKeydown(event) {
+      if (event.key === "ArrowDown" && this.embedTagSuggestions.length) {
+        event.preventDefault();
+        this.embedTagSelectedIndex =
+          (this.embedTagSelectedIndex + 1) % this.embedTagSuggestions.length;
+        return;
+      }
+      if (event.key === "ArrowUp" && this.embedTagSuggestions.length) {
+        event.preventDefault();
+        this.embedTagSelectedIndex =
+          (this.embedTagSelectedIndex - 1 + this.embedTagSuggestions.length) %
+          this.embedTagSuggestions.length;
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const choice = this.embedTagSuggestions[this.embedTagSelectedIndex];
+        if (choice) {
+          this.commitEmbedTag(choice.slug);
+        } else {
+          this.commitEmbedTag(this.embedTagInputValue);
+        }
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        this.cancelAddEmbedTag();
+        return;
+      }
+    },
+    selectEmbedTagSuggestion(page) {
+      this.commitEmbedTag(page.slug);
+    },
+    commitEmbedTag(rawSlug) {
+      const slug = BlockComponent.slugifyTag(rawSlug);
+      if (!slug) {
+        this.cancelAddEmbedTag();
+        return;
+      }
+      // Reject duplicates - the chip is already there.
+      if (this.embedTags.includes(slug)) {
+        this.cancelAddEmbedTag();
+        return;
+      }
+      const current = this.block.content || "";
+      const sep = current && !/\s$/.test(current) ? " " : "";
+      const newContent = `${current}${sep}#${slug}`;
+      this.cancelAddEmbedTag();
+      this.onBlockContentChange(this.block, newContent);
+      // Persist immediately - chips are click-to-commit, not editor input.
+      this.persistEmbedContent(newContent);
+    },
+    removeEmbedTag(slug) {
+      const current = this.block.content || "";
+      const next = BlockComponent.removeTagFromContent(current, slug);
+      if (next === current) return;
+      this.onBlockContentChange(this.block, next);
+      this.persistEmbedContent(next);
+    },
+    async persistEmbedContent(newContent) {
+      try {
+        const result = await window.apiService.updateBlock(this.block.uuid, {
+          content: newContent,
+          parent: this.block.parent ? this.block.parent.uuid : null,
+        });
+        if (!result || !result.success) {
+          throw new Error("updateBlock did not succeed");
+        }
+        if (result.data && Array.isArray(result.data.tags)) {
+          this.block.tags = result.data.tags;
+        }
+      } catch (error) {
+        console.error("failed to persist embed tags:", error);
+      }
+    },
+
     handleContextMenuAction(action) {
       this.hideContextMenu();
 
@@ -800,6 +940,65 @@ const BlockComponent = {
               <span class="block-embed-url">{{ block.media_url }}</span>
               <span v-if="webArchive && (webArchive.status === 'pending' || webArchive.status === 'in_progress')" class="block-embed-status">· capturing…</span>
               <span v-else-if="webArchive && webArchive.status === 'failed'" class="block-embed-status block-embed-status-failed">· capture failed</span>
+            </div>
+            <div class="block-embed-tags" @click.stop>
+              <a
+                v-for="slug in embedTags"
+                :key="slug"
+                class="block-embed-tag-chip"
+                :href="'/knowledge/page/' + slug + '/'"
+                :data-tag="slug"
+                @click.stop
+              >
+                <span class="block-embed-tag-chip-label">#{{ slug }}</span>
+                <button
+                  type="button"
+                  class="block-embed-tag-chip-remove"
+                  :aria-label="'Remove tag ' + slug"
+                  title="Remove tag"
+                  @click.stop.prevent="removeEmbedTag(slug)"
+                >×</button>
+              </a>
+              <div v-if="addingEmbedTag" class="block-embed-tag-input-wrapper">
+                <input
+                  ref="embedTagInput"
+                  type="text"
+                  class="block-embed-tag-input"
+                  placeholder="tag…"
+                  v-model="embedTagInputValue"
+                  @input="handleEmbedTagInputChange"
+                  @keydown="handleEmbedTagInputKeydown"
+                  @blur="handleEmbedTagInputBlur"
+                />
+                <div
+                  v-if="showEmbedTagSuggestions"
+                  class="tag-suggestions block-embed-tag-suggestions"
+                  @mousedown.prevent
+                  role="listbox"
+                >
+                  <button
+                    v-for="(page, idx) in embedTagSuggestions"
+                    :key="page.uuid || page.slug"
+                    type="button"
+                    role="option"
+                    :aria-selected="idx === embedTagSelectedIndex"
+                    class="tag-suggestion-item"
+                    :class="{ 'is-selected': idx === embedTagSelectedIndex }"
+                    @click="selectEmbedTagSuggestion(page)"
+                    @mouseenter="embedTagSelectedIndex = idx"
+                  >
+                    <span class="tag-suggestion-slug">#{{ page.slug }}</span>
+                    <span v-if="page.title && page.title !== page.slug" class="tag-suggestion-title">{{ page.title }}</span>
+                  </button>
+                </div>
+              </div>
+              <button
+                v-else
+                type="button"
+                class="block-embed-tag-add"
+                title="Add a tag"
+                @click.stop="startAddEmbedTag"
+              >+ tag</button>
             </div>
           </div>
           <button
@@ -969,6 +1168,57 @@ const BlockComponent = {
       </div>
     </div>
   `,
+};
+
+// Parse embed-block content into a "title" portion and an array of trailing
+// hashtag slugs. Trailing tags are stripped from the displayed title and
+// rendered as chips on the embed card so the visible label stays clean.
+BlockComponent.parseEmbedContent = function parseEmbedContent(content) {
+  if (!content) return { title: "", tags: [] };
+  const original = content;
+  // Match a trailing run of `#tag` tokens. Either the first token sits at the
+  // very start of the string, or every token is preceded by whitespace.
+  const trailingRe = /(?:^|\s)#[a-zA-Z0-9_-]+(?:\s+#[a-zA-Z0-9_-]+)*\s*$/;
+  const match = original.match(trailingRe);
+  if (!match) return { title: original.trim(), tags: [] };
+  const tagPart = match[0];
+  const titlePart = original.slice(0, original.length - tagPart.length).trim();
+  const tagMatches = tagPart.match(/#([a-zA-Z0-9_-]+)/g) || [];
+  const seen = new Set();
+  const tags = [];
+  tagMatches.forEach((t) => {
+    const slug = t.slice(1);
+    if (!seen.has(slug)) {
+      seen.add(slug);
+      tags.push(slug);
+    }
+  });
+  return { title: titlePart, tags };
+};
+
+// Convert a free-text input into a tag slug compatible with the existing
+// hashtag regex (alphanumerics, underscore, hyphen). Spaces become hyphens.
+BlockComponent.slugifyTag = function slugifyTag(raw) {
+  if (!raw) return "";
+  return String(raw)
+    .trim()
+    .toLowerCase()
+    .replace(/^#+/, "")
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9_-]/g, "")
+    .replace(/^[-_]+|[-_]+$/g, "");
+};
+
+// Remove a `#slug` from content. Strips a single preceding whitespace
+// character along with the tag so we don't leave a stray space behind.
+// Slugs are [a-zA-Z0-9_-], none of which need regex escaping.
+BlockComponent.removeTagFromContent = function removeTagFromContent(
+  content,
+  slug
+) {
+  if (!content || !slug) return content;
+  const re = new RegExp(`(^|\\s)#${slug}(?![a-zA-Z0-9_-])`, "g");
+  return content.replace(re, "").trimEnd();
 };
 
 // Make it available globally
