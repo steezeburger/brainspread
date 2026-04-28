@@ -55,7 +55,9 @@ class SyncBlockTagsCommand(AbstractBaseCommand):
         if not content:
             return []
 
-        hashtag_pattern = r"#([a-zA-Z0-9_-]+)"
+        # Negative lookbehind skips `\#tag` so backslash-escaped hashtags
+        # don't create page links.
+        hashtag_pattern = r"(?<!\\)#([a-zA-Z0-9_-]+)"
         return re.findall(hashtag_pattern, content)
 
     def _get_or_create_tag_page(self, tag_name: str, user) -> Page:

@@ -998,11 +998,6 @@ const Page = {
         '<span class="markdown-highlight">$1</span>'
       );
 
-      // Restore escaped characters as literal text
-      escapedChars.forEach((char, idx) => {
-        formatted = formatted.split(`\x00ESC${idx}\x00`).join(char);
-      });
-
       // Restore code spans as inline code elements
       codeSegments.forEach((code, idx) => {
         const safeCode = code
@@ -1036,10 +1031,18 @@ const Page = {
       });
 
       // Replace hashtags with clickable anchor elements so browsers support cmd+click, middle-click, right-click → open in new tab
-      return formatted.replace(
+      formatted = formatted.replace(
         /#([a-zA-Z0-9_-]+)/g,
         '<a class="inline-tag clickable-tag" href="/knowledge/page/$1/" data-tag="$1">#$1</a>'
       );
+
+      // Restore escaped characters as literal text (done last so escaped `#`
+      // doesn't get re-matched by the hashtag regex).
+      escapedChars.forEach((char, idx) => {
+        formatted = formatted.split(`\x00ESC${idx}\x00`).join(char);
+      });
+
+      return formatted;
     },
 
     safeUrl(rawUrl) {
@@ -1071,12 +1074,6 @@ const Page = {
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;");
-    },
-
-    goToPage(pageSlug) {
-      // Navigate to a page by slug with full page redirect
-      const url = `/knowledge/page/${encodeURIComponent(pageSlug)}/`;
-      window.location.href = url;
     },
 
     handleWindowFocus() {
@@ -2301,7 +2298,7 @@ const Page = {
           <div class="referenced-blocks-container">
             <div v-for="block in referencedBlocks" :key="block.uuid" class="referenced-block-wrapper" :class="{ 'in-context': isBlockInContext(block.uuid) }" :data-block-uuid="block.uuid">
               <div class="block-meta">
-                <span class="page-title clickable" @click="goToPage(block.page_slug)">{{ block.page_type === 'daily' ? formatDate(block.page_title) : block.page_title }}</span>
+                <a class="page-title clickable" :href="'/knowledge/page/' + encodeURIComponent(block.page_slug) + '/'">{{ block.page_type === 'daily' ? formatDate(block.page_title) : block.page_title }}</a>
                 <span v-if="block.page_date" class="page-date">{{ formatDate(block.page_date) }}</span>
               </div>
               <BlockComponent
