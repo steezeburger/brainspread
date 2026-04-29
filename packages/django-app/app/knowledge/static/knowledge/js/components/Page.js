@@ -3,6 +3,7 @@ const Page = {
   components: {
     BlockComponent: window.BlockComponent || {},
     Whiteboard: window.Whiteboard || {},
+    ScheduleBlockPopover: window.ScheduleBlockPopover || {},
   },
   props: {
     chatContextBlocks: {
@@ -28,6 +29,12 @@ const Page = {
       page: null,
       directBlocks: [], // Blocks that belong directly to this page
       referencedBlocks: [], // Blocks from other pages that reference this page
+      overdueBlocks: [], // Dated blocks past their due date (today's daily only)
+      schedulePopoverOpen: false,
+      schedulePopoverBlock: null,
+      schedulePopoverInitialDate: "",
+      schedulePopoverInitialReminderDate: "",
+      schedulePopoverInitialTime: "",
       loading: false,
       error: null,
       // Page title editing
@@ -72,6 +79,14 @@ const Page = {
 
     hasReferencedBlocks() {
       return this.referencedBlocks.length > 0;
+    },
+
+    totalOverdueBlocks() {
+      return this.overdueBlocks.length;
+    },
+
+    hasOverdueBlocks() {
+      return this.overdueBlocks.length > 0;
     },
   },
 
@@ -211,6 +226,7 @@ const Page = {
             result.data.direct_blocks || []
           );
           this.referencedBlocks = result.data.referenced_blocks || [];
+          this.overdueBlocks = result.data.overdue_blocks || [];
           this.$emit("page-loaded", this.page);
         } else {
           this.error = "failed to load page";
@@ -1311,7 +1327,33 @@ const Page = {
         } else if (this.selectionAnchorUuid) {
           this.clearBlockSelection();
         }
+        return;
       }
+      // Cmd/Ctrl+Shift+; opens the schedule popover for the currently
+      // focused block. (Cmd+Shift+D is Chrome's "bookmark all tabs" — the
+      // semicolon has no obvious mnemonic but doesn't fight any browser.)
+      // Falls back to the last-edited block if focus has already left the
+      // textarea.
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.shiftKey &&
+        event.key === ";"
+      ) {
+        const block = this.findFocusedOrLastEditingBlock();
+        if (!block) return;
+        event.preventDefault();
+        this.scheduleBlock(block);
+      }
+    },
+
+    findFocusedOrLastEditingBlock() {
+      // Prefer the block whose textarea / display element actually has focus.
+      const active = document.activeElement;
+      const wrapper = active?.closest?.("[data-block-uuid]");
+      const focusedUuid = wrapper?.getAttribute("data-block-uuid");
+      const uuid = focusedUuid || this.lastEditingBlockUuid;
+      if (!uuid) return null;
+      return this.getAllBlocks().find((b) => b.uuid === uuid) || null;
     },
 
     handleSpotlightNewBlock() {
@@ -1360,6 +1402,69 @@ const Page = {
       } catch (error) {
         console.error("failed to delete page:", error);
         this.error = "failed to delete page";
+      }
+    },
+
+    async scheduleBlock(block, { clear = false } = {}) {
+      if (!block) return;
+
+      if (clear) {
+        await this._submitSchedule(block, "", "", "");
+        return;
+      }
+
+      this.schedulePopoverBlock = block;
+      this.schedulePopoverInitialDate = block.scheduled_for || "";
+      this.schedulePopoverInitialReminderDate =
+        block.pending_reminder_date || "";
+      this.schedulePopoverInitialTime = block.pending_reminder_time || "";
+      this.schedulePopoverOpen = true;
+    },
+
+    onSchedulePopoverSave({ scheduledFor, reminderDate, reminderTime }) {
+      const block = this.schedulePopoverBlock;
+      this.schedulePopoverOpen = false;
+      this.schedulePopoverBlock = null;
+      if (!block) return;
+      this._submitSchedule(block, scheduledFor, reminderDate, reminderTime);
+    },
+
+    onSchedulePopoverCancel() {
+      this.schedulePopoverOpen = false;
+      this.schedulePopoverBlock = null;
+    },
+
+    async _submitSchedule(block, scheduledFor, reminderDate, reminderTime) {
+      try {
+        const result = await window.apiService.scheduleBlock(
+          block.uuid,
+          scheduledFor,
+          reminderDate,
+          reminderTime
+        );
+        if (result.success) {
+          let msg;
+          if (!scheduledFor) {
+            msg = "schedule cleared";
+          } else if (reminderTime) {
+            const formatted =
+              window.formatTimeForUser?.(reminderTime) || reminderTime;
+            const onDate =
+              reminderDate && reminderDate !== scheduledFor
+                ? ` on ${reminderDate}`
+                : "";
+            msg = `scheduled for ${scheduledFor} · remind${onDate} at ${formatted}`;
+          } else {
+            msg = `scheduled for ${scheduledFor}`;
+          }
+          this.$parent?.addToast?.(msg, "success");
+          await this.loadPage({ silent: true });
+        } else {
+          this.$parent?.addToast?.("failed to schedule block", "error");
+        }
+      } catch (err) {
+        console.error("scheduleBlock failed:", err);
+        this.$parent?.addToast?.("failed to schedule block", "error");
       }
     },
 
@@ -2284,6 +2389,43 @@ const Page = {
           </div>
         </div>
 
+        <!-- Overdue Section (today's daily page only) -->
+        <div v-if="hasOverdueBlocks" class="overdue-section">
+          <h3 class="overdue-title">
+            {{ totalOverdueBlocks }} overdue
+          </h3>
+          <div class="overdue-blocks-container">
+            <div v-for="block in overdueBlocks" :key="block.uuid" class="referenced-block-wrapper overdue-block-wrapper" :class="{ 'in-context': isBlockInContext(block.uuid) }" :data-block-uuid="block.uuid">
+              <div class="block-meta">
+                <span v-if="block.scheduled_for" class="overdue-due-date">due {{ formatDate(block.scheduled_for) }}</span>
+                <span class="page-title clickable" @click="goToPage(block.page_slug)">{{ block.page_type === 'daily' ? formatDate(block.page_title) : block.page_title }}</span>
+              </div>
+              <BlockComponent
+                :block="block"
+                :onBlockContentChange="onBlockContentChange"
+                :onBlockKeyDown="onBlockKeyDown"
+                :startEditing="startEditing"
+                :stopEditing="stopEditing"
+                :deleteBlock="deleteBlock"
+                :toggleBlockTodo="toggleBlockTodo"
+                :formatContentWithTags="formatContentWithTags"
+                :isBlockInContext="isBlockInContext"
+                :isBlockSelected="isBlockSelected"
+                :onBlockAddToContext="onBlockAddToContext"
+                :onBlockRemoveFromContext="onBlockRemoveFromContext"
+                :indentBlock="indentBlock"
+                :outdentBlock="outdentBlock"
+                :createBlockAfter="createBlockAfter"
+                :createBlockBefore="createBlockBefore"
+                :moveBlockUp="moveBlockUp"
+                :moveBlockDown="moveBlockDown"
+                :onBlockPaste="onBlockPaste"
+                :scheduleBlock="scheduleBlock"
+              />
+            </div>
+          </div>
+        </div>
+
         <!-- Direct Blocks Section -->
         <div class="direct-blocks-section">
           <div
@@ -2314,6 +2456,7 @@ const Page = {
               :moveBlockDown="moveBlockDown"
               :moveBlockToToday="moveBlockToToday"
               :onBlockPaste="onBlockPaste"
+              :scheduleBlock="scheduleBlock"
             />
             <button @click="addNewBlock" class="add-block-btn">
               + add new block
@@ -2353,12 +2496,23 @@ const Page = {
                 :moveBlockUp="moveBlockUp"
                 :moveBlockDown="moveBlockDown"
                 :onBlockPaste="onBlockPaste"
+                :scheduleBlock="scheduleBlock"
               />
             </div>
           </div>
         </div>
 
       </div>
+
+      <!-- Schedule popover (issue #59 phase 4) -->
+      <ScheduleBlockPopover
+        :is-open="schedulePopoverOpen"
+        :initial-date="schedulePopoverInitialDate"
+        :initial-reminder-date="schedulePopoverInitialReminderDate"
+        :initial-time="schedulePopoverInitialTime"
+        @save="onSchedulePopoverSave"
+        @cancel="onSchedulePopoverCancel"
+      />
     </div>
   `,
 };

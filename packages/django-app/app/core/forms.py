@@ -69,3 +69,24 @@ class UpdateThemeForm(BaseForm):
         if theme not in valid_themes:
             raise ValidationError("Invalid theme choice")
         return theme
+
+
+class UpdateTimeFormatForm(BaseForm):
+    user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
+    time_format = forms.ChoiceField(
+        choices=[("24h", "24 hour"), ("12h", "12 hour")], required=True
+    )
+
+
+class UpdateDiscordWebhookForm(BaseForm):
+    user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
+    discord_webhook_url = forms.URLField(required=False, empty_value="", max_length=500)
+
+    def clean_discord_webhook_url(self) -> str:
+        url = self.cleaned_data.get("discord_webhook_url") or ""
+        if url and not url.startswith("https://discord.com/api/webhooks/"):
+            raise ValidationError(
+                "Discord webhook URLs must start with "
+                "'https://discord.com/api/webhooks/'"
+            )
+        return url

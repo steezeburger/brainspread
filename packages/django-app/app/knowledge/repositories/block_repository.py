@@ -37,7 +37,13 @@ class BlockRepository(BaseRepository):
     @classmethod
     def get_root_blocks(cls, page: Page) -> QuerySet:
         """Get top-level blocks (no parent) for a page"""
-        return cls.get_queryset().filter(page=page, parent=None).order_by("order")
+        return (
+            cls.get_queryset()
+            .filter(page=page, parent=None)
+            .select_related("user")
+            .prefetch_related("reminders")
+            .order_by("order")
+        )
 
     @classmethod
     def get_child_blocks(cls, parent_block: Block) -> QuerySet:
@@ -185,7 +191,15 @@ class BlockRepository(BaseRepository):
 
     @classmethod
     def get_undone_todos(cls, user) -> QuerySet:
-        """Get undone TODO blocks from daily pages before today"""
+        """Get undone TODO blocks from daily pages before today.
+
+        Dated blocks (scheduled_for is set) are excluded — they surface on
+        their scheduled page via the overdue query instead, keeping the
+        original page intact as history.
+
+        "Today" is resolved against the user's timezone via the shared
+        today_for_user helper (added on main).
+        """
         today = today_for_user(user)
         return (
             cls.get_queryset()
@@ -194,9 +208,33 @@ class BlockRepository(BaseRepository):
                 block_type="todo",
                 page__page_type="daily",
                 page__date__lt=today,
+                scheduled_for__isnull=True,
             )
             .select_related("page")
             .order_by("page__date", "order")
+        )
+
+    @classmethod
+    def get_overdue_blocks(cls, user, today) -> QuerySet:
+        """Get overdue scheduled blocks for a user as of the given date.
+
+        Predicate per issue #59:
+            scheduled_for < today
+            AND block_type IN (todo, doing, later)
+            AND completed_at IS NULL
+            AND user = request.user
+        """
+        return (
+            cls.get_queryset()
+            .filter(
+                user=user,
+                scheduled_for__lt=today,
+                block_type__in=("todo", "doing", "later"),
+                completed_at__isnull=True,
+            )
+            .select_related("page", "user")
+            .prefetch_related("reminders")
+            .order_by("scheduled_for", "order")
         )
 
     @classmethod

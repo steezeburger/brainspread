@@ -541,8 +541,11 @@ body {
 }
 
 /* Mirror the SettingsModal .model-checkbox styling so tool toggles use the
-   same custom checkmark glyph as the rest of the app. */
-.tools-menu-item input[type="checkbox"] {
+   same custom checkmark glyph as the rest of the app. The schedule
+   popover's reminder checkbox shares this style so all in-app
+   checkboxes look the same. */
+.tools-menu-item input[type="checkbox"],
+.schedule-popover-row input[type="checkbox"] {
   appearance: none;
   width: 1.1rem;
   height: 1.1rem;
@@ -555,17 +558,21 @@ body {
 }
 
 .tools-menu-item input[type="checkbox"]:hover,
-.tools-menu-item input[type="checkbox"]:focus {
+.tools-menu-item input[type="checkbox"]:focus,
+.schedule-popover-row input[type="checkbox"]:hover,
+.schedule-popover-row input[type="checkbox"]:focus {
   border-color: var(--text-primary);
   outline: none;
 }
 
-.tools-menu-item input[type="checkbox"]:checked {
+.tools-menu-item input[type="checkbox"]:checked,
+.schedule-popover-row input[type="checkbox"]:checked {
   background: var(--text-primary);
   border-color: var(--text-primary);
 }
 
-.tools-menu-item input[type="checkbox"]:checked::after {
+.tools-menu-item input[type="checkbox"]:checked::after,
+.schedule-popover-row input[type="checkbox"]:checked::after {
   content: "✓";
   position: absolute;
   top: 50%;
@@ -575,6 +582,11 @@ body {
   color: var(--bg-primary);
   font-weight: bold;
   line-height: 1;
+}
+
+.schedule-popover-row input[type="checkbox"]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .tools-menu-label {
@@ -658,35 +670,15 @@ body {
   color: var(--bg-primary);
 }
 
-.timezone-selector {
+.timezone-selector,
+.theme-selector,
+.time-format-selector {
   width: 100%;
 }
 
-.timezone-select {
-  width: 100%;
-  padding: 0.75rem;
-  border: 1px solid var(--border-primary);
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  font-family: inherit;
-  font-size: 1rem;
-  cursor: pointer;
-}
-
-.timezone-select:hover {
-  background: var(--hover-bg);
-}
-
-.timezone-select:focus {
-  outline: none;
-  border-color: var(--text-primary);
-}
-
-.theme-selector {
-  width: 100%;
-}
-
-.theme-select {
+.timezone-select,
+.theme-select,
+.time-format-select {
   width: 100%;
   padding: 0.75rem;
   border: 1px solid var(--border-primary);
@@ -697,11 +689,15 @@ body {
   cursor: pointer;
 }
 
-.theme-select:hover {
+.timezone-select:hover,
+.theme-select:hover,
+.time-format-select:hover {
   background: var(--hover-bg);
 }
 
-.theme-select:focus {
+.timezone-select:focus,
+.theme-select:focus,
+.time-format-select:focus {
   outline: none;
   border-color: var(--text-primary);
 }
@@ -5118,4 +5114,202 @@ kbd {
   left: 0;
   z-index: 20;
   min-width: 12rem;
+}
+
+/* Overdue section on today's daily page (see issue #59) */
+.overdue-section {
+  margin-bottom: 1.5rem;
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--error-color, #c0392b);
+  background: color-mix(in srgb, var(--error-color, #c0392b) 6%, transparent);
+  border-radius: 4px;
+}
+
+.overdue-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  text-transform: lowercase;
+  color: var(--error-color, #c0392b);
+}
+
+.overdue-due-date {
+  font-size: 0.8rem;
+  color: var(--error-color, #c0392b);
+  margin-right: 0.5rem;
+  opacity: 0.85;
+}
+
+/* Inline due-date chip on blocks (issue #59) */
+.block-due-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: transparent;
+  border: none;
+  padding: 0.1rem 0.25rem;
+  font-size: 0.75rem;
+  font-family: inherit;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1.2;
+  margin-left: 0.25rem;
+  /* parent .block uses align-items: flex-start; opt back into center so
+     the chip sits in line with the block's text content. */
+  align-self: center;
+}
+
+.block-due-icon {
+  display: inline-block;
+  vertical-align: -2px;
+  flex-shrink: 0;
+}
+
+/* Replace the browser's native calendar-picker indicator with our own
+   SVG so date/time inputs match the chip glyphs (issue #59).
+   WebKit/Chromium/Edge only — Firefox keeps its native indicator,
+   which is fine. mask-image lets us use currentColor for theming.
+
+   Note: -webkit-appearance: none + background-image: none are required
+   on Chromium 120+ — without them the browser still paints its built-in
+   icon on top of (or beside) ours. */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: none;
+  background-color: currentColor;
+  cursor: pointer;
+  opacity: 0.7;
+  width: 14px;
+  height: 14px;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round' stroke-linecap='round'><rect x='2' y='3' width='12' height='11' rx='1'/><line x1='2' y1='6.5' x2='14' y2='6.5'/><line x1='5.5' y1='1.5' x2='5.5' y2='4.5'/><line x1='10.5' y1='1.5' x2='10.5' y2='4.5'/></svg>")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round' stroke-linecap='round'><rect x='2' y='3' width='12' height='11' rx='1'/><line x1='2' y1='6.5' x2='14' y2='6.5'/><line x1='5.5' y1='1.5' x2='5.5' y2='4.5'/><line x1='10.5' y1='1.5' x2='10.5' y2='4.5'/></svg>")
+    center / contain no-repeat;
+}
+
+input[type="time"]::-webkit-calendar-picker-indicator {
+  -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round' stroke-linecap='round'><circle cx='8' cy='8' r='6.25'/><polyline points='8,4.5 8,8 11,9.5'/></svg>")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round' stroke-linecap='round'><circle cx='8' cy='8' r='6.25'/><polyline points='8,4.5 8,8 11,9.5'/></svg>")
+    center / contain no-repeat;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+.block-due-pill:hover {
+  color: var(--text-primary);
+}
+
+.block-due-pill.overdue {
+  color: var(--error-color, #c0392b);
+}
+
+.block-due-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  background: transparent;
+  border: none;
+  padding: 0 0.25rem;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 80ms ease-in-out;
+  margin-left: 0.1rem;
+}
+
+.block:hover .block-due-add {
+  opacity: 0.45;
+}
+
+.block-due-add:hover,
+.block-due-add:focus-visible {
+  opacity: 1;
+  outline: none;
+}
+
+/* Schedule block popover (issue #59 phase 4) */
+.schedule-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+
+.schedule-popover {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  padding: 1.25rem 1.5rem;
+  border-radius: 6px;
+  min-width: 18rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.schedule-popover-title {
+  margin: 0;
+  font-size: 1rem;
+  text-transform: lowercase;
+  color: var(--text-primary);
+}
+
+.schedule-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.schedule-popover-row-reminder input[type="time"]:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.schedule-popover-label {
+  min-width: 5rem;
+}
+
+.schedule-popover-input {
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  padding: 0.25rem 0.5rem;
+  flex: 1;
+}
+
+.schedule-popover-input:focus {
+  outline: none;
+  border-color: var(--border-primary);
+}
+
+.schedule-popover-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.schedule-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
 }

@@ -67,3 +67,20 @@ class UserRepository(BaseRepository):
         user.theme = theme
         user.save(update_fields=["theme"])
         return user
+
+    @classmethod
+    def update_time_format(cls, user: User, time_format: str) -> User:
+        """Update user's preferred time-of-day display (12h or 24h)."""
+        user.time_format = time_format
+        user.save(update_fields=["time_format"])
+        return user
+
+    @classmethod
+    def update_discord_webhook_url(cls, user: User, url: str) -> User:
+        """Update the user's Discord reminder webhook URL.
+
+        Empty string is a valid "unset" value.
+        """
+        user.discord_webhook_url = url
+        user.save(update_fields=["discord_webhook_url"])
+        return user

@@ -31,6 +31,9 @@
     <script src="{% static 'knowledge/js/components/BlockComponent.js' %}?v={{ STATIC_VERSION }}"></script>
     <script src="{% static 'knowledge/js/components/LoginForm.js' %}?v={{ STATIC_VERSION }}"></script>
     <script src="{% static 'knowledge/js/components/Whiteboard.js' %}?v={{ STATIC_VERSION }}"></script>
+    <!-- ScheduleBlockPopover must load before Page.js — Page registers it
+         as a child component at evaluation time. -->
+    <script src="{% static 'knowledge/js/components/ScheduleBlockPopover.js' %}?v={{ STATIC_VERSION }}"></script>
     <script src="{% static 'knowledge/js/components/Page.js' %}?v={{ STATIC_VERSION }}"></script>
     <script src="{% static 'knowledge/js/components/TaggedBlockDisplay.js' %}?v={{ STATIC_VERSION }}"></script>
     <script src="{% static 'knowledge/js/components/LeftNav.js' %}?v={{ STATIC_VERSION }}"></script>

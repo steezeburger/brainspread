@@ -11,10 +11,19 @@ from core.commands import (
     LoginCommand,
     LogoutCommand,
     RegisterCommand,
+    UpdateDiscordWebhookCommand,
     UpdateThemeCommand,
+    UpdateTimeFormatCommand,
     UpdateTimezoneCommand,
 )
-from core.forms import LoginForm, RegisterForm, UpdateThemeForm, UpdateTimezoneForm
+from core.forms import (
+    LoginForm,
+    RegisterForm,
+    UpdateDiscordWebhookForm,
+    UpdateThemeForm,
+    UpdateTimeFormatForm,
+    UpdateTimezoneForm,
+)
 from core.models.user import UserData
 
 
@@ -34,6 +43,14 @@ class UpdateThemeResponse(TypedDict):
 
 
 class UpdateTimezoneResponse(TypedDict):
+    user: UserData
+
+
+class UpdateDiscordWebhookResponse(TypedDict):
+    user: UserData
+
+
+class UpdateTimeFormatResponse(TypedDict):
     user: UserData
 
 
@@ -162,6 +179,71 @@ def update_timezone(request):
                 {"success": False, "errors": form.errors},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+def update_discord_webhook(request):
+    """Update the user's Discord reminder webhook URL (see issue #59)."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = UpdateDiscordWebhookForm(data)
+        if form.is_valid():
+            command = UpdateDiscordWebhookCommand(form)
+            updated_user = command.execute()
+            payload: UpdateDiscordWebhookResponse = {
+                "user": updated_user.to_user_data()
+            }
+            return Response(
+                {
+                    "success": True,
+                    "data": payload,
+                    "message": "Discord webhook updated",
+                }
+            )
+        return Response(
+            {"success": False, "errors": form.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+def update_time_format(request):
+    """Update user's 12h vs 24h time-of-day preference."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = UpdateTimeFormatForm(data)
+        if form.is_valid():
+            updated_user = UpdateTimeFormatCommand(form).execute()
+            payload: UpdateTimeFormatResponse = {"user": updated_user.to_user_data()}
+            return Response(
+                {"success": True, "data": payload, "message": "Time format updated"}
+            )
+        return Response(
+            {"success": False, "errors": form.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     except ValidationError as e:
         return Response(
             {"success": False, "errors": {"non_field_errors": [str(e)]}},

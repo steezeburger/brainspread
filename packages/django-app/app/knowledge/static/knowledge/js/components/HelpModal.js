@@ -184,6 +184,10 @@ window.HelpModal = {
                   <td>open block actions menu</td>
                 </tr>
                 <tr>
+                  <td><kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>;</kbd> / <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>;</kbd></td>
+                  <td>schedule (set due date / reminder)</td>
+                </tr>
+                <tr>
                   <td><kbd>Esc</kbd></td>
                   <td>exit editing (keeps focus on block for tabbing)</td>
                 </tr>

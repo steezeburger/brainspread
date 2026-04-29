@@ -15,6 +15,7 @@ urlpatterns = [
     path("api/blocks/delete/", views.delete_block, name="delete_block"),
     path("api/blocks/reorder/", views.reorder_blocks, name="reorder_blocks"),
     path("api/blocks/toggle-todo/", views.toggle_block_todo, name="toggle_block_todo"),
+    path("api/blocks/schedule/", views.schedule_block, name="schedule_block"),
     path(
         "api/blocks/move-undone-todos/",
         views.move_undone_todos,

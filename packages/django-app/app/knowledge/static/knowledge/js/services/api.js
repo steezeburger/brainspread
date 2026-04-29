@@ -203,6 +203,36 @@ class ApiService {
     });
   }
 
+  /**
+   * Set or clear a block's scheduled_for date.
+   *   scheduledFor: "" or "YYYY-MM-DD"   (empty clears the schedule)
+   *   reminderDate: "" or "YYYY-MM-DD"   (the day the reminder fires;
+   *                                       defaults to scheduledFor on the
+   *                                       backend if omitted, so callers
+   *                                       can leave this empty for
+   *                                       "remind day-of")
+   *   reminderTime: "" or "HH:MM"        (presence triggers reminder
+   *                                       creation; user-local time)
+   * Re-saving always replaces any pending reminder for the block.
+   */
+  async scheduleBlock(
+    blockUuid,
+    scheduledFor,
+    reminderDate = "",
+    reminderTime = ""
+  ) {
+    const payload = {
+      block: blockUuid,
+      scheduled_for: scheduledFor || "",
+      reminder_date: reminderDate || "",
+      reminder_time: reminderTime || "",
+    };
+    return await this.request("/knowledge/api/blocks/schedule/", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
   async moveUndoneTodos(targetDate = null) {
     const body = targetDate ? { target_date: targetDate } : {};
     return await this.request("/knowledge/api/blocks/move-undone-todos/", {
@@ -328,6 +358,41 @@ class ApiService {
       return result;
     } catch (error) {
       console.error("Failed to update timezone:", error);
+      throw error;
+    }
+  }
+
+  async updateDiscordWebhookUrl(url) {
+    const result = await this.request("/api/auth/update-discord-webhook/", {
+      method: "POST",
+      body: JSON.stringify({ discord_webhook_url: url || "" }),
+    });
+    if (result.success) {
+      const currentUser = this.getCurrentUser();
+      if (currentUser) {
+        currentUser.discord_webhook_url = url || "";
+        localStorage.setItem("user", JSON.stringify(currentUser));
+      }
+    }
+    return result;
+  }
+
+  async updateUserTimeFormat(newFormat) {
+    try {
+      const result = await this.request("/api/auth/update-time-format/", {
+        method: "POST",
+        body: JSON.stringify({ time_format: newFormat }),
+      });
+      if (result.success) {
+        const currentUser = this.getCurrentUser();
+        if (currentUser) {
+          currentUser.time_format = newFormat;
+          localStorage.setItem("user", JSON.stringify(currentUser));
+        }
+      }
+      return result;
+    } catch (error) {
+      console.error("Failed to update time format:", error);
       throw error;
     }
   }
@@ -503,3 +568,26 @@ class ApiService {
 
 // Export for use in other files
 window.apiService = new ApiService();
+
+/**
+ * Format an "HH:MM" string per the current user's time_format preference.
+ *   "17:30" + "24h" -> "17:30"
+ *   "17:30" + "12h" -> "5:30 PM"
+ * Falls back to the input on parse failure.
+ */
+window.formatTimeForUser = function (hhmm, timeFormat) {
+  if (!hhmm) return "";
+  const parts = String(hhmm).split(":");
+  if (parts.length < 2) return hhmm;
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
+  const fmt =
+    timeFormat || window.apiService.getCurrentUser()?.time_format || "24h";
+  if (fmt === "12h") {
+    const period = h >= 12 ? "PM" : "AM";
+    const h12 = ((h + 11) % 12) + 1;
+    return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+  }
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+};

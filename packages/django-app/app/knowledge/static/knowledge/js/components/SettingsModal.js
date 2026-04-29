@@ -21,6 +21,8 @@ window.SettingsModal = {
     return {
       selectedTheme: this.user?.theme || "dark",
       selectedTimezone: this.user?.timezone || "UTC",
+      selectedTimeFormat: this.user?.time_format || "24h",
+      discordWebhookUrl: this.user?.discord_webhook_url || "",
       isUpdating: false,
       aiSettings: null,
       loadingAISettings: false,
@@ -74,6 +76,12 @@ window.SettingsModal = {
         }
         if (newUser?.timezone) {
           this.selectedTimezone = newUser.timezone;
+        }
+        if (newUser?.time_format) {
+          this.selectedTimeFormat = newUser.time_format;
+        }
+        if (typeof newUser?.discord_webhook_url === "string") {
+          this.discordWebhookUrl = newUser.discord_webhook_url;
         }
       },
       deep: true,
@@ -158,6 +166,37 @@ window.SettingsModal = {
             } else {
               console.error("Failed to update timezone:", result.errors);
               alert("Failed to update timezone. Please try again.");
+              return;
+            }
+          }
+
+          const currentTimeFormat = this.user.time_format || "24h";
+          if (this.selectedTimeFormat !== currentTimeFormat) {
+            const result = await window.apiService.updateUserTimeFormat(
+              this.selectedTimeFormat
+            );
+            if (result.success) {
+              console.log("Time format updated");
+              hasUpdates = true;
+            } else {
+              alert("Failed to update time format. Please try again.");
+              return;
+            }
+          }
+
+          const currentWebhook = this.user.discord_webhook_url || "";
+          if (this.discordWebhookUrl !== currentWebhook) {
+            const result = await window.apiService.updateDiscordWebhookUrl(
+              this.discordWebhookUrl
+            );
+            if (result.success) {
+              console.log("Discord webhook URL updated");
+              hasUpdates = true;
+            } else {
+              const msg =
+                result.errors?.discord_webhook_url?.[0] ||
+                "Failed to update Discord webhook URL. Please check the value and try again.";
+              alert(msg);
               return;
             }
           }
@@ -446,6 +485,34 @@ window.SettingsModal = {
                   {{ timezone.replace('_', ' ') }}
                 </option>
               </select>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>time format</h3>
+            <div class="time-format-selector">
+              <select v-model="selectedTimeFormat" class="time-format-select">
+                <option value="24h">24 hour (17:30)</option>
+                <option value="12h">12 hour (5:30 PM)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>discord reminders</h3>
+            <p class="settings-hint">
+              paste a discord webhook url to receive reminders. create one in a
+              private discord channel via server settings &rarr; integrations.
+            </p>
+            <div class="discord-webhook-input">
+              <input
+                type="url"
+                v-model="discordWebhookUrl"
+                class="form-control"
+                placeholder="https://discord.com/api/webhooks/..."
+                autocomplete="off"
+                spellcheck="false"
+              />
             </div>
           </div>
         </div>
