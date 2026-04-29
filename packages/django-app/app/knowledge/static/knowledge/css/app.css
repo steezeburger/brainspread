@@ -3656,6 +3656,115 @@ a.sidebar-item:visited {
   outline-offset: -1px;
 }
 
+/* --- Multi-select mode (page menu → "select multiple") --- */
+
+/* Sticky toolbar shown above the block list while selection mode is on. */
+.selection-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  margin: 0 0 0.5rem;
+  background: var(--accent-bg);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  box-shadow: 2px 2px 0 var(--border-primary);
+}
+
+.selection-toolbar-status {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.selection-toolbar-count {
+  font-size: 1.1rem;
+}
+
+.selection-toolbar-label {
+  opacity: 0.8;
+}
+
+.selection-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.selection-toolbar-action[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.selection-toolbar-danger:not([disabled]) {
+  color: var(--text-primary);
+}
+
+.selection-toolbar-done {
+  font-weight: 600;
+}
+
+/* Subtle outline on every block while mode is on, so the whole row reads
+   as a hit target. The .selected variant fills it in. */
+.block-wrapper.in-selection-mode > .block {
+  outline: 1px dashed color-mix(in srgb, var(--text-primary) 25%, transparent);
+  outline-offset: -1px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.block-wrapper.in-selection-mode.selected > .block {
+  outline-style: solid;
+  outline-color: color-mix(in srgb, var(--text-primary) 60%, transparent);
+}
+
+/* Suppress the editing affordance while mode is on so it's clear you're
+   selecting, not editing. */
+.block-wrapper.in-selection-mode .block-content-display {
+  cursor: pointer;
+}
+
+/* Circle indicator shown on the left of every block while in selection
+   mode. Distinct from the TODO checkbox (○ vs ☐) so the two never read
+   as the same control. */
+.block-select-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-right: 0.25rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: color-mix(in srgb, var(--text-primary) 60%, transparent);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  vertical-align: middle;
+}
+
+.block-select-toggle:hover {
+  color: var(--text-primary);
+}
+
+.block-select-toggle.is-selected {
+  color: var(--text-primary);
+}
+
+/* The toggle sits inside the existing flex row of `.block`; it slots in
+   before the bullet without disturbing children rendering. */
+.block-wrapper.in-selection-mode > .block .block-select-toggle {
+  flex: 0 0 auto;
+}
+
 /* Referenced blocks in context highlighting */
 .referenced-block-wrapper.in-context > .block {
   background: color-mix(in srgb, var(--context-color) 15%, transparent);

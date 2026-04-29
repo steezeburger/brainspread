@@ -26,6 +26,16 @@ urlpatterns = [
         views.move_block_to_daily,
         name="move_block_to_daily",
     ),
+    path(
+        "api/blocks/bulk-delete/",
+        views.bulk_delete_blocks,
+        name="bulk_delete_blocks",
+    ),
+    path(
+        "api/blocks/bulk-move/",
+        views.bulk_move_blocks,
+        name="bulk_move_blocks",
+    ),
     # Page-centric API endpoints
     path("api/pages/", views.create_page, name="create_page"),
     path("api/pages/update/", views.update_page, name="update_page"),

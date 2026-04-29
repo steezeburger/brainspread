@@ -555,6 +555,18 @@ const KnowledgeApp = createApp({
           icon: "+",
         },
         {
+          id: "bulk-delete",
+          label: "delete selected blocks",
+          description: "delete all currently selected blocks",
+          icon: "×",
+        },
+        {
+          id: "bulk-move-to-today",
+          label: "move selected to today",
+          description: "move all selected blocks to today's daily note",
+          icon: "⇨",
+        },
+        {
           id: "today",
           label: "today",
           description: "go to today's daily note",
@@ -767,6 +779,14 @@ const KnowledgeApp = createApp({
           break;
         case "new-block":
           document.dispatchEvent(new CustomEvent("spotlight:new-block"));
+          break;
+        case "bulk-delete":
+          document.dispatchEvent(new CustomEvent("spotlight:bulk-delete"));
+          break;
+        case "bulk-move-to-today":
+          document.dispatchEvent(
+            new CustomEvent("spotlight:bulk-move-to-today")
+          );
           break;
         case "today":
           this.redirectToToday();

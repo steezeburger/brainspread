@@ -53,6 +53,10 @@ const Page = {
       selectionAnchorUuid: null,
       selectionLevel: 0,
       selectedBlockUuids: new Set(),
+      // Multi-select mode: opt-in via the page's ⋮ menu. When on, plain
+      // clicks on a block toggle it in/out of the selection instead of
+      // entering edit mode, and a sticky toolbar shows bulk actions.
+      selectionMode: false,
     };
   },
 
@@ -81,6 +85,10 @@ const Page = {
       return this.referencedBlocks.length > 0;
     },
 
+    selectedBlockCount() {
+      return this.selectedBlockUuids.size;
+    },
+
     totalOverdueBlocks() {
       return this.overdueBlocks.length;
     },
@@ -104,6 +112,15 @@ const Page = {
     document.addEventListener(
       "spotlight:new-block",
       this.handleSpotlightNewBlock
+    );
+    // Spotlight commands: bulk actions on the current selection
+    document.addEventListener(
+      "spotlight:bulk-delete",
+      this.handleBulkDeleteSelected
+    );
+    document.addEventListener(
+      "spotlight:bulk-move-to-today",
+      this.handleBulkMoveSelectedToToday
     );
     // Re-enter editing after the AI chat panel closes (restores block focus).
     document.addEventListener(
@@ -137,6 +154,14 @@ const Page = {
     document.removeEventListener(
       "spotlight:new-block",
       this.handleSpotlightNewBlock
+    );
+    document.removeEventListener(
+      "spotlight:bulk-delete",
+      this.handleBulkDeleteSelected
+    );
+    document.removeEventListener(
+      "spotlight:bulk-move-to-today",
+      this.handleBulkMoveSelectedToToday
     );
     document.removeEventListener(
       "resume-block-editing",
@@ -1324,6 +1349,8 @@ const Page = {
       if (event.key === "Escape") {
         if (this.showPageMenu) {
           this.closePageMenuAndRestoreFocus();
+        } else if (this.selectionMode) {
+          this.exitSelectionMode();
         } else if (this.selectionAnchorUuid) {
           this.clearBlockSelection();
         }
@@ -2263,6 +2290,170 @@ const Page = {
       event.preventDefault();
       event.clipboardData.setData("text/plain", markdown);
     },
+
+    // Click + Shift-click selects a contiguous range of blocks in document
+    // order; Cmd/Ctrl-click toggles a single block in/out of the selection.
+    // While in selection mode, plain clicks also toggle. Returns true when
+    // the click was consumed for selection so callers can skip starting an
+    // edit. Plain clicks outside selection mode return false.
+    handleBlockSelectClick(block, event) {
+      if (!event) return false;
+
+      // The first block touched in a selection becomes the anchor for any
+      // subsequent shift-click range expansion.
+      if (event.shiftKey && this.selectionAnchorUuid) {
+        const all = this.getAllBlocks();
+        const anchorIdx = all.findIndex(
+          (b) => b.uuid === this.selectionAnchorUuid
+        );
+        const targetIdx = all.findIndex((b) => b.uuid === block.uuid);
+        if (anchorIdx === -1 || targetIdx === -1) return false;
+        const [start, end] =
+          anchorIdx <= targetIdx
+            ? [anchorIdx, targetIdx]
+            : [targetIdx, anchorIdx];
+        const uuids = new Set();
+        for (let i = start; i <= end; i++) uuids.add(all[i].uuid);
+        this.selectedBlockUuids = uuids;
+        this.selectionLevel = 0;
+        this.blurActiveEditor();
+        return true;
+      }
+
+      if (event.shiftKey) {
+        // No anchor yet — treat shift-click like a fresh anchor click.
+        this.selectionAnchorUuid = block.uuid;
+        this.selectionLevel = 0;
+        this.selectedBlockUuids = new Set([block.uuid]);
+        this.blurActiveEditor();
+        return true;
+      }
+
+      if (event.metaKey || event.ctrlKey || this.selectionMode) {
+        const next = new Set(this.selectedBlockUuids);
+        if (next.has(block.uuid)) {
+          next.delete(block.uuid);
+        } else {
+          next.add(block.uuid);
+        }
+        this.selectedBlockUuids = next;
+        if (next.size === 0) {
+          this.selectionAnchorUuid = null;
+        } else if (
+          !this.selectionAnchorUuid ||
+          !next.has(this.selectionAnchorUuid)
+        ) {
+          this.selectionAnchorUuid = block.uuid;
+        }
+        this.selectionLevel = 0;
+        this.blurActiveEditor();
+        return true;
+      }
+
+      return false;
+    },
+
+    blurActiveEditor() {
+      const active = document.activeElement;
+      if (
+        active &&
+        active.tagName === "TEXTAREA" &&
+        active.classList.contains("block-content")
+      ) {
+        active.blur();
+      }
+    },
+
+    handleBulkDeleteSelected() {
+      this.bulkDeleteSelected();
+    },
+
+    handleBulkMoveSelectedToToday() {
+      this.bulkMoveSelectedToToday();
+    },
+
+    enterSelectionMode() {
+      this.selectionMode = true;
+      this.closePageMenu();
+    },
+
+    exitSelectionMode() {
+      this.selectionMode = false;
+      this.clearBlockSelection();
+    },
+
+    toggleSelectionMode() {
+      if (this.selectionMode) {
+        this.exitSelectionMode();
+      } else {
+        this.enterSelectionMode();
+      }
+    },
+
+    async bulkDeleteSelected() {
+      const uuids = [...this.selectedBlockUuids];
+      if (uuids.length === 0) {
+        this.$parent?.addToast?.("no blocks selected", "info");
+        return;
+      }
+
+      const confirmed = confirm(
+        `delete ${uuids.length} selected block${uuids.length === 1 ? "" : "s"}? this also deletes any child blocks and cannot be undone.`
+      );
+      if (!confirmed) return;
+
+      try {
+        const result = await window.apiService.bulkDeleteBlocks(uuids);
+        if (!result || !result.success) {
+          throw new Error("bulk delete failed");
+        }
+        const count = result.data?.deleted_count ?? uuids.length;
+        this.$parent?.addToast?.(
+          `deleted ${count} block${count === 1 ? "" : "s"}`,
+          "success"
+        );
+        this.clearBlockSelection();
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("failed to bulk-delete blocks:", error);
+        this.error = "failed to delete selected blocks";
+        this.$parent?.addToast?.("failed to delete selected blocks", "error");
+      }
+    },
+
+    async bulkMoveSelectedToToday() {
+      const uuids = [...this.selectedBlockUuids];
+      if (uuids.length === 0) {
+        this.$parent?.addToast?.("no blocks selected", "info");
+        return;
+      }
+
+      try {
+        const result = await window.apiService.bulkMoveBlocks(uuids);
+        if (!result || !result.success) {
+          throw new Error("bulk move failed");
+        }
+        const moved = result.data?.moved_count ?? 0;
+        const targetTitle = result.data?.target_page?.title || "today";
+        if (moved > 0) {
+          this.$parent?.addToast?.(
+            `moved ${moved} block${moved === 1 ? "" : "s"} to ${targetTitle}`,
+            "success"
+          );
+        } else {
+          this.$parent?.addToast?.(
+            "selected blocks already on the target page",
+            "info"
+          );
+        }
+        this.clearBlockSelection();
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("failed to bulk-move blocks:", error);
+        this.error = "failed to move selected blocks";
+        this.$parent?.addToast?.("failed to move selected blocks", "error");
+      }
+    },
   },
 
   template: `
@@ -2338,6 +2529,10 @@ const Page = {
                     <button @click="moveUndoneTodos" class="context-menu-item" :disabled="loading" role="menuitem">
                       move undone TODOs here
                     </button>
+                    <button @click="enterSelectionMode" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">◉</span>
+                      <span>select multiple</span>
+                    </button>
                     <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">
                        <span class="context-menu-icon">×</span>
                        <span>delete</span>
@@ -2379,6 +2574,10 @@ const Page = {
                     <button @click="startEditingTitle" class="context-menu-item" role="menuitem">
                       edit title
                     </button>
+                    <button @click="enterSelectionMode" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">◉</span>
+                      <span>select multiple</span>
+                    </button>
                     <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">
                       delete page
                     </button>
@@ -2386,6 +2585,36 @@ const Page = {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Selection Mode Toolbar -->
+        <div v-if="selectionMode" class="selection-toolbar" role="toolbar" aria-label="Selection actions">
+          <div class="selection-toolbar-status">
+            <span class="selection-toolbar-count">{{ selectedBlockCount }}</span>
+            <span class="selection-toolbar-label">selected</span>
+          </div>
+          <div class="selection-toolbar-actions">
+            <button
+              type="button"
+              class="btn btn-outline selection-toolbar-action"
+              :disabled="selectedBlockCount === 0"
+              @click="bulkMoveSelectedToToday"
+              title="Move selected blocks to today's daily note"
+            >move to today</button>
+            <button
+              type="button"
+              class="btn btn-outline selection-toolbar-action selection-toolbar-danger"
+              :disabled="selectedBlockCount === 0"
+              @click="bulkDeleteSelected"
+              title="Delete selected blocks"
+            >delete</button>
+            <button
+              type="button"
+              class="btn btn-outline selection-toolbar-done"
+              @click="exitSelectionMode"
+              title="Exit selection mode (Esc)"
+            >done</button>
           </div>
         </div>
 
@@ -2457,6 +2686,11 @@ const Page = {
               :moveBlockToToday="moveBlockToToday"
               :onBlockPaste="onBlockPaste"
               :scheduleBlock="scheduleBlock"
+              :onBlockSelectClick="handleBlockSelectClick"
+              :selectedBlockCount="selectedBlockCount"
+              :bulkDeleteSelected="bulkDeleteSelected"
+              :bulkMoveSelectedToToday="bulkMoveSelectedToToday"
+              :selectionMode="selectionMode"
             />
             <button @click="addNewBlock" class="add-block-btn">
               + add new block
