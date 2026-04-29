@@ -163,6 +163,25 @@ STATIC_VERSION = os.environ.get("STATIC_VERSION") or str(int(time.time()))
 MEDIA_URL = os.environ.get("MEDIA_URL", "/media/")
 MEDIA_ROOT = os.environ.get("MEDIA_ROOT", os.path.join(BASE_DIR, "media"))
 
+# Asset upload limits. The mime whitelist is conservative on purpose - this
+# is the door for user-uploaded bytes, so widen it deliberately rather than
+# by accident.
+ASSET_UPLOAD_MAX_BYTES = int(
+    os.environ.get("ASSET_UPLOAD_MAX_BYTES", str(25 * 1024 * 1024))
+)
+ASSET_UPLOAD_MIME_WHITELIST = [
+    mime.strip()
+    for mime in os.environ.get(
+        "ASSET_UPLOAD_MIME_WHITELIST",
+        "image/jpeg,image/png,image/gif,image/webp,image/svg+xml,"
+        "application/pdf,"
+        "text/plain,text/markdown,text/html,"
+        "audio/mpeg,audio/wav,audio/ogg,audio/webm,"
+        "video/mp4,video/webm,video/quicktime",
+    ).split(",")
+    if mime.strip()
+]
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.0/ref/settings/#default-auto-field
 

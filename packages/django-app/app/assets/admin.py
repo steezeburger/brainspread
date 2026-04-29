@@ -8,7 +8,8 @@ from .models import Asset
 class AssetAdmin(admin.ModelAdmin):
     list_display = (
         "short_uuid",
-        "kind",
+        "asset_type",
+        "file_type",
         "user",
         "filename",
         "mime_type",
@@ -16,14 +17,16 @@ class AssetAdmin(admin.ModelAdmin):
         "source_url_short",
         "created_at",
     )
-    list_filter = ("kind", "mime_type", "created_at")
-    search_fields = ("sha256", "source_url", "user__email", "file")
+    list_filter = ("asset_type", "file_type", "mime_type", "created_at")
+    search_fields = ("sha256", "source_url", "user__email", "file", "original_filename")
     readonly_fields = (
         "id",
         "uuid",
         "sha256",
         "byte_size",
         "mime_type",
+        "width",
+        "height",
         "created_at",
         "modified_at",
         "file_link",
@@ -32,8 +35,22 @@ class AssetAdmin(admin.ModelAdmin):
     ordering = ("-created_at",)
 
     fieldsets = (
-        (None, {"fields": ("user", "kind", "source_url")}),
-        ("File", {"fields": ("file", "file_link", "mime_type", "byte_size", "sha256")}),
+        (None, {"fields": ("user", "asset_type", "file_type", "source_url")}),
+        (
+            "File",
+            {
+                "fields": (
+                    "file",
+                    "file_link",
+                    "original_filename",
+                    "mime_type",
+                    "byte_size",
+                    "sha256",
+                    "width",
+                    "height",
+                )
+            },
+        ),
         ("Metadata", {"fields": ("metadata",), "classes": ("collapse",)}),
         (
             "Timestamps",
@@ -45,6 +62,8 @@ class AssetAdmin(admin.ModelAdmin):
     )
 
     def filename(self, obj):
+        if obj.original_filename:
+            return obj.original_filename
         if not obj.file:
             return "-"
         # FieldFile.name is the path relative to MEDIA_ROOT; show just the
