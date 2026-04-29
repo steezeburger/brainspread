@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import TypedDict
 
 from django.db import transaction
@@ -36,6 +37,7 @@ class SendDueRemindersCommand(AbstractBaseCommand):
         super().execute()
 
         now = self.form.cleaned_data.get("now") or timezone.now()
+        environment = os.environ.get("ENVIRONMENT", "")
 
         considered = 0
         sent = 0
@@ -68,7 +70,12 @@ class SendDueRemindersCommand(AbstractBaseCommand):
                     skipped += 1
                     continue
 
-                content = _format_content(reminder, block, block.user.discord_user_id)
+                content = _format_content(
+                    reminder,
+                    block,
+                    block.user.discord_user_id,
+                    environment,
+                )
                 url = block.user.discord_webhook_url
                 # Look up post_webhook at call time (not via `self.deliver`)
                 # so tests can patch the module-level symbol.
@@ -106,11 +113,21 @@ class SendDueRemindersCommand(AbstractBaseCommand):
         }
 
 
-def _format_content(reminder: Reminder, block, discord_user_id: str = "") -> str:
+_PROD_ENVIRONMENTS = {"prod", "production"}
+
+
+def _format_content(
+    reminder: Reminder,
+    block,
+    discord_user_id: str = "",
+    environment: str = "",
+) -> str:
     """Render the Discord message body for a reminder.
 
     When `discord_user_id` is set, prepends a `<@ID>` mention so the user
     gets a desktop/push notification instead of just a silent channel post.
+    When `environment` is set to anything other than prod/production, an
+    `[<env>] ` label is prepended so non-prod pings are distinguishable.
     """
     title = (block.content or "").strip().splitlines()[0] if block.content else ""
     if len(title) > 240:
@@ -120,5 +137,8 @@ def _format_content(reminder: Reminder, block, discord_user_id: str = "") -> str
         due = f" (due {block.scheduled_for.isoformat()})"
     body = f"Reminder: {title}{due}" if title else f"Reminder{due}"
     if discord_user_id:
-        return f"<@{discord_user_id}> {body}"
+        body = f"<@{discord_user_id}> {body}"
+    env = (environment or "").strip().lower()
+    if env and env not in _PROD_ENVIRONMENTS:
+        body = f"[{env}] {body}"
     return body

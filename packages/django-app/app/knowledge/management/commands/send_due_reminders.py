@@ -13,14 +13,16 @@ class Command(BaseCommand):
     Run by the `scheduler` docker service on a ~1-minute loop (see
     packages/django-app/docker-compose.yml and bin/run-scheduler.sh).
 
-    Gated by the REMINDERS_ENABLED env var so staging PR stacks don't spam
-    the user's Discord channel. Set REMINDERS_ENABLED=true in prod .env.
+    Gated by the REMINDERS_ENABLED env var (defaults to true). Set to
+    false to mute the scheduler entirely. Non-prod environments get a
+    `[<env>]` label prepended via the ENVIRONMENT env var so pings are
+    distinguishable from prod ones in Discord.
     """
 
     help = "Dispatch any reminders whose fire_at has arrived."
 
     def handle(self, *args: Any, **options: Any) -> None:
-        enabled = os.environ.get("REMINDERS_ENABLED", "false").lower() == "true"
+        enabled = os.environ.get("REMINDERS_ENABLED", "true").lower() == "true"
         if not enabled:
             self.stdout.write(
                 "reminders disabled (REMINDERS_ENABLED != 'true'); skipping"

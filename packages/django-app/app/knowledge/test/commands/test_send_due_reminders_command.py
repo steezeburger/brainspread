@@ -1,3 +1,4 @@
+import os
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -20,6 +21,7 @@ def _fail(*_args, **_kwargs):
     return DiscordDeliveryResult(False, "boom")
 
 
+@patch.dict(os.environ, {"ENVIRONMENT": "prod"})
 class TestSendDueRemindersCommand(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -190,6 +192,52 @@ class TestSendDueRemindersCommand(TestCase):
             self._run()
 
         self.assertFalse(captured["content"].startswith("<@"))
+
+    def test_prepends_env_label_when_not_prod(self):
+        """Non-prod ENVIRONMENT values get an `[<env>] ` label so the user
+        can tell which deploy a reminder came from."""
+        block = BlockFactory(user=self.user, page=self.page, content="TODO ship")
+        Reminder.objects.create(
+            block=block,
+            fire_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        captured: dict = {}
+
+        def _capture(url: str, content: str, **_kwargs):
+            captured["content"] = content
+            return DiscordDeliveryResult(True, "")
+
+        with patch.dict(os.environ, {"ENVIRONMENT": "staging"}):
+            with patch(
+                "knowledge.commands.send_due_reminders_command.post_webhook",
+                _capture,
+            ):
+                self._run()
+
+        self.assertTrue(captured["content"].startswith("[staging] "))
+        self.assertIn("TODO ship", captured["content"])
+
+    def test_no_env_label_for_prod(self):
+        block = BlockFactory(user=self.user, page=self.page, content="TODO ship")
+        Reminder.objects.create(
+            block=block,
+            fire_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        captured: dict = {}
+
+        def _capture(url: str, content: str, **_kwargs):
+            captured["content"] = content
+            return DiscordDeliveryResult(True, "")
+
+        # Class-level patch already pins ENVIRONMENT=prod; just confirm it.
+        with patch(
+            "knowledge.commands.send_due_reminders_command.post_webhook", _capture
+        ):
+            self._run()
+
+        self.assertFalse(captured["content"].startswith("["))
 
     def test_marks_failed_when_user_has_no_webhook(self):
         user_no_webhook = UserFactory(discord_webhook_url="")

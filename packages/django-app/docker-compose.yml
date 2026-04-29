@@ -40,8 +40,8 @@ services:
       - db
   # Periodic task runner — polls the reminders table once a minute and
   # dispatches any that are due. See bin/run-scheduler.sh and issue #59.
-  # Gated by REMINDERS_ENABLED so staging PR stacks don't ping real Discord
-  # channels by default.
+  # REMINDERS_ENABLED defaults to true; set to false to mute. Non-prod
+  # environments get an `[<env>]` label on each message via ENVIRONMENT.
   scheduler:
     build:
       context: .
