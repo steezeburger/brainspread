@@ -58,11 +58,13 @@ window.LeftNav = {
     this.loadHistoricalData();
     this.setupResizeListener();
     this.applyLayoutWidth();
+    window.addEventListener("resize", this.handleWindowResize);
   },
 
   beforeUnmount() {
     this.removeResizeListener();
     this.clearLayoutWidth();
+    window.removeEventListener("resize", this.handleWindowResize);
   },
 
   watch: {
@@ -111,12 +113,24 @@ window.LeftNav = {
     },
 
     applyLayoutWidth() {
-      const value = this.isOpen ? `${this.width}px` : "0px";
+      const isMobile = window.innerWidth <= 768;
+      let value;
+      if (this.isOpen) {
+        value = `${this.width}px`;
+      } else if (!isMobile) {
+        value = "48px"; // Width of the collapsed rail.
+      } else {
+        value = "0px";
+      }
       document.documentElement.style.setProperty("--leftnav-width", value);
     },
 
     clearLayoutWidth() {
       document.documentElement.style.removeProperty("--leftnav-width");
+    },
+
+    handleWindowResize() {
+      this.applyLayoutWidth();
     },
 
     formatDate(dateString) {
@@ -443,14 +457,74 @@ window.LeftNav = {
 
   template: `
     <div class="leftnav-container" :class="{ 'is-open': isOpen, 'is-collapsed': !isOpen }">
-      <!-- Floating expand button (visible only when collapsed) -->
-      <button
-        v-if="!isOpen"
+      <!-- Backdrop for mobile drawer (CSS hides on desktop). -->
+      <div
+        v-if="isOpen"
+        class="leftnav-backdrop"
         @click="toggleSidebar"
-        class="leftnav-expand-btn"
-        title="Open sidebar"
-        aria-label="Open sidebar"
-      >→</button>
+        aria-hidden="true"
+      ></div>
+
+      <!-- Collapsed rail. CSS collapses extras on mobile so only the toggle
+           is visible. -->
+      <aside
+        v-if="!isOpen"
+        class="leftnav-rail"
+        aria-label="Collapsed primary navigation"
+      >
+        <button
+          type="button"
+          class="leftnav-rail-btn leftnav-rail-toggle"
+          @click="toggleSidebar"
+          title="Open sidebar"
+          aria-label="Open sidebar"
+        >→</button>
+        <button
+          type="button"
+          class="leftnav-rail-btn leftnav-rail-action"
+          @click="onSearchClick"
+          :title="'Search (' + shortcutHint + ')'"
+          aria-label="Search"
+        >⌕</button>
+        <a
+          :href="todayHref"
+          class="leftnav-rail-btn leftnav-rail-action"
+          @click="onTodayClick"
+          @auxclick="onTodayClick"
+          title="Today"
+          aria-label="Today"
+        >▤</a>
+        <button
+          type="button"
+          class="leftnav-rail-btn leftnav-rail-action"
+          @click="onCreatePageClick"
+          title="New page"
+          aria-label="New page"
+        >+</button>
+        <a
+          href="/knowledge/graph/"
+          class="leftnav-rail-btn leftnav-rail-action"
+          @click="onGraphClick"
+          @auxclick="onGraphClick"
+          title="Graph"
+          aria-label="Graph"
+        >◉</a>
+        <div class="leftnav-rail-spacer leftnav-rail-action"></div>
+        <button
+          type="button"
+          class="leftnav-rail-btn leftnav-rail-action"
+          @click="onSettingsClick"
+          title="Settings"
+          aria-label="Settings"
+        >⚙</button>
+        <button
+          type="button"
+          class="leftnav-rail-btn leftnav-rail-action"
+          @click="onHelpClick"
+          title="Help"
+          aria-label="Help"
+        >?</button>
+      </aside>
 
       <!-- Sidebar -->
       <aside

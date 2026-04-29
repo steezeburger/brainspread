@@ -1837,6 +1837,44 @@ kbd {
     padding-left: 2rem;
   }
 
+  /* Mobile: collapse the rail to just the floating toggle. */
+  .leftnav-rail {
+    width: auto;
+    height: auto;
+    background: transparent;
+    border: none;
+    padding: 0;
+    top: 88px;
+    left: 8px;
+  }
+
+  .leftnav-rail-action {
+    display: none;
+  }
+
+  .leftnav-rail-toggle {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 2px solid var(--border-primary);
+    padding: 0.4rem 0.6rem;
+    font-weight: bold;
+    width: auto;
+    height: auto;
+    box-shadow: 2px 2px 0 var(--border-primary);
+  }
+
+  /* Mobile drawer backdrop. */
+  .leftnav-backdrop {
+    display: block;
+    position: fixed;
+    top: 80px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 1099;
+  }
+
   /* Simple fix - use margin-bottom only when chat is open and visible */
   .chat-panel.open .message-input {
     margin-bottom: 60px;
@@ -2080,24 +2118,52 @@ kbd {
   position: relative;
 }
 
-.leftnav-expand-btn {
+.leftnav-rail {
   position: fixed;
-  top: 96px;
-  left: 8px;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  border: 2px solid var(--border-primary);
-  padding: 0.4rem 0.6rem;
-  font-family: inherit;
-  font-size: 0.85rem;
-  font-weight: bold;
-  cursor: pointer;
-  z-index: 1000;
-  box-shadow: 2px 2px 0 var(--border-primary);
+  top: 80px;
+  left: 0;
+  width: 48px;
+  height: calc(100vh - 80px);
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0.4rem 0;
+  gap: 0.15rem;
+  z-index: 999;
 }
 
-.leftnav-expand-btn:hover {
+.leftnav-rail-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 36px;
+  background: transparent;
+  color: var(--text-primary);
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 1rem;
+  text-decoration: none;
+}
+
+.leftnav-rail-btn:hover {
   background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.leftnav-rail-btn:visited {
+  color: var(--text-primary);
+}
+
+.leftnav-rail-spacer {
+  flex: 1;
+}
+
+.leftnav-backdrop {
+  display: none;
 }
 
 .historical-sidebar {
