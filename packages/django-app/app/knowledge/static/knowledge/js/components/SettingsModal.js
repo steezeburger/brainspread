@@ -21,8 +21,9 @@ window.SettingsModal = {
     return {
       selectedTheme: this.user?.theme || "dark",
       selectedTimezone: this.user?.timezone || "UTC",
-      selectedTimeFormat: this.user?.time_format || "24h",
+      selectedTimeFormat: this.user?.time_format || "12h",
       discordWebhookUrl: this.user?.discord_webhook_url || "",
+      discordUserId: this.user?.discord_user_id || "",
       isUpdating: false,
       aiSettings: null,
       loadingAISettings: false,
@@ -82,6 +83,9 @@ window.SettingsModal = {
         }
         if (typeof newUser?.discord_webhook_url === "string") {
           this.discordWebhookUrl = newUser.discord_webhook_url;
+        }
+        if (typeof newUser?.discord_user_id === "string") {
+          this.discordUserId = newUser.discord_user_id;
         }
       },
       deep: true,
@@ -170,7 +174,7 @@ window.SettingsModal = {
             }
           }
 
-          const currentTimeFormat = this.user.time_format || "24h";
+          const currentTimeFormat = this.user.time_format || "12h";
           if (this.selectedTimeFormat !== currentTimeFormat) {
             const result = await window.apiService.updateUserTimeFormat(
               this.selectedTimeFormat
@@ -196,6 +200,23 @@ window.SettingsModal = {
               const msg =
                 result.errors?.discord_webhook_url?.[0] ||
                 "Failed to update Discord webhook URL. Please check the value and try again.";
+              alert(msg);
+              return;
+            }
+          }
+
+          const currentDiscordUserId = this.user.discord_user_id || "";
+          const trimmedDiscordUserId = (this.discordUserId || "").trim();
+          if (trimmedDiscordUserId !== currentDiscordUserId) {
+            const result =
+              await window.apiService.updateDiscordUserId(trimmedDiscordUserId);
+            if (result.success) {
+              console.log("Discord user ID updated");
+              hasUpdates = true;
+            } else {
+              const msg =
+                result.errors?.discord_user_id?.[0] ||
+                "Failed to update Discord user ID. Please check the value and try again.";
               alert(msg);
               return;
             }
@@ -512,6 +533,23 @@ window.SettingsModal = {
                 placeholder="https://discord.com/api/webhooks/..."
                 autocomplete="off"
                 spellcheck="false"
+              />
+            </div>
+            <p class="settings-hint">
+              optional discord user id &mdash; when set, reminders @-mention
+              you so they trigger a desktop/push notification. enable
+              developer mode in discord (settings &rarr; advanced), then
+              right-click your name &rarr; copy user id.
+            </p>
+            <div class="discord-webhook-input">
+              <input
+                type="text"
+                v-model="discordUserId"
+                class="form-control"
+                placeholder="discord user id (numeric)"
+                autocomplete="off"
+                spellcheck="false"
+                inputmode="numeric"
               />
             </div>
           </div>
