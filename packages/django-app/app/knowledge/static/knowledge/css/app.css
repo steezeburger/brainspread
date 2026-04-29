@@ -2501,7 +2501,7 @@ a.sidebar-item:visited {
   margin-bottom: 0.3rem;
 }
 
-/* Vertical layout for historical sidebar page cards */
+/* Vertical layout for left nav recent page cards */
 .page-card-vertical {
   display: flex;
   flex-direction: column;

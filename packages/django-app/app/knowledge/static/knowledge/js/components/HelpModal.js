@@ -132,7 +132,7 @@ window.HelpModal = {
               <tbody>
                 <tr>
                   <td><kbd>⌘</kbd> + <kbd>\\</kbd> / <kbd>Ctrl</kbd> + <kbd>\\</kbd></td>
-                  <td>toggle history sidebar</td>
+                  <td>toggle left sidebar</td>
                 </tr>
                 <tr>
                   <td><kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>\\</kbd> / <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>\\</kbd></td>
@@ -144,7 +144,7 @@ window.HelpModal = {
                 </tr>
               </tbody>
             </table>
-            <p class="help-hint">the command palette also has "open/close history" and "open/close ai" entries, which flip labels to match the current state.</p>
+            <p class="help-hint">the command palette also has "open/close sidebar" and "open/close ai" entries, which flip labels to match the current state.</p>
           </div>
 
           <div class="help-section">
