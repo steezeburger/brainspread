@@ -6,6 +6,10 @@ from ..forms.upload_asset_form import UploadAssetForm
 from ..models import Asset, file_type_from_mime
 from ..repositories import AssetRepository
 
+# 64 KB. Big enough that hashing isn't dominated by Python overhead;
+# small enough to keep peak memory predictable for big uploads.
+_SHA256_CHUNK_SIZE = 64 * 1024
+
 
 class UploadAssetCommand(AbstractBaseCommand):
     """
@@ -17,10 +21,6 @@ class UploadAssetCommand(AbstractBaseCommand):
     validation has already enforced size + mime limits by the time we
     get here.
     """
-
-    # 64KB. Big enough that hashing isn't dominated by Python overhead;
-    # small enough to keep peak memory predictable for big uploads.
-    _CHUNK_SIZE = 64 * 1024
 
     def __init__(self, form: UploadAssetForm) -> None:
         self.form = form
@@ -67,11 +67,11 @@ class UploadAssetCommand(AbstractBaseCommand):
         asset.file.save(original_filename or str(asset.uuid), uploaded, save=True)
         return asset
 
-    @classmethod
-    def _compute_sha256(cls, uploaded) -> str:
+    @staticmethod
+    def _compute_sha256(uploaded) -> str:
         digest = hashlib.sha256()
         # UploadedFile.chunks() is the documented streaming iterator and
         # works for both in-memory and TemporaryUploadedFile.
-        for chunk in uploaded.chunks(chunk_size=cls._CHUNK_SIZE):
+        for chunk in uploaded.chunks(chunk_size=_SHA256_CHUNK_SIZE):
             digest.update(chunk)
         return digest.hexdigest()
