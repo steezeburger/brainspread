@@ -118,6 +118,9 @@ class UserAdmin(DjangoUserAdmin):
                     "email",
                     "password",
                     "timezone",
+                    "time_format",
+                    "theme",
+                    "discord_webhook_url",
                 )
             },
         ),

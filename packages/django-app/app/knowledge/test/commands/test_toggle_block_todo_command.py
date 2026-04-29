@@ -329,3 +329,67 @@ class TestToggleBlockTodoCommand:
             form.is_valid()
             command = ToggleBlockTodoCommand(form)
             command.execute()
+
+    def test_completed_at_set_when_cycling_to_done(self):
+        """completed_at should be set when a block transitions into done"""
+        user = User.objects.create_user(email="test@example.com", password="password")
+        page = Page.objects.create(title="Test Page", user=user)
+        block = Block.objects.create(
+            page=page,
+            user=user,
+            content="DOING write docs",
+            block_type="doing",
+            order=0,
+        )
+        assert block.completed_at is None
+
+        form = ToggleBlockTodoForm({"user": user.id, "block": str(block.uuid)})
+        form.is_valid()
+        result = ToggleBlockTodoCommand(form).execute()
+
+        assert result.block_type == "done"
+        assert result.completed_at is not None
+
+    def test_completed_at_cleared_when_cycling_out_of_done(self):
+        """completed_at should be cleared when leaving done (done -> later)"""
+        from django.utils import timezone
+
+        user = User.objects.create_user(email="test@example.com", password="password")
+        page = Page.objects.create(title="Test Page", user=user)
+        block = Block.objects.create(
+            page=page,
+            user=user,
+            content="DONE write docs",
+            block_type="done",
+            order=0,
+            completed_at=timezone.now(),
+        )
+
+        form = ToggleBlockTodoForm({"user": user.id, "block": str(block.uuid)})
+        form.is_valid()
+        result = ToggleBlockTodoCommand(form).execute()
+
+        assert result.block_type == "later"
+        assert result.completed_at is None
+
+    def test_completed_at_preserved_when_cycling_done_to_wontdo(self):
+        """Both done and wontdo are terminal — going later -> wontdo sets a
+        new completed_at, but cycling between terminal states via the normal
+        cycle (which goes done -> later first) is covered above. This test
+        asserts wontdo receives a completed_at when cycling in."""
+        user = User.objects.create_user(email="test@example.com", password="password")
+        page = Page.objects.create(title="Test Page", user=user)
+        block = Block.objects.create(
+            page=page,
+            user=user,
+            content="LATER write docs",
+            block_type="later",
+            order=0,
+        )
+
+        form = ToggleBlockTodoForm({"user": user.id, "block": str(block.uuid)})
+        form.is_valid()
+        result = ToggleBlockTodoCommand(form).execute()
+
+        assert result.block_type == "wontdo"
+        assert result.completed_at is not None

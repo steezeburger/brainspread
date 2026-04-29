@@ -38,3 +38,25 @@ services:
       - .:/code
     depends_on:
       - db
+  # Periodic task runner — polls the reminders table once a minute and
+  # dispatches any that are due. See bin/run-scheduler.sh and issue #59.
+  # Gated by REMINDERS_ENABLED so staging PR stacks don't ping real Discord
+  # channels by default.
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env
+    environment:
+      - POSTGRES_HOST=db
+    command:
+      - "/code/bin/wait-for-it.sh"
+      - "db:${POSTGRES_PORT:-5432}"
+      - "--"
+      - "/code/bin/run-scheduler.sh"
+    volumes:
+      - .:/code
+    depends_on:
+      - db
+    restart: unless-stopped

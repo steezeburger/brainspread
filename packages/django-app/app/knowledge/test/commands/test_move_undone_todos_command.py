@@ -526,3 +526,48 @@ class TestMoveUndoneTodosCommand(TestCase):
         form = MoveUndoneTodosForm(form_data)
         self.assertFalse(form.is_valid())
         self.assertIn("user", form.errors)
+
+    @patch("core.helpers.timezone")
+    def test_should_skip_dated_blocks_during_rollover(self, mock_timezone):
+        """Dated blocks (scheduled_for set) stay on their original page —
+        they surface via the overdue query instead."""
+        today = date(2025, 6, 30)
+        mock_timezone.now.return_value = _utc_noon(today)
+
+        yesterday = date(2025, 6, 29)
+        yesterday_page = PageFactory(
+            user=self.user,
+            date=yesterday,
+            page_type="daily",
+            title="2025-06-29",
+            slug="2025-06-29",
+        )
+
+        undated_todo = BlockFactory(
+            user=self.user,
+            page=yesterday_page,
+            content="TODO undated task",
+            block_type="todo",
+            order=1,
+        )
+        dated_todo = BlockFactory(
+            user=self.user,
+            page=yesterday_page,
+            content="TODO dated task",
+            block_type="todo",
+            order=2,
+            scheduled_for=yesterday,
+        )
+
+        form = MoveUndoneTodosForm({"user": self.user})
+        self.assertTrue(form.is_valid())
+        result = MoveUndoneTodosCommand(form).execute()
+
+        self.assertEqual(result["moved_count"], 1)
+
+        undated_todo.refresh_from_db()
+        dated_todo.refresh_from_db()
+
+        # Undated was moved; dated stayed put
+        self.assertNotEqual(undated_todo.page, yesterday_page)
+        self.assertEqual(dated_todo.page, yesterday_page)

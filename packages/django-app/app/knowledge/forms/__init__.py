@@ -10,7 +10,10 @@ from .get_user_pages_form import GetUserPagesForm
 from .move_block_to_daily_form import MoveBlockToDailyForm
 from .move_undone_todos_form import MoveUndoneTodosForm
 from .reorder_blocks_form import ReorderBlocksForm
+from .schedule_block_form import ScheduleBlockForm
 from .search_pages_form import SearchPagesForm
+from .send_due_reminders_form import SendDueRemindersForm
+from .set_block_type_form import SetBlockTypeForm
 from .sync_block_tags_form import SyncBlockTagsForm
 from .toggle_block_todo_form import ToggleBlockTodoForm
 from .update_block_form import UpdateBlockForm
