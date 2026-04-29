@@ -1,6 +1,10 @@
+from typing import Optional
+
 from django import forms
 from django.core.exceptions import ValidationError
 
+from assets.models import Asset
+from assets.repositories import AssetRepository
 from common.forms import BaseForm, UUIDModelChoiceField
 from core.models import User
 from core.repositories import UserRepository
@@ -23,6 +27,9 @@ class UpdateBlockForm(BaseForm):
     media_metadata = forms.JSONField(required=False)
     properties = forms.JSONField(required=False)
     collapsed = forms.NullBooleanField(required=False)
+    asset = UUIDModelChoiceField(
+        queryset=AssetRepository.get_queryset(), required=False
+    )
 
     def clean_block(self) -> Block:
         block = self.cleaned_data.get("block")
@@ -49,3 +56,12 @@ class UpdateBlockForm(BaseForm):
         if not user:
             raise ValidationError("User is required")
         return user
+
+    def clean_asset(self) -> Optional[Asset]:
+        asset = self.cleaned_data.get("asset")
+        user = self.cleaned_data.get("user")
+        # Caller can only attach their own assets - prevents cross-user
+        # asset references via uuid guessing.
+        if asset and user and asset.user_id != user.id:
+            raise ValidationError("Asset not found")
+        return asset

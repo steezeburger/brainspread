@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 
+from assets.models import Asset
 from knowledge.commands import CreateBlockCommand, UpdateBlockCommand
 from knowledge.forms import CreateBlockForm, UpdateBlockForm
 
@@ -377,3 +378,89 @@ class TestUpdateBlockCommand(TestCase):
         block.refresh_from_db()
         self.assertTrue(block.collapsed)
         self.assertEqual(block.content, "updated content")
+
+    def test_should_attach_asset_to_existing_block(self):
+        """Updating with an asset uuid attaches the asset to the block."""
+        asset = Asset.objects.create(
+            user=self.user,
+            asset_type=Asset.ASSET_TYPE_BLOCK_ATTACHMENT,
+            file_type=Asset.FILE_TYPE_IMAGE,
+            mime_type="image/png",
+        )
+        form = UpdateBlockForm(
+            {
+                "user": self.user.id,
+                "block": str(self.block.uuid),
+                "asset": str(asset.uuid),
+                "content_type": "image",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        block = UpdateBlockCommand(form).execute()
+
+        block.refresh_from_db()
+        self.assertEqual(block.asset_id, asset.id)
+        self.assertEqual(block.content_type, "image")
+
+    def test_should_reject_asset_owned_by_other_user_on_update(self):
+        other_user = UserFactory()
+        asset = Asset.objects.create(
+            user=other_user,
+            asset_type=Asset.ASSET_TYPE_UPLOAD,
+            file_type=Asset.FILE_TYPE_IMAGE,
+        )
+        form = UpdateBlockForm(
+            {
+                "user": self.user.id,
+                "block": str(self.block.uuid),
+                "asset": str(asset.uuid),
+            }
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("asset", form.errors)
+
+    def test_should_detach_asset_when_explicitly_cleared(self):
+        """Sending an empty asset clears the FK rather than ignoring it."""
+        asset = Asset.objects.create(
+            user=self.user,
+            asset_type=Asset.ASSET_TYPE_BLOCK_ATTACHMENT,
+            file_type=Asset.FILE_TYPE_IMAGE,
+        )
+        self.block.asset = asset
+        self.block.save()
+
+        form = UpdateBlockForm(
+            {
+                "user": self.user.id,
+                "block": str(self.block.uuid),
+                "asset": "",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        block = UpdateBlockCommand(form).execute()
+
+        block.refresh_from_db()
+        self.assertIsNone(block.asset_id)
+
+    def test_should_leave_asset_alone_when_field_omitted(self):
+        """Omitting `asset` from the payload must not reset an existing FK."""
+        asset = Asset.objects.create(
+            user=self.user,
+            asset_type=Asset.ASSET_TYPE_BLOCK_ATTACHMENT,
+            file_type=Asset.FILE_TYPE_IMAGE,
+        )
+        self.block.asset = asset
+        self.block.save()
+
+        form = UpdateBlockForm(
+            {
+                "user": self.user.id,
+                "block": str(self.block.uuid),
+                "content": "just touching content",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        block = UpdateBlockCommand(form).execute()
+
+        block.refresh_from_db()
+        self.assertEqual(block.asset_id, asset.id)

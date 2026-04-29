@@ -2,6 +2,7 @@ from unittest.mock import Mock, patch
 
 from django.test import TestCase
 
+from assets.models import Asset
 from knowledge.commands import CreateBlockCommand
 from knowledge.forms import CreateBlockForm
 
@@ -237,3 +238,43 @@ class TestCreateBlockCommand(TestCase):
         block.refresh_from_db()
         self.assertEqual(block.block_type, "code")
         self.assertEqual(block.properties, {"language": "python"})
+
+    def test_should_attach_asset_owned_by_caller(self):
+        """A block can be created with a pre-uploaded asset attached."""
+        asset = Asset.objects.create(
+            user=self.user,
+            asset_type=Asset.ASSET_TYPE_BLOCK_ATTACHMENT,
+            file_type=Asset.FILE_TYPE_IMAGE,
+            mime_type="image/png",
+        )
+        form = CreateBlockForm(
+            {
+                "user": self.user.id,
+                "page": self.page.uuid,
+                "content_type": "image",
+                "asset": str(asset.uuid),
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        block = CreateBlockCommand(form).execute()
+
+        self.assertEqual(block.asset_id, asset.id)
+        self.assertEqual(block.content_type, "image")
+
+    def test_should_reject_asset_owned_by_other_user(self):
+        """Cross-user asset references must not pass validation."""
+        other_user = UserFactory()
+        asset = Asset.objects.create(
+            user=other_user,
+            asset_type=Asset.ASSET_TYPE_UPLOAD,
+            file_type=Asset.FILE_TYPE_IMAGE,
+        )
+        form = CreateBlockForm(
+            {
+                "user": self.user.id,
+                "page": self.page.uuid,
+                "asset": str(asset.uuid),
+            }
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("asset", form.errors)

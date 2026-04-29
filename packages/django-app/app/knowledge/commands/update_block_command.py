@@ -55,6 +55,12 @@ class UpdateBlockCommand(AbstractBaseCommand):
                 if field == "content":
                     content_updated = True
 
+        # asset is allowed to round-trip back to None (caller explicitly
+        # detaching), so it gets its own branch instead of riding along
+        # with the "is not None" filter above.
+        if "asset" in self.form.cleaned_data:
+            block.asset = self.form.cleaned_data["asset"]
+
         # Auto-detect block type from content if content was updated
         if content_updated:
             auto_detected_type = self._detect_block_type_from_content(
