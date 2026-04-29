@@ -12,7 +12,10 @@ from .get_user_pages_command import GetUserPagesCommand
 from .move_block_to_daily_command import MoveBlockToDailyCommand
 from .move_undone_todos_command import MoveUndoneTodosCommand
 from .reorder_blocks_command import ReorderBlocksCommand
+from .schedule_block_command import ScheduleBlockCommand
 from .search_pages_command import SearchPagesCommand
+from .send_due_reminders_command import SendDueRemindersCommand
+from .set_block_type_command import SetBlockTypeCommand
 from .sync_block_tags_command import SyncBlockTagsCommand
 from .toggle_block_todo_command import ToggleBlockTodoCommand
 from .update_block_command import UpdateBlockCommand

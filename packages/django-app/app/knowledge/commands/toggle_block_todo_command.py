@@ -1,71 +1,30 @@
-import re
-
 from common.commands.abstract_base_command import AbstractBaseCommand
 
+from ..forms.set_block_type_form import SetBlockTypeForm
 from ..forms.toggle_block_todo_form import ToggleBlockTodoForm
 from ..models import Block
+from .set_block_type_command import SetBlockTypeCommand, get_next_todo_type
 
 
 class ToggleBlockTodoCommand(AbstractBaseCommand):
-    """Command to toggle a block's todo status"""
+    """Command to cycle a block's todo status to the next state."""
 
     def __init__(self, form: ToggleBlockTodoForm) -> None:
         self.form = form
 
     def execute(self) -> Block:
-        """Execute the command"""
-        super().execute()  # This validates the form
+        super().execute()
 
-        block = self.form.cleaned_data["block"]
+        block: Block = self.form.cleaned_data["block"]
+        user = self.form.cleaned_data["user"]
+        next_type = get_next_todo_type(block.block_type)
 
-        # Cycle through todo states: bullet -> todo -> doing -> done -> later -> wontdo -> todo
-        if block.block_type == "todo":
-            block.block_type = "doing"
-            block.content = self._replace_content_prefix(block.content, "TODO", "DOING")
-        elif block.block_type == "doing":
-            block.block_type = "done"
-            block.content = self._replace_content_prefix(block.content, "DOING", "DONE")
-        elif block.block_type == "done":
-            block.block_type = "later"
-            block.content = self._replace_content_prefix(block.content, "DONE", "LATER")
-        elif block.block_type == "later":
-            block.block_type = "wontdo"
-            block.content = self._replace_content_prefix(
-                block.content, "LATER", "WONTDO"
-            )
-        elif block.block_type == "wontdo":
-            block.block_type = "todo"
-            block.content = self._replace_content_prefix(
-                block.content, "WONTDO", "TODO"
-            )
-        else:
-            block.block_type = "todo"
-            # For non-todo blocks, prepend TODO if content doesn't start with it
-            if not re.match(r"^\s*todo\b", block.content, re.IGNORECASE):
-                block.content = f"TODO {block.content}".strip()
-
-        block.save()
-        return block
-
-    def _replace_content_prefix(
-        self, content: str, old_prefix: str, new_prefix: str
-    ) -> str:
-        """Replace old prefix with new prefix in content, preserving case and formatting"""
-        # Replace with colon (e.g., "TODO:" -> "DONE:")
-        content = re.sub(rf"\b{old_prefix}\b(?=\s*:)", new_prefix, content)
-        # Replace without colon (e.g., "TODO" -> "DONE")
-        content = re.sub(rf"\b{old_prefix}\b(?!\s*:)", new_prefix, content)
-        # Handle lowercase variants
-        content = re.sub(
-            rf"\b{old_prefix.lower()}\b(?=\s*:)",
-            new_prefix,
-            content,
-            flags=re.IGNORECASE,
+        set_form = SetBlockTypeForm(
+            {"user": user.id, "block": str(block.uuid), "block_type": next_type}
         )
-        content = re.sub(
-            rf"\b{old_prefix.lower()}\b(?!\s*:)",
-            new_prefix,
-            content,
-            flags=re.IGNORECASE,
-        )
-        return content
+        if not set_form.is_valid():
+            # Shouldn't happen — next_type is always a valid choice and ownership
+            # was already enforced on the outer form. Surface it loudly if it does.
+            raise AssertionError(f"SetBlockTypeForm invalid: {set_form.errors}")
+
+        return SetBlockTypeCommand(set_form).execute()

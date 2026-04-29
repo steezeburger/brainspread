@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Block, Page
+from .models import Block, Page, Reminder
 
 
 @admin.register(Page)
@@ -25,7 +25,7 @@ class PageAdmin(admin.ModelAdmin):
     def get_tags(self, obj):
         return ", ".join([f"#{tag.name}" for tag in obj.get_tags()])
 
-    get_tags.short_description = "Tags"
+    get_tags.short_description = "Page Tags"
 
 
 @admin.register(Block)
@@ -40,9 +40,17 @@ class BlockAdmin(admin.ModelAdmin):
         "block_type",
         "content_type",
         "order",
+        "scheduled_for",
+        "completed_at",
         "created_at",
     )
-    list_filter = ("block_type", "content_type", "created_at", "modified_at")
+    list_filter = (
+        "block_type",
+        "content_type",
+        "scheduled_for",
+        "created_at",
+        "modified_at",
+    )
     search_fields = ("content", "user__email", "page__title")
     readonly_fields = ("id", "uuid", "created_at", "modified_at")
     raw_id_fields = ("user", "parent", "page")
@@ -54,6 +62,17 @@ class BlockAdmin(admin.ModelAdmin):
             {"fields": ("user", "page", "parent", "order", "collapsed")},
         ),
         ("Content", {"fields": ("content", "content_type", "block_type")}),
+        (
+            "Scheduling",
+            {
+                "fields": ("scheduled_for", "completed_at"),
+                "description": (
+                    "scheduled_for is the daily page this block should "
+                    "surface on. completed_at is set automatically on "
+                    "transition to a terminal block_type (done/wontdo)."
+                ),
+            },
+        ),
         (
             "Tags/Pages",
             {
@@ -103,3 +122,38 @@ class BlockAdmin(admin.ModelAdmin):
         return ", ".join([f"#{tag.name}" for tag in obj.get_tags()])
 
     get_tags.short_description = "Tags"
+
+
+@admin.register(Reminder)
+class ReminderAdmin(admin.ModelAdmin):
+    list_display = (
+        "short_uuid",
+        "block",
+        "fire_at",
+        "channel",
+        "status",
+        "sent_at",
+        "created_at",
+    )
+    list_filter = ("status", "channel", "fire_at", "created_at")
+    search_fields = (
+        "block__content",
+        "block__user__email",
+        "last_error",
+    )
+    readonly_fields = ("id", "uuid", "created_at", "modified_at")
+    raw_id_fields = ("block",)
+    ordering = ("-fire_at",)
+
+    fieldsets = (
+        ("Target", {"fields": ("block", "channel")}),
+        ("Schedule", {"fields": ("fire_at",)}),
+        ("Delivery", {"fields": ("status", "sent_at", "last_error")}),
+        (
+            "Metadata",
+            {
+                "fields": ("id", "uuid", "created_at", "modified_at"),
+                "classes": ("collapse",),
+            },
+        ),
+    )

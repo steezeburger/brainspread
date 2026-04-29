@@ -22,6 +22,7 @@ from knowledge.commands import (
     MoveBlockToDailyCommand,
     MoveUndoneTodosCommand,
     ReorderBlocksCommand,
+    ScheduleBlockCommand,
     SearchPagesCommand,
     ToggleBlockTodoCommand,
     UpdateBlockCommand,
@@ -49,6 +50,7 @@ from knowledge.forms import (
     MoveBlockToDailyForm,
     MoveUndoneTodosForm,
     ReorderBlocksForm,
+    ScheduleBlockForm,
     SearchPagesForm,
     ToggleBlockTodoForm,
     UpdateBlockForm,
@@ -397,7 +399,7 @@ def get_page_with_blocks(request):
 
         if form.is_valid():
             command = GetPageWithBlocksCommand(form)
-            page, direct_blocks, referenced_blocks = command.execute()
+            page, direct_blocks, referenced_blocks, overdue_blocks = command.execute()
 
             page_with_blocks_data = PageWithBlocksData(
                 page=page.to_dict(),
@@ -407,6 +409,9 @@ def get_page_with_blocks(request):
                 referenced_blocks=[
                     block.to_dict(include_page_context=True)
                     for block in referenced_blocks
+                ],
+                overdue_blocks=[
+                    block.to_dict(include_page_context=True) for block in overdue_blocks
                 ],
             )
 
@@ -609,6 +614,46 @@ def reorder_blocks(request):
             {"success": False, "data": None, "errors": {"non_field_errors": [str(e)]}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def schedule_block(request):
+    """Set or clear a block's scheduled_for, optionally adding a morning-of
+    reminder. See issue #59 phase 4.
+    """
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = ScheduleBlockForm(data)
+
+        if form.is_valid():
+            block = ScheduleBlockCommand(form).execute()
+            response: BlockResponse = {
+                "success": True,
+                "data": block.to_dict(),
+                "errors": None,
+            }
+            return Response(response)
+
+        response: BlockResponse = {
+            "success": False,
+            "data": None,
+            "errors": form.errors,
+        }
+        return Response(response, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        response: BlockResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(["POST"])
