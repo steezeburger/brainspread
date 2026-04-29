@@ -11,15 +11,26 @@ from ..repositories import AssetRepository
 _SHA256_CHUNK_SIZE = 64 * 1024
 
 
+def _compute_sha256(uploaded) -> str:
+    """
+    Hex sha256 of an UploadedFile, computed by streaming through
+    hashlib chunk by chunk so we don't pull the whole upload into
+    memory. Walks the file cursor to EOF; callers must seek(0) before
+    reusing the stream.
+    """
+    digest = hashlib.sha256()
+    # UploadedFile.chunks() is the documented streaming iterator and
+    # works for both in-memory and TemporaryUploadedFile.
+    for chunk in uploaded.chunks(chunk_size=_SHA256_CHUNK_SIZE):
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
 class UploadAssetCommand(AbstractBaseCommand):
     """
     Persist an uploaded file as an Asset, deduping against existing
-    rows owned by the same user via sha256.
-
-    The hash is computed by streaming the file through hashlib chunk by
-    chunk so we don't load the whole upload into memory. Form-level
-    validation has already enforced size + mime limits by the time we
-    get here.
+    rows owned by the same user via sha256. Form-level validation has
+    already enforced size + mime limits by the time we get here.
     """
 
     def __init__(self, form: UploadAssetForm) -> None:
@@ -35,7 +46,7 @@ class UploadAssetCommand(AbstractBaseCommand):
         asset_type = self.form.cleaned_data.get("asset_type") or Asset.ASSET_TYPE_UPLOAD
         source_url = self.form.cleaned_data.get("source_url") or ""
 
-        sha256 = self._compute_sha256(uploaded)
+        sha256 = _compute_sha256(uploaded)
 
         existing = AssetRepository.find_by_sha256(user=user, sha256=sha256)
         if existing is not None:
@@ -66,12 +77,3 @@ class UploadAssetCommand(AbstractBaseCommand):
         )
         asset.file.save(original_filename or str(asset.uuid), uploaded, save=True)
         return asset
-
-    @staticmethod
-    def _compute_sha256(uploaded) -> str:
-        digest = hashlib.sha256()
-        # UploadedFile.chunks() is the documented streaming iterator and
-        # works for both in-memory and TemporaryUploadedFile.
-        for chunk in uploaded.chunks(chunk_size=_SHA256_CHUNK_SIZE):
-            digest.update(chunk)
-        return digest.hexdigest()
