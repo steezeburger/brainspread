@@ -25,7 +25,6 @@ const KnowledgeApp = createApp({
       loading: isAuth && !cachedUser, // Only show loading if we have token but no cached user
       showSettings: false, // Settings modal state
       settingsActiveTab: "general", // Default tab for settings modal
-      showMenu: false, // Menu popover state
       showHelp: false, // Help modal state
       // Chat context management
       chatContextBlocks: [], // Array of blocks in chat context
@@ -47,7 +46,7 @@ const KnowledgeApp = createApp({
   components: {
     Page: window.Page,
     LoginForm: window.LoginForm,
-    HistoricalSidebar: window.HistoricalSidebar,
+    LeftNav: window.LeftNav,
     SettingsModal: window.SettingsModal,
     HelpModal: window.HelpModal,
     ChatPanel: window.ChatPanel,
@@ -86,9 +85,6 @@ const KnowledgeApp = createApp({
 
     // Apply initial theme
     this.applyTheme();
-
-    // Add event listener for click-outside-to-close menu
-    document.addEventListener("click", this.handleDocumentClick);
 
     // Add global keyboard shortcut listener
     document.addEventListener("keydown", this.handleGlobalKeydown);
@@ -129,7 +125,6 @@ const KnowledgeApp = createApp({
 
   beforeUnmount() {
     // Clean up event listeners
-    document.removeEventListener("click", this.handleDocumentClick);
     document.removeEventListener("keydown", this.handleGlobalKeydown);
     document.removeEventListener("brainspread:toast", this.handleToastEvent);
   },
@@ -391,102 +386,8 @@ const KnowledgeApp = createApp({
       return this.createNewPage(prefilledTitle, "whiteboard");
     },
 
-    // Menu methods
-    toggleMenu() {
-      this.showMenu = !this.showMenu;
-      if (this.showMenu) {
-        this.$nextTick(() => {
-          const firstItem = document.querySelector(".menu-popover .menu-item");
-          if (firstItem) firstItem.focus();
-        });
-      }
-    },
-
-    closeMenu() {
-      this.showMenu = false;
-    },
-
-    handleNavMenuKeydown(event) {
-      const items = Array.from(
-        document.querySelectorAll(".menu-popover .menu-item")
-      );
-      if (!items.length) return;
-      const currentIndex = items.indexOf(document.activeElement);
-
-      switch (event.key) {
-        case "ArrowDown":
-          event.preventDefault();
-          items[Math.min(currentIndex + 1, items.length - 1)].focus();
-          break;
-        case "ArrowUp":
-          event.preventDefault();
-          items[Math.max(currentIndex - 1, 0)].focus();
-          break;
-        case "Escape":
-        case "Tab":
-          event.preventDefault();
-          this.closeMenu();
-          this.$nextTick(() => {
-            if (this.$refs.menuBtn) this.$refs.menuBtn.focus();
-          });
-          break;
-        case "Home":
-          event.preventDefault();
-          items[0].focus();
-          break;
-        case "End":
-          event.preventDefault();
-          items[items.length - 1].focus();
-          break;
-      }
-    },
-
-    handleDocumentClick(event) {
-      // Close menu if clicking outside of it
-      const menuContainer = event.target.closest(".menu-container");
-      if (!menuContainer && this.showMenu) {
-        this.closeMenu();
-      }
-    },
-
-    // Menu action methods
-    onMenuSearch() {
-      this.closeMenu();
-      this.openSpotlight();
-    },
-
-    onMenuCreatePage() {
-      this.closeMenu();
-      this.createNewPage();
-    },
-
-    onMenuCreateWhiteboard() {
-      this.closeMenu();
-      this.createNewWhiteboard();
-    },
-
-    onMenuGraph() {
-      this.closeMenu();
-      this.navigateToGraph();
-    },
-
     navigateToGraph() {
       window.location.href = "/knowledge/graph/";
-    },
-
-    onMenuSettings() {
-      this.closeMenu();
-      this.openSettings();
-    },
-
-    onMenuHelp() {
-      this.closeMenu();
-      this.openHelp();
-    },
-
-    onMenuLogout() {
-      this.closeMenu();
-      this.handleLogout();
     },
 
     // Fired by child components (CustomEvent 'brainspread:toast', detail = {message, type, duration}).
@@ -552,7 +453,7 @@ const KnowledgeApp = createApp({
         if (event.shiftKey) {
           this.toggleChatPanel();
         } else {
-          this.toggleHistorySidebar();
+          this.toggleLeftNav();
         }
         return;
       }
@@ -560,37 +461,32 @@ const KnowledgeApp = createApp({
       if (event.key === "Escape") {
         if (this.showSpotlight) {
           this.closeSpotlight();
-        } else if (this.showMenu) {
-          this.closeMenu();
-          this.$nextTick(() => {
-            if (this.$refs.menuBtn) this.$refs.menuBtn.focus();
-          });
-        } else if (this._isInsideHistorySidebar(event.target)) {
-          // If Escape fires from inside the history sidebar (e.g., its
-          // filter selects have focus), close that sidebar directly.
-          // Skips the editable-target guard because the sidebar itself
-          // doesn't host any serious editing surface.
-          if (this._closeHistoryIfOpen()) event.preventDefault();
+        } else if (this._isInsideLeftNav(event.target)) {
+          // If Escape fires from inside the left nav (e.g., its filter
+          // selects have focus), close that sidebar directly. Skips the
+          // editable-target guard because the sidebar itself doesn't host
+          // any serious editing surface.
+          if (this._closeLeftNavIfOpen()) event.preventDefault();
         } else if (!this._isEditableTarget(event.target)) {
           // Escape dismisses any open sidebars, but only when the user isn't
           // typing in a real editor (blocks, chat input). Those have their
           // own Escape handlers.
-          const closedHistory = this._closeHistoryIfOpen();
+          const closedLeftNav = this._closeLeftNavIfOpen();
           const closedChat = this._closeChatIfOpen();
-          if (closedHistory || closedChat) {
+          if (closedLeftNav || closedChat) {
             event.preventDefault();
           }
         }
       }
     },
 
-    _isInsideHistorySidebar(el) {
-      const sidebar = this.$refs.historicalSidebar;
+    _isInsideLeftNav(el) {
+      const sidebar = this.$refs.leftNav;
       return !!(sidebar && sidebar.$el && sidebar.$el.contains(el));
     },
 
-    _closeHistoryIfOpen() {
-      const sidebar = this.$refs.historicalSidebar;
+    _closeLeftNavIfOpen() {
+      const sidebar = this.$refs.leftNav;
       if (sidebar && sidebar.isOpen) {
         sidebar.toggleSidebar();
         return true;
@@ -671,9 +567,9 @@ const KnowledgeApp = createApp({
           icon: "◉",
         },
         {
-          id: "toggle-history",
-          label: this.isHistorySidebarOpen() ? "close history" : "open history",
-          description: "toggle the history sidebar (⌘\\)",
+          id: "toggle-sidebar",
+          label: this.isLeftNavOpen() ? "close sidebar" : "open sidebar",
+          description: "toggle the left sidebar (⌘\\)",
           icon: "⧉",
         },
         {
@@ -835,16 +731,16 @@ const KnowledgeApp = createApp({
       }
     },
 
-    isHistorySidebarOpen() {
-      return this.$refs.historicalSidebar?.isOpen === true;
+    isLeftNavOpen() {
+      return this.$refs.leftNav?.isOpen === true;
     },
 
     isChatPanelOpen() {
       return this.$refs.chatPanel?.isOpen === true;
     },
 
-    toggleHistorySidebar() {
-      const sidebar = this.$refs.historicalSidebar;
+    toggleLeftNav() {
+      const sidebar = this.$refs.leftNav;
       if (sidebar && typeof sidebar.toggleSidebar === "function") {
         sidebar.toggleSidebar();
       }
@@ -878,8 +774,8 @@ const KnowledgeApp = createApp({
         case "graph":
           this.navigateToGraph();
           break;
-        case "toggle-history":
-          this.toggleHistorySidebar();
+        case "toggle-sidebar":
+          this.toggleLeftNav();
           break;
         case "toggle-ai":
           this.toggleChatPanel();
@@ -953,44 +849,13 @@ const KnowledgeApp = createApp({
                 <nav class="navbar">
                     <div class="nav-content">
                         <h1><a href="/knowledge/" class="brand-link">brainspread</a></h1>
-                        <div class="nav-right">
-                            <span class="user-info">hello, {{ user?.email }}</span>
-                            <div class="menu-container">
-                                <button @click="toggleMenu" ref="menuBtn" class="menu-btn" :aria-expanded="showMenu" aria-haspopup="menu">
-                                    menu
-                                </button>
-                                <div v-if="showMenu" class="menu-popover" @click.stop @keydown="handleNavMenuKeydown" role="menu">
-                                    <button @click="onMenuSearch" class="menu-item" role="menuitem">
-                                        search
-                                    </button>
-                                    <button @click="onMenuCreatePage" class="menu-item" role="menuitem">
-                                        + page
-                                    </button>
-                                    <button @click="onMenuCreateWhiteboard" class="menu-item" role="menuitem">
-                                        + whiteboard
-                                    </button>
-                                    <button @click="onMenuGraph" class="menu-item" role="menuitem">
-                                        graph
-                                    </button>
-                                    <button @click="onMenuSettings" class="menu-item" role="menuitem">
-                                        settings
-                                    </button>
-                                    <button @click="onMenuHelp" class="menu-item" role="menuitem">
-                                        help
-                                    </button>
-                                    <button @click="onMenuLogout" class="menu-item" role="menuitem">
-                                        logout
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                 </nav>
 
                 <!-- Toast Notifications -->
-                <ToastNotifications 
-                    :toasts="toasts" 
-                    @remove-toast="removeToast" 
+                <ToastNotifications
+                    :toasts="toasts"
+                    @remove-toast="removeToast"
                 />
 
                 <main class="main-content">
@@ -998,13 +863,33 @@ const KnowledgeApp = createApp({
                         <div class="loading">Loading...</div>
                     </div>
                     <div v-else-if="currentView === 'graph'" class="graph-layout">
+                        <LeftNav
+                            ref="leftNav"
+                            :user="user"
+                            @navigate-to-slug="onNavigateToSlug"
+                            @navigate-today="redirectToToday"
+                            @navigate-graph="navigateToGraph"
+                            @open-search="openSpotlight"
+                            @create-page="createNewPage"
+                            @create-whiteboard="createNewWhiteboard"
+                            @open-settings="openSettings"
+                            @open-help="openHelp"
+                            @logout="handleLogout" />
                         <GraphView />
                     </div>
                     <div v-else class="content-layout">
-                        <HistoricalSidebar
-                            ref="historicalSidebar"
-                            @navigate-to-date="onNavigateToDate"
-                            @navigate-to-slug="onNavigateToSlug" />
+                        <LeftNav
+                            ref="leftNav"
+                            :user="user"
+                            @navigate-to-slug="onNavigateToSlug"
+                            @navigate-today="redirectToToday"
+                            @navigate-graph="navigateToGraph"
+                            @open-search="openSpotlight"
+                            @create-page="createNewPage"
+                            @create-whiteboard="createNewWhiteboard"
+                            @open-settings="openSettings"
+                            @open-help="openHelp"
+                            @logout="handleLogout" />
                         <div class="main-content-area">
                             <Page
                                 :chat-context-blocks="chatContextBlocks"
