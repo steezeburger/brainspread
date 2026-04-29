@@ -1,3 +1,5 @@
+from .bulk_delete_blocks_command import BulkDeleteBlocksCommand
+from .bulk_move_blocks_command import BulkMoveBlocksCommand
 from .create_block_command import CreateBlockCommand
 from .create_page_command import CreatePageCommand
 from .delete_block_command import DeleteBlockCommand

@@ -83,6 +83,22 @@ const BlockComponent = {
       type: Function,
       default: () => () => {},
     },
+    onBlockSelectClick: {
+      type: Function,
+      default: () => () => false,
+    },
+    selectedBlockCount: {
+      type: Number,
+      default: 0,
+    },
+    bulkDeleteSelected: {
+      type: Function,
+      default: () => () => {},
+    },
+    bulkMoveSelectedToToday: {
+      type: Function,
+      default: () => () => {},
+    },
   },
   data() {
     return {
@@ -874,7 +890,33 @@ const BlockComponent = {
         case "newBlockAfter":
           this.createBlockAfter(this.block);
           break;
+        case "bulkDelete":
+          this.bulkDeleteSelected();
+          break;
+        case "bulkMoveToToday":
+          this.bulkMoveSelectedToToday();
+          break;
       }
+    },
+
+    // Plain click on the block display starts editing. Modifier-clicks
+    // (shift, cmd/ctrl) instead toggle selection / extend a range; in that
+    // case we bail before calling startEditing.
+    handleDisplayClick(event) {
+      if (event.target.closest(".clickable-tag")) return;
+      if (event.shiftKey || event.metaKey || event.ctrlKey) {
+        const handled = this.onBlockSelectClick(this.block, event);
+        if (handled) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+      }
+      this.startEditing(this.block);
+    },
+
+    showBulkSelectionActions() {
+      return this.blockSelected && this.selectedBlockCount >= 2;
     },
   },
   template: `
@@ -1038,7 +1080,7 @@ const BlockComponent = {
           tabindex="0"
           role="button"
           :aria-label="'Edit block: ' + (block.content || 'empty block')"
-          @click="$event.target.closest('.clickable-tag') || startEditing(block)"
+          @click="handleDisplayClick($event)"
           @keydown="handleBlockDisplayKeydown"
           @touchstart="handleTouchStart"
           @touchend="handleContentTouchEnd"
@@ -1149,6 +1191,17 @@ const BlockComponent = {
           <span class="context-menu-icon">×</span>
           <span>delete</span>
         </button>
+        <template v-if="showBulkSelectionActions()">
+          <div class="context-menu-separator"></div>
+          <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('bulkMoveToToday')">
+            <span class="context-menu-icon">⇨</span>
+            <span>move {{ selectedBlockCount }} selected to today</span>
+          </button>
+          <button class="context-menu-item context-menu-danger" role="menuitem" tabindex="-1" @click="handleContextMenuAction('bulkDelete')">
+            <span class="context-menu-icon">×</span>
+            <span>delete {{ selectedBlockCount }} selected</span>
+          </button>
+        </template>
       </div>
       
       <!-- Recursively render children -->
@@ -1176,6 +1229,10 @@ const BlockComponent = {
           :moveBlockDown="moveBlockDown"
           :moveBlockToToday="moveBlockToToday"
           :onBlockPaste="onBlockPaste"
+          :onBlockSelectClick="onBlockSelectClick"
+          :selectedBlockCount="selectedBlockCount"
+          :bulkDeleteSelected="bulkDeleteSelected"
+          :bulkMoveSelectedToToday="bulkMoveSelectedToToday"
         />
       </div>
     </div>
