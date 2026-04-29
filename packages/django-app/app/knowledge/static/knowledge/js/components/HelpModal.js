@@ -132,11 +132,11 @@ window.HelpModal = {
               <tbody>
                 <tr>
                   <td><kbd>⌘</kbd> + <kbd>\\</kbd> / <kbd>Ctrl</kbd> + <kbd>\\</kbd></td>
-                  <td>toggle left sidebar</td>
+                  <td>toggle ai chat panel</td>
                 </tr>
                 <tr>
                   <td><kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>\\</kbd> / <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>\\</kbd></td>
-                  <td>toggle ai chat panel</td>
+                  <td>toggle left sidebar</td>
                 </tr>
                 <tr>
                   <td><kbd>Esc</kbd></td>

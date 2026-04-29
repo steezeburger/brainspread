@@ -440,10 +440,10 @@ const KnowledgeApp = createApp({
         }
       }
 
-      // Sidebar toggles — Obsidian-style Cmd/Ctrl+\ (left/history) and
-      // Cmd/Ctrl+Shift+\ (right/ai). No editable-target guard because
-      // backslash isn't a text-editing shortcut, so it's safe to intercept
-      // even when focus is in the block editor or chat input.
+      // Sidebar toggles — Cmd/Ctrl+\ toggles the AI chat panel (right) and
+      // Cmd/Ctrl+Shift+\ toggles the left sidebar. No editable-target guard
+      // because backslash isn't a text-editing shortcut, so it's safe to
+      // intercept even when focus is in the block editor or chat input.
       if (
         (event.metaKey || event.ctrlKey) &&
         event.key === "\\" &&
@@ -451,9 +451,9 @@ const KnowledgeApp = createApp({
       ) {
         event.preventDefault();
         if (event.shiftKey) {
-          this.toggleChatPanel();
-        } else {
           this.toggleLeftNav();
+        } else {
+          this.toggleChatPanel();
         }
         return;
       }
@@ -581,13 +581,13 @@ const KnowledgeApp = createApp({
         {
           id: "toggle-sidebar",
           label: this.isLeftNavOpen() ? "close sidebar" : "open sidebar",
-          description: "toggle the left sidebar (⌘\\)",
+          description: "toggle the left sidebar (⌘⇧\\)",
           icon: "⧉",
         },
         {
           id: "toggle-ai",
           label: this.isChatPanelOpen() ? "close ai" : "open ai",
-          description: "toggle the ai chat panel (⌘⇧\\)",
+          description: "toggle the ai chat panel (⌘\\)",
           icon: "✦",
         },
         {
