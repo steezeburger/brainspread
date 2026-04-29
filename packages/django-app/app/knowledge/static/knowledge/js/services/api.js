@@ -603,6 +603,43 @@ class ApiService {
       body: JSON.stringify(settings),
     });
   }
+
+  // Asset upload. Multipart, so we can't use the JSON `request` helper -
+  // we need fetch directly so the browser sets the multipart boundary.
+  // Returns the JSON envelope: { success, data: AssetData, errors }.
+  async uploadAsset(file, { assetType, sourceUrl } = {}) {
+    const form = new FormData();
+    form.append("file", file);
+    if (assetType) form.append("asset_type", assetType);
+    if (sourceUrl) form.append("source_url", sourceUrl);
+
+    const headers = {};
+    const csrfToken = this.getCsrfToken();
+    if (csrfToken) headers["X-CSRFToken"] = csrfToken;
+    if (this.token) headers["Authorization"] = `Token ${this.token}`;
+
+    const response = await fetch(`${this.baseURL}/api/assets/`, {
+      method: "POST",
+      headers,
+      body: form,
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      const msg =
+        data?.errors?.file?.[0] ||
+        data?.errors?.non_field_errors?.[0] ||
+        "Upload failed";
+      throw new Error(msg);
+    }
+    return data;
+  }
+
+  // URL the browser hits to render an asset's bytes. The endpoint
+  // checks ownership before streaming, so this is safe to drop into
+  // an <img src> or <a href>.
+  assetServeUrl(uuid) {
+    return `${this.baseURL}/api/assets/${uuid}/`;
+  }
 }
 
 // Export for use in other files

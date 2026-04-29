@@ -5452,3 +5452,58 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   gap: 0.5rem;
   margin-top: 0.5rem;
 }
+
+/* Asset attachment rendering inside a block. Image renders inline so the
+ * block reads like a richtext note; non-image renders as a chip linking
+ * to the access-controlled serve endpoint. */
+.block-asset {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.block-asset-image {
+  display: block;
+  max-width: 100%;
+  max-height: 480px;
+  height: auto;
+  border-radius: 3px;
+  border: 1px solid var(--border-secondary);
+}
+
+.block-asset-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 3px;
+  background-color: var(--bg-secondary, #f4f4f4);
+  border: 1px solid var(--border-secondary);
+  color: var(--text-primary);
+  text-decoration: none;
+  font-size: 0.85rem;
+  line-height: 1.2;
+  max-width: 100%;
+}
+
+.block-asset-chip:hover {
+  background-color: var(--bg-hover, #e8e8e8);
+  text-decoration: none;
+}
+
+.block-asset-chip-icon {
+  flex: 0 0 auto;
+  opacity: 0.7;
+}
+
+.block-asset-chip-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.block-asset-chip-meta {
+  flex: 0 0 auto;
+  opacity: 0.6;
+  font-size: 0.75rem;
+}

@@ -83,6 +83,14 @@ const BlockComponent = {
       type: Function,
       default: () => () => {},
     },
+    onBlockDrop: {
+      type: Function,
+      default: () => () => {},
+    },
+    onBlockAttachPick: {
+      type: Function,
+      default: () => () => {},
+    },
     scheduleBlock: {
       type: Function,
       default: () => () => {},
@@ -152,6 +160,30 @@ const BlockComponent = {
     },
     isEmbed() {
       return this.block.content_type === "embed" && !!this.block.media_url;
+    },
+    hasAsset() {
+      return !!(this.block.asset && this.block.asset.uuid);
+    },
+    assetUrl() {
+      if (!this.hasAsset) return "";
+      return window.apiService.assetServeUrl(this.block.asset.uuid);
+    },
+    assetIsImage() {
+      return this.hasAsset && this.block.asset.file_type === "image";
+    },
+    assetDisplayName() {
+      if (!this.hasAsset) return "";
+      const a = this.block.asset;
+      return a.original_filename || `asset-${a.uuid.slice(0, 8)}`;
+    },
+    assetSizeLabel() {
+      if (!this.hasAsset) return "";
+      const bytes = this.block.asset.byte_size || 0;
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      if (bytes < 1024 * 1024 * 1024)
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+      return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
     },
     embedHostname() {
       try {
@@ -978,7 +1010,39 @@ const BlockComponent = {
         case "unschedule":
           this.scheduleBlock(this.block, { clear: true });
           break;
+        case "attachFile":
+          this.triggerAttachFilePicker();
+          break;
       }
+    },
+
+    triggerAttachFilePicker() {
+      // Forward to the hidden <input type="file"> rendered inside this
+      // block; the input's @change calls back into onBlockAttachPick on
+      // the page, which posts to /api/assets/ and updates the block.
+      const input = this.$refs.assetFileInput;
+      if (input) input.click();
+    },
+
+    handleBlockDragOver(event) {
+      const dt = event.dataTransfer;
+      if (!dt) return;
+      // Only claim the drop when the drag carries files. Without this,
+      // users mid-text-drag would see a no-op cursor change. types
+      // contains "Files" for OS file drags (Chrome/Firefox/Safari).
+      if (dt.types && Array.from(dt.types).includes("Files")) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    },
+
+    handleBlockDrop(event) {
+      const dt = event.dataTransfer;
+      if (!dt || !dt.files || dt.files.length === 0) return;
+      // Stop propagation so the page-level drop handler (which would
+      // create a new bottom block) doesn't ALSO fire for the same drop.
+      event.stopPropagation();
+      this.onBlockDrop(event, this.block);
     },
 
     // Plain click on the block display starts editing. Modifier-clicks
@@ -1014,7 +1078,7 @@ const BlockComponent = {
     },
   },
   template: `
-    <div class="block-wrapper" :class="{ 'child-block': block.parent, 'in-context': blockInContext, 'selected': blockSelected, 'in-selection-mode': selectionMode }" :data-block-uuid="block.uuid">
+    <div class="block-wrapper" :class="{ 'child-block': block.parent, 'in-context': blockInContext, 'selected': blockSelected, 'in-selection-mode': selectionMode }" :data-block-uuid="block.uuid" @dragover="handleBlockDragOver" @drop="handleBlockDrop">
       <div class="block" :class="{ 'has-children': hasChildren, 'is-collapsed': hasChildren && isCollapsed }">
         <button
           v-if="selectionMode"
@@ -1054,6 +1118,34 @@ const BlockComponent = {
           <span v-else-if="block.block_type === 'wontdo'">⊘</span>
           <span v-else>•</span>
         </div>
+        <div v-if="hasAsset && !isEmbed" class="block-asset" @click.stop>
+          <img
+            v-if="assetIsImage"
+            :src="assetUrl"
+            :alt="assetDisplayName"
+            class="block-asset-image"
+            loading="lazy"
+          />
+          <a
+            v-else
+            :href="assetUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="block-asset-chip"
+            :title="assetDisplayName"
+          >
+            <span class="block-asset-chip-icon">▤</span>
+            <span class="block-asset-chip-name">{{ assetDisplayName }}</span>
+            <span class="block-asset-chip-meta">{{ block.asset.file_type }} · {{ assetSizeLabel }}</span>
+          </a>
+        </div>
+        <input
+          ref="assetFileInput"
+          type="file"
+          class="block-asset-file-input"
+          style="display: none;"
+          @change="onBlockAttachPick($event, block)"
+        />
         <div
           v-if="isEmbed"
           class="block-embed-card"
@@ -1297,6 +1389,11 @@ const BlockComponent = {
           <span>new block after</span>
         </button>
         <div class="context-menu-separator"></div>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('attachFile')">
+          <span class="context-menu-icon">▤</span>
+          <span>attach file…</span>
+        </button>
+        <div class="context-menu-separator"></div>
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('schedule')">
           <span class="context-menu-icon"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="1"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg></span>
           <span>{{ block.scheduled_for ? 'reschedule...' : 'schedule...' }}</span>
@@ -1357,6 +1454,8 @@ const BlockComponent = {
           :moveBlockDown="moveBlockDown"
           :moveBlockToToday="moveBlockToToday"
           :onBlockPaste="onBlockPaste"
+          :onBlockDrop="onBlockDrop"
+          :onBlockAttachPick="onBlockAttachPick"
           :scheduleBlock="scheduleBlock"
           :onBlockSelectClick="onBlockSelectClick"
           :selectedBlockCount="selectedBlockCount"
