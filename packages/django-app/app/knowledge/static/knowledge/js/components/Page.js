@@ -592,10 +592,7 @@ const Page = {
 
         const targetTitle = result.data?.target_page?.title || "today";
         if (result.data?.moved) {
-          this.$parent?.addToast?.(
-            `moved block to ${targetTitle}`,
-            "success"
-          );
+          this.$parent?.addToast?.(`moved block to ${targetTitle}`, "success");
         } else {
           this.$parent?.addToast?.(
             result.data?.message || "block already on today's daily",
