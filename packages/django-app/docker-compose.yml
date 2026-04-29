@@ -40,8 +40,9 @@ services:
       - db
   # Periodic task runner — polls the reminders table once a minute and
   # dispatches any that are due. See bin/run-scheduler.sh and issue #59.
-  # REMINDERS_ENABLED defaults to true; set to false to mute. Non-prod
-  # environments get an `[<env>]` label on each message via ENVIRONMENT.
+  # Gated by REMINDERS_ENABLED (defaults to false); the staging deploy
+  # workflow and prod .env both set it to true. Non-prod environments
+  # get an `[<env>]` label on each message via ENVIRONMENT.
   scheduler:
     build:
       context: .
