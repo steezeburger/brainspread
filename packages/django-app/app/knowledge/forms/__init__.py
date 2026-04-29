@@ -7,6 +7,7 @@ from .get_historical_data_form import GetHistoricalDataForm
 from .get_page_with_blocks_form import GetPageWithBlocksForm
 from .get_tag_content_form import GetTagContentForm
 from .get_user_pages_form import GetUserPagesForm
+from .move_block_to_daily_form import MoveBlockToDailyForm
 from .move_undone_todos_form import MoveUndoneTodosForm
 from .reorder_blocks_form import ReorderBlocksForm
 from .search_pages_form import SearchPagesForm

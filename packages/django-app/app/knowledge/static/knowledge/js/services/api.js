@@ -214,6 +214,20 @@ class ApiService {
     });
   }
 
+  async moveBlockToDaily(blockUuid, targetDate = null) {
+    const body = { block: blockUuid };
+    if (targetDate) {
+      body.target_date = targetDate;
+    }
+    return await this.request("/knowledge/api/blocks/move-to-daily/", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
   async getHistoricalData(daysBack = 30, limit = 50) {
     return await this.request(
       `/knowledge/api/historical/?days_back=${daysBack}&limit=${limit}`

@@ -75,6 +75,10 @@ const BlockComponent = {
       type: Function,
       default: () => () => {},
     },
+    moveBlockToToday: {
+      type: Function,
+      default: () => () => {},
+    },
     onBlockPaste: {
       type: Function,
       default: () => () => {},
@@ -861,6 +865,9 @@ const BlockComponent = {
         case "moveDown":
           this.moveBlockDown(this.block);
           break;
+        case "moveToToday":
+          this.moveBlockToToday(this.block);
+          break;
         case "newBlockBefore":
           this.createBlockBefore(this.block);
           break;
@@ -1115,6 +1122,10 @@ const BlockComponent = {
           <span class="context-menu-icon">↓</span>
           <span>move down</span>
         </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('moveToToday')">
+          <span class="context-menu-icon">⇨</span>
+          <span>move to today's daily</span>
+        </button>
         <div class="context-menu-separator"></div>
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('newBlockBefore')">
           <span class="context-menu-icon">+</span>
@@ -1163,6 +1174,7 @@ const BlockComponent = {
           :createBlockBefore="createBlockBefore"
           :moveBlockUp="moveBlockUp"
           :moveBlockDown="moveBlockDown"
+          :moveBlockToToday="moveBlockToToday"
           :onBlockPaste="onBlockPaste"
         />
       </div>
