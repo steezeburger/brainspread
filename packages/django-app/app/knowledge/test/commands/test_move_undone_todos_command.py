@@ -1,6 +1,7 @@
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import patch
 
+import pytz
 from django.test import TestCase
 
 from knowledge.commands import MoveUndoneTodosCommand
@@ -10,17 +11,26 @@ from knowledge.models import Block
 from ..helpers import BlockFactory, PageFactory, UserFactory
 
 
+def _utc_noon(d: date) -> datetime:
+    """Helper: aware UTC datetime at noon on the given date.
+
+    Used to feed core.helpers.timezone.now() while mocking, so that
+    today_for_user(user) resolves to the target date for tests.
+    """
+    return datetime(d.year, d.month, d.day, 12, 0, tzinfo=pytz.UTC)
+
+
 class TestMoveUndoneTodosCommand(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.user = UserFactory()
 
-    @patch("knowledge.commands.move_undone_todos_command.date")
-    def test_should_move_undone_todos_to_bottom_of_target_page(self, mock_date):
+    @patch("core.helpers.timezone")
+    def test_should_move_undone_todos_to_bottom_of_target_page(self, mock_timezone):
         """Test that moved undone TODOs are placed at the bottom of the target page"""
         # Mock today's date to be 2025-06-30
         today = date(2025, 6, 30)
-        mock_date.today.return_value = today
+        mock_timezone.now.return_value = _utc_noon(today)
 
         # Create a daily note page from yesterday with undone TODOs
         yesterday = date(2025, 6, 29)
@@ -114,12 +124,12 @@ class TestMoveUndoneTodosCommand(TestCase):
             all_blocks[3], todo2
         )  # Fourth block should be second moved TODO
 
-    @patch("knowledge.commands.move_undone_todos_command.date")
-    def test_should_not_move_completed_todos(self, mock_date):
+    @patch("core.helpers.timezone")
+    def test_should_not_move_completed_todos(self, mock_timezone):
         """Test that completed (DONE) TODOs are not moved"""
         # Mock today's date to be 2025-06-30
         today = date(2025, 6, 30)
-        mock_date.today.return_value = today
+        mock_timezone.now.return_value = _utc_noon(today)
 
         # Create yesterday's page with both undone and done TODOs
         yesterday = date(2025, 6, 29)
@@ -167,12 +177,12 @@ class TestMoveUndoneTodosCommand(TestCase):
         # Undone todo should be moved to today's page
         self.assertNotEqual(undone_todo.page, yesterday_page)
 
-    @patch("knowledge.commands.move_undone_todos_command.date")
-    def test_should_return_no_todos_message_when_none_found(self, mock_date):
+    @patch("core.helpers.timezone")
+    def test_should_return_no_todos_message_when_none_found(self, mock_timezone):
         """Test that appropriate message is returned when no undone TODOs are found"""
         # Mock today's date to be 2025-06-30
         today = date(2025, 6, 30)
-        mock_date.today.return_value = today
+        mock_timezone.now.return_value = _utc_noon(today)
 
         # Create yesterday's page with only completed TODOs
         yesterday = date(2025, 6, 29)
@@ -204,12 +214,12 @@ class TestMoveUndoneTodosCommand(TestCase):
         self.assertEqual(result["moved_count"], 0)
         self.assertEqual(result["message"], "No undone TODOs found to move")
 
-    @patch("knowledge.commands.move_undone_todos_command.date")
-    def test_should_preserve_relative_order_of_moved_todos(self, mock_date):
+    @patch("core.helpers.timezone")
+    def test_should_preserve_relative_order_of_moved_todos(self, mock_timezone):
         """Test that moved TODOs maintain their relative order from source pages"""
         # Mock today's date to be 2025-06-30
         today = date(2025, 6, 30)
-        mock_date.today.return_value = today
+        mock_timezone.now.return_value = _utc_noon(today)
 
         # Create multiple daily pages with TODOs
         day1 = date(2025, 6, 27)
@@ -284,12 +294,12 @@ class TestMoveUndoneTodosCommand(TestCase):
         for i, expected_block in enumerate(expected_order):
             self.assertEqual(moved_blocks[i], expected_block)
 
-    @patch("knowledge.commands.move_undone_todos_command.date")
-    def test_should_not_disrupt_nested_blocks_when_moving_todos(self, mock_date):
+    @patch("core.helpers.timezone")
+    def test_should_not_disrupt_nested_blocks_when_moving_todos(self, mock_timezone):
         """Test that moving TODOs doesn't affect nested block structure on target page"""
         # Mock today's date to be 2025-06-30
         today = date(2025, 6, 30)
-        mock_date.today.return_value = today
+        mock_timezone.now.return_value = _utc_noon(today)
 
         # Create yesterday's page with undone TODOs
         yesterday = date(2025, 6, 29)
@@ -398,12 +408,12 @@ class TestMoveUndoneTodosCommand(TestCase):
             len(all_orders), len(set(all_orders))
         )  # All orders should be unique
 
-    @patch("knowledge.commands.move_undone_todos_command.date")
-    def test_should_move_undone_todos_to_specified_target_date(self, mock_date):
+    @patch("core.helpers.timezone")
+    def test_should_move_undone_todos_to_specified_target_date(self, mock_timezone):
         """Test that undone TODOs can be moved to a specific target date"""
         # Mock today's date to be 2025-06-30
         today = date(2025, 6, 30)
-        mock_date.today.return_value = today
+        mock_timezone.now.return_value = _utc_noon(today)
 
         # Create target date (2025-07-01)
         target_date = date(2025, 7, 1)
@@ -450,14 +460,14 @@ class TestMoveUndoneTodosCommand(TestCase):
         self.assertEqual(todo1.page.date, target_date)
         self.assertEqual(todo2.page.date, target_date)
 
-    @patch("knowledge.commands.move_undone_todos_command.date")
+    @patch("core.helpers.timezone")
     def test_should_default_to_current_date_when_no_target_date_provided(
-        self, mock_date
+        self, mock_timezone
     ):
         """Test that command defaults to current date when target_date is not provided"""
         # Mock today's date to be 2025-06-30
         today = date(2025, 6, 30)
-        mock_date.today.return_value = today
+        mock_timezone.now.return_value = _utc_noon(today)
 
         # Create yesterday's page with undone TODO
         yesterday = date(2025, 6, 29)

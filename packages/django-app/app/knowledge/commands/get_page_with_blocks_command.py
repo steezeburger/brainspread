@@ -1,10 +1,9 @@
 from typing import List, Tuple
 
-import pytz
 from django.core.exceptions import ValidationError
-from django.utils import timezone
 
 from common.commands.abstract_base_command import AbstractBaseCommand
+from core.helpers import today_for_user
 from knowledge.models import Block, Page
 from knowledge.repositories import BlockRepository, PageRepository
 
@@ -35,18 +34,10 @@ class GetPageWithBlocksCommand(AbstractBaseCommand):
             # Get or create daily note
             page, created = PageRepository.get_or_create_daily_note(user, date)
         elif not page:
-            # Default to today's daily note
-            try:
-                if user.timezone and user.timezone != "UTC":
-                    user_tz = pytz.timezone(user.timezone)
-                    now_user_tz = timezone.now().astimezone(user_tz)
-                    today = now_user_tz.date()
-                else:
-                    today = timezone.now().date()
-            except Exception:
-                today = timezone.now().date()
-
-            page, created = PageRepository.get_or_create_daily_note(user, today)
+            # Default to today's daily note (in the user's timezone).
+            page, created = PageRepository.get_or_create_daily_note(
+                user, today_for_user(user)
+            )
 
         # Get direct blocks (blocks that belong directly to this page)
         direct_blocks = BlockRepository.get_root_blocks(page)

@@ -1,9 +1,8 @@
-from datetime import date
-
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
+from core.helpers import today_for_user
 from knowledge.models import Block, Page
 
 User = get_user_model()
@@ -20,7 +19,7 @@ class Command(BaseCommand):
             )
             return
 
-        today = date.today()
+        today = today_for_user(user)
         date_str = today.strftime("%Y-%m-%d")
 
         with transaction.atomic():

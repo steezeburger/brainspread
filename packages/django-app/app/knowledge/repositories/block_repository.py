@@ -1,10 +1,10 @@
-from datetime import date
 from typing import Any, Dict, List, Optional
 
 from django.db import transaction
 from django.db.models import Max, QuerySet
 
 from common.repositories.base_repository import BaseRepository
+from core.helpers import today_for_user
 
 from ..models import Block, Page
 
@@ -186,7 +186,7 @@ class BlockRepository(BaseRepository):
     @classmethod
     def get_undone_todos(cls, user) -> QuerySet:
         """Get undone TODO blocks from daily pages before today"""
-        today = date.today()
+        today = today_for_user(user)
         return (
             cls.get_queryset()
             .filter(

@@ -1,28 +1,15 @@
-from datetime import date
 from typing import TypedDict
 
-import pytz
 from django.db import transaction
 from django.db.models import Max
-from django.utils import timezone
 
 from common.commands.abstract_base_command import AbstractBaseCommand
+from core.helpers import today_for_user
 
 from ..forms.move_block_to_daily_form import MoveBlockToDailyForm
 from ..models import BlockData, PageData
 from ..repositories import BlockRepository
 from ..repositories.page_repository import PageRepository
-
-
-def _today_for_user(user) -> date:
-    """Today's date in the user's timezone (falls back to UTC)."""
-    try:
-        if user.timezone and user.timezone != "UTC":
-            user_tz = pytz.timezone(user.timezone)
-            return timezone.now().astimezone(user_tz).date()
-    except Exception:
-        pass
-    return timezone.now().date()
 
 
 class MoveBlockToDailyCommand(AbstractBaseCommand):
@@ -36,7 +23,7 @@ class MoveBlockToDailyCommand(AbstractBaseCommand):
 
         user = self.form.cleaned_data["user"]
         block = self.form.cleaned_data["block"]
-        target_date = self.form.cleaned_data.get("target_date") or _today_for_user(user)
+        target_date = self.form.cleaned_data.get("target_date") or today_for_user(user)
 
         target_page, _ = PageRepository.get_or_create_daily_note(user, target_date)
 
