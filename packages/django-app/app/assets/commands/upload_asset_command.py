@@ -30,7 +30,9 @@ class UploadAssetCommand(AbstractBaseCommand):
 
         user = self.form.cleaned_data["user"]
         uploaded = self.form.cleaned_data["file"]
-        asset_type = self.form.cleaned_data["asset_type"]
+        # BaseForm.clean() drops fields that weren't submitted, so we
+        # default here rather than relying on clean_asset_type's default.
+        asset_type = self.form.cleaned_data.get("asset_type") or Asset.ASSET_TYPE_UPLOAD
         source_url = self.form.cleaned_data.get("source_url") or ""
 
         sha256 = self._compute_sha256(uploaded)

@@ -52,9 +52,3 @@ class UploadAssetForm(BaseForm):
             )
 
         return uploaded
-
-    def clean_asset_type(self) -> str:
-        # Default to a generic "upload" when the caller doesn't specify.
-        # Consumer-specific endpoints (block paste, whiteboard insert, chat
-        # attach) can pass a more precise asset_type when they know it.
-        return self.cleaned_data.get("asset_type") or Asset.ASSET_TYPE_UPLOAD
