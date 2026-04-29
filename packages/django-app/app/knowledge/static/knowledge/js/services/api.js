@@ -401,6 +401,21 @@ class ApiService {
     return result;
   }
 
+  async updateDiscordUserId(discordUserId) {
+    const result = await this.request("/api/auth/update-discord-user-id/", {
+      method: "POST",
+      body: JSON.stringify({ discord_user_id: discordUserId || "" }),
+    });
+    if (result.success) {
+      const currentUser = this.getCurrentUser();
+      if (currentUser) {
+        currentUser.discord_user_id = discordUserId || "";
+        localStorage.setItem("user", JSON.stringify(currentUser));
+      }
+    }
+    return result;
+  }
+
   async updateUserTimeFormat(newFormat) {
     try {
       const result = await this.request("/api/auth/update-time-format/", {

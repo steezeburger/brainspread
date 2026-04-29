@@ -139,6 +139,58 @@ class TestSendDueRemindersCommand(TestCase):
         self.assertEqual(reminder.last_error, "")
         self.assertIsNotNone(reminder.sent_at)
 
+    def test_prepends_mention_when_discord_user_id_set(self):
+        """When the user has a Discord user ID, the message should start with
+        a `<@ID>` mention so Discord actually pings them on delivery."""
+        user_with_id = UserFactory(
+            discord_webhook_url="https://discord.com/api/webhooks/2/xyz",
+            discord_user_id="123456789012345678",
+        )
+        block = BlockFactory(
+            user=user_with_id,
+            page=PageFactory(user=user_with_id),
+            content="TODO ship",
+        )
+        Reminder.objects.create(
+            block=block,
+            fire_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        captured: dict = {}
+
+        def _capture(url: str, content: str, **_kwargs):
+            captured["url"] = url
+            captured["content"] = content
+            return DiscordDeliveryResult(True, "")
+
+        with patch(
+            "knowledge.commands.send_due_reminders_command.post_webhook", _capture
+        ):
+            self._run()
+
+        self.assertTrue(captured["content"].startswith("<@123456789012345678> "))
+        self.assertIn("TODO ship", captured["content"])
+
+    def test_no_mention_when_discord_user_id_blank(self):
+        block = BlockFactory(user=self.user, page=self.page, content="TODO ship")
+        Reminder.objects.create(
+            block=block,
+            fire_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        captured: dict = {}
+
+        def _capture(url: str, content: str, **_kwargs):
+            captured["content"] = content
+            return DiscordDeliveryResult(True, "")
+
+        with patch(
+            "knowledge.commands.send_due_reminders_command.post_webhook", _capture
+        ):
+            self._run()
+
+        self.assertFalse(captured["content"].startswith("<@"))
+
     def test_marks_failed_when_user_has_no_webhook(self):
         user_no_webhook = UserFactory(discord_webhook_url="")
         block = BlockFactory(

@@ -84,3 +84,13 @@ class UserRepository(BaseRepository):
         user.discord_webhook_url = url
         user.save(update_fields=["discord_webhook_url"])
         return user
+
+    @classmethod
+    def update_discord_user_id(cls, user: User, discord_user_id: str) -> User:
+        """Update the user's Discord user ID used for @-mentions.
+
+        Empty string is a valid "unset" value (no mention prepended).
+        """
+        user.discord_user_id = discord_user_id
+        user.save(update_fields=["discord_user_id"])
+        return user

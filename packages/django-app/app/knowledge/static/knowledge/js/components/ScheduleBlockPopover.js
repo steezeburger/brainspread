@@ -4,13 +4,13 @@
 // date from the chosen due date and submit it as `reminder_date`. Pick
 // "custom date..." to fire on any day independent of the due date.
 //
-// Time field defaults to the next "common chunk" (9am, 5pm, 8pm) for
-// today, or 9am for any future date. If the user manually edits the time
-// once, we stop overwriting it for the remainder of this session.
+// Time field defaults to the next "common chunk" (9am, noon, 3pm, 5pm,
+// 8pm) for today, or 9am for any future date. If the user manually edits
+// the time once, we stop overwriting it for the remainder of this session.
 //
 // Emits: save({ scheduledFor, reminderDate, reminderTime }) and cancel.
 
-const SCHEDULE_TIME_CHUNKS = ["09:00", "17:00", "20:00"];
+const SCHEDULE_TIME_CHUNKS = ["09:00", "12:00", "15:00", "17:00", "20:00"];
 
 const REMINDER_OFFSETS = [
   { value: "day_of", label: "day of", days: 0 },

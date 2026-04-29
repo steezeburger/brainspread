@@ -90,3 +90,17 @@ class UpdateDiscordWebhookForm(BaseForm):
                 "'https://discord.com/api/webhooks/'"
             )
         return url
+
+
+class UpdateDiscordUserIdForm(BaseForm):
+    user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
+    discord_user_id = forms.CharField(required=False, max_length=32, empty_value="")
+
+    def clean_discord_user_id(self) -> str:
+        value = (self.cleaned_data.get("discord_user_id") or "").strip()
+        if value and not value.isdigit():
+            raise ValidationError(
+                "Discord user IDs are numeric. In Discord, enable Developer "
+                "Mode then right-click your name → Copy User ID."
+            )
+        return value

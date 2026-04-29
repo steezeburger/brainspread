@@ -68,7 +68,7 @@ class SendDueRemindersCommand(AbstractBaseCommand):
                     skipped += 1
                     continue
 
-                content = _format_content(reminder, block)
+                content = _format_content(reminder, block, block.user.discord_user_id)
                 url = block.user.discord_webhook_url
                 # Look up post_webhook at call time (not via `self.deliver`)
                 # so tests can patch the module-level symbol.
@@ -106,12 +106,19 @@ class SendDueRemindersCommand(AbstractBaseCommand):
         }
 
 
-def _format_content(reminder: Reminder, block) -> str:
-    """Render the Discord message body for a reminder."""
+def _format_content(reminder: Reminder, block, discord_user_id: str = "") -> str:
+    """Render the Discord message body for a reminder.
+
+    When `discord_user_id` is set, prepends a `<@ID>` mention so the user
+    gets a desktop/push notification instead of just a silent channel post.
+    """
     title = (block.content or "").strip().splitlines()[0] if block.content else ""
     if len(title) > 240:
         title = title[:237] + "..."
     due = ""
     if block.scheduled_for:
         due = f" (due {block.scheduled_for.isoformat()})"
-    return f"Reminder: {title}{due}" if title else f"Reminder{due}"
+    body = f"Reminder: {title}{due}" if title else f"Reminder{due}"
+    if discord_user_id:
+        return f"<@{discord_user_id}> {body}"
+    return body

@@ -66,6 +66,17 @@ class User(
         ),
     )
 
+    discord_user_id = models.CharField(
+        _("discord user id"),
+        max_length=32,
+        blank=True,
+        default="",
+        help_text=_(
+            "Optional Discord user ID (numeric snowflake) — when set, reminder "
+            "messages mention this user so they get a push/desktop notification"
+        ),
+    )
+
     TIME_FORMAT_CHOICES = [
         ("24h", "24 hour"),
         ("12h", "12 hour"),
@@ -91,6 +102,7 @@ class User(
             timezone=self.timezone,
             theme=self.theme,
             discord_webhook_url=self.discord_webhook_url,
+            discord_user_id=self.discord_user_id,
             time_format=self.time_format,
             created_at=self.created_at.isoformat(),
         )
@@ -110,5 +122,6 @@ class UserData(TypedDict):
     timezone: str
     theme: str
     discord_webhook_url: str
+    discord_user_id: str
     time_format: str
     created_at: str
