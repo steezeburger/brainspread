@@ -577,6 +577,37 @@ const Page = {
       }
     },
 
+    async moveBlockToToday(block) {
+      try {
+        // Save in-progress edits before moving
+        if (block.isEditing) {
+          await this.updateBlock(block, block.content, true);
+        }
+
+        const result = await window.apiService.moveBlockToDaily(block.uuid);
+
+        if (!result.success) {
+          throw new Error("move to today failed");
+        }
+
+        const targetTitle = result.data?.target_page?.title || "today";
+        if (result.data?.moved) {
+          this.$parent?.addToast?.(`moved block to ${targetTitle}`, "success");
+        } else {
+          this.$parent?.addToast?.(
+            result.data?.message || "block already on today's daily",
+            "info"
+          );
+        }
+
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("failed to move block to today:", error);
+        this.error = "failed to move block to today";
+        this.$parent?.addToast?.("failed to move block to today", "error");
+      }
+    },
+
     onBlockContentChange(block, newContent) {
       // Just update the local content, don't save yet
       block.content = newContent;
@@ -2281,6 +2312,7 @@ const Page = {
               :createBlockBefore="createBlockBefore"
               :moveBlockUp="moveBlockUp"
               :moveBlockDown="moveBlockDown"
+              :moveBlockToToday="moveBlockToToday"
               :onBlockPaste="onBlockPaste"
             />
             <button @click="addNewBlock" class="add-block-btn">

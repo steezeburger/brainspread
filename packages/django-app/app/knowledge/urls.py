@@ -20,6 +20,11 @@ urlpatterns = [
         views.move_undone_todos,
         name="move_undone_todos",
     ),
+    path(
+        "api/blocks/move-to-daily/",
+        views.move_block_to_daily,
+        name="move_block_to_daily",
+    ),
     # Page-centric API endpoints
     path("api/pages/", views.create_page, name="create_page"),
     path("api/pages/update/", views.update_page, name="update_page"),

@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from django import forms
 from django.core.exceptions import ValidationError
 
@@ -28,14 +26,3 @@ class GetPageWithBlocksForm(BaseForm):
         if page and user and page.user != user:
             raise ValidationError("Page not found")
         return page
-
-    def clean(self):
-        cleaned_data = super().clean()
-        page = cleaned_data.get("page")
-        date = cleaned_data.get("date")
-        slug = cleaned_data.get("slug")
-
-        if not page and not date and not slug:
-            cleaned_data["date"] = datetime.now().date()
-
-        return cleaned_data

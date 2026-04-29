@@ -1,8 +1,8 @@
-from datetime import date
 from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError
 
+from core.helpers import today_for_user
 from core.models import User
 from knowledge.commands import MoveUndoneTodosCommand
 from knowledge.forms import MoveUndoneTodosForm
@@ -28,7 +28,7 @@ class Command(BaseCommand):
             raise CommandError(f"User with email '{user_email}' does not exist")
 
         # Create form and command
-        form_data = {"user": user, "target_date": date.today()}
+        form_data = {"user": user, "target_date": today_for_user(user)}
         form = MoveUndoneTodosForm(form_data)
 
         if not form.is_valid():

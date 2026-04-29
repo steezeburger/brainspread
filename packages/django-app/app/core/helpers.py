@@ -2,6 +2,28 @@ import functools
 import random
 import secrets
 import string
+from datetime import date
+
+import pytz
+from django.utils import timezone
+
+
+def today_for_user(user) -> date:
+    """Return today's date in the given user's timezone.
+
+    Falls back to UTC when the user has no timezone set or pytz can't
+    resolve the value. Always use this instead of ``date.today()`` /
+    ``datetime.now().date()`` when computing a "today" that the user
+    will see in the UI - the server clock is UTC and would otherwise
+    flip a day early for users west of UTC.
+    """
+    try:
+        if user and user.timezone and user.timezone != "UTC":
+            user_tz = pytz.timezone(user.timezone)
+            return timezone.now().astimezone(user_tz).date()
+    except Exception:
+        pass
+    return timezone.now().date()
 
 
 def generate_membership_token():
