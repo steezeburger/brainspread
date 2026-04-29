@@ -105,7 +105,8 @@ class WebArchiveAPITestCase(TestCase):
         block = BlockFactory(user=self.user, page=self.page)
         asset = Asset.objects.create(
             user=self.user,
-            kind="web_archive_readable_html",
+            asset_type=Asset.ASSET_TYPE_WEB_ARCHIVE_READABLE,
+            file_type=Asset.FILE_TYPE_HTML,
             source_url="https://example.com/a",
             mime_type="text/html; charset=utf-8",
         )
@@ -134,7 +135,8 @@ class WebArchiveAPITestCase(TestCase):
         other_block = BlockFactory(user=other_user, page=other_page)
         asset = Asset.objects.create(
             user=other_user,
-            kind="web_archive_readable_html",
+            asset_type=Asset.ASSET_TYPE_WEB_ARCHIVE_READABLE,
+            file_type=Asset.FILE_TYPE_HTML,
             source_url="https://example.com/a",
         )
         asset.file.save("other.html", ContentFile(b"secret"), save=True)

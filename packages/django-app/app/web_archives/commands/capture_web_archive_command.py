@@ -10,7 +10,7 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 
-from assets.models import Asset
+from assets.models import Asset, file_type_from_mime
 from common.commands.abstract_base_command import AbstractBaseCommand
 from knowledge.models import Block
 
@@ -134,7 +134,7 @@ def _capture_html(archive: WebArchive, fetched) -> None:
 
         readable_asset = _store_asset(
             user=archive.user,
-            kind="web_archive_readable_html",
+            asset_type=Asset.ASSET_TYPE_WEB_ARCHIVE_READABLE,
             source_url=archive.source_url,
             content_bytes=(extracted.readable_html or "").encode("utf-8"),
             mime_type="text/html; charset=utf-8",
@@ -142,7 +142,7 @@ def _capture_html(archive: WebArchive, fetched) -> None:
         )
         raw_asset = _store_asset(
             user=archive.user,
-            kind="web_archive_raw_html",
+            asset_type=Asset.ASSET_TYPE_WEB_ARCHIVE_RAW,
             source_url=archive.source_url,
             content_bytes=fetched.content_bytes,
             mime_type=fetched.content_type or "text/html; charset=utf-8",
@@ -223,7 +223,7 @@ def _capture_binary(archive: WebArchive, fetched) -> None:
 
         asset = _store_asset(
             user=archive.user,
-            kind="web_archive_raw_html",
+            asset_type=Asset.ASSET_TYPE_WEB_ARCHIVE_RAW,
             source_url=archive.source_url,
             content_bytes=fetched.content_bytes,
             mime_type=fetched.content_type or mime,
@@ -251,7 +251,7 @@ def _capture_binary(archive: WebArchive, fetched) -> None:
 def _store_asset(
     *,
     user,
-    kind: str,
+    asset_type: str,
     source_url: str,
     content_bytes: bytes,
     mime_type: str,
@@ -259,8 +259,10 @@ def _store_asset(
 ) -> Asset:
     asset = Asset.objects.create(
         user=user,
-        kind=kind,
+        asset_type=asset_type,
+        file_type=file_type_from_mime(mime_type),
         source_url=source_url,
+        original_filename=filename,
         mime_type=mime_type,
         byte_size=len(content_bytes),
         sha256=hashlib.sha256(content_bytes).hexdigest(),
