@@ -23,4 +23,5 @@ urlpatterns = [
     path("knowledge/", include("knowledge.urls")),
     path("api/ai-chat/", include("ai_chat.urls")),
     path("api/web-archives/", include("web_archives.urls")),
+    path("api/assets/", include("assets.urls")),
 ]
