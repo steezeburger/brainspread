@@ -58,9 +58,7 @@ class TestMoveBlockToDailyCommand(TestCase):
         BlockFactory(user=self.user, page=today_page, content="existing 2", order=2)
 
         source_page = PageFactory(user=self.user, title="Notes", slug="notes")
-        block = BlockFactory(
-            user=self.user, page=source_page, content="moved", order=1
-        )
+        block = BlockFactory(user=self.user, page=source_page, content="moved", order=1)
 
         form = MoveBlockToDailyForm({"user": self.user, "block": block.uuid})
         self.assertTrue(form.is_valid(), form.errors)
@@ -149,9 +147,7 @@ class TestMoveBlockToDailyCommand(TestCase):
         block = BlockFactory(user=self.user, page=source_page, content="x", order=1)
 
         self.assertFalse(
-            Page.objects.filter(
-                user=self.user, page_type="daily", date=today
-            ).exists()
+            Page.objects.filter(user=self.user, page_type="daily", date=today).exists()
         )
 
         form = MoveBlockToDailyForm({"user": self.user, "block": block.uuid})
@@ -160,9 +156,7 @@ class TestMoveBlockToDailyCommand(TestCase):
         MoveBlockToDailyCommand(form).execute()
 
         self.assertTrue(
-            Page.objects.filter(
-                user=self.user, page_type="daily", date=today
-            ).exists()
+            Page.objects.filter(user=self.user, page_type="daily", date=today).exists()
         )
 
     @patch("knowledge.commands.move_block_to_daily_command.date")
@@ -215,9 +209,7 @@ class TestMoveBlockToDailyCommand(TestCase):
         other_page = PageFactory(user=other_user, title="Other", slug="other")
         other_block = BlockFactory(user=other_user, page=other_page, content="x")
 
-        form = MoveBlockToDailyForm(
-            {"user": self.user, "block": other_block.uuid}
-        )
+        form = MoveBlockToDailyForm({"user": self.user, "block": other_block.uuid})
         self.assertFalse(form.is_valid())
         self.assertIn("block", form.errors)
 
@@ -245,9 +237,7 @@ class TestMoveBlockToDailyCommand(TestCase):
         )
 
         source_page = PageFactory(user=self.user, title="Notes", slug="notes")
-        block = BlockFactory(
-            user=self.user, page=source_page, content="moved", order=1
-        )
+        block = BlockFactory(user=self.user, page=source_page, content="moved", order=1)
 
         form = MoveBlockToDailyForm({"user": self.user, "block": block.uuid})
         self.assertTrue(form.is_valid(), form.errors)
