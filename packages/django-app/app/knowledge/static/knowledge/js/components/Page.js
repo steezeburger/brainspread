@@ -53,6 +53,10 @@ const Page = {
       selectionAnchorUuid: null,
       selectionLevel: 0,
       selectedBlockUuids: new Set(),
+      // Multi-select mode: opt-in via the page's ⋮ menu. When on, plain
+      // clicks on a block toggle it in/out of the selection instead of
+      // entering edit mode, and a sticky toolbar shows bulk actions.
+      selectionMode: false,
     };
   },
 
@@ -1345,6 +1349,8 @@ const Page = {
       if (event.key === "Escape") {
         if (this.showPageMenu) {
           this.closePageMenuAndRestoreFocus();
+        } else if (this.selectionMode) {
+          this.exitSelectionMode();
         } else if (this.selectionAnchorUuid) {
           this.clearBlockSelection();
         }
@@ -2287,8 +2293,9 @@ const Page = {
 
     // Click + Shift-click selects a contiguous range of blocks in document
     // order; Cmd/Ctrl-click toggles a single block in/out of the selection.
-    // Returns true when the click was consumed for selection so callers can
-    // skip starting an edit. Plain clicks (no modifier) return false.
+    // While in selection mode, plain clicks also toggle. Returns true when
+    // the click was consumed for selection so callers can skip starting an
+    // edit. Plain clicks outside selection mode return false.
     handleBlockSelectClick(block, event) {
       if (!event) return false;
 
@@ -2322,7 +2329,7 @@ const Page = {
         return true;
       }
 
-      if (event.metaKey || event.ctrlKey) {
+      if (event.metaKey || event.ctrlKey || this.selectionMode) {
         const next = new Set(this.selectedBlockUuids);
         if (next.has(block.uuid)) {
           next.delete(block.uuid);
@@ -2363,6 +2370,24 @@ const Page = {
 
     handleBulkMoveSelectedToToday() {
       this.bulkMoveSelectedToToday();
+    },
+
+    enterSelectionMode() {
+      this.selectionMode = true;
+      this.closePageMenu();
+    },
+
+    exitSelectionMode() {
+      this.selectionMode = false;
+      this.clearBlockSelection();
+    },
+
+    toggleSelectionMode() {
+      if (this.selectionMode) {
+        this.exitSelectionMode();
+      } else {
+        this.enterSelectionMode();
+      }
     },
 
     async bulkDeleteSelected() {
@@ -2504,6 +2529,10 @@ const Page = {
                     <button @click="moveUndoneTodos" class="context-menu-item" :disabled="loading" role="menuitem">
                       move undone TODOs here
                     </button>
+                    <button @click="enterSelectionMode" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">◉</span>
+                      <span>select multiple</span>
+                    </button>
                     <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">
                        <span class="context-menu-icon">×</span>
                        <span>delete</span>
@@ -2545,6 +2574,10 @@ const Page = {
                     <button @click="startEditingTitle" class="context-menu-item" role="menuitem">
                       edit title
                     </button>
+                    <button @click="enterSelectionMode" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">◉</span>
+                      <span>select multiple</span>
+                    </button>
                     <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">
                       delete page
                     </button>
@@ -2552,6 +2585,36 @@ const Page = {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Selection Mode Toolbar -->
+        <div v-if="selectionMode" class="selection-toolbar" role="toolbar" aria-label="Selection actions">
+          <div class="selection-toolbar-status">
+            <span class="selection-toolbar-count">{{ selectedBlockCount }}</span>
+            <span class="selection-toolbar-label">selected</span>
+          </div>
+          <div class="selection-toolbar-actions">
+            <button
+              type="button"
+              class="btn btn-outline selection-toolbar-action"
+              :disabled="selectedBlockCount === 0"
+              @click="bulkMoveSelectedToToday"
+              title="Move selected blocks to today's daily note"
+            >move to today</button>
+            <button
+              type="button"
+              class="btn btn-outline selection-toolbar-action selection-toolbar-danger"
+              :disabled="selectedBlockCount === 0"
+              @click="bulkDeleteSelected"
+              title="Delete selected blocks"
+            >delete</button>
+            <button
+              type="button"
+              class="btn btn-outline selection-toolbar-done"
+              @click="exitSelectionMode"
+              title="Exit selection mode (Esc)"
+            >done</button>
           </div>
         </div>
 
@@ -2627,6 +2690,7 @@ const Page = {
               :selectedBlockCount="selectedBlockCount"
               :bulkDeleteSelected="bulkDeleteSelected"
               :bulkMoveSelectedToToday="bulkMoveSelectedToToday"
+              :selectionMode="selectionMode"
             />
             <button @click="addNewBlock" class="add-block-btn">
               + add new block

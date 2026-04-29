@@ -103,6 +103,10 @@ const BlockComponent = {
       type: Function,
       default: () => () => {},
     },
+    selectionMode: {
+      type: Boolean,
+      default: false,
+    },
   },
   data() {
     return {
@@ -979,10 +983,16 @@ const BlockComponent = {
 
     // Plain click on the block display starts editing. Modifier-clicks
     // (shift, cmd/ctrl) instead toggle selection / extend a range; in that
-    // case we bail before calling startEditing.
+    // case we bail before calling startEditing. While in selection mode,
+    // ANY click toggles selection — editing is suppressed entirely.
     handleDisplayClick(event) {
       if (event.target.closest(".clickable-tag")) return;
-      if (event.shiftKey || event.metaKey || event.ctrlKey) {
+      if (
+        this.selectionMode ||
+        event.shiftKey ||
+        event.metaKey ||
+        event.ctrlKey
+      ) {
         const handled = this.onBlockSelectClick(this.block, event);
         if (handled) {
           event.preventDefault();
@@ -993,13 +1003,28 @@ const BlockComponent = {
       this.startEditing(this.block);
     },
 
+    handleSelectToggleClick(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.onBlockSelectClick(this.block, event);
+    },
+
     showBulkSelectionActions() {
       return this.blockSelected && this.selectedBlockCount >= 2;
     },
   },
   template: `
-    <div class="block-wrapper" :class="{ 'child-block': block.parent, 'in-context': blockInContext, 'selected': blockSelected }" :data-block-uuid="block.uuid">
+    <div class="block-wrapper" :class="{ 'child-block': block.parent, 'in-context': blockInContext, 'selected': blockSelected, 'in-selection-mode': selectionMode }" :data-block-uuid="block.uuid">
       <div class="block" :class="{ 'has-children': hasChildren, 'is-collapsed': hasChildren && isCollapsed }">
+        <button
+          v-if="selectionMode"
+          type="button"
+          class="block-select-toggle"
+          :class="{ 'is-selected': blockSelected }"
+          :aria-label="blockSelected ? 'Unselect block' : 'Select block'"
+          :aria-pressed="blockSelected"
+          @click="handleSelectToggleClick($event)"
+        >{{ blockSelected ? '●' : '○' }}</button>
         <button
           v-if="hasChildren"
           @click="toggleCollapse"
@@ -1018,9 +1043,9 @@ const BlockComponent = {
             'later': block.block_type === 'later',
             'wontdo': block.block_type === 'wontdo'
           }"
-          @click="['todo', 'doing', 'done', 'later', 'wontdo'].includes(block.block_type) ? toggleBlockTodo(block) : null"
+          @click="selectionMode ? handleSelectToggleClick($event) : (['todo', 'doing', 'done', 'later', 'wontdo'].includes(block.block_type) ? toggleBlockTodo(block) : null)"
           @touchstart="handleTouchStart"
-          @touchend="handleTodoTouchEnd"
+          @touchend="selectionMode ? null : handleTodoTouchEnd($event)"
         >
           <span v-if="block.block_type === 'todo'">☐</span>
           <span v-else-if="block.block_type === 'doing'">◐</span>
@@ -1337,6 +1362,7 @@ const BlockComponent = {
           :selectedBlockCount="selectedBlockCount"
           :bulkDeleteSelected="bulkDeleteSelected"
           :bulkMoveSelectedToToday="bulkMoveSelectedToToday"
+          :selectionMode="selectionMode"
         />
       </div>
     </div>
