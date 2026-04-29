@@ -266,7 +266,7 @@ staging-logs LINES="100":
 staging-cleanup-images:
   docker rmi ${COMPOSE_PROJECT_NAME}-web:latest 2>/dev/null || true
   docker rmi ${COMPOSE_PROJECT_NAME}-scheduler:latest 2>/dev/null || true
-  docker image prune -f
+  docker image prune -f --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}"
 
 # Clean up project Docker resources
 dcp-cleanup:
