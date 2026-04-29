@@ -524,6 +524,13 @@ window.LeftNav = {
           title="Help"
           aria-label="Help"
         >?</button>
+        <button
+          type="button"
+          class="leftnav-rail-btn leftnav-rail-action"
+          @click="onLogoutClick"
+          title="Logout"
+          aria-label="Logout"
+        >⏻</button>
       </aside>
 
       <!-- Sidebar -->
@@ -541,6 +548,9 @@ window.LeftNav = {
         ></div>
 
         <div class="leftnav-content">
+          <!-- Brand -->
+          <a href="/knowledge/" class="leftnav-brand brand-link">brainspread</a>
+
           <!-- Header -->
           <div class="leftnav-header">
             <button

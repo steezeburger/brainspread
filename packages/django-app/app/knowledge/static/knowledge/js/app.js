@@ -26,6 +26,7 @@ const KnowledgeApp = createApp({
       showSettings: false, // Settings modal state
       settingsActiveTab: "general", // Default tab for settings modal
       showHelp: false, // Help modal state
+      showLogoutConfirm: false, // Logout confirmation modal state
       // Chat context management
       chatContextBlocks: [], // Array of blocks in chat context
       visibleBlocks: [], // Array of currently visible blocks
@@ -178,6 +179,33 @@ const KnowledgeApp = createApp({
         this.user = null;
         this.isAuthenticated = false;
         this.currentView = "login";
+      }
+    },
+
+    requestLogout() {
+      this.showLogoutConfirm = true;
+      this.$nextTick(() => {
+        const btn = document.querySelector(".confirm-modal .btn-danger");
+        if (btn) btn.focus();
+      });
+    },
+
+    cancelLogout() {
+      this.showLogoutConfirm = false;
+    },
+
+    async confirmLogout() {
+      this.showLogoutConfirm = false;
+      await this.handleLogout();
+    },
+
+    handleLogoutConfirmKeydown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        this.cancelLogout();
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        this.confirmLogout();
       }
     },
 
@@ -460,7 +488,10 @@ const KnowledgeApp = createApp({
       }
 
       if (event.key === "Escape") {
-        if (this.showSpotlight) {
+        if (this.showLogoutConfirm) {
+          event.preventDefault();
+          this.cancelLogout();
+        } else if (this.showSpotlight) {
           this.closeSpotlight();
         } else if (this._isInsideLeftNav(event.target)) {
           // If Escape fires from inside the left nav (e.g., its filter
@@ -867,12 +898,6 @@ const KnowledgeApp = createApp({
 
             <!-- Authenticated state -->
             <div v-else-if="isAuthenticated">
-                <nav class="navbar">
-                    <div class="nav-content">
-                        <h1><a href="/knowledge/" class="brand-link">brainspread</a></h1>
-                    </div>
-                </nav>
-
                 <!-- Toast Notifications -->
                 <ToastNotifications
                     :toasts="toasts"
@@ -895,7 +920,7 @@ const KnowledgeApp = createApp({
                             @create-whiteboard="createNewWhiteboard"
                             @open-settings="openSettings"
                             @open-help="openHelp"
-                            @logout="handleLogout" />
+                            @logout="requestLogout" />
                         <GraphView />
                     </div>
                     <div v-else class="content-layout">
@@ -910,7 +935,7 @@ const KnowledgeApp = createApp({
                             @create-whiteboard="createNewWhiteboard"
                             @open-settings="openSettings"
                             @open-help="openHelp"
-                            @logout="handleLogout" />
+                            @logout="requestLogout" />
                         <div class="main-content-area">
                             <Page
                                 :chat-context-blocks="chatContextBlocks"
@@ -969,6 +994,27 @@ const KnowledgeApp = createApp({
             @navigate="navigateToSpotlightResult"
             @keydown="handleSpotlightKeydown"
         />
+
+        <!-- Logout Confirmation Modal -->
+        <div
+            v-if="showLogoutConfirm"
+            class="confirm-modal"
+            @click.self="cancelLogout"
+            @keydown="handleLogoutConfirmKeydown"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="logout-confirm-title"
+            tabindex="-1"
+        >
+            <div class="confirm-modal-content">
+                <h2 id="logout-confirm-title">log out?</h2>
+                <p class="confirm-modal-body">you'll need to sign in again next time.</p>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-outline" @click="cancelLogout">cancel</button>
+                    <button type="button" class="btn btn-danger" @click="confirmLogout">log out</button>
+                </div>
+            </div>
+        </div>
     `,
 });
 
