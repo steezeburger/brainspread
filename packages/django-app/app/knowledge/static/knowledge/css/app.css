@@ -190,6 +190,10 @@ body {
   border-bottom: 1px solid var(--border-primary);
   padding: 1rem 0;
   box-shadow: none;
+  box-sizing: border-box;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
 }
 
 .nav-content {
