@@ -56,6 +56,29 @@ class User(
         help_text=_("User's preferred theme"),
     )
 
+    discord_webhook_url = models.URLField(
+        _("discord webhook url"),
+        max_length=500,
+        blank=True,
+        default="",
+        help_text=_(
+            "Optional Discord webhook URL used to deliver reminders (see issue #59)"
+        ),
+    )
+
+    TIME_FORMAT_CHOICES = [
+        ("24h", "24 hour"),
+        ("12h", "12 hour"),
+    ]
+
+    time_format = models.CharField(
+        _("time format"),
+        max_length=4,
+        choices=TIME_FORMAT_CHOICES,
+        default="24h",
+        help_text=_("Whether to display times as 24-hour or 12-hour"),
+    )
+
     def __str__(self):
         return self.email
 
@@ -67,6 +90,8 @@ class User(
             is_active=self.is_active,
             timezone=self.timezone,
             theme=self.theme,
+            discord_webhook_url=self.discord_webhook_url,
+            time_format=self.time_format,
             created_at=self.created_at.isoformat(),
         )
 
@@ -84,4 +109,6 @@ class UserData(TypedDict):
     is_active: bool
     timezone: str
     theme: str
+    discord_webhook_url: str
+    time_format: str
     created_at: str

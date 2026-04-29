@@ -65,6 +65,17 @@ Navigate to `packages/django-app/` for most development tasks.
 - Database safety checks prevent accidental production commands
 - Separate test settings in `app.test_settings`
 
+### UI / styling conventions
+- **Never use emoji icons** in the app UI (templates, Vue components,
+  toast messages, context menu items, etc.). Prefer text labels or
+  monochrome geometric Unicode glyphs (e.g. `◷`, `⧗`, `▼`, `▶`, `↑`,
+  `→`, `×`). Emoji render inconsistently across systems and OS-tinted
+  emoji clashes with the app's typography.
+- **Borders should not be circly.** Avoid pill-shaped or fully rounded
+  borders. Use small, near-square radii (`border-radius: 3px` matches
+  the existing chips like `.block-embed-tag-chip`). Reserve larger
+  radii / pill shapes for cases where there's an explicit reason.
+
 ### Debugging
 - you can run `just tail-logs web 100` or `just tail-logs db 100`
   to get server logs or database logs to debug issues.

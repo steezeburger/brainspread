@@ -1,6 +1,7 @@
 import re
 from typing import Optional, TypedDict
 
+import pytz
 from django.conf import settings
 from django.db import models
 
@@ -81,6 +82,21 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
         default=False, help_text="Whether block is collapsed"
     )
 
+    # Scheduling (the daily page this block surfaces on; see issue #59)
+    scheduled_for = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Daily page this block should surface on (due date)",
+    )
+    # Completion tracking — set when block_type transitions into a terminal
+    # state (done/wontdo) and cleared on transition out. modified_at is
+    # unreliable for this because it bumps on any edit.
+    completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the block transitioned to a completed state",
+    )
+
     class Meta:
         db_table = "blocks"
         ordering = ("page", "order")
@@ -90,6 +106,7 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             models.Index(fields=["page", "order"]),
             models.Index(fields=["content_type"]),
             models.Index(fields=["block_type"]),
+            models.Index(fields=["user", "scheduled_for"]),
         ]
 
     def __str__(self):
@@ -219,6 +236,19 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             "properties": self.properties or {},
             "tags": [{"name": tag.slug, "color": "#007bff"} for tag in self.get_tags()],
             "children": None,
+            "scheduled_for": (
+                self.scheduled_for.isoformat() if self.scheduled_for else None
+            ),
+            "completed_at": (
+                self.completed_at.isoformat() if self.completed_at else None
+            ),
+            # The popover round-trips these so a user can re-open it and
+            # see their previous reminder still selected. Both reflect the
+            # single pending reminder for the block (or None for both).
+            # `pending_reminder_date` may differ from `scheduled_for` —
+            # users can choose to be reminded N days before due, etc.
+            "pending_reminder_date": self._pending_reminder_local_date(),
+            "pending_reminder_time": self._pending_reminder_local_time(),
             # Page context fields (optional)
             "page_title": None,
             "page_type": None,
@@ -234,6 +264,27 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             data["page_date"] = self.page.date.isoformat() if self.page.date else None
 
         return data
+
+    def _pending_reminder_local(self) -> "tuple[Optional[str], Optional[str]]":
+        """Return the user-local (date, time) of the block's pending reminder
+        (one at most — see ScheduleBlockCommand), as ("YYYY-MM-DD", "HH:MM").
+        Both are None when no pending reminder exists.
+        """
+        pending = self.reminders.filter(sent_at__isnull=True).first()
+        if not pending:
+            return (None, None)
+        try:
+            tz = pytz.timezone(self.user.timezone or "UTC")
+        except pytz.UnknownTimeZoneError:
+            tz = pytz.UTC
+        local = pending.fire_at.astimezone(tz)
+        return (local.strftime("%Y-%m-%d"), local.strftime("%H:%M"))
+
+    def _pending_reminder_local_time(self) -> Optional[str]:
+        return self._pending_reminder_local()[1]
+
+    def _pending_reminder_local_date(self) -> Optional[str]:
+        return self._pending_reminder_local()[0]
 
     def to_dict_with_children(self, include_page_context: bool = False) -> "BlockData":
         """Convert block to dict with nested children"""
@@ -264,6 +315,10 @@ class BlockData(TypedDict):
     properties: dict
     tags: Optional[list]
     children: Optional[list["BlockData"]]
+    scheduled_for: Optional[str]
+    completed_at: Optional[str]
+    pending_reminder_date: Optional[str]
+    pending_reminder_time: Optional[str]
     # Page context fields (when included in API responses)
     page_title: Optional[str]
     page_type: Optional[str]

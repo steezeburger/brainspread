@@ -83,6 +83,10 @@ const BlockComponent = {
       type: Function,
       default: () => () => {},
     },
+    scheduleBlock: {
+      type: Function,
+      default: () => () => {},
+    },
   },
   data() {
     return {
@@ -188,6 +192,74 @@ const BlockComponent = {
       return this.webArchive && this.webArchive.status === "failed"
         ? "retry"
         : "archive";
+    },
+    scheduledForLabel() {
+      // "2026-04-30" -> "apr 30" (or "apr 30, 2027" for non-current year).
+      const raw = this.block.scheduled_for;
+      if (!raw) return "";
+      const [y, m, d] = raw.split("-").map(Number);
+      const months = [
+        "jan",
+        "feb",
+        "mar",
+        "apr",
+        "may",
+        "jun",
+        "jul",
+        "aug",
+        "sep",
+        "oct",
+        "nov",
+        "dec",
+      ];
+      const sameYear = y === new Date().getFullYear();
+      return sameYear ? `${months[m - 1]} ${d}` : `${months[m - 1]} ${d}, ${y}`;
+    },
+    reminderTimeLabel() {
+      // Formatted per the user's 12h/24h preference, when a pending
+      // reminder exists. Empty string otherwise.
+      const t = this.block.pending_reminder_time;
+      if (!t) return "";
+      return window.formatTimeForUser?.(t) || t;
+    },
+    reminderDateLabel() {
+      // Render the reminder date inline on the chip ONLY when it differs
+      // from the due date — same date is the implicit common case.
+      const r = this.block.pending_reminder_date;
+      const d = this.block.scheduled_for;
+      if (!r || !d || r === d) return "";
+      const [y, m, day] = r.split("-").map(Number);
+      const months = [
+        "jan",
+        "feb",
+        "mar",
+        "apr",
+        "may",
+        "jun",
+        "jul",
+        "aug",
+        "sep",
+        "oct",
+        "nov",
+        "dec",
+      ];
+      const sameYear = y === new Date().getFullYear();
+      return sameYear
+        ? `${months[m - 1]} ${day}`
+        : `${months[m - 1]} ${day}, ${y}`;
+    },
+    isOverdue() {
+      const d = this.block.scheduled_for;
+      if (!d) return false;
+      if (this.block.completed_at) return false;
+      if (!["todo", "doing", "later"].includes(this.block.block_type)) {
+        return false;
+      }
+      // en-CA toLocaleDateString gives YYYY-MM-DD in the user's local tz —
+      // safest way to compare with the date string from the backend without
+      // rolling our own tz handling.
+      const todayISO = new Date().toLocaleDateString("en-CA");
+      return d < todayISO;
     },
   },
   watch: {
@@ -874,6 +946,12 @@ const BlockComponent = {
         case "newBlockAfter":
           this.createBlockAfter(this.block);
           break;
+        case "schedule":
+          this.scheduleBlock(this.block);
+          break;
+        case "unschedule":
+          this.scheduleBlock(this.block, { clear: true });
+          break;
       }
     },
   },
@@ -1087,6 +1165,22 @@ const BlockComponent = {
           :aria-label="'Expand ' + childrenCount + ' hidden ' + (childrenCount === 1 ? 'block' : 'blocks')"
         >… {{ childrenCount }}</button>
         <button
+          v-if="block.scheduled_for"
+          type="button"
+          class="block-due-pill"
+          :class="{ 'overdue': isOverdue }"
+          @click.stop="scheduleBlock(block)"
+          :title="'Scheduled ' + block.scheduled_for + (reminderTimeLabel ? ' · reminder at ' + reminderTimeLabel : '') + (isOverdue ? ' (overdue)' : '') + ' — click to change'"
+        ><svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="1"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg> {{ scheduledForLabel }}<span v-if="reminderTimeLabel"> · <svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><circle cx="8" cy="8" r="6.25"/><polyline points="8,4.5 8,8 11,9.5"/></g></svg> <span v-if="reminderDateLabel">{{ reminderDateLabel }} </span>{{ reminderTimeLabel }}</span></button>
+        <button
+          v-else
+          type="button"
+          class="block-due-add"
+          @click.stop="scheduleBlock(block)"
+          title="Schedule this block"
+          aria-label="Schedule this block"
+        ><svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="1"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg></button>
+        <button
           @click="showContextMenuAt($event)"
           @contextmenu="showContextMenuAt($event)"
           class="block-menu"
@@ -1136,6 +1230,15 @@ const BlockComponent = {
           <span>new block after</span>
         </button>
         <div class="context-menu-separator"></div>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('schedule')">
+          <span class="context-menu-icon"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="1"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg></span>
+          <span>{{ block.scheduled_for ? 'reschedule...' : 'schedule...' }}</span>
+        </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" v-if="block.scheduled_for" @click="handleContextMenuAction('unschedule')">
+          <span class="context-menu-icon">✕</span>
+          <span>clear schedule</span>
+        </button>
+        <div class="context-menu-separator"></div>
         <button class="context-menu-item" role="menuitem" tabindex="-1" v-if="!blockInContext" @click="handleContextMenuAction('addToContext')">
           <span class="context-menu-icon">+</span>
           <span>add to ai context</span>
@@ -1176,6 +1279,7 @@ const BlockComponent = {
           :moveBlockDown="moveBlockDown"
           :moveBlockToToday="moveBlockToToday"
           :onBlockPaste="onBlockPaste"
+          :scheduleBlock="scheduleBlock"
         />
       </div>
     </div>
