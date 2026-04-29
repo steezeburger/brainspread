@@ -86,7 +86,7 @@ class User(
         _("time format"),
         max_length=4,
         choices=TIME_FORMAT_CHOICES,
-        default="24h",
+        default="12h",
         help_text=_("Whether to display times as 24-hour or 12-hour"),
     )
 

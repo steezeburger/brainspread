@@ -21,7 +21,7 @@ window.SettingsModal = {
     return {
       selectedTheme: this.user?.theme || "dark",
       selectedTimezone: this.user?.timezone || "UTC",
-      selectedTimeFormat: this.user?.time_format || "24h",
+      selectedTimeFormat: this.user?.time_format || "12h",
       discordWebhookUrl: this.user?.discord_webhook_url || "",
       discordUserId: this.user?.discord_user_id || "",
       isUpdating: false,
@@ -174,7 +174,7 @@ window.SettingsModal = {
             }
           }
 
-          const currentTimeFormat = this.user.time_format || "24h";
+          const currentTimeFormat = this.user.time_format || "12h";
           if (this.selectedTimeFormat !== currentTimeFormat) {
             const result = await window.apiService.updateUserTimeFormat(
               this.selectedTimeFormat

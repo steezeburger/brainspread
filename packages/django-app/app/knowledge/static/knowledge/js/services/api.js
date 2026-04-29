@@ -622,7 +622,7 @@ window.formatTimeForUser = function (hhmm, timeFormat) {
   const m = parseInt(parts[1], 10);
   if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
   const fmt =
-    timeFormat || window.apiService.getCurrentUser()?.time_format || "24h";
+    timeFormat || window.apiService.getCurrentUser()?.time_format || "12h";
   if (fmt === "12h") {
     const period = h >= 12 ? "PM" : "AM";
     const h12 = ((h + 11) % 12) + 1;
