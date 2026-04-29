@@ -79,3 +79,6 @@ Navigate to `packages/django-app/` for most development tasks.
 - .ai/DEBUGGING.md contains debugging tips and tricks
 - .ai/PROJECT_SETUP.md is a guide for setting up the project
 - .ai/TODO.md contains todos, feature requests, bugs, etc
+
+### Pull Requests
+- When working on a GitHub issue, include `Resolves #<issue-number>` in the PR description so GitHub auto-closes the issue on merge. Use `Resolves #N` for the primary issue and `Refs #N` for related-but-not-closed issues.
