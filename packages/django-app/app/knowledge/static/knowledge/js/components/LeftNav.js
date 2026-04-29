@@ -40,7 +40,7 @@ window.LeftNav = {
       const isMac =
         typeof navigator !== "undefined" &&
         /Mac|iPhone|iPod|iPad/i.test(navigator.platform);
-      return isMac ? "⌘ k" : "Ctrl+k";
+      return isMac ? "⌘K" : "Ctrl+K";
     },
     todaySlug() {
       const today = new Date();

@@ -2186,6 +2186,7 @@ kbd {
 .leftnav-kbd {
   font-family: inherit;
   font-size: 0.7rem;
+  letter-spacing: 0.1em;
   color: var(--text-muted);
   background: var(--hover-bg);
   padding: 0.1rem 0.35rem;
