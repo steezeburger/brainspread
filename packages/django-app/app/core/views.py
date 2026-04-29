@@ -11,6 +11,7 @@ from core.commands import (
     LoginCommand,
     LogoutCommand,
     RegisterCommand,
+    UpdateDiscordUserIdCommand,
     UpdateDiscordWebhookCommand,
     UpdateThemeCommand,
     UpdateTimeFormatCommand,
@@ -19,6 +20,7 @@ from core.commands import (
 from core.forms import (
     LoginForm,
     RegisterForm,
+    UpdateDiscordUserIdForm,
     UpdateDiscordWebhookForm,
     UpdateThemeForm,
     UpdateTimeFormatForm,
@@ -47,6 +49,10 @@ class UpdateTimezoneResponse(TypedDict):
 
 
 class UpdateDiscordWebhookResponse(TypedDict):
+    user: UserData
+
+
+class UpdateDiscordUserIdResponse(TypedDict):
     user: UserData
 
 
@@ -209,6 +215,40 @@ def update_discord_webhook(request):
                     "success": True,
                     "data": payload,
                     "message": "Discord webhook updated",
+                }
+            )
+        return Response(
+            {"success": False, "errors": form.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+def update_discord_user_id(request):
+    """Update the user's Discord user ID used to @-mention them in reminders."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = UpdateDiscordUserIdForm(data)
+        if form.is_valid():
+            command = UpdateDiscordUserIdCommand(form)
+            updated_user = command.execute()
+            payload: UpdateDiscordUserIdResponse = {"user": updated_user.to_user_data()}
+            return Response(
+                {
+                    "success": True,
+                    "data": payload,
+                    "message": "Discord user ID updated",
                 }
             )
         return Response(

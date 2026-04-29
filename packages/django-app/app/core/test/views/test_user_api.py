@@ -199,3 +199,57 @@ class UserAPITestCase(TestCase):
         response = self.client.post("/api/auth/update-theme/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_update_discord_user_id_success(self):
+        """Updating the Discord user ID persists and returns it."""
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
+        data = {"discord_user_id": "123456789012345678"}
+        response = self.client.post(
+            "/api/auth/update-discord-user-id/", data, format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["success"])
+        self.assertEqual(
+            response.data["data"]["user"]["discord_user_id"], "123456789012345678"
+        )
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.discord_user_id, "123456789012345678")
+
+    def test_update_discord_user_id_clear(self):
+        """Empty string clears a previously-set Discord user ID."""
+        self.user.discord_user_id = "111"
+        self.user.save(update_fields=["discord_user_id"])
+
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
+        response = self.client.post(
+            "/api/auth/update-discord-user-id/",
+            {"discord_user_id": ""},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.discord_user_id, "")
+
+    def test_update_discord_user_id_rejects_non_numeric(self):
+        """Discord user IDs must be numeric snowflakes."""
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
+        response = self.client.post(
+            "/api/auth/update-discord-user-id/",
+            {"discord_user_id": "@somebody"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data["success"])
+        self.assertIn("discord_user_id", response.data["errors"])
+
+    def test_update_discord_user_id_unauthenticated(self):
+        response = self.client.post(
+            "/api/auth/update-discord-user-id/",
+            {"discord_user_id": "111"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
