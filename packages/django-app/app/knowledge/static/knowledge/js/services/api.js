@@ -401,6 +401,21 @@ class ApiService {
     return result;
   }
 
+  async updateDiscordUserId(discordUserId) {
+    const result = await this.request("/api/auth/update-discord-user-id/", {
+      method: "POST",
+      body: JSON.stringify({ discord_user_id: discordUserId || "" }),
+    });
+    if (result.success) {
+      const currentUser = this.getCurrentUser();
+      if (currentUser) {
+        currentUser.discord_user_id = discordUserId || "";
+        localStorage.setItem("user", JSON.stringify(currentUser));
+      }
+    }
+    return result;
+  }
+
   async updateUserTimeFormat(newFormat) {
     try {
       const result = await this.request("/api/auth/update-time-format/", {
@@ -607,7 +622,7 @@ window.formatTimeForUser = function (hhmm, timeFormat) {
   const m = parseInt(parts[1], 10);
   if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
   const fmt =
-    timeFormat || window.apiService.getCurrentUser()?.time_format || "24h";
+    timeFormat || window.apiService.getCurrentUser()?.time_format || "12h";
   if (fmt === "12h") {
     const period = h >= 12 ? "PM" : "AM";
     const h12 = ((h + 11) % 12) + 1;

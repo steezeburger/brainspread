@@ -21,4 +21,9 @@ urlpatterns = [
         views.update_discord_webhook,
         name="update_discord_webhook",
     ),
+    path(
+        "auth/update-discord-user-id/",
+        views.update_discord_user_id,
+        name="update_discord_user_id",
+    ),
 ]

@@ -68,6 +68,8 @@ jobs:
             ALLOWED_HOSTS=*
             DJANGO_SECRET_KEY=${SECRET_KEY}
             COMPOSE_PROJECT_NAME=${PROJECT}
+            REMINDERS_ENABLED=true
+            ENVIRONMENT=staging
             EOF
             fi
 

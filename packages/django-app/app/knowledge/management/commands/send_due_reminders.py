@@ -13,8 +13,11 @@ class Command(BaseCommand):
     Run by the `scheduler` docker service on a ~1-minute loop (see
     packages/django-app/docker-compose.yml and bin/run-scheduler.sh).
 
-    Gated by the REMINDERS_ENABLED env var so staging PR stacks don't spam
-    the user's Discord channel. Set REMINDERS_ENABLED=true in prod .env.
+    Gated by the REMINDERS_ENABLED env var (defaults to false). The
+    staging deploy and prod set it to true explicitly via their .env;
+    leaving it unset locally keeps the dev scheduler quiet. Non-prod
+    environments get a `[<env>]` label prepended via the ENVIRONMENT
+    env var so pings are distinguishable from prod ones in Discord.
     """
 
     help = "Dispatch any reminders whose fire_at has arrived."

@@ -121,6 +121,7 @@ class UserAdmin(DjangoUserAdmin):
                     "time_format",
                     "theme",
                     "discord_webhook_url",
+                    "discord_user_id",
                 )
             },
         ),

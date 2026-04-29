@@ -20,8 +20,15 @@ def post_webhook(
     if not url:
         return DiscordDeliveryResult(False, "no webhook url configured")
 
+    # `allowed_mentions.parse=["users"]` lets the `<@ID>` mention we
+    # optionally prepend in the reminder body actually ping the user
+    # (Discord drops mentions from webhook payloads otherwise).
+    payload = {
+        "content": content,
+        "allowed_mentions": {"parse": ["users"]},
+    }
     try:
-        response = httpx.post(url, json={"content": content}, timeout=timeout)
+        response = httpx.post(url, json=payload, timeout=timeout)
     except httpx.HTTPError as e:
         return DiscordDeliveryResult(False, f"request failed: {e}")
 
