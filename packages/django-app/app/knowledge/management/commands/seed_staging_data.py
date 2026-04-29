@@ -1,3 +1,4 @@
+import pytz
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.db import transaction
@@ -11,6 +12,21 @@ User = get_user_model()
 class Command(BaseCommand):
     help = "Seed staging environment with sample blocks for today's daily note"
 
+    def add_arguments(self, parser):
+        # The createsuperuser --noinput path leaves the superuser at the
+        # User model default of UTC, which flips the seeded daily note to
+        # the wrong calendar day for anyone west of UTC. Default to Denver
+        # so staging matches the maintainer's local "today".
+        parser.add_argument(
+            "--timezone",
+            dest="user_timezone",
+            default="America/Denver",
+            help=(
+                "Timezone to assign to the superuser before computing 'today'. "
+                "Defaults to America/Denver."
+            ),
+        )
+
     def handle(self, *args, **options):
         user = User.objects.filter(is_superuser=True).first()
         if not user:
@@ -18,6 +34,19 @@ class Command(BaseCommand):
                 self.style.ERROR("No superuser found. Run createsuperuser first.")
             )
             return
+
+        tz_name = options["user_timezone"]
+        try:
+            pytz.timezone(tz_name)
+        except pytz.UnknownTimeZoneError:
+            self.stdout.write(
+                self.style.ERROR(f"Unknown timezone: {tz_name!r}; aborting.")
+            )
+            return
+
+        if user.timezone != tz_name:
+            user.timezone = tz_name
+            user.save(update_fields=["timezone"])
 
         today = today_for_user(user)
         date_str = today.strftime("%Y-%m-%d")

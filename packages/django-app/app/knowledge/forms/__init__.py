@@ -1,3 +1,5 @@
+from .bulk_delete_blocks_form import BulkDeleteBlocksForm
+from .bulk_move_blocks_form import BulkMoveBlocksForm
 from .create_block_form import CreateBlockForm
 from .create_page_form import CreatePageForm
 from .delete_block_form import DeleteBlockForm

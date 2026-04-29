@@ -258,6 +258,30 @@ class ApiService {
     });
   }
 
+  async bulkDeleteBlocks(blockUuids) {
+    return await this.request("/knowledge/api/blocks/bulk-delete/", {
+      method: "POST",
+      body: JSON.stringify({ blocks: blockUuids }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
+  async bulkMoveBlocks(blockUuids, targetDate = null) {
+    const body = { blocks: blockUuids };
+    if (targetDate) {
+      body.target_date = targetDate;
+    }
+    return await this.request("/knowledge/api/blocks/bulk-move/", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
   async getHistoricalData(daysBack = 30, limit = 50) {
     return await this.request(
       `/knowledge/api/historical/?days_back=${daysBack}&limit=${limit}`
