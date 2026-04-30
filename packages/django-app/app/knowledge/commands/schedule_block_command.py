@@ -5,7 +5,9 @@ import pytz
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.schedule_block_form import ScheduleBlockForm
+from ..forms.touch_page_form import TouchPageForm
 from ..models import Block, Reminder
+from .touch_page_command import TouchPageCommand
 
 
 class ScheduleBlockCommand(AbstractBaseCommand):
@@ -22,6 +24,7 @@ class ScheduleBlockCommand(AbstractBaseCommand):
     def execute(self) -> Block:
         super().execute()
 
+        user = self.form.cleaned_data["user"]
         block: Block = self.form.cleaned_data["block"]
         scheduled_for = self.form.cleaned_data.get("scheduled_for")
         reminder_date = self.form.cleaned_data.get("reminder_date")
@@ -29,6 +32,10 @@ class ScheduleBlockCommand(AbstractBaseCommand):
 
         block.scheduled_for = scheduled_for
         block.save(update_fields=["scheduled_for", "modified_at"])
+
+        touch_form = TouchPageForm(data={"user": user.id, "page": str(block.page.uuid)})
+        if touch_form.is_valid():
+            TouchPageCommand(touch_form).execute()
 
         # Replace any pending reminder for this block. Sent reminders are
         # left alone — they're history.

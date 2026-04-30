@@ -2,8 +2,10 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.create_block_form import CreateBlockForm
 from ..forms.sync_block_tags_form import SyncBlockTagsForm
+from ..forms.touch_page_form import TouchPageForm
 from ..models import Block
 from .sync_block_tags_command import SyncBlockTagsCommand
+from .touch_page_command import TouchPageCommand
 
 
 class CreateBlockCommand(AbstractBaseCommand):
@@ -66,6 +68,12 @@ class CreateBlockCommand(AbstractBaseCommand):
         # Skip for code blocks — `key::value` inside code shouldn't be parsed.
         if block.content and block.block_type != "code":
             block.extract_properties_from_content()
+
+        # Bump the page's modified_at so it sorts to the top of the recent
+        # pages list — adding a block counts as activity on the page.
+        touch_form = TouchPageForm(data={"user": user.id, "page": str(page.uuid)})
+        if touch_form.is_valid():
+            TouchPageCommand(touch_form).execute()
 
         return block
 
