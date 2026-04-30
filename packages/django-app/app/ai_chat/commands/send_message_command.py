@@ -249,21 +249,57 @@ class SendMessageCommand(AbstractBaseCommand):
 
     @staticmethod
     def _format_message_with_context(message: str, context_blocks: List[Dict]) -> str:
-        """Format the user message with context blocks if any are provided."""
+        """
+        Render context blocks as a markdown bullet list prepended to the
+        user's question. Each entry includes:
+
+          - The block uuid in `[block <uuid>]` form so the model can
+            target it with notes tools (e.g. create a child block under
+            an image with `create_block(parent_uuid=<uuid>, ...)`).
+          - The text content (when present).
+          - An "(image attached: <filename>)" marker when the block has
+            an asset, so an image-only block isn't silently dropped from
+            the text context (it still shows up in the multimodal
+            payload, but the text marker tells the AI which block uuid
+            that image came from).
+        """
         if not context_blocks:
             return message
 
         context_text_parts = []
         for block in context_blocks:
-            content = block.get("content", "").strip()
+            uuid = (block.get("uuid") or "").strip()
+            content = (block.get("content") or "").strip()
+            block_type = block.get("block_type", "bullet")
+            asset = block.get("asset") or None
+
+            if block_type == "todo":
+                prefix = "☐"
+            elif block_type == "done":
+                prefix = "☑"
+            else:
+                prefix = "•"
+
+            bits = []
+            if uuid:
+                bits.append(f"[block {uuid}]")
             if content:
-                block_type = block.get("block_type", "bullet")
-                if block_type == "todo":
-                    context_text_parts.append(f"☐ {content}")
-                elif block_type == "done":
-                    context_text_parts.append(f"☑ {content}")
+                bits.append(content)
+            if asset:
+                label = (
+                    asset.get("original_filename") or asset.get("file_type") or "asset"
+                )
+                if asset.get("file_type") == "image":
+                    bits.append(f"(image attached: {label})")
                 else:
-                    context_text_parts.append(f"• {content}")
+                    bits.append(f"(file attached: {label})")
+
+            if len(bits) == 1 and bits[0].startswith("[block "):
+                # Block with no content and no asset - nothing useful to
+                # surface, skip rather than emit a naked uuid line.
+                continue
+            if bits:
+                context_text_parts.append(f"{prefix} {' '.join(bits)}")
 
         if not context_text_parts:
             return message
