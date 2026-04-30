@@ -68,9 +68,16 @@ jobs:
             ALLOWED_HOSTS=*
             DJANGO_SECRET_KEY=${SECRET_KEY}
             COMPOSE_PROJECT_NAME=${PROJECT}
+            COMPOSE_FILE=docker-compose.yml:docker-compose.staging.yml
             REMINDERS_ENABLED=true
             ENVIRONMENT=staging
             EOF
+            fi
+
+            # Backfill COMPOSE_FILE for staging envs that pre-date the staging
+            # compose override (so resource caps actually apply on redeploy).
+            if ! grep -q '^COMPOSE_FILE=' .env; then
+              echo 'COMPOSE_FILE=docker-compose.yml:docker-compose.staging.yml' >> .env
             fi
 
             docker volume create --name="${VOLUME}" 2>/dev/null || true
