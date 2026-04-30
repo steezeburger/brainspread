@@ -1,3 +1,4 @@
+import uuid as uuid_lib
 from typing import Dict, List, Optional, TypedDict
 
 from django.core.exceptions import ValidationError
@@ -8,9 +9,10 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .commands import GetAssetCommand, UploadAssetCommand
+from .commands import AssetPayload, GetAssetCommand, UploadAssetCommand
 from .forms import GetAssetForm, UploadAssetForm
 from .models import AssetData
+from .repositories import AssetRepository
 
 
 class UploadAssetResponse(TypedDict):
@@ -69,17 +71,25 @@ def upload_asset(request):
 @permission_classes([IsAuthenticated])
 def serve_asset(request, asset_uuid: str):
     """
-    Stream the bytes for a user-owned asset. Routed through Django (not
-    via MEDIA_URL) so we can enforce per-request ownership - a public
+    Stream the bytes for an asset. Routed through Django (not via
+    MEDIA_URL) so we can enforce per-request ownership - a public
     /media/<path>/ would leak any file to anyone who guessed the path.
-    Returns 404 for both missing and not-owned-by-this-user, so the
-    response shape doesn't reveal whether the uuid exists.
-    """
-    form = GetAssetForm({"user": request.user.id, "uuid": asset_uuid})
-    if not form.is_valid():
-        raise Http404("asset not found")
 
-    payload = GetAssetCommand(form).execute()
+    Access policy:
+      - Owner: can read their own assets.
+      - Staff (Django admin): can read any asset, for preview /
+        moderation. Admin already has unrestricted DB access through
+        the admin UI; gating the bytes behind owner-only would just
+        force admins to dig into MEDIA_ROOT manually instead.
+      - Everyone else: 404, indistinguishable from a missing uuid so
+        the response shape doesn't reveal whether the uuid exists.
+    """
+    if request.user.is_staff:
+        payload = _staff_payload(asset_uuid)
+    else:
+        form = GetAssetForm({"user": request.user.id, "uuid": asset_uuid})
+        payload = GetAssetCommand(form).execute() if form.is_valid() else None
+
     if payload is None:
         raise Http404("asset not found")
 
@@ -94,3 +104,28 @@ def serve_asset(request, asset_uuid: str):
     else:
         response["Content-Disposition"] = "inline"
     return response
+
+
+def _staff_payload(asset_uuid: str) -> Optional[AssetPayload]:
+    """
+    Look up an asset by uuid without an owner filter. Used by staff
+    callers (admin preview); regular users go through GetAssetCommand
+    which keeps the per-user check.
+    """
+    try:
+        uuid_lib.UUID(asset_uuid)
+    except (TypeError, ValueError):
+        return None
+    asset = AssetRepository.get_by_uuid(uuid=asset_uuid, user=None)
+    if asset is None or not asset.file:
+        return None
+    try:
+        with asset.file.open("rb") as fh:
+            body = fh.read()
+    except FileNotFoundError:
+        return None
+    return AssetPayload(
+        body=body,
+        mime_type=asset.mime_type or "application/octet-stream",
+        original_filename=asset.original_filename or "",
+    )

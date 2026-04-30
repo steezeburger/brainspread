@@ -185,3 +185,20 @@ class AssetAPITestCase(TestCase):
     def test_serve_404s_for_unknown_uuid(self):
         response = self.client.get("/api/assets/00000000-0000-0000-0000-000000000000/")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_serve_returns_bytes_for_staff_user_owning_other_users_asset(self):
+        # Admin / staff need to be able to preview any asset from the
+        # Django admin without exposing /media/ publicly.
+        staff_user = UserFactory(is_staff=True)
+        staff_token = Token.objects.create(user=staff_user)
+        staff_client = APIClient()
+        staff_client.credentials(HTTP_AUTHORIZATION=f"Token {staff_token.key}")
+
+        asset = self._create_asset(user=self.other_user, content=b"admin-can-see")
+        response = staff_client.get(f"/api/assets/{asset.uuid}/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.content, b"admin-can-see")
+
+    def test_serve_404s_for_malformed_uuid(self):
+        response = self.client.get("/api/assets/not-a-uuid/")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

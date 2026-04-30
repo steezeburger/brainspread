@@ -97,15 +97,15 @@ class AssetAdmin(admin.ModelAdmin):
         for a quick read; everything else falls back to a labeled
         download link.
 
-        Uses obj.file.url (raw MEDIA_URL) instead of /api/assets/<uuid>/
-        because the serve endpoint enforces per-user ownership - admins
-        viewing other users' assets would get 404. Admin is staff-only,
-        so the raw media URL is the right primitive here.
+        Routes through /api/assets/<uuid>/ rather than MEDIA_URL because
+        MEDIA_URL is intentionally unserved (a public /media/ path would
+        leak any file to anyone who guessed it). The serve endpoint lets
+        staff users read any asset, so the admin always sees its bytes.
         """
         if not obj.file:
             return "-"
-        url = obj.file.url
-        label = obj.original_filename or url.rsplit("/", 1)[-1]
+        url = f"/api/assets/{obj.uuid}/"
+        label = obj.original_filename or obj.file.name.rsplit("/", 1)[-1]
         file_type = obj.file_type or ""
 
         if file_type == "image":
