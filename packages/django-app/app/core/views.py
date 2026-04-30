@@ -1,5 +1,6 @@
 from typing import TypedDict
 
+from django.contrib.auth import login as django_login
 from django.core.exceptions import ValidationError
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -77,6 +78,11 @@ def login(request):
         if form.is_valid():
             command = LoginCommand(form)
             result = command.execute()
+            # Also start a Django session. The Token in the response is
+            # what API calls authenticate with, but <img src="/api/...">
+            # tags can only carry cookies, so without a session cookie
+            # any authenticated media URL would 401 in the browser.
+            django_login(request, result.user)
             data: LoginResponse = {
                 "token": result.token,
                 "user": result.user.to_user_data(),
@@ -108,6 +114,10 @@ def register(request):
         if form.is_valid():
             command = RegisterCommand(form)
             result = command.execute()
+            # Mirror login(): create a Django session alongside the
+            # token so cookie-only consumers (e.g. <img> tags hitting
+            # /api/assets/) authenticate without an extra round trip.
+            django_login(request, result.user)
             data: RegisterResponse = {
                 "token": result.token,
                 "user": result.user.to_user_data(),
