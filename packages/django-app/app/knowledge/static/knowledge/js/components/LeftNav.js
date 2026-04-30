@@ -113,15 +113,13 @@ window.LeftNav = {
     },
 
     applyLayoutWidth() {
+      // Page content reserves space for the rail (or nothing on mobile)
+      // and never widens when the panel is opened - the expanded panel
+      // overlays on top of the page rather than pushing it. Keeps
+      // content position stable as the user toggles the leftnav, which
+      // matches Notion / VSCode / most IDE-style sidebars.
       const isMobile = window.innerWidth <= 768;
-      let value;
-      if (this.isOpen) {
-        value = `${this.width}px`;
-      } else if (!isMobile) {
-        value = "48px"; // Width of the collapsed rail.
-      } else {
-        value = "0px";
-      }
+      const value = isMobile ? "0px" : "48px";
       document.documentElement.style.setProperty("--leftnav-width", value);
     },
 
