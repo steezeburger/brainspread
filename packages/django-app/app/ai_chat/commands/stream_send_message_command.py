@@ -96,12 +96,15 @@ class StreamSendMessageCommand(AbstractBaseCommand):
             formatted_message = SendMessageCommand._format_message_with_context(
                 message, context_blocks
             )
-            ChatMessageRepository.add_message(session, "user", formatted_message)
+            attached_assets = self.form.cleaned_data.get("asset_uuids") or []
+            ChatMessageRepository.add_message(
+                session,
+                "user",
+                formatted_message,
+                attachments=SendMessageCommand._serialize_attachments(attached_assets),
+            )
 
-            messages: List[Dict[str, str]] = [
-                {"role": msg.role, "content": msg.content}
-                for msg in ChatMessageRepository.get_messages(session)
-            ]
+            messages = SendMessageCommand._build_messages_with_images(session)
 
             service = AIServiceFactory.create_service(
                 provider_name=provider_name,

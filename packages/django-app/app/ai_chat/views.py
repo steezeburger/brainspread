@@ -275,6 +275,7 @@ def chat_session_detail(request, session_id):
                 "thinking": msg.thinking or None,
                 "created_at": msg.created_at.isoformat(),
                 "tool_events": list(msg.tool_events or []),
+                "attachments": list(msg.attachments or []),
                 "usage": {
                     "input_tokens": msg.input_tokens,
                     "output_tokens": msg.output_tokens,

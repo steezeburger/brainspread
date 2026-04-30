@@ -31,7 +31,7 @@ class GoogleService(BaseAIService):
 
     def send_message(
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
         tool_executor: Optional[ToolExecutor] = None,
@@ -50,7 +50,7 @@ class GoogleService(BaseAIService):
             if tools:
                 tool_config = self._convert_tools_to_google_format(tools)
 
-            formatted_messages = self._format_messages_for_google(working_messages)
+            formatted_messages = self._build_google_payload(working_messages)
 
             if tool_config:
                 try:
@@ -93,7 +93,7 @@ class GoogleService(BaseAIService):
 
     def stream_message(
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
         tool_executor: Optional[ToolExecutor] = None,
@@ -116,7 +116,7 @@ class GoogleService(BaseAIService):
                 )
                 return
 
-            formatted_messages = self._format_messages_for_google(working_messages)
+            formatted_messages = self._build_google_payload(working_messages)
 
             content_parts: List[str] = []
             last_chunk: Any = None
@@ -157,7 +157,7 @@ class GoogleService(BaseAIService):
         except Exception:
             return False
 
-    def _format_messages_for_google(self, messages: List[Dict[str, str]]) -> str:
+    def _format_messages_for_google(self, messages: List[Dict[str, Any]]) -> str:
         formatted_parts = []
         for msg in messages:
             role = msg["role"]
@@ -169,6 +169,26 @@ class GoogleService(BaseAIService):
             elif role == "assistant":
                 formatted_parts.append(f"Assistant: {content}")
         return "\n\n".join(formatted_parts)
+
+    def _build_google_payload(self, messages: List[Dict[str, Any]]) -> Any:
+        """
+        Build the input for `generate_content`. With no images this stays
+        the existing single-string transcript so prompt caching and
+        truncation behave identically. With at least one image, we
+        instead emit a list of parts ([text, image_part, ...]) which is
+        what the Google SDK expects for multimodal input. The transcript
+        text is preserved as the first part so all the prior turns are
+        still in scope for the model.
+        """
+        has_images = any(msg.get("images") for msg in messages)
+        if not has_images:
+            return self._format_messages_for_google(messages)
+
+        parts: List[Any] = [self._format_messages_for_google(messages)]
+        for msg in messages:
+            for img in msg.get("images") or []:
+                parts.append({"mime_type": img["mime_type"], "data": img["data"]})
+        return parts
 
     def _convert_tools_to_google_format(
         self, tools: List[Dict[str, Any]]

@@ -1,3 +1,4 @@
+import base64
 import logging
 from typing import Any, Dict, Iterator, List, Optional
 
@@ -32,7 +33,7 @@ class OpenAIService(BaseAIService):
 
     def send_message(
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
         tool_executor: Optional[ToolExecutor] = None,
@@ -43,7 +44,7 @@ class OpenAIService(BaseAIService):
             # OpenAI takes the system prompt as a message; prepend it if provided
             # and not already embedded. Keeping the system message stable across
             # requests lets OpenAI's automatic prompt caching (>1024 tokens) kick in.
-            chat_messages = list(messages)
+            chat_messages = self._to_openai_messages(messages)
             if system and not any(m["role"] == "system" for m in chat_messages):
                 chat_messages = [{"role": "system", "content": system}] + chat_messages
 
@@ -77,7 +78,7 @@ class OpenAIService(BaseAIService):
 
     def stream_message(
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
         tool_executor: Optional[ToolExecutor] = None,
@@ -85,7 +86,7 @@ class OpenAIService(BaseAIService):
         try:
             self.validate_messages(messages)
 
-            chat_messages = list(messages)
+            chat_messages = self._to_openai_messages(messages)
             if system and not any(m["role"] == "system" for m in chat_messages):
                 chat_messages = [{"role": "system", "content": system}] + chat_messages
 
@@ -231,6 +232,37 @@ class OpenAIService(BaseAIService):
             content=content,
             usage=self._extract_usage(getattr(response, "usage", None)),
         )
+
+    @staticmethod
+    def _to_openai_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Convert our provider-agnostic message dicts into the wire format
+        the Chat Completions API expects. When an entry has `images`, the
+        `content` field becomes a list of content-part dicts with the
+        image encoded as a base64 data URL; everything else passes through
+        unchanged.
+        """
+        out: List[Dict[str, Any]] = []
+        for msg in messages:
+            images = msg.get("images") or []
+            if not images:
+                out.append({"role": msg["role"], "content": msg["content"]})
+                continue
+            parts: List[Dict[str, Any]] = []
+            if msg.get("content"):
+                parts.append({"type": "text", "text": msg["content"]})
+            for img in images:
+                data_b64 = base64.b64encode(img["data"]).decode("ascii")
+                parts.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{img['mime_type']};base64,{data_b64}"
+                        },
+                    }
+                )
+            out.append({"role": msg["role"], "content": parts})
+        return out
 
     @staticmethod
     def _extract_usage(usage_obj: Any) -> AIUsage:

@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 from typing import Any, Dict, Iterator, List, Optional
@@ -572,15 +573,39 @@ class AnthropicService(BaseAIService):
 
     def _build_kwargs(
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]],
         system: Optional[str],
     ) -> Dict[str, Any]:
-        anthropic_messages: List[Dict[str, str]] = []
+        anthropic_messages: List[Dict[str, Any]] = []
         embedded_system: Optional[str] = None
         for msg in messages:
             if msg["role"] == "system":
                 embedded_system = msg["content"]
+                continue
+            images = msg.get("images") or []
+            if images:
+                # Anthropic vision: content is a list of blocks. Image blocks
+                # come BEFORE the text so the model has the picture in mind
+                # when reading the prompt - matches Anthropic's documented
+                # best practice.
+                content_blocks: List[Dict[str, Any]] = []
+                for img in images:
+                    content_blocks.append(
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": img["mime_type"],
+                                "data": base64.b64encode(img["data"]).decode("ascii"),
+                            },
+                        }
+                    )
+                if msg.get("content"):
+                    content_blocks.append({"type": "text", "text": msg["content"]})
+                anthropic_messages.append(
+                    {"role": msg["role"], "content": content_blocks}
+                )
             else:
                 anthropic_messages.append(
                     {"role": msg["role"], "content": msg["content"]}
