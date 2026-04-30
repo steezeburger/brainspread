@@ -24,13 +24,14 @@ jobs:
           PR_BRANCH: ${{ github.head_ref }}
           PORT: ${{ steps.vars.outputs.port }}
           STAGING_BASE_DIR: ${{ vars.DO_STAGING_BASE_DIR }}
+          DO_STAGING_HOST: ${{ vars.DO_STAGING_HOST }}
           DJANGO_SUPERUSER_EMAIL: ${{ secrets.SUPERUSER_EMAIL }}
           DJANGO_SUPERUSER_PASSWORD: ${{ secrets.SUPERUSER_PASSWORD }}
         with:
           host: ${{ secrets.DO_SSH_HOST }}
           username: ${{ secrets.DO_SSH_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
-          envs: GITHUB_TOKEN,PR_NUM,PR_BRANCH,PORT,STAGING_BASE_DIR,DJANGO_SUPERUSER_EMAIL,DJANGO_SUPERUSER_PASSWORD
+          envs: GITHUB_TOKEN,PR_NUM,PR_BRANCH,PORT,STAGING_BASE_DIR,DO_STAGING_HOST,DJANGO_SUPERUSER_EMAIL,DJANGO_SUPERUSER_PASSWORD
           script: |
             set -euo pipefail
 
@@ -70,6 +71,7 @@ jobs:
             COMPOSE_PROJECT_NAME=${PROJECT}
             REMINDERS_ENABLED=true
             ENVIRONMENT=staging
+            SITE_URL=http://${DO_STAGING_HOST}:${PORT}
             EOF
             fi
 
