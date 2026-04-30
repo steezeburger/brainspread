@@ -47,13 +47,11 @@ class SendMessageForm(BaseForm):
         return user
 
     def clean_message(self) -> str:
-        # An empty message is OK if the user is sending images (e.g. paste
-        # screenshot, no caption); otherwise reject.
-        message = (self.cleaned_data.get("message") or "").strip()
-        asset_uuids = self.cleaned_data.get("asset_uuids") or []
-        if not message and not asset_uuids:
-            raise ValidationError("Message cannot be empty")
-        return message
+        # The empty-vs-image check happens in clean() below - by the time
+        # field-level clean_message runs, asset_uuids hasn't been
+        # processed yet (Django runs clean_<field> in declaration
+        # order), so we can't decide here whether an empty caption is OK.
+        return (self.cleaned_data.get("message") or "").strip()
 
     def clean_asset_uuids(self) -> List[Asset]:
         raw = self.cleaned_data.get("asset_uuids") or []
@@ -121,6 +119,15 @@ class SendMessageForm(BaseForm):
         user = cleaned_data.get("user")
         if not user:
             raise ValidationError("User is required")
+
+        # Empty caption is OK iff the user is sending images. We check
+        # here (not in clean_message) because clean_<field> methods run
+        # in declaration order and asset_uuids hasn't been processed yet
+        # when clean_message fires.
+        message = cleaned_data.get("message") or ""
+        asset_uuids = cleaned_data.get("asset_uuids") or []
+        if not message and not asset_uuids:
+            self.add_error("message", "Message cannot be empty")
 
         # Get model and validate it exists in our database
         model_name = cleaned_data.get("model")
