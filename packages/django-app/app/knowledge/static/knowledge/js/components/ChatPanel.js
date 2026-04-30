@@ -1744,7 +1744,7 @@ const ChatPanel = {
                 type="button"
                 class="chat-attachment-remove"
                 title="Remove attachment"
-                @click="removePendingAttachment(asset.uuid)"
+                @click.stop="removePendingAttachment(asset.uuid)"
               >×</button>
             </div>
             <div v-if="attachmentError" class="chat-attachment-error">{{ attachmentError }}</div>
