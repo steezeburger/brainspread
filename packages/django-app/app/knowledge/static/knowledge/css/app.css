@@ -2082,6 +2082,9 @@ kbd {
   border-right: 1px solid var(--border-primary);
   overflow-y: auto;
   z-index: 999;
+  /* Keep the footer (logout) above the Android nav bar / iPhone home
+     indicator when the drawer extends to the viewport bottom. */
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .sidebar-resize-handle {
