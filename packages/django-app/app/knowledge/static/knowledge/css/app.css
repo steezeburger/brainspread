@@ -1772,58 +1772,9 @@ kbd {
     opacity: 1 !important;
   }
 
-  /* Left nav drawer behavior on mobile: overlay content, full-width drawer. */
-  .historical-sidebar {
-    width: 90vw !important;
-    max-width: 90vw !important;
-    z-index: 1100;
-  }
-
-  .leftnav-content {
-    padding: 0.5rem;
-  }
-
   /* On mobile, don't reserve space for the leftnav (it overlays). */
   .main-content {
     padding-left: 2rem;
-  }
-
-  /* Mobile: collapse the rail to just the floating toggle in the top-left. */
-  .leftnav-rail {
-    width: auto;
-    height: auto;
-    background: transparent;
-    border: none;
-    padding: 0;
-    top: 8px;
-    left: 8px;
-  }
-
-  .leftnav-rail-action {
-    display: none;
-  }
-
-  .leftnav-rail-toggle {
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    border: 1px solid var(--border-primary);
-    border-radius: 3px;
-    padding: 0.15rem 0.35rem;
-    width: auto;
-    height: auto;
-    box-shadow: none;
-  }
-
-  /* Mobile drawer backdrop. */
-  .leftnav-backdrop {
-    display: block;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.4);
-    z-index: 1099;
   }
 
   /* Simple fix - use margin-bottom only when chat is open and visible */
@@ -2614,6 +2565,56 @@ a.sidebar-item:visited {
 
   .sidebar-resize-handle {
     display: none;
+  }
+
+  /* Left nav drawer behavior on mobile: overlay content, full-width drawer.
+     These overrides live AFTER the base .leftnav-* declarations above so
+     they win on source order at equal specificity. */
+  .historical-sidebar {
+    width: 90vw !important;
+    max-width: 90vw !important;
+    z-index: 1100;
+  }
+
+  .leftnav-content {
+    padding: 0.5rem;
+  }
+
+  /* Collapse the rail to just the floating arrow toggle in the top-left. */
+  .leftnav-rail {
+    width: auto;
+    height: auto;
+    background: transparent;
+    border: none;
+    padding: 0;
+    top: 8px;
+    left: 8px;
+  }
+
+  .leftnav-rail-btn.leftnav-rail-action {
+    display: none;
+  }
+
+  .leftnav-rail-btn.leftnav-rail-toggle {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-primary);
+    border-radius: 3px;
+    padding: 0.15rem 0.35rem;
+    width: auto;
+    height: auto;
+    box-shadow: none;
+  }
+
+  .leftnav-backdrop {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 1099;
   }
 }
 
