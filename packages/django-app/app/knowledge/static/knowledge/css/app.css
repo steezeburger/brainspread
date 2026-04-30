@@ -1165,16 +1165,6 @@ kbd {
   transform: none;
 }
 
-.date-picker {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.date-picker input[type="date"] {
-  cursor: pointer;
-}
-
 .daily-note-content h2 {
   color: var(--text-primary);
   margin-bottom: 0.75rem;
@@ -4546,14 +4536,13 @@ a.sidebar-item:visited {
   background: var(--bg-primary);
   color: var(--text-primary);
   border: 2px solid var(--border-secondary);
-  /* padding-right reserves just enough for the 14px calendar glyph
-     painted by .title-left::after. field-sizing: content makes the
-     input shrink to its rendered text — width: fit-content doesn't
-     work on <input type="date"> because Chromium gives it a wider
-     locale-based intrinsic content size. */
+  /* padding-right reserves room for the 14px calendar glyph painted
+     by .title-left::after. field-sizing: content shrinks the input to
+     its rendered text width — Chromium otherwise gives <input
+     type="date"> a wider locale-based intrinsic size, which leaves
+     empty space between the date and the icon. */
   padding: 0.5rem 1.25rem 0.5rem 0.5rem;
   field-sizing: content;
-  width: fit-content;
   font-family: inherit;
   font-size: 1rem;
   cursor: pointer;
