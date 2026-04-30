@@ -43,6 +43,13 @@ const ChatPanel = {
       showToolsMenu: false,
       // { [assistantMsgIndex]: { approval_id, tool_uses, decisions: {tool_use_id: "approve"|"reject"}, submitting } }
       pendingApprovals: {},
+      // Pending image attachments for the next outgoing message. Each
+      // entry is the AssetData envelope returned by /api/assets/. The
+      // form caps at 5 server-side; the UI mirrors that here.
+      pendingAttachments: [],
+      // Most-recent upload error so the user sees why the chip didn't
+      // appear. Cleared on the next successful upload or send.
+      attachmentError: "",
     };
   },
   mounted() {
@@ -265,8 +272,126 @@ const ChatPanel = {
         }
       });
     },
+    // Cap the chat-side attachment count at the same number the server
+    // form enforces. If a user pastes / drops more, the trailing ones
+    // are rejected with a clear toast rather than failing on send.
+    MAX_CHAT_ATTACHMENTS: 5,
+
+    extractFilesFromEvent(event) {
+      const files = [];
+      const dt = event.clipboardData || event.dataTransfer;
+      if (!dt) return files;
+      // DataTransferItemList covers screenshots / browser drag-image
+      // (no .files entry); the FileList branch covers OS drag-drop.
+      if (dt.items && dt.items.length) {
+        for (const item of dt.items) {
+          if (item.kind === "file") {
+            const f = item.getAsFile();
+            if (f) files.push(f);
+          }
+        }
+      }
+      if (!files.length && dt.files && dt.files.length) {
+        for (const f of dt.files) files.push(f);
+      }
+      return files;
+    },
+
+    async uploadChatFiles(files) {
+      // Image-only on the chat side - the backend form would reject the
+      // rest with an opaque "asset_uuids" error otherwise.
+      const images = Array.from(files).filter((f) =>
+        (f.type || "").startsWith("image/")
+      );
+      if (!images.length) {
+        this.attachmentError = "Only images can be attached to chat";
+        return;
+      }
+      const slots = this.MAX_CHAT_ATTACHMENTS - this.pendingAttachments.length;
+      if (slots <= 0) {
+        this.attachmentError = `At most ${this.MAX_CHAT_ATTACHMENTS} images per message`;
+        return;
+      }
+      const accepted = images.slice(0, slots);
+      const dropped = images.length - accepted.length;
+
+      for (const file of accepted) {
+        try {
+          const res = await window.apiService.uploadAsset(file, {
+            assetType: "chat_attachment",
+          });
+          if (res?.success && res.data) {
+            this.pendingAttachments.push(res.data);
+            this.attachmentError = "";
+          } else {
+            this.attachmentError = "Upload failed";
+          }
+        } catch (e) {
+          this.attachmentError = e.message || "Upload failed";
+        }
+      }
+      if (dropped > 0) {
+        this.attachmentError = `At most ${this.MAX_CHAT_ATTACHMENTS} images per message — dropped ${dropped}`;
+      }
+    },
+
+    onMessagePaste(event) {
+      const files = this.extractFilesFromEvent(event);
+      if (!files.length) return;
+      // Don't preventDefault on URLs / plain text - paste of normal text
+      // should still land in the textarea. Only files trigger upload.
+      event.preventDefault();
+      this.uploadChatFiles(files);
+    },
+
+    onMessageDrop(event) {
+      const files = this.extractFilesFromEvent(event);
+      if (!files.length) return;
+      event.preventDefault();
+      this.uploadChatFiles(files);
+    },
+
+    onMessageDragOver(event) {
+      const dt = event.dataTransfer;
+      if (!dt) return;
+      // Only claim the drag when files are riding it. Without this,
+      // dragging text inside the textarea would show a "drop disallowed"
+      // cursor on every move.
+      if (dt.types && Array.from(dt.types).includes("Files")) {
+        event.preventDefault();
+      }
+    },
+
+    async onAttachmentPick(event) {
+      const files = event.target?.files;
+      if (!files?.length) return;
+      try {
+        await this.uploadChatFiles(files);
+      } finally {
+        // Reset so picking the same file twice still fires @change.
+        event.target.value = "";
+      }
+    },
+
+    triggerAttachmentPicker() {
+      const input = this.$refs.attachmentInput;
+      if (input) input.click();
+    },
+
+    removePendingAttachment(uuid) {
+      this.pendingAttachments = this.pendingAttachments.filter(
+        (a) => a.uuid !== uuid
+      );
+    },
+
+    chatAttachmentUrl(asset) {
+      // Goes through the access-controlled serve view; safe to drop
+      // straight into <img src>.
+      return window.apiService.assetServeUrl(asset.uuid);
+    },
+
     async sendMessage() {
-      if (!this.message) return;
+      if (!this.message && !this.pendingAttachments.length) return;
       if (!this.selectedModel) {
         console.error("No model selected");
         this.messages.push({
@@ -277,9 +402,21 @@ const ChatPanel = {
         });
         return;
       }
+      // Snapshot the queued attachments so the optimistic local message
+      // can render them right away (the server echoes the same shape on
+      // the assistant `done` event for the user message metadata, but
+      // we want the chip / image to appear pre-stream).
+      const sendingAttachments = this.pendingAttachments.map((a) => ({
+        asset_uuid: a.uuid,
+        mime_type: a.mime_type,
+        file_type: a.file_type,
+        byte_size: a.byte_size,
+        original_filename: a.original_filename,
+      }));
       const userMsg = {
         role: "user",
         content: this.message,
+        attachments: sendingAttachments,
         created_at: new Date().toISOString(),
       };
       this.messages.push(userMsg);
@@ -292,8 +429,11 @@ const ChatPanel = {
         enable_notes_write_tools: this.enableNotesWriteTools,
         auto_approve_notes_writes: this.autoApproveActive,
         enable_web_search: this.enableWebSearch,
+        asset_uuids: this.pendingAttachments.map((a) => a.uuid),
       };
       this.message = "";
+      this.pendingAttachments = [];
+      this.attachmentError = "";
       this.loading = true;
 
       const assistantMsg = {
@@ -1385,6 +1525,28 @@ const ChatPanel = {
                 </button>
               </div>
             </div>
+            <div v-if="msg.attachments && msg.attachments.length" class="message-attachments">
+              <a
+                v-for="att in msg.attachments"
+                :key="att.asset_uuid"
+                :href="'/api/assets/' + att.asset_uuid + '/'"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="message-attachment"
+                :title="att.original_filename"
+              >
+                <img
+                  v-if="(att.file_type || '') === 'image'"
+                  :src="'/api/assets/' + att.asset_uuid + '/'"
+                  alt=""
+                  class="message-attachment-image"
+                  loading="lazy"
+                />
+                <span v-else class="message-attachment-chip">
+                  ▤ {{ att.original_filename || att.file_type || 'file' }}
+                </span>
+              </a>
+            </div>
             <div v-if="msg.role === 'assistant' && msg.streaming && !msg.content" class="message-content loading-content">
               <div class="typing-indicator">
                 <span></span>
@@ -1570,8 +1732,49 @@ const ChatPanel = {
             </div>
             <button class="settings-btn" @click="openSettings" title="AI Settings">cfg</button>
           </div>
+          <div v-if="pendingAttachments.length || attachmentError" class="chat-attachments-strip">
+            <div
+              v-for="asset in pendingAttachments"
+              :key="asset.uuid"
+              class="chat-attachment-chip"
+              :title="asset.original_filename"
+            >
+              <img :src="chatAttachmentUrl(asset)" alt="" class="chat-attachment-thumb" />
+              <button
+                type="button"
+                class="chat-attachment-remove"
+                title="Remove attachment"
+                @click="removePendingAttachment(asset.uuid)"
+              >×</button>
+            </div>
+            <div v-if="attachmentError" class="chat-attachment-error">{{ attachmentError }}</div>
+          </div>
+          <input
+            ref="attachmentInput"
+            type="file"
+            accept="image/*"
+            multiple
+            class="chat-attachment-file-input"
+            style="display: none;"
+            @change="onAttachmentPick($event)"
+          />
           <div class="message-input">
-            <textarea ref="messageInput" v-model="message" placeholder="ask something..." @keydown="handleKeydown"></textarea>
+            <button
+              type="button"
+              class="chat-attach-btn"
+              :disabled="pendingAttachments.length >= MAX_CHAT_ATTACHMENTS"
+              :title="pendingAttachments.length >= MAX_CHAT_ATTACHMENTS ? 'Attachment limit reached' : 'Attach image'"
+              @click="triggerAttachmentPicker"
+            >▤</button>
+            <textarea
+              ref="messageInput"
+              v-model="message"
+              placeholder="ask something..."
+              @keydown="handleKeydown"
+              @paste="onMessagePaste"
+              @drop="onMessageDrop"
+              @dragover="onMessageDragOver"
+            ></textarea>
             <button @click="sendMessage" :disabled="loading">
               {{ loading ? 'sending...' : 'send' }}
             </button>

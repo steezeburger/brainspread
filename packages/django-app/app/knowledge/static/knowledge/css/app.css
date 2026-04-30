@@ -5507,3 +5507,111 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   opacity: 0.6;
   font-size: 0.75rem;
 }
+
+/* Chat input: pending attachment preview + attach button. The chip strip
+ * sits above the textarea so the user sees what they're about to send. */
+.chat-attachments-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  border-top: 1px solid var(--border-secondary);
+  align-items: center;
+}
+
+.chat-attachment-chip {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  overflow: hidden;
+  background-color: var(--bg-secondary, #f4f4f4);
+}
+
+.chat-attachment-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.chat-attachment-remove {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: none;
+  border-radius: 0 0 0 3px;
+  width: 18px;
+  height: 18px;
+  font-size: 0.75rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.chat-attachment-remove:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.chat-attachment-error {
+  flex: 1 1 auto;
+  font-size: 0.75rem;
+  color: var(--danger, #c0392b);
+  align-self: center;
+}
+
+.chat-attach-btn {
+  background: transparent;
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 0.4rem 0.6rem;
+  margin-right: 0.4rem;
+  align-self: flex-end;
+}
+
+.chat-attach-btn:hover:not(:disabled) {
+  background-color: var(--bg-hover, #e8e8e8);
+}
+
+.chat-attach-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Inline attachments inside a chat bubble (history + post-send echo). */
+.message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+
+.message-attachment {
+  display: inline-block;
+  text-decoration: none;
+}
+
+.message-attachment-image {
+  max-width: 280px;
+  max-height: 280px;
+  border-radius: 3px;
+  border: 1px solid var(--border-secondary);
+  display: block;
+}
+
+.message-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  background-color: var(--bg-secondary, #f4f4f4);
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
