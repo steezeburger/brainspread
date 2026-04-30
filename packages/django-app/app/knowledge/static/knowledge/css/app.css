@@ -1205,11 +1205,10 @@ kbd {
   content: "";
   position: absolute;
   top: 50%;
-  /* Sits ~4px inside the input's right border (.date-picker has no
-     margin-right, so .title-left's right edge equals the input's
-     right edge). The 14px glyph + a small gap to the date text fit
-     inside .date-picker's 1.5rem padding-right. */
-  right: 0.25rem;
+  /* Sits inside .date-picker's 1.25rem padding-right zone, hugging
+     the right border. .date-picker has no margin-right so .title-left's
+     right edge equals the input's right edge. */
+  right: 0.3rem;
   transform: translateY(-50%);
   width: 14px;
   height: 14px;
@@ -4547,11 +4546,10 @@ a.sidebar-item:visited {
   background: var(--bg-primary);
   color: var(--text-primary);
   border: 2px solid var(--border-secondary);
-  /* padding-right reserves room for the calendar glyph painted by
-     .title-left::after; min-width keeps the full date string from
-     getting clipped by tight intrinsic widths on mobile. */
-  padding: 0.5rem 1.5rem 0.5rem 0.5rem;
-  min-width: 9rem;
+  /* padding-right reserves just enough for the 14px calendar glyph
+     painted by .title-left::after. Sized to the date string so the
+     icon sits flush against the date text rather than a long gap. */
+  padding: 0.5rem 1.25rem 0.5rem 0.5rem;
   font-family: inherit;
   font-size: 1rem;
   cursor: pointer;
