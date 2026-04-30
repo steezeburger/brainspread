@@ -57,24 +57,13 @@ window.LeftNav = {
   mounted() {
     this.loadHistoricalData();
     this.setupResizeListener();
-    this.applyLayoutWidth();
-    window.addEventListener("resize", this.handleWindowResize);
   },
 
   beforeUnmount() {
     this.removeResizeListener();
-    this.clearLayoutWidth();
-    window.removeEventListener("resize", this.handleWindowResize);
   },
 
-  watch: {
-    isOpen() {
-      this.applyLayoutWidth();
-    },
-    width() {
-      this.applyLayoutWidth();
-    },
-  },
+  watch: {},
 
   methods: {
     async loadHistoricalData() {
@@ -110,25 +99,6 @@ window.LeftNav = {
 
     toggleRecent() {
       this.recentExpanded = !this.recentExpanded;
-    },
-
-    applyLayoutWidth() {
-      // Page content reserves space for the rail (or nothing on mobile)
-      // and never widens when the panel is opened - the expanded panel
-      // overlays on top of the page rather than pushing it. Keeps
-      // content position stable as the user toggles the leftnav, which
-      // matches Notion / VSCode / most IDE-style sidebars.
-      const isMobile = window.innerWidth <= 768;
-      const value = isMobile ? "0px" : "48px";
-      document.documentElement.style.setProperty("--leftnav-width", value);
-    },
-
-    clearLayoutWidth() {
-      document.documentElement.style.removeProperty("--leftnav-width");
-    },
-
-    handleWindowResize() {
-      this.applyLayoutWidth();
     },
 
     formatDate(dateString) {

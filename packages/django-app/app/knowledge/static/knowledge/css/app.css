@@ -200,9 +200,13 @@ body {
 .main-content {
   flex: 1;
   padding: 2rem;
-  padding-left: calc(2rem + var(--leftnav-width, 0px));
   width: 100%;
-  transition: padding-left 0.2s ease;
+  /* Cap the readable area and center it. The leftnav rail and chat
+   * panel are position: fixed against the viewport edges, so they
+   * don't push this container - they overlay the empty gutter that
+   * the centering margin creates on wide screens. */
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
 /* Loading */
