@@ -402,11 +402,33 @@ const ChatPanel = {
         });
         return;
       }
+      // Pull image assets out of any context blocks the user has
+      // attached - if they added a block to context that holds an
+      // image, the image needs to ride along as part of the
+      // multimodal payload (otherwise the AI just sees text context).
+      const contextImageAssets = (this.chatContextBlocks || [])
+        .map((b) => b.asset)
+        .filter((a) => a && a.file_type === "image" && a.uuid);
+
       // Snapshot the queued attachments so the optimistic local message
       // can render them right away (the server echoes the same shape on
       // the assistant `done` event for the user message metadata, but
       // we want the chip / image to appear pre-stream).
-      const sendingAttachments = this.pendingAttachments.map((a) => ({
+      const allAssetsToSend = [
+        ...contextImageAssets,
+        ...this.pendingAttachments,
+      ];
+      // Dedupe by uuid - a user could both have an image in context
+      // AND have re-pasted the same image in the input, no point
+      // sending it twice.
+      const seenUuids = new Set();
+      const dedupedAssets = allAssetsToSend.filter((a) => {
+        if (seenUuids.has(a.uuid)) return false;
+        seenUuids.add(a.uuid);
+        return true;
+      });
+
+      const sendingAttachments = dedupedAssets.map((a) => ({
         asset_uuid: a.uuid,
         mime_type: a.mime_type,
         file_type: a.file_type,
@@ -429,7 +451,7 @@ const ChatPanel = {
         enable_notes_write_tools: this.enableNotesWriteTools,
         auto_approve_notes_writes: this.autoApproveActive,
         enable_web_search: this.enableWebSearch,
-        asset_uuids: this.pendingAttachments.map((a) => a.uuid),
+        asset_uuids: dedupedAssets.map((a) => a.uuid),
       };
       this.message = "";
       this.pendingAttachments = [];
