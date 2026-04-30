@@ -185,6 +185,18 @@ const BlockComponent = {
         return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
       return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
     },
+    // Block content with trailing hashtags stripped, for blocks where
+    // we render the tags as chips. Without this, "caption #travel"
+    // would display the inline #travel link AND the chip - two copies
+    // of the same tag. Only swaps in for asset blocks; embed blocks
+    // already use embedTitle which does the same trick, and plain text
+    // blocks should keep inline hashtags as today.
+    displayContent() {
+      if (this.hasAsset && !this.isEmbed) {
+        return this.embedContentParts.title;
+      }
+      return this.block.content;
+    },
     embedHostname() {
       try {
         return new URL(this.block.media_url).hostname.replace(/^www\./, "");
@@ -1138,6 +1150,72 @@ const BlockComponent = {
             <span class="block-asset-chip-name">{{ assetDisplayName }}</span>
             <span class="block-asset-chip-meta">{{ block.asset.file_type }} · {{ assetSizeLabel }}</span>
           </a>
+          <!--
+            Tag chip strip - reuses the embed-tag plumbing (parser,
+            state, methods) since it's all just a layer over
+            block.content trailing hashtags. Same chips, same "+ tag"
+            input, same suggestions; the only difference is where in
+            the template they render.
+          -->
+          <div class="block-embed-tags" @click.stop>
+            <a
+              v-for="slug in embedTags"
+              :key="slug"
+              class="block-embed-tag-chip"
+              :href="'/knowledge/page/' + slug + '/'"
+              :data-tag="slug"
+              @click.stop
+            >
+              <span class="block-embed-tag-chip-label">#{{ slug }}</span>
+              <button
+                type="button"
+                class="block-embed-tag-chip-remove"
+                :aria-label="'Remove tag ' + slug"
+                title="Remove tag"
+                @click.stop.prevent="removeEmbedTag(slug)"
+              >×</button>
+            </a>
+            <div v-if="addingEmbedTag" class="block-embed-tag-input-wrapper">
+              <input
+                ref="embedTagInput"
+                type="text"
+                class="block-embed-tag-input"
+                placeholder="tag…"
+                v-model="embedTagInputValue"
+                @input="handleEmbedTagInputChange"
+                @keydown="handleEmbedTagInputKeydown"
+                @blur="handleEmbedTagInputBlur"
+              />
+              <div
+                v-if="showEmbedTagSuggestions"
+                class="tag-suggestions block-embed-tag-suggestions"
+                @mousedown.prevent
+                role="listbox"
+              >
+                <button
+                  v-for="(page, idx) in embedTagSuggestions"
+                  :key="page.uuid || page.slug"
+                  type="button"
+                  role="option"
+                  :aria-selected="idx === embedTagSelectedIndex"
+                  class="tag-suggestion-item"
+                  :class="{ 'is-selected': idx === embedTagSelectedIndex }"
+                  @click="selectEmbedTagSuggestion(page)"
+                  @mouseenter="embedTagSelectedIndex = idx"
+                >
+                  <span class="tag-suggestion-slug">#{{ page.slug }}</span>
+                  <span v-if="page.title && page.title !== page.slug" class="tag-suggestion-title">{{ page.title }}</span>
+                </button>
+              </div>
+            </div>
+            <button
+              v-else
+              type="button"
+              class="block-embed-tag-add"
+              title="Add a tag"
+              @click.stop="startAddEmbedTag"
+            >+ tag</button>
+          </div>
         </div>
         <input
           ref="assetFileInput"
@@ -1279,7 +1357,7 @@ const BlockComponent = {
           @keydown="handleBlockDisplayKeydown"
           @touchstart="handleTouchStart"
           @touchend="handleContentTouchEnd"
-          v-html="formatContentWithTags(block.content, block.block_type, block.properties)"
+          v-html="formatContentWithTags(displayContent, block.block_type, block.properties)"
         ></div>
         <div v-else class="block-content-wrapper">
           <textarea
