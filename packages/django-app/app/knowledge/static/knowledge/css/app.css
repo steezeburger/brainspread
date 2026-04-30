@@ -1192,6 +1192,34 @@ kbd {
   display: flex;
   align-items: center;
   gap: 0;
+  position: relative;
+}
+
+/* Painted calendar glyph that overlays the right side of the date
+   input. We can't put a pseudo-element on the input itself (replaced
+   element), and Android Chrome doesn't honor mask styling on
+   ::-webkit-calendar-picker-indicator, so the wrapper renders the icon
+   via mask + currentColor — that picks up --text-primary across themes
+   and renders identically on desktop, Android, and iOS. */
+.title-left::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  /* Lands inside the input's padding-right, clear of the date text.
+     1rem accounts for .date-picker margin-right, the rest centers the
+     14px glyph in the reserved 1.75rem padding. */
+  right: 1.4rem;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  background-color: currentColor;
+  color: var(--text-primary);
+  opacity: 0.7;
+  -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round' stroke-linecap='round'><rect x='2' y='3' width='12' height='11' rx='1'/><line x1='2' y1='6.5' x2='14' y2='6.5'/><line x1='5.5' y1='1.5' x2='5.5' y2='4.5'/><line x1='10.5' y1='1.5' x2='10.5' y2='4.5'/></svg>")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round' stroke-linecap='round'><rect x='2' y='3' width='12' height='11' rx='1'/><line x1='2' y1='6.5' x2='14' y2='6.5'/><line x1='5.5' y1='1.5' x2='5.5' y2='4.5'/><line x1='10.5' y1='1.5' x2='10.5' y2='4.5'/></svg>")
+    center / contain no-repeat;
 }
 
 .daily-note-title h2 {
@@ -4506,25 +4534,31 @@ a.sidebar-item:visited {
   }
 }
 
-/* Date picker styling to match existing design */
+/* Date picker styling to match existing design.
+
+   appearance: none suppresses the native chrome (including the down-
+   caret Android Chrome paints, which ignores ::-webkit-calendar-picker-
+   indicator masking). The padding-right reserves space for our own
+   calendar glyph painted by .title-left::after below. */
 .date-picker {
+  -webkit-appearance: none;
+  appearance: none;
   background: var(--bg-primary);
   color: var(--text-primary);
   border: 2px solid var(--border-secondary);
-  padding: 0.5rem;
+  padding: 0.5rem 1.75rem 0.5rem 0.5rem;
   font-family: inherit;
   font-size: 1rem;
   cursor: pointer;
   margin-right: 1rem;
 }
 
-/* The native dropdown caret on <input type="date"> sits inside the
-   input's padding-right area in WebKit, so adjusting padding only widens
-   the gap between the date text and the caret. Use margin on the
-   indicator pseudo-element instead to control its distance from the
-   right border. */
+/* Hide the native calendar-picker indicator on .date-picker — we paint
+   a themed glyph via .title-left::after instead. The indicator's click
+   target is irrelevant once appearance: none is set; clicking the
+   input field still opens the picker. */
 .date-picker::-webkit-calendar-picker-indicator {
-  margin-right: 0.25rem;
+  display: none;
 }
 
 .date-picker:focus {
