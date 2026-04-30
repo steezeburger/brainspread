@@ -29,7 +29,7 @@ class AssetAdmin(admin.ModelAdmin):
         "height",
         "created_at",
         "modified_at",
-        "file_link",
+        "preview",
     )
     raw_id_fields = ("user",)
     ordering = ("-created_at",)
@@ -41,7 +41,7 @@ class AssetAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "file",
-                    "file_link",
+                    "preview",
                     "original_filename",
                     "mime_type",
                     "byte_size",
@@ -89,11 +89,61 @@ class AssetAdmin(admin.ModelAdmin):
 
     source_url_short.short_description = "Source URL"
 
-    def file_link(self, obj):
+    def preview(self, obj):
+        """
+        Inline rendering of the asset itself so an admin can confirm what
+        was actually uploaded without leaving the page. Images render as
+        a clickable thumbnail; HTML/PDF/text render in an <iframe> sized
+        for a quick read; everything else falls back to a labeled
+        download link.
+
+        Uses obj.file.url (raw MEDIA_URL) instead of /api/assets/<uuid>/
+        because the serve endpoint enforces per-user ownership - admins
+        viewing other users' assets would get 404. Admin is staff-only,
+        so the raw media URL is the right primitive here.
+        """
         if not obj.file:
             return "-"
+        url = obj.file.url
+        label = obj.original_filename or url.rsplit("/", 1)[-1]
+        file_type = obj.file_type or ""
+
+        if file_type == "image":
+            return format_html(
+                '<a href="{}" target="_blank" rel="noopener">'
+                '<img src="{}" style="max-width: 480px; max-height: 360px; '
+                'border: 1px solid #ccc; border-radius: 3px;" alt="{}" />'
+                "</a>",
+                url,
+                url,
+                label,
+            )
+        if (
+            file_type in ("html", "pdf")
+            or file_type == "other"
+            and (obj.mime_type or "").startswith("text/")
+        ):
+            return format_html(
+                '<iframe src="{}" style="width: 100%; max-width: 720px; '
+                'height: 360px; border: 1px solid #ccc; border-radius: 3px;"></iframe>'
+                '<div style="margin-top: 0.4rem;">'
+                '<a href="{}" target="_blank" rel="noopener">open in new tab</a>'
+                "</div>",
+                url,
+                url,
+            )
+        if file_type == "video":
+            return format_html(
+                '<video src="{}" controls style="max-width: 480px; max-height: 360px;">'
+                "</video>",
+                url,
+            )
+        if file_type == "audio":
+            return format_html('<audio src="{}" controls></audio>', url)
         return format_html(
-            '<a href="{}" target="_blank" rel="noopener">download</a>', obj.file.url
+            '<a href="{}" target="_blank" rel="noopener">download {}</a>',
+            url,
+            label,
         )
 
-    file_link.short_description = "Download"
+    preview.short_description = "Preview"
