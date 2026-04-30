@@ -4511,11 +4511,20 @@ a.sidebar-item:visited {
   background: var(--bg-primary);
   color: var(--text-primary);
   border: 2px solid var(--border-secondary);
-  padding: 0.5rem 1rem 0.5rem 0.5rem;
+  padding: 0.5rem;
   font-family: inherit;
   font-size: 1rem;
   cursor: pointer;
   margin-right: 1rem;
+}
+
+/* The native dropdown caret on <input type="date"> sits inside the
+   input's padding-right area in WebKit, so adjusting padding only widens
+   the gap between the date text and the caret. Use margin on the
+   indicator pseudo-element instead to control its distance from the
+   right border. */
+.date-picker::-webkit-calendar-picker-indicator {
+  margin-right: 0.25rem;
 }
 
 .date-picker:focus {
