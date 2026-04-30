@@ -3614,6 +3614,18 @@ a.sidebar-item:visited {
   white-space: nowrap;
 }
 
+/* Thumbnail for image-bearing context blocks. Mirrors the chat-input
+ * attachment chip size so the strip stays visually consistent. */
+.context-block-thumb {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid var(--border-secondary);
+  margin-right: 0.4rem;
+  flex-shrink: 0;
+}
+
 .context-block-remove {
   background: none;
   border: none;

@@ -835,9 +835,18 @@ const ChatPanel = {
     },
 
     getContextPreview(block) {
-      return block.content.length > 50
-        ? block.content.substring(0, 50) + "..."
-        : block.content;
+      const content = block.content || "";
+      if (content.length > 50) {
+        return content.substring(0, 50) + "...";
+      }
+      if (content) return content;
+      // Image-only blocks have no text to preview; the thumbnail next
+      // to this stands in for the content, but we still need *something*
+      // to label the row for screen readers / when the thumb is absent.
+      if (block.asset?.file_type === "image") {
+        return block.asset.original_filename || "[image]";
+      }
+      return "";
     },
 
     getContextCount() {
@@ -1626,16 +1635,22 @@ const ChatPanel = {
             </div>
           </div>
           <div class="context-blocks" v-if="hasContext()">
-            <div 
-              v-for="block in chatContextBlocks" 
-              :key="block.uuid" 
+            <div
+              v-for="block in chatContextBlocks"
+              :key="block.uuid"
               class="context-block"
             >
+              <img
+                v-if="block.asset && block.asset.file_type === 'image'"
+                :src="chatAttachmentUrl(block.asset)"
+                :alt="block.asset.original_filename || ''"
+                class="context-block-thumb"
+              />
               <div class="context-block-content">
                 {{ getContextPreview(block) }}
               </div>
-              <button 
-                @click="removeContextBlock(block.uuid)" 
+              <button
+                @click.stop="removeContextBlock(block.uuid)"
                 class="context-block-remove"
                 title="Remove from context"
               >
