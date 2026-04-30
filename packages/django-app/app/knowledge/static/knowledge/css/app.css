@@ -2078,12 +2078,16 @@ kbd {
   top: 0;
   left: 0;
   height: 100vh;
+  /* Dynamic viewport height shrinks when the Android URL/nav bar is
+     visible, so the footer (logout) stays above it. Falls back to
+     100vh on older browsers. */
+  height: 100dvh;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--border-primary);
   overflow-y: auto;
   z-index: 999;
-  /* Keep the footer (logout) above the Android nav bar / iPhone home
-     indicator when the drawer extends to the viewport bottom. */
+  /* Also respect fixed safe areas (e.g. iPhone home indicator), which
+     env() reports even when the dynamic viewport doesn't. */
   padding-bottom: env(safe-area-inset-bottom);
 }
 
