@@ -1621,7 +1621,10 @@ kbd {
   background: var(--bg-primary);
   border: 2px solid var(--border-primary);
   box-shadow: 4px 4px 0 var(--border-primary);
-  z-index: 1000;
+  /* Above .chat-panel (1000) and its resize handle (1001). The chat
+   * panel's transform creates its own stacking context, so a popover
+   * at the same z-index would render behind it - bump to 1200. */
+  z-index: 1200;
   min-width: 200px;
 }
 
