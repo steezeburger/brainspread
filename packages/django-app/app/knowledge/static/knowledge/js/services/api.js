@@ -618,10 +618,16 @@ class ApiService {
     if (csrfToken) headers["X-CSRFToken"] = csrfToken;
     if (this.token) headers["Authorization"] = `Token ${this.token}`;
 
+    // Explicit credentials: "include" so the Django session cookie
+    // accompanies the request even when this.token is unset (e.g.
+    // staging users authed only via the admin login). Without this,
+    // DRF's SessionAuthentication can't see the user and the request
+    // 401s with "Authentication credentials were not provided".
     const response = await fetch(`${this.baseURL}/api/assets/`, {
       method: "POST",
       headers,
       body: form,
+      credentials: "include",
     });
     const data = await response.json();
     if (!response.ok) {
