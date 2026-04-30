@@ -2,6 +2,7 @@ import logging
 import os
 from typing import TypedDict
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
@@ -75,6 +76,7 @@ class SendDueRemindersCommand(AbstractBaseCommand):
                     block,
                     block.user.discord_user_id,
                     environment,
+                    settings.SITE_URL,
                 )
                 url = block.user.discord_webhook_url
                 # Look up post_webhook at call time (not via `self.deliver`)
@@ -121,6 +123,7 @@ def _format_content(
     block,
     discord_user_id: str = "",
     environment: str = "",
+    site_url: str = "",
 ) -> str:
     """Render the Discord message body for a reminder.
 
@@ -128,6 +131,8 @@ def _format_content(
     gets a desktop/push notification instead of just a silent channel post.
     When `environment` is set to anything other than prod/production, an
     `[<env>] ` label is prepended so non-prod pings are distinguishable.
+    When `site_url` is a real http(s) URL, appends a link to the page
+    that contains the block so the user can jump straight to it.
     """
     title = (block.content or "").strip().splitlines()[0] if block.content else ""
     if len(title) > 240:
@@ -141,4 +146,22 @@ def _format_content(
     env = (environment or "").strip().lower()
     if env and env not in _PROD_ENVIRONMENTS:
         body = f"[{env}] {body}"
+
+    page_link = _page_link(block, site_url)
+    if page_link:
+        body = f"{body}\n{page_link}"
     return body
+
+
+def _page_link(block, site_url: str) -> str:
+    """Build an absolute URL to the page that contains the block.
+
+    Skips when SITE_URL isn't a real http(s) URL (the default
+    placeholder is just "0.0.0.0", which would produce broken links).
+    """
+    if not site_url or not site_url.startswith(("http://", "https://")):
+        return ""
+    if not block.page_id or not block.page.slug:
+        return ""
+    base = site_url.rstrip("/")
+    return f"{base}/knowledge/page/{block.page.slug}/"
