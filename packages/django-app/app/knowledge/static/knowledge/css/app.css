@@ -172,6 +172,8 @@ body {
     monospace;
   margin: 0;
   padding: 0;
+  /* Respect device safe areas (Android nav bar, iPhone home indicator). */
+  padding-bottom: env(safe-area-inset-bottom);
   background-color: var(--bg-primary);
   color: var(--text-primary);
   line-height: 1.4;
@@ -1163,16 +1165,6 @@ kbd {
   transform: none;
 }
 
-.date-picker {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.date-picker input[type="date"] {
-  cursor: pointer;
-}
-
 .daily-note-content h2 {
   color: var(--text-primary);
   margin-bottom: 0.75rem;
@@ -1190,6 +1182,34 @@ kbd {
   display: flex;
   align-items: center;
   gap: 0;
+  position: relative;
+}
+
+/* Painted calendar glyph that overlays the right side of the date
+   input. We can't put a pseudo-element on the input itself (replaced
+   element), and Android Chrome doesn't honor mask styling on
+   ::-webkit-calendar-picker-indicator, so the wrapper renders the icon
+   via mask + currentColor — that picks up --text-primary across themes
+   and renders identically on desktop, Android, and iOS. */
+.title-left::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  /* Sits inside .date-picker's 1.25rem padding-right zone, hugging
+     the right border. .date-picker has no margin-right so .title-left's
+     right edge equals the input's right edge. */
+  right: 0.3rem;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  background-color: currentColor;
+  color: var(--text-primary);
+  opacity: 0.7;
+  -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round' stroke-linecap='round'><rect x='2' y='3' width='12' height='11' rx='1'/><line x1='2' y1='6.5' x2='14' y2='6.5'/><line x1='5.5' y1='1.5' x2='5.5' y2='4.5'/><line x1='10.5' y1='1.5' x2='10.5' y2='4.5'/></svg>")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linejoin='round' stroke-linecap='round'><rect x='2' y='3' width='12' height='11' rx='1'/><line x1='2' y1='6.5' x2='14' y2='6.5'/><line x1='5.5' y1='1.5' x2='5.5' y2='4.5'/><line x1='10.5' y1='1.5' x2='10.5' y2='4.5'/></svg>")
+    center / contain no-repeat;
 }
 
 .daily-note-title h2 {
@@ -1743,6 +1763,14 @@ kbd {
     align-items: center;
   }
 
+  /* On the daily page, sit the date picker and context menu side by
+     side, centered as a pair. Anchoring the menu to the far right
+     would put it under the AI chat-toggle in the top-right corner. */
+  .daily-note-title.page-header-flex {
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
   .child-block {
     margin-left: 1rem;
     padding-left: 0.5rem;
@@ -1770,60 +1798,6 @@ kbd {
   /* Always show delete button on mobile */
   .block-delete {
     opacity: 1 !important;
-  }
-
-  /* Left nav drawer behavior on mobile: overlay content, full-width drawer. */
-  .historical-sidebar {
-    width: 90vw !important;
-    max-width: 90vw !important;
-    z-index: 1100;
-  }
-
-  .leftnav-content {
-    padding: 0.5rem;
-  }
-
-  /* On mobile, don't reserve space for the leftnav (it overlays). */
-  .main-content {
-    padding-left: 2rem;
-  }
-
-  /* Mobile: collapse the rail to just the floating toggle. */
-  .leftnav-rail {
-    width: auto;
-    height: auto;
-    background: transparent;
-    border: none;
-    padding: 0;
-    top: 88px;
-    left: 8px;
-  }
-
-  .leftnav-rail-action {
-    display: none;
-  }
-
-  .leftnav-rail-toggle {
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    border: 2px solid var(--border-primary);
-    padding: 0.4rem 0.6rem;
-    font-weight: bold;
-    width: auto;
-    height: auto;
-    box-shadow: 2px 2px 0 var(--border-primary);
-  }
-
-  /* Mobile drawer backdrop. */
-  .leftnav-backdrop {
-    display: block;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.4);
-    z-index: 1099;
   }
 
   /* Simple fix - use margin-bottom only when chat is open and visible */
@@ -2122,10 +2096,17 @@ kbd {
   top: 0;
   left: 0;
   height: 100vh;
+  /* Dynamic viewport height shrinks when the Android URL/nav bar is
+     visible, so the footer (logout) stays above it. Falls back to
+     100vh on older browsers. */
+  height: 100dvh;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--border-primary);
   overflow-y: auto;
   z-index: 999;
+  /* Also respect fixed safe areas (e.g. iPhone home indicator), which
+     env() reports even when the dynamic viewport doesn't. */
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .sidebar-resize-handle {
@@ -2614,6 +2595,61 @@ a.sidebar-item:visited {
 
   .sidebar-resize-handle {
     display: none;
+  }
+
+  /* Left nav drawer behavior on mobile: overlay content, full-width drawer.
+     These overrides live AFTER the base .leftnav-* declarations above so
+     they win on source order at equal specificity. */
+  .historical-sidebar {
+    width: 90vw !important;
+    max-width: 90vw !important;
+    z-index: 1100;
+  }
+
+  .leftnav-content {
+    padding: 0.5rem;
+  }
+
+  /* Collapse the rail to just the floating arrow toggle in the top-left. */
+  .leftnav-rail {
+    width: auto;
+    height: auto;
+    background: transparent;
+    border: none;
+    padding: 0;
+    top: 0;
+    left: 0;
+  }
+
+  .leftnav-rail-btn.leftnav-rail-action {
+    display: none;
+  }
+
+  /* Match the AI chat-toggle's 45x45 square shape, but use the opposite
+     fill so the two corner buttons read as a pair instead of twins. */
+  .leftnav-rail-btn.leftnav-rail-toggle {
+    width: 45px;
+    height: 45px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 3px solid var(--border-primary);
+    border-radius: 0;
+    padding: 0;
+    font-weight: bold;
+    font-size: 1rem;
+    letter-spacing: 0.5px;
+    box-shadow: none;
+  }
+
+  .leftnav-backdrop {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 1099;
   }
 }
 
@@ -4488,16 +4524,36 @@ a.sidebar-item:visited {
   }
 }
 
-/* Date picker styling to match existing design */
+/* Date picker styling to match existing design.
+
+   appearance: none suppresses the native chrome (including the down-
+   caret Android Chrome paints, which ignores ::-webkit-calendar-picker-
+   indicator masking). The padding-right reserves space for our own
+   calendar glyph painted by .title-left::after below. */
 .date-picker {
+  -webkit-appearance: none;
+  appearance: none;
   background: var(--bg-primary);
   color: var(--text-primary);
   border: 2px solid var(--border-secondary);
-  padding: 0.5rem;
+  /* padding-right reserves room for the 14px calendar glyph painted
+     by .title-left::after. field-sizing: content shrinks the input to
+     its rendered text width — Chromium otherwise gives <input
+     type="date"> a wider locale-based intrinsic size, which leaves
+     empty space between the date and the icon. */
+  padding: 0.5rem 1.25rem 0.5rem 0.5rem;
+  field-sizing: content;
   font-family: inherit;
   font-size: 1rem;
   cursor: pointer;
-  margin-right: 1rem;
+}
+
+/* Hide the native calendar-picker indicator on .date-picker — we paint
+   a themed glyph via .title-left::after instead. The indicator's click
+   target is irrelevant once appearance: none is set; clicking the
+   input field still opens the picker. */
+.date-picker::-webkit-calendar-picker-indicator {
+  display: none;
 }
 
 .date-picker:focus {

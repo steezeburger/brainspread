@@ -237,3 +237,21 @@ class TestCreateBlockCommand(TestCase):
         block.refresh_from_db()
         self.assertEqual(block.block_type, "code")
         self.assertEqual(block.properties, {"language": "python"})
+
+    def test_should_bump_page_modified_at(self):
+        """Creating a block should advance the page's modified_at so it
+        floats to the top of the recent-pages list."""
+        original_modified_at = self.page.modified_at
+
+        form = CreateBlockForm(
+            {
+                "user": self.user.id,
+                "page": self.page.uuid,
+                "content": "fresh content",
+            }
+        )
+        form.is_valid()
+        CreateBlockCommand(form).execute()
+
+        self.page.refresh_from_db()
+        self.assertGreater(self.page.modified_at, original_modified_at)

@@ -3,9 +3,11 @@ from django.core.exceptions import ValidationError
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.sync_block_tags_form import SyncBlockTagsForm
+from ..forms.touch_page_form import TouchPageForm
 from ..forms.update_block_form import UpdateBlockForm
 from ..models import Block
 from .sync_block_tags_command import SyncBlockTagsCommand
+from .touch_page_command import TouchPageCommand
 
 
 class UpdateBlockCommand(AbstractBaseCommand):
@@ -85,6 +87,12 @@ class UpdateBlockCommand(AbstractBaseCommand):
         # Skip for code blocks — `key::value` inside code shouldn't be parsed.
         if content_updated and block.content and block.block_type != "code":
             block.extract_properties_from_content()
+
+        # Bump the page's modified_at so the recent-pages sidebar reflects
+        # this edit even though only the block row changed.
+        touch_form = TouchPageForm(data={"user": user.id, "page": str(block.page.uuid)})
+        if touch_form.is_valid():
+            TouchPageCommand(touch_form).execute()
 
         return block
 

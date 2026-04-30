@@ -280,3 +280,27 @@ class TestMoveBlockToDailyCommand(TestCase):
 
         self.assertTrue(result["moved"])
         self.assertEqual(result["target_page"]["date"], "2026-04-29")
+
+    def test_should_bump_modified_at_on_both_source_and_target(self):
+        target_date = date(2026, 4, 29)
+        source_page = PageFactory(user=self.user, title="Notes", slug="bump-notes")
+        block = BlockFactory(user=self.user, page=source_page, content="moved", order=1)
+
+        source_modified_before = source_page.modified_at
+
+        form = MoveBlockToDailyForm(
+            {"user": self.user, "block": block.uuid, "target_date": target_date}
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+        result = MoveBlockToDailyCommand(form).execute()
+        self.assertTrue(result["moved"])
+
+        source_page.refresh_from_db()
+        self.assertGreater(source_page.modified_at, source_modified_before)
+
+        target_page = Page.objects.get(user=self.user, date=target_date)
+        # The target was created mid-execute, so we don't have a baseline
+        # to diff against; instead verify it's at least as fresh as the
+        # source after the move.
+        self.assertGreaterEqual(target_page.modified_at, source_page.modified_at)

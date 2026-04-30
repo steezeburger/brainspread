@@ -18,5 +18,6 @@ from .send_due_reminders_form import SendDueRemindersForm
 from .set_block_type_form import SetBlockTypeForm
 from .sync_block_tags_form import SyncBlockTagsForm
 from .toggle_block_todo_form import ToggleBlockTodoForm
+from .touch_page_form import TouchPageForm
 from .update_block_form import UpdateBlockForm
 from .update_page_form import UpdatePageForm

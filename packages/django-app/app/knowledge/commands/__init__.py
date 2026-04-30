@@ -18,5 +18,6 @@ from .send_due_reminders_command import SendDueRemindersCommand
 from .set_block_type_command import SetBlockTypeCommand
 from .sync_block_tags_command import SyncBlockTagsCommand
 from .toggle_block_todo_command import ToggleBlockTodoCommand
+from .touch_page_command import TouchPageCommand
 from .update_block_command import UpdateBlockCommand
 from .update_page_command import UpdatePageCommand
