@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 
 from .models import (
     AIModel,
@@ -132,15 +133,28 @@ class ChatMessageAdmin(admin.ModelAdmin):
         "short_uuid",
         "role",
         "content_preview",
+        "attachment_count",
         "created_at",
     ]
     list_filter = ["role", "created_at"]
     search_fields = ["content", "session__title", "session__user__email"]
-    readonly_fields = ["id", "uuid", "created_at", "modified_at"]
+    readonly_fields = [
+        "id",
+        "uuid",
+        "created_at",
+        "modified_at",
+        "attachments_preview",
+    ]
     raw_id_fields = ["session"]
 
     fieldsets = (
         (None, {"fields": ("session", "role", "content")}),
+        (
+            "Attachments",
+            {
+                "fields": ("attachments_preview", "attachments"),
+            },
+        ),
         (
             "Metadata",
             {
@@ -167,6 +181,56 @@ class ChatMessageAdmin(admin.ModelAdmin):
         return "-"
 
     content_preview.short_description = "Content Preview"
+
+    def attachment_count(self, obj):
+        return len(obj.attachments or [])
+
+    attachment_count.short_description = "Attachments"
+
+    def attachments_preview(self, obj):
+        """
+        Render thumbnails for each attached asset by linking through the
+        access-controlled serve view. Staff users can read any asset via
+        that endpoint (see assets.views.serve_asset), so the admin
+        always sees the bytes.
+        """
+        attachments = obj.attachments or []
+        if not attachments:
+            return "-"
+        chunks = []
+        for att in attachments:
+            uuid = att.get("asset_uuid", "")
+            if not uuid:
+                continue
+            url = f"/api/assets/{uuid}/"
+            label = att.get("original_filename") or att.get("file_type") or uuid[:8]
+            if att.get("file_type") == "image":
+                chunks.append(
+                    format_html(
+                        '<a href="{}" target="_blank" rel="noopener" '
+                        'style="margin-right: 0.4rem; display: inline-block;">'
+                        '<img src="{}" style="max-width: 160px; max-height: 160px; '
+                        'border: 1px solid #ccc; border-radius: 3px;" alt="{}" />'
+                        "</a>",
+                        url,
+                        url,
+                        label,
+                    )
+                )
+            else:
+                chunks.append(
+                    format_html(
+                        '<a href="{}" target="_blank" rel="noopener" '
+                        'style="margin-right: 0.4rem;">▤ {}</a>',
+                        url,
+                        label,
+                    )
+                )
+        # chunks is a list of SafeStrings produced by format_html; join
+        # them and mark_safe so they aren't re-escaped on render.
+        return mark_safe("".join(str(c) for c in chunks)) if chunks else "-"
+
+    attachments_preview.short_description = "Preview"
 
 
 @admin.register(UserAISettings)

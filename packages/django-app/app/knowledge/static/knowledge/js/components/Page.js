@@ -1805,6 +1805,130 @@ const Page = {
       );
     },
 
+    // Pull a File out of a ClipboardEvent if there is one. Items come in
+    // two flavours: DataTransferItemList (most browsers, including for
+    // screenshots) and FileList (drag-drop, some older paths). Items
+    // includes plain text/html too, so filter to "file" kind.
+    extractClipboardFile(clipboardData) {
+      if (clipboardData.items && clipboardData.items.length) {
+        for (const item of clipboardData.items) {
+          if (item.kind === "file") {
+            const f = item.getAsFile();
+            if (f) return f;
+          }
+        }
+      }
+      if (clipboardData.files && clipboardData.files.length) {
+        return clipboardData.files[0];
+      }
+      return null;
+    },
+
+    // Map an asset's file_type onto Block.content_type so the rendering
+    // code knows how to lay it out.
+    contentTypeForAsset(asset) {
+      switch (asset?.file_type) {
+        case "image":
+          return "image";
+        case "video":
+          return "video";
+        case "audio":
+          return "audio";
+        default:
+          return "file";
+      }
+    },
+
+    // Upload a file and attach the resulting Asset to `block`. If the
+    // block is empty, the asset replaces it; otherwise we insert a new
+    // block right after as a sibling.
+    async attachFileToBlock(block, file) {
+      const toastId = this.emitToast(`uploading ${file.name || "file"}…`);
+      try {
+        const res = await window.apiService.uploadAsset(file, {
+          assetType: "block_attachment",
+        });
+        if (!res.success || !res.data) {
+          throw new Error("upload failed");
+        }
+        const asset = res.data;
+        const blockIsEmpty = !block.content || block.content.trim() === "";
+        if (blockIsEmpty) {
+          const updateResult = await window.apiService.updateBlock(block.uuid, {
+            asset: asset.uuid,
+            content_type: this.contentTypeForAsset(asset),
+          });
+          if (!updateResult.success) throw new Error("attach failed");
+          await this.loadPage({ silent: true });
+        } else {
+          await this.attachFileToNewBlockAfter(block, asset);
+        }
+      } catch (e) {
+        this.emitToast(e.message || "upload failed", "error");
+      } finally {
+        void toastId;
+      }
+    },
+
+    // Create a new sibling block right after `anchorBlock` carrying the
+    // freshly-uploaded asset. Mirrors the shift-and-insert dance already
+    // used by the markdown-list paste path.
+    async attachFileToNewBlockAfter(anchorBlock, asset) {
+      const parentUuid = anchorBlock.parent ? anchorBlock.parent.uuid : null;
+      const siblings = anchorBlock.parent
+        ? anchorBlock.parent.children
+        : this.directBlocks;
+
+      const blocksToShift = siblings.filter(
+        (b) => b.uuid !== anchorBlock.uuid && b.order > anchorBlock.order
+      );
+      if (blocksToShift.length > 0) {
+        const reorderPayload = blocksToShift.map((b) => ({
+          uuid: b.uuid,
+          order: b.order + 1,
+        }));
+        const reorderResult =
+          await window.apiService.reorderBlocks(reorderPayload);
+        if (!reorderResult.success) throw new Error("failed to reorder blocks");
+      }
+
+      const createResult = await window.apiService.createBlock({
+        page: this.page.uuid,
+        parent: parentUuid,
+        order: anchorBlock.order + 1,
+        content: "",
+        content_type: this.contentTypeForAsset(asset),
+        asset: asset.uuid,
+      });
+      if (!createResult.success) throw new Error("failed to create block");
+      await this.loadPage({ silent: true });
+    },
+
+    // Drag-drop entrypoint. The block template attaches @drop to the
+    // block's outer wrapper and lets the browser's default dragover keep
+    // the drop target alive. Only the first dropped file is used; this
+    // matches how paste works and keeps the UX predictable.
+    async onBlockDrop(event, block) {
+      const files = event.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+      event.preventDefault();
+      await this.attachFileToBlock(block, files[0]);
+    },
+
+    // Hidden-input fallback for the explicit "attach" affordance in the
+    // block popover. The popover opens the picker; the input's @change
+    // funnels back through here.
+    async onBlockAttachPick(event, block) {
+      const files = event.target?.files;
+      if (!files || files.length === 0) return;
+      try {
+        await this.attachFileToBlock(block, files[0]);
+      } finally {
+        // Reset so picking the same file twice still fires @change.
+        event.target.value = "";
+      }
+    },
+
     async handleUrlPaste(block, url) {
       // Empty block: promote it to an embed in place. Otherwise append a
       // sibling embed block after the current one (matches paste-as-list
@@ -1862,9 +1986,17 @@ const Page = {
     },
 
     async handleUrlDrop(event) {
-      // Accept URLs from browser drag-drop (link drags, images with links).
+      // Accept URLs from browser drag-drop AND file drops at the page
+      // level. File drops create a new block at the bottom carrying the
+      // attached asset; per-block drops route through onBlockDrop instead.
       const dt = event.dataTransfer;
       if (!dt) return;
+
+      if (dt.files && dt.files.length > 0) {
+        event.preventDefault();
+        await this.handlePageFileDrop(dt.files[0]);
+        return;
+      }
 
       let url = dt.getData("text/uri-list") || dt.getData("text/plain") || "";
       url = (url || "").split(/[\r\n]/)[0].trim();
@@ -1892,16 +2024,44 @@ const Page = {
       }
     },
 
+    async handlePageFileDrop(file) {
+      const toastId = this.emitToast(`uploading ${file.name || "file"}…`);
+      try {
+        const res = await window.apiService.uploadAsset(file, {
+          assetType: "block_attachment",
+        });
+        if (!res.success || !res.data) throw new Error("upload failed");
+        const asset = res.data;
+        const newOrder = this.getNextOrder(null);
+        const createResult = await window.apiService.createBlock({
+          page: this.page.uuid,
+          parent: null,
+          content: "",
+          content_type: this.contentTypeForAsset(asset),
+          asset: asset.uuid,
+          order: newOrder,
+        });
+        if (!createResult.success) throw new Error("create block failed");
+        await this.loadPage({ silent: true });
+      } catch (e) {
+        this.emitToast(e.message || "upload failed", "error");
+      } finally {
+        void toastId;
+      }
+    },
+
     handleUrlDragOver(event) {
       const dt = event.dataTransfer;
       if (!dt) return;
-      // Only claim the event when the payload looks like a URL, so normal
-      // text drags inside the page still behave as usual.
+      // Claim the event for URLs (keep existing behavior) AND for files,
+      // so the browser doesn't show "drop disallowed" while the user is
+      // mid-drag. Plain text drags inside the page still pass through.
       const hasUrl =
         dt.types &&
         (Array.from(dt.types).includes("text/uri-list") ||
           Array.from(dt.types).includes("text/plain"));
-      if (hasUrl) {
+      const hasFile = dt.types && Array.from(dt.types).includes("Files");
+      if (hasUrl || hasFile) {
         event.preventDefault();
       }
     },
@@ -1972,6 +2132,16 @@ const Page = {
     async onBlockPaste(event, block) {
       const clipboardData = event.clipboardData || window.clipboardData;
       if (!clipboardData) return;
+
+      // Image / file paste. Screenshots and copy-image-from-browser land in
+      // clipboardData.items as type "image/*" with no plain-text counterpart;
+      // bare-text-attached-files land in .files. Take whichever we find.
+      const file = this.extractClipboardFile(clipboardData);
+      if (file) {
+        event.preventDefault();
+        await this.attachFileToBlock(block, file);
+        return;
+      }
 
       const text = clipboardData.getData("text/plain");
       if (!text) return;
@@ -2649,6 +2819,8 @@ const Page = {
                 :moveBlockUp="moveBlockUp"
                 :moveBlockDown="moveBlockDown"
                 :onBlockPaste="onBlockPaste"
+                :onBlockDrop="onBlockDrop"
+                :onBlockAttachPick="onBlockAttachPick"
                 :scheduleBlock="scheduleBlock"
               />
             </div>
@@ -2685,6 +2857,8 @@ const Page = {
               :moveBlockDown="moveBlockDown"
               :moveBlockToToday="moveBlockToToday"
               :onBlockPaste="onBlockPaste"
+              :onBlockDrop="onBlockDrop"
+              :onBlockAttachPick="onBlockAttachPick"
               :scheduleBlock="scheduleBlock"
               :onBlockSelectClick="handleBlockSelectClick"
               :selectedBlockCount="selectedBlockCount"
@@ -2730,6 +2904,8 @@ const Page = {
                 :moveBlockUp="moveBlockUp"
                 :moveBlockDown="moveBlockDown"
                 :onBlockPaste="onBlockPaste"
+                :onBlockDrop="onBlockDrop"
+                :onBlockAttachPick="onBlockAttachPick"
                 :scheduleBlock="scheduleBlock"
               />
             </div>

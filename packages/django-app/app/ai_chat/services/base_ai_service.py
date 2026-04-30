@@ -168,9 +168,14 @@ class BaseAIService(ABC):
         """
         pass
 
-    def validate_messages(self, messages: List[Dict[str, str]]) -> None:
+    def validate_messages(self, messages: List[Dict[str, Any]]) -> None:
         """
         Validate message format before sending to AI service.
+
+        Each message must have a `role` and `content`. An optional
+        `images` key carries provider-agnostic multimodal payloads
+        (mime_type + raw bytes); each subclass converts that to its
+        own wire format inside send_message.
 
         Args:
             messages: List of message dictionaries
@@ -185,3 +190,17 @@ class BaseAIService(ABC):
                 )
             if msg["role"] not in ["user", "assistant", "system"]:
                 raise AIServiceError(f"Invalid role: {msg['role']}")
+            images = msg.get("images")
+            if images is None:
+                continue
+            if not isinstance(images, list):
+                raise AIServiceError("Invalid message format: 'images' must be a list")
+            for img in images:
+                if (
+                    not isinstance(img, dict)
+                    or "mime_type" not in img
+                    or "data" not in img
+                ):
+                    raise AIServiceError(
+                        "Invalid image entry: must have 'mime_type' and 'data'"
+                    )

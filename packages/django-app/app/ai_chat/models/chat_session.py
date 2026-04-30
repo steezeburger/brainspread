@@ -35,6 +35,13 @@ class ChatMessage(UUIDModelMixin, CRUDTimestampsMixin):
     #   [{"type": "tool_use", "tool_use_id": str, "name": str, "input": dict},
     #    {"type": "tool_result", "tool_use_id": str, "name": str, "result": dict}]
     tool_events = models.JSONField(default=list, blank=True)
+    # Asset attachments (vision / file inputs). Persisted as metadata so the
+    # UI can re-render images in history without touching the assets app and
+    # so the SendMessage command can re-attach the bytes on subsequent turns.
+    # Shape:
+    #   [{"asset_uuid": str, "mime_type": str, "file_type": str,
+    #     "byte_size": int, "original_filename": str}]
+    attachments = models.JSONField(default=list, blank=True)
 
     class Meta:
         db_table = "ai_chat_messages"

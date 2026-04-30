@@ -53,6 +53,17 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
     media_metadata = models.JSONField(
         default=dict, blank=True, help_text="Metadata for media files"
     )
+    # First-class asset attachment. Lives alongside media_file during the
+    # transition; new code paths (paste / drag-drop / attach) write here,
+    # legacy media_file rows can be backfilled later. SET_NULL so deleting
+    # the underlying Asset doesn't cascade-delete blocks pointing at it.
+    asset = models.ForeignKey(
+        "assets.Asset",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="blocks",
+    )
 
     # Block properties (key:: value pairs)
     properties = models.JSONField(
@@ -233,6 +244,7 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             "created_at": self.created_at.isoformat(),
             "modified_at": self.modified_at.isoformat(),
             "media_url": self.media_url,
+            "asset": self.asset.to_dict() if self.asset_id else None,
             "properties": self.properties or {},
             "tags": [{"name": tag.slug, "color": "#007bff"} for tag in self.get_tags()],
             "children": None,
@@ -312,6 +324,7 @@ class BlockData(TypedDict):
     created_at: str
     modified_at: str
     media_url: str
+    asset: Optional[dict]
     properties: dict
     tags: Optional[list]
     children: Optional[list["BlockData"]]

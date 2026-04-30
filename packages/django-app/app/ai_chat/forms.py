@@ -3,12 +3,19 @@ from typing import Dict, List, Optional
 from django import forms
 from django.core.exceptions import ValidationError
 
+from assets.models import Asset
+from assets.repositories import AssetRepository
 from common.forms import BaseForm
 from core.models import User
 from core.repositories import UserRepository
 
 from .models import AIModel, ChatSession, PendingToolApproval
 from .repositories import UserSettingsRepository
+
+# Cap how many images a single chat turn can send to the model. Each image
+# costs real tokens (Anthropic ~1.6k for a 1024px image) and providers
+# enforce their own per-request limits, so 5 keeps round-trips predictable.
+MAX_ATTACHMENTS_PER_MESSAGE = 5
 
 
 class SendMessageForm(BaseForm):
@@ -19,6 +26,9 @@ class SendMessageForm(BaseForm):
     model = forms.CharField(required=True)  # Model selection per request
     session_id = forms.CharField(required=False)
     context_blocks = forms.JSONField(required=False)
+    # Asset uuids to attach to this turn. Validated as a list of strings;
+    # ownership + image-only check happens in clean_asset_uuids.
+    asset_uuids = forms.JSONField(required=False)
     enable_notes_tools = forms.BooleanField(required=False)
     # Independent of enable_notes_tools so users can grant reads without
     # writes (or writes without reads, though the model rarely needs that).
@@ -37,10 +47,45 @@ class SendMessageForm(BaseForm):
         return user
 
     def clean_message(self) -> str:
-        message = self.cleaned_data.get("message")
-        if not message or not message.strip():
-            raise ValidationError("Message cannot be empty")
-        return message.strip()
+        # The empty-vs-image check happens in clean() below - by the time
+        # field-level clean_message runs, asset_uuids hasn't been
+        # processed yet (Django runs clean_<field> in declaration
+        # order), so we can't decide here whether an empty caption is OK.
+        return (self.cleaned_data.get("message") or "").strip()
+
+    def clean_asset_uuids(self) -> List[Asset]:
+        raw = self.cleaned_data.get("asset_uuids") or []
+        if not raw:
+            return []
+        if not isinstance(raw, list):
+            raise ValidationError("asset_uuids must be a list")
+        if len(raw) > MAX_ATTACHMENTS_PER_MESSAGE:
+            raise ValidationError(
+                f"At most {MAX_ATTACHMENTS_PER_MESSAGE} attachments per message"
+            )
+
+        user = self.cleaned_data.get("user")
+        if user is None:
+            # clean_user already raised if user was missing; bail out
+            # gracefully here rather than dereferencing None.
+            return []
+
+        resolved: List[Asset] = []
+        for uuid in raw:
+            asset = AssetRepository.get_by_uuid(uuid=str(uuid), user=user)
+            if asset is None:
+                raise ValidationError(f"Asset {uuid} not found")
+            # Hard-cap to images for v1. Other file_types (PDF, video, audio)
+            # are intentional follow-ups - each provider has its own
+            # constraints (e.g. Anthropic accepts PDFs as a separate block
+            # type, OpenAI does not yet).
+            if asset.file_type != Asset.FILE_TYPE_IMAGE:
+                raise ValidationError(
+                    f"Only image attachments are supported in chat for now"
+                    f" (got {asset.file_type or 'unknown'})"
+                )
+            resolved.append(asset)
+        return resolved
 
     def clean_session_id(self) -> Optional[ChatSession]:
         session_id = self.cleaned_data.get("session_id")
@@ -74,6 +119,15 @@ class SendMessageForm(BaseForm):
         user = cleaned_data.get("user")
         if not user:
             raise ValidationError("User is required")
+
+        # Empty caption is OK iff the user is sending images. We check
+        # here (not in clean_message) because clean_<field> methods run
+        # in declaration order and asset_uuids hasn't been processed yet
+        # when clean_message fires.
+        message = cleaned_data.get("message") or ""
+        asset_uuids = cleaned_data.get("asset_uuids") or []
+        if not message and not asset_uuids:
+            self.add_error("message", "Message cannot be empty")
 
         # Get model and validate it exists in our database
         model_name = cleaned_data.get("model")

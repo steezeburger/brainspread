@@ -3,6 +3,8 @@ from typing import Optional
 from django import forms
 from django.core.exceptions import ValidationError
 
+from assets.models import Asset
+from assets.repositories import AssetRepository
 from common.forms import UUIDModelChoiceField
 from common.forms.base_form import BaseForm
 from core.models import User
@@ -25,6 +27,9 @@ class CreateBlockForm(BaseForm):
     media_url = forms.URLField(required=False, initial="")
     media_metadata = forms.JSONField(required=False, initial=dict)
     properties = forms.JSONField(required=False, initial=dict)
+    asset = UUIDModelChoiceField(
+        queryset=AssetRepository.get_queryset(), required=False
+    )
 
     def clean_page(self) -> Optional[Page]:
         page = self.cleaned_data.get("page")
@@ -51,3 +56,12 @@ class CreateBlockForm(BaseForm):
         if not user:
             raise ValidationError("User is required")
         return user
+
+    def clean_asset(self) -> Optional[Asset]:
+        asset = self.cleaned_data.get("asset")
+        user = self.cleaned_data.get("user")
+        # Caller can only attach their own assets - prevents cross-user
+        # asset references via uuid guessing.
+        if asset and user and asset.user_id != user.id:
+            raise ValidationError("Asset not found")
+        return asset

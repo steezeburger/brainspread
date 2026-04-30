@@ -19,6 +19,7 @@ class ChatMessageRepository(BaseRepository):
         thinking: str = "",
         usage: Optional[AIUsage] = None,
         tool_events: Optional[List[Dict[str, Any]]] = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
     ) -> ChatMessage:
         fields = {
             "session": session,
@@ -27,6 +28,7 @@ class ChatMessageRepository(BaseRepository):
             "ai_model": ai_model,
             "thinking": thinking or "",
             "tool_events": tool_events or [],
+            "attachments": attachments or [],
         }
         if usage is not None:
             fields.update(

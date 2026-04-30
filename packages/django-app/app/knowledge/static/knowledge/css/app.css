@@ -200,9 +200,13 @@ body {
 .main-content {
   flex: 1;
   padding: 2rem;
-  padding-left: calc(2rem + var(--leftnav-width, 0px));
   width: 100%;
-  transition: padding-left 0.2s ease;
+  /* Cap the readable area and center it. The leftnav rail and chat
+   * panel are position: fixed against the viewport edges, so they
+   * don't push this container - they overlay the empty gutter that
+   * the centering margin creates on wide screens. */
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
 /* Loading */
@@ -1641,7 +1645,10 @@ kbd {
   background: var(--bg-primary);
   border: 2px solid var(--border-primary);
   box-shadow: 4px 4px 0 var(--border-primary);
-  z-index: 1000;
+  /* Above .chat-panel (1000) and its resize handle (1001). The chat
+   * panel's transform creates its own stacking context, so a popover
+   * at the same z-index would render behind it - bump to 1200. */
+  z-index: 1200;
   min-width: 200px;
 }
 
@@ -3650,6 +3657,18 @@ a.sidebar-item:visited {
   white-space: nowrap;
 }
 
+/* Thumbnail for image-bearing context blocks. Mirrors the chat-input
+ * attachment chip size so the strip stays visually consistent. */
+.context-block-thumb {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid var(--border-secondary);
+  margin-right: 0.4rem;
+  flex-shrink: 0;
+}
+
 .context-block-remove {
   background: none;
   border: none;
@@ -5507,4 +5526,167 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   justify-content: flex-end;
   gap: 0.5rem;
   margin-top: 0.5rem;
+}
+
+/* Asset attachment rendering inside a block. Image renders inline so the
+ * block reads like a richtext note; non-image renders as a chip linking
+ * to the access-controlled serve endpoint. */
+.block-asset {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.block-asset-image {
+  display: block;
+  max-width: 100%;
+  max-height: 480px;
+  height: auto;
+  border-radius: 3px;
+  border: 1px solid var(--border-secondary);
+}
+
+.block-asset-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 3px;
+  background-color: var(--bg-secondary, #f4f4f4);
+  border: 1px solid var(--border-secondary);
+  color: var(--text-primary);
+  text-decoration: none;
+  font-size: 0.85rem;
+  line-height: 1.2;
+  max-width: 100%;
+}
+
+.block-asset-chip:hover {
+  background-color: var(--bg-hover, #e8e8e8);
+  text-decoration: none;
+}
+
+.block-asset-chip-icon {
+  flex: 0 0 auto;
+  opacity: 0.7;
+}
+
+.block-asset-chip-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.block-asset-chip-meta {
+  flex: 0 0 auto;
+  opacity: 0.6;
+  font-size: 0.75rem;
+}
+
+/* Chat input: pending attachment preview + attach button. The chip strip
+ * sits above the textarea so the user sees what they're about to send. */
+.chat-attachments-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  border-top: 1px solid var(--border-secondary);
+  align-items: center;
+}
+
+.chat-attachment-chip {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  overflow: hidden;
+  background-color: var(--bg-secondary, #f4f4f4);
+}
+
+.chat-attachment-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.chat-attachment-remove {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: none;
+  border-radius: 0 0 0 3px;
+  width: 18px;
+  height: 18px;
+  font-size: 0.75rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.chat-attachment-remove:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.chat-attachment-error {
+  flex: 1 1 auto;
+  font-size: 0.75rem;
+  color: var(--danger, #c0392b);
+  align-self: center;
+}
+
+.chat-attach-btn {
+  background: transparent;
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 0.4rem 0.6rem;
+  margin-right: 0.4rem;
+  align-self: flex-end;
+}
+
+.chat-attach-btn:hover:not(:disabled) {
+  background-color: var(--bg-hover, #e8e8e8);
+}
+
+.chat-attach-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Inline attachments inside a chat bubble (history + post-send echo). */
+.message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+
+.message-attachment {
+  display: inline-block;
+  text-decoration: none;
+}
+
+.message-attachment-image {
+  max-width: 280px;
+  max-height: 280px;
+  border-radius: 3px;
+  border: 1px solid var(--border-secondary);
+  display: block;
+}
+
+.message-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  background-color: var(--bg-secondary, #f4f4f4);
+  font-size: 0.85rem;
+  color: var(--text-primary);
 }

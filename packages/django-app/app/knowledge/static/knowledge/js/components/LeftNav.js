@@ -57,24 +57,13 @@ window.LeftNav = {
   mounted() {
     this.loadHistoricalData();
     this.setupResizeListener();
-    this.applyLayoutWidth();
-    window.addEventListener("resize", this.handleWindowResize);
   },
 
   beforeUnmount() {
     this.removeResizeListener();
-    this.clearLayoutWidth();
-    window.removeEventListener("resize", this.handleWindowResize);
   },
 
-  watch: {
-    isOpen() {
-      this.applyLayoutWidth();
-    },
-    width() {
-      this.applyLayoutWidth();
-    },
-  },
+  watch: {},
 
   methods: {
     async loadHistoricalData() {
@@ -110,27 +99,6 @@ window.LeftNav = {
 
     toggleRecent() {
       this.recentExpanded = !this.recentExpanded;
-    },
-
-    applyLayoutWidth() {
-      const isMobile = window.innerWidth <= 768;
-      let value;
-      if (this.isOpen) {
-        value = `${this.width}px`;
-      } else if (!isMobile) {
-        value = "48px"; // Width of the collapsed rail.
-      } else {
-        value = "0px";
-      }
-      document.documentElement.style.setProperty("--leftnav-width", value);
-    },
-
-    clearLayoutWidth() {
-      document.documentElement.style.removeProperty("--leftnav-width");
-    },
-
-    handleWindowResize() {
-      this.applyLayoutWidth();
     },
 
     formatDate(dateString) {

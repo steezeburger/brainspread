@@ -6,6 +6,8 @@ from ai_chat.services.base_ai_service import AIServiceError
 from ai_chat.tools.notes_tool_executor import NotesToolExecutor
 from ai_chat.tools.notes_tools import anthropic_notes_tools, openai_notes_tools
 from ai_chat.tools.web_search import WebSearchTools
+from assets.models import Asset
+from assets.repositories import AssetRepository
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms import SendMessageForm
@@ -58,12 +60,17 @@ class SendMessageCommand(AbstractBaseCommand):
                 message, context_blocks
             )
 
-            ChatMessageRepository.add_message(session, "user", formatted_message)
+            attached_assets: List[Asset] = (
+                self.form.cleaned_data.get("asset_uuids") or []
+            )
+            ChatMessageRepository.add_message(
+                session,
+                "user",
+                formatted_message,
+                attachments=SendMessageCommand._serialize_attachments(attached_assets),
+            )
 
-            messages: List[Dict[str, str]] = [
-                {"role": msg.role, "content": msg.content}
-                for msg in ChatMessageRepository.get_messages(session)
-            ]
+            messages = SendMessageCommand._build_messages_with_images(session)
 
             service = AIServiceFactory.create_service(
                 provider_name=provider_name,
@@ -140,12 +147,18 @@ class SendMessageCommand(AbstractBaseCommand):
 
     @staticmethod
     def _serialize_message(message, ai_model) -> Dict[str, Any]:
+        # getattr-with-default keeps this resilient to test mocks that
+        # don't pre-configure attachments (which is a new field).
+        attachments = getattr(message, "attachments", None)
+        if not isinstance(attachments, list):
+            attachments = []
         return {
             "role": message.role,
             "content": message.content,
             "thinking": message.thinking or None,
             "created_at": message.created_at.isoformat(),
             "tool_events": list(message.tool_events or []),
+            "attachments": list(attachments),
             "usage": {
                 "input_tokens": message.input_tokens,
                 "output_tokens": message.output_tokens,
@@ -162,6 +175,77 @@ class SendMessageCommand(AbstractBaseCommand):
                 else None
             ),
         }
+
+    @staticmethod
+    def _serialize_attachments(assets: List[Asset]) -> List[Dict[str, Any]]:
+        """
+        Persist-safe metadata for attached assets. The bytes themselves
+        live on disk and are re-read per API call by
+        _build_messages_with_images so we don't bloat the messages JSON.
+        """
+        return [
+            {
+                "asset_uuid": str(a.uuid),
+                "mime_type": a.mime_type,
+                "file_type": a.file_type,
+                "byte_size": a.byte_size,
+                "original_filename": a.original_filename,
+            }
+            for a in assets
+        ]
+
+    @staticmethod
+    def _build_messages_with_images(session) -> List[Dict[str, Any]]:
+        """
+        Walk the session's persisted history and attach the bytes for any
+        image attachments. Provider services consume the resulting list via
+        the `images` sidecar key per message and turn that into their
+        provider-specific multimodal block shape.
+
+        Bytes are read fresh from disk every turn rather than cached on the
+        ChatMessage row - keeps the row small and lets a future S3 backend
+        kick in without a data migration.
+        """
+        out: List[Dict[str, Any]] = []
+        for msg in ChatMessageRepository.get_messages(session):
+            entry: Dict[str, Any] = {"role": msg.role, "content": msg.content}
+            attachments = getattr(msg, "attachments", None)
+            if not isinstance(attachments, list):
+                attachments = []
+            images: List[Dict[str, Any]] = []
+            for att in attachments:
+                file_type = att.get("file_type")
+                if file_type != Asset.FILE_TYPE_IMAGE:
+                    # Non-image attachments are persisted for the UI but
+                    # not yet forwarded to providers (see form: only images
+                    # are accepted today).
+                    continue
+                asset = AssetRepository.get_by_uuid(
+                    uuid=att.get("asset_uuid", ""), user=None
+                )
+                if asset is None or not asset.file:
+                    logger.warning(
+                        "Skipping missing asset %s on message %s",
+                        att.get("asset_uuid"),
+                        getattr(msg, "uuid", None),
+                    )
+                    continue
+                try:
+                    with asset.file.open("rb") as fh:
+                        data = fh.read()
+                except FileNotFoundError:
+                    logger.warning("Asset bytes missing on disk for %s", asset.uuid)
+                    continue
+                images.append(
+                    {
+                        "mime_type": asset.mime_type or "application/octet-stream",
+                        "data": data,
+                    }
+                )
+            if images:
+                entry["images"] = images
+            out.append(entry)
+        return out
 
     @staticmethod
     def _format_message_with_context(message: str, context_blocks: List[Dict]) -> str:

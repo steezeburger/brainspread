@@ -8,7 +8,8 @@ from .models import Asset
 class AssetAdmin(admin.ModelAdmin):
     list_display = (
         "short_uuid",
-        "kind",
+        "asset_type",
+        "file_type",
         "user",
         "filename",
         "mime_type",
@@ -16,24 +17,40 @@ class AssetAdmin(admin.ModelAdmin):
         "source_url_short",
         "created_at",
     )
-    list_filter = ("kind", "mime_type", "created_at")
-    search_fields = ("sha256", "source_url", "user__email", "file")
+    list_filter = ("asset_type", "file_type", "mime_type", "created_at")
+    search_fields = ("sha256", "source_url", "user__email", "file", "original_filename")
     readonly_fields = (
         "id",
         "uuid",
         "sha256",
         "byte_size",
         "mime_type",
+        "width",
+        "height",
         "created_at",
         "modified_at",
-        "file_link",
+        "preview",
     )
     raw_id_fields = ("user",)
     ordering = ("-created_at",)
 
     fieldsets = (
-        (None, {"fields": ("user", "kind", "source_url")}),
-        ("File", {"fields": ("file", "file_link", "mime_type", "byte_size", "sha256")}),
+        (None, {"fields": ("user", "asset_type", "file_type", "source_url")}),
+        (
+            "File",
+            {
+                "fields": (
+                    "file",
+                    "preview",
+                    "original_filename",
+                    "mime_type",
+                    "byte_size",
+                    "sha256",
+                    "width",
+                    "height",
+                )
+            },
+        ),
         ("Metadata", {"fields": ("metadata",), "classes": ("collapse",)}),
         (
             "Timestamps",
@@ -45,6 +62,8 @@ class AssetAdmin(admin.ModelAdmin):
     )
 
     def filename(self, obj):
+        if obj.original_filename:
+            return obj.original_filename
         if not obj.file:
             return "-"
         # FieldFile.name is the path relative to MEDIA_ROOT; show just the
@@ -70,11 +89,61 @@ class AssetAdmin(admin.ModelAdmin):
 
     source_url_short.short_description = "Source URL"
 
-    def file_link(self, obj):
+    def preview(self, obj):
+        """
+        Inline rendering of the asset itself so an admin can confirm what
+        was actually uploaded without leaving the page. Images render as
+        a clickable thumbnail; HTML/PDF/text render in an <iframe> sized
+        for a quick read; everything else falls back to a labeled
+        download link.
+
+        Routes through /api/assets/<uuid>/ rather than MEDIA_URL because
+        MEDIA_URL is intentionally unserved (a public /media/ path would
+        leak any file to anyone who guessed it). The serve endpoint lets
+        staff users read any asset, so the admin always sees its bytes.
+        """
         if not obj.file:
             return "-"
+        url = f"/api/assets/{obj.uuid}/"
+        label = obj.original_filename or obj.file.name.rsplit("/", 1)[-1]
+        file_type = obj.file_type or ""
+
+        if file_type == "image":
+            return format_html(
+                '<a href="{}" target="_blank" rel="noopener">'
+                '<img src="{}" style="max-width: 480px; max-height: 360px; '
+                'border: 1px solid #ccc; border-radius: 3px;" alt="{}" />'
+                "</a>",
+                url,
+                url,
+                label,
+            )
+        if (
+            file_type in ("html", "pdf")
+            or file_type == "other"
+            and (obj.mime_type or "").startswith("text/")
+        ):
+            return format_html(
+                '<iframe src="{}" style="width: 100%; max-width: 720px; '
+                'height: 360px; border: 1px solid #ccc; border-radius: 3px;"></iframe>'
+                '<div style="margin-top: 0.4rem;">'
+                '<a href="{}" target="_blank" rel="noopener">open in new tab</a>'
+                "</div>",
+                url,
+                url,
+            )
+        if file_type == "video":
+            return format_html(
+                '<video src="{}" controls style="max-width: 480px; max-height: 360px;">'
+                "</video>",
+                url,
+            )
+        if file_type == "audio":
+            return format_html('<audio src="{}" controls></audio>', url)
         return format_html(
-            '<a href="{}" target="_blank" rel="noopener">download</a>', obj.file.url
+            '<a href="{}" target="_blank" rel="noopener">download {}</a>',
+            url,
+            label,
         )
 
-    file_link.short_description = "Download"
+    preview.short_description = "Preview"
