@@ -1788,14 +1788,14 @@ kbd {
     padding-left: 2rem;
   }
 
-  /* Mobile: collapse the rail to just the floating toggle. */
+  /* Mobile: collapse the rail to just the floating toggle in the top-left. */
   .leftnav-rail {
     width: auto;
     height: auto;
     background: transparent;
     border: none;
     padding: 0;
-    top: 88px;
+    top: 8px;
     left: 8px;
   }
 
@@ -1806,12 +1806,12 @@ kbd {
   .leftnav-rail-toggle {
     background: var(--bg-primary);
     color: var(--text-primary);
-    border: 2px solid var(--border-primary);
-    padding: 0.4rem 0.6rem;
-    font-weight: bold;
+    border: 1px solid var(--border-primary);
+    border-radius: 3px;
+    padding: 0.15rem 0.35rem;
     width: auto;
     height: auto;
-    box-shadow: 2px 2px 0 var(--border-primary);
+    box-shadow: none;
   }
 
   /* Mobile drawer backdrop. */
