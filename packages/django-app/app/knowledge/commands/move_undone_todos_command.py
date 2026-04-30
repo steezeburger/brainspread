@@ -4,9 +4,11 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 from core.helpers import today_for_user
 
 from ..forms.move_undone_todos_form import MoveUndoneTodosForm
+from ..forms.touch_page_form import TouchPageForm
 from ..models import BlockData, PageData
 from ..repositories import BlockRepository
 from ..repositories.page_repository import PageRepository
+from .touch_page_command import TouchPageCommand
 
 
 class MoveUndoneTodosCommand(AbstractBaseCommand):
@@ -38,11 +40,22 @@ class MoveUndoneTodosCommand(AbstractBaseCommand):
                 "message": "No undone TODOs found to move",
             }
 
+        # Capture every distinct source page before the move — afterwards
+        # block.page would point at target_page and we'd lose the origin.
+        source_pages = {block.page for block in past_todos}
+
         # Move the blocks to target page
         success = BlockRepository.move_blocks_to_page(past_todos, target_page)
 
         if not success:
             raise Exception("Failed to move blocks to target page")
+
+        # Bump modified_at on each source plus the target so the recent
+        # pages sidebar reflects the activity on both ends.
+        for page in source_pages | {target_page}:
+            touch_form = TouchPageForm(data={"user": user.id, "page": str(page.uuid)})
+            if touch_form.is_valid():
+                TouchPageCommand(touch_form).execute()
 
         return {
             "moved_count": len(past_todos),

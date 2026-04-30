@@ -259,3 +259,54 @@ class TestSendDueRemindersCommand(TestCase):
         self.assertEqual(result["failed"], 1)
         self.assertEqual(reminder.status, Reminder.STATUS_FAILED)
         self.assertIn("no webhook", reminder.last_error.lower())
+
+    def test_appends_page_link_when_site_url_set(self):
+        page = PageFactory(user=self.user, title="Backlog", slug="backlog")
+        block = BlockFactory(user=self.user, page=page, content="TODO ship")
+        Reminder.objects.create(
+            block=block,
+            fire_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        captured: dict = {}
+
+        def _capture(url: str, content: str, **_kwargs):
+            captured["content"] = content
+            return DiscordDeliveryResult(True, "")
+
+        with (
+            self.settings(SITE_URL="https://app.example.com"),
+            patch(
+                "knowledge.commands.send_due_reminders_command.post_webhook", _capture
+            ),
+        ):
+            self._run()
+
+        self.assertIn(
+            "https://app.example.com/knowledge/page/backlog/", captured["content"]
+        )
+
+    def test_omits_page_link_when_site_url_is_placeholder(self):
+        # Default SITE_URL is "0.0.0.0" with no scheme — produces a broken
+        # link, so the formatter should leave it out.
+        block = BlockFactory(user=self.user, page=self.page, content="TODO ship")
+        Reminder.objects.create(
+            block=block,
+            fire_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        captured: dict = {}
+
+        def _capture(url: str, content: str, **_kwargs):
+            captured["content"] = content
+            return DiscordDeliveryResult(True, "")
+
+        with (
+            self.settings(SITE_URL="0.0.0.0"),
+            patch(
+                "knowledge.commands.send_due_reminders_command.post_webhook", _capture
+            ),
+        ):
+            self._run()
+
+        self.assertNotIn("/knowledge/page/", captured["content"])

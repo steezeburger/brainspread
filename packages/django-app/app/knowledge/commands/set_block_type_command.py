@@ -6,7 +6,9 @@ from django.utils import timezone
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.set_block_type_form import SetBlockTypeForm
+from ..forms.touch_page_form import TouchPageForm
 from ..models import Block
+from .touch_page_command import TouchPageCommand
 
 # Block types that carry a leading content prefix (e.g. "TODO write docs").
 STATE_PREFIXES = {
@@ -31,6 +33,7 @@ class SetBlockTypeCommand(AbstractBaseCommand):
         super().execute()
 
         block: Block = self.form.cleaned_data["block"]
+        user = self.form.cleaned_data["user"]
         new_type: str = self.form.cleaned_data["block_type"]
         old_type = block.block_type
 
@@ -43,6 +46,11 @@ class SetBlockTypeCommand(AbstractBaseCommand):
         )
         block.block_type = new_type
         block.save()
+
+        touch_form = TouchPageForm(data={"user": user.id, "page": str(block.page.uuid)})
+        if touch_form.is_valid():
+            TouchPageCommand(touch_form).execute()
+
         return block
 
     @staticmethod

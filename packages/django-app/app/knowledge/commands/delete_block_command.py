@@ -1,7 +1,10 @@
 from common.commands.abstract_base_command import AbstractBaseCommand
 from knowledge.forms.delete_block_form import DeleteBlockForm
+from knowledge.forms.touch_page_form import TouchPageForm
 from web_archives.commands import SoftDeleteWebArchiveCommand
 from web_archives.forms import SoftDeleteWebArchiveForm
+
+from .touch_page_command import TouchPageCommand
 
 
 class DeleteBlockCommand(AbstractBaseCommand):
@@ -26,5 +29,14 @@ class DeleteBlockCommand(AbstractBaseCommand):
         if archive_form.is_valid():
             SoftDeleteWebArchiveCommand(archive_form).execute()
 
+        # Capture the page reference before the delete cascades — afterwards
+        # block.page would still resolve from the unsaved instance, but we
+        # want the explicit local for clarity.
+        page = block.page
         block.delete()
+
+        touch_form = TouchPageForm(data={"user": user.id, "page": str(page.uuid)})
+        if touch_form.is_valid():
+            TouchPageCommand(touch_form).execute()
+
         return True

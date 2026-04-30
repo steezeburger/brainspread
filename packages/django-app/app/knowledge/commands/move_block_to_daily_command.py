@@ -7,9 +7,11 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 from core.helpers import today_for_user
 
 from ..forms.move_block_to_daily_form import MoveBlockToDailyForm
+from ..forms.touch_page_form import TouchPageForm
 from ..models import BlockData, PageData
 from ..repositories import BlockRepository
 from ..repositories.page_repository import PageRepository
+from .touch_page_command import TouchPageCommand
 
 
 class MoveBlockToDailyCommand(AbstractBaseCommand):
@@ -39,6 +41,9 @@ class MoveBlockToDailyCommand(AbstractBaseCommand):
             }
 
         descendants = BlockRepository.get_block_descendants(block)
+        # Capture before reassignment so we still know where the block came
+        # from after block.page is repointed at target_page.
+        source_page = block.page
 
         with transaction.atomic():
             max_order = (
@@ -56,6 +61,13 @@ class MoveBlockToDailyCommand(AbstractBaseCommand):
             for descendant in descendants:
                 descendant.page = target_page
                 descendant.save(update_fields=["page"])
+
+        # Bump modified_at on both ends of the move so each daily page sorts
+        # to the top of the recent list when it loses or gains content.
+        for page in {source_page, target_page}:
+            touch_form = TouchPageForm(data={"user": user.id, "page": str(page.uuid)})
+            if touch_form.is_valid():
+                TouchPageCommand(touch_form).execute()
 
         return {
             "moved": True,
