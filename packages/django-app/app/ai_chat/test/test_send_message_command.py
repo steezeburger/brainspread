@@ -325,13 +325,15 @@ class SendMessageCommandTestCase(TestCase):
     def test_format_message_includes_block_uuid_and_image_marker(self):
         """
         A context block with an uuid + attached image should produce a
-        bullet that includes the uuid (so the AI can target it with
-        notes tools) and an image-attached marker (so the AI can tell
+        bullet that includes the uuid + page uuid (so the AI can target
+        it with notes tools — create_block needs page_uuid alongside
+        parent_uuid) and an image-attached marker (so the AI can tell
         which block the multimodal image bytes go with).
         """
         context_blocks = [
             {
                 "uuid": "7c8a3b9d-1234-5678-90ab-cdef01234567",
+                "page_uuid": "aaaaaaaa-1111-2222-3333-444444444444",
                 "content": "Screenshot from yesterday",
                 "block_type": "bullet",
                 "asset": {
@@ -344,6 +346,7 @@ class SendMessageCommandTestCase(TestCase):
             },
             {
                 "uuid": "9d2f1a4c-1234-5678-90ab-cdef01234567",
+                "page_uuid": "bbbbbbbb-1111-2222-3333-444444444444",
                 "content": "",
                 "block_type": "bullet",
                 "asset": {
@@ -360,10 +363,19 @@ class SendMessageCommandTestCase(TestCase):
             "what's in these", context_blocks
         )
 
-        # Both block uuids surface so the AI can call create_block()
-        # against the right parent.
-        self.assertIn("[block 7c8a3b9d-1234-5678-90ab-cdef01234567]", formatted)
-        self.assertIn("[block 9d2f1a4c-1234-5678-90ab-cdef01234567]", formatted)
+        # Block + page uuids both surface so the AI can call
+        # create_block(page_uuid=..., parent_uuid=...) directly without
+        # going hunting via search_notes.
+        self.assertIn(
+            "[block 7c8a3b9d-1234-5678-90ab-cdef01234567"
+            " on page aaaaaaaa-1111-2222-3333-444444444444]",
+            formatted,
+        )
+        self.assertIn(
+            "[block 9d2f1a4c-1234-5678-90ab-cdef01234567"
+            " on page bbbbbbbb-1111-2222-3333-444444444444]",
+            formatted,
+        )
         # And both image filenames are flagged.
         self.assertIn("(image attached: screenshot.png)", formatted)
         self.assertIn("(image attached: diagram.png)", formatted)

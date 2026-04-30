@@ -253,9 +253,13 @@ class SendMessageCommand(AbstractBaseCommand):
         Render context blocks as a markdown bullet list prepended to the
         user's question. Each entry includes:
 
-          - The block uuid in `[block <uuid>]` form so the model can
-            target it with notes tools (e.g. create a child block under
-            an image with `create_block(parent_uuid=<uuid>, ...)`).
+          - A `[block <uuid> on page <page_uuid>]` marker so the model
+            can target it with notes tools. Both ids are needed because
+            create_block requires `page_uuid` AND optionally
+            `parent_uuid`; without the page id the AI ends up calling
+            search_notes / get_page_by_title to hunt for the page,
+            which fails when the user attached the block visually
+            without writing its title in the chat.
           - The text content (when present).
           - An "(image attached: <filename>)" marker when the block has
             an asset, so an image-only block isn't silently dropped from
@@ -269,6 +273,7 @@ class SendMessageCommand(AbstractBaseCommand):
         context_text_parts = []
         for block in context_blocks:
             uuid = (block.get("uuid") or "").strip()
+            page_uuid = (block.get("page_uuid") or "").strip()
             content = (block.get("content") or "").strip()
             block_type = block.get("block_type", "bullet")
             asset = block.get("asset") or None
@@ -281,7 +286,9 @@ class SendMessageCommand(AbstractBaseCommand):
                 prefix = "•"
 
             bits = []
-            if uuid:
+            if uuid and page_uuid:
+                bits.append(f"[block {uuid} on page {page_uuid}]")
+            elif uuid:
                 bits.append(f"[block {uuid}]")
             if content:
                 bits.append(content)
