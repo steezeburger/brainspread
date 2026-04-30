@@ -1743,12 +1743,25 @@ kbd {
     align-items: center;
   }
 
-  /* Stack the daily date picker + context menu vertically and center
-     the picker so it clears the fixed leftnav toggle in the top-left. */
+  /* On the daily page, center the date picker (so it clears the fixed
+     leftnav toggle in the top-left) while keeping the context menu
+     anchored to the right edge. Three-column grid: empty | picker |
+     menu, with the empty 1fr balancing the menu's 1fr. */
   .daily-note-title.page-header-flex {
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
     gap: 0.5rem;
+  }
+
+  .daily-note-title.page-header-flex .title-left {
+    grid-column: 2;
+    justify-self: center;
+  }
+
+  .daily-note-title.page-header-flex .header-controls {
+    grid-column: 3;
+    justify-self: end;
   }
 
   .child-block {
