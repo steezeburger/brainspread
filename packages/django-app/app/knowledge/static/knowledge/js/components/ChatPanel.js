@@ -50,6 +50,11 @@ const ChatPanel = {
       // Most-recent upload error so the user sees why the chip didn't
       // appear. Cleared on the next successful upload or send.
       attachmentError: "",
+      // Mirror of the server-side MAX_ATTACHMENTS_PER_MESSAGE. Lives in
+      // data() so the template can reach it via this.MAX_CHAT_ATTACHMENTS;
+      // putting it in methods would make Vue treat it as a non-function
+      // and `this.MAX_CHAT_ATTACHMENTS` would be undefined.
+      MAX_CHAT_ATTACHMENTS: 5,
     };
   },
   mounted() {
@@ -272,11 +277,6 @@ const ChatPanel = {
         }
       });
     },
-    // Cap the chat-side attachment count at the same number the server
-    // form enforces. If a user pastes / drops more, the trailing ones
-    // are rejected with a clear toast rather than failing on send.
-    MAX_CHAT_ATTACHMENTS: 5,
-
     extractFilesFromEvent(event) {
       const files = [];
       const dt = event.clipboardData || event.dataTransfer;
