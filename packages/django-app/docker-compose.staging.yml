@@ -1,0 +1,12 @@
+services:
+  web:
+    ports:
+      - "${WEB_PORT:-8000}:${WEB_PORT:-8000}"
+    mem_limit: 512m
+    mem_reservation: 256m
+  db:
+    mem_limit: 384m
+    mem_reservation: 192m
+  scheduler:
+    mem_limit: 128m
+    mem_reservation: 64m
