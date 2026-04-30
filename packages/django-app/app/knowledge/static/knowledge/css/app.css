@@ -4547,9 +4547,12 @@ a.sidebar-item:visited {
   color: var(--text-primary);
   border: 2px solid var(--border-secondary);
   /* padding-right reserves just enough for the 14px calendar glyph
-     painted by .title-left::after. Sized to the date string so the
-     icon sits flush against the date text rather than a long gap. */
+     painted by .title-left::after. width: fit-content overrides the
+     locale-based intrinsic width Chromium gives <input type="date">,
+     which would otherwise leave empty space to the right of the date
+     string. */
   padding: 0.5rem 1.25rem 0.5rem 0.5rem;
+  width: fit-content;
   font-family: inherit;
   font-size: 1rem;
   cursor: pointer;
