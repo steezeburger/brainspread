@@ -420,6 +420,89 @@ body {
   opacity: 0.85;
 }
 
+/* Context picker popover - lives inside the chat-controls row, anchored
+ * above the ctx button. Lists the current page's visible blocks and
+ * lets the user toggle each one in/out of context with a click. */
+.context-picker-wrapper {
+  position: relative;
+}
+
+.context-picker {
+  position: absolute;
+  bottom: calc(100% + 0.4rem);
+  left: 0;
+  width: 280px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  border: 2px solid var(--border-primary);
+  box-shadow: 4px 4px 0 var(--border-primary);
+  /* Above the chat panel (1000) and its resize handle (1001) so the
+   * popover never tucks behind page chrome. */
+  z-index: 1200;
+  padding: 0.4rem 0;
+}
+
+.context-picker-header {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 0 0.6rem 0.4rem;
+}
+
+.context-picker-empty {
+  padding: 0.5rem 0.6rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.context-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  background: transparent;
+  border: none;
+  text-align: left;
+  font: inherit;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.context-picker-item:hover {
+  background: var(--hover-bg);
+}
+
+.context-picker-item.is-selected {
+  background: var(--accent-bg);
+}
+
+.context-picker-check {
+  flex-shrink: 0;
+  font-size: 0.95rem;
+  width: 1.2em;
+  text-align: center;
+}
+
+.context-picker-thumb {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+}
+
+.context-picker-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+}
+
 /* Tools chip inverts fg/bg when any tool is on — matches the ctx chip
    treatment so "chip inverted = feature on" is a single consistent rule. */
 .chat-controls .tools-btn.active {

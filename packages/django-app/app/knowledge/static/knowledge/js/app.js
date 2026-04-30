@@ -960,7 +960,9 @@ const KnowledgeApp = createApp({
                             ref="chatPanel"
                             :chat-context-blocks="chatContextBlocks"
                             :visible-blocks="visibleBlocks"
+                            :is-block-in-context="isBlockInContext"
                             @open-settings="onChatPanelOpenSettings"
+                            @add-context-block="onBlockAddToContext"
                             @remove-context-block="onBlockRemoveFromContext"
                             @clear-context="clearChatContext"
                         />
