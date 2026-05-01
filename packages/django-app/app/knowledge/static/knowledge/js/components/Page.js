@@ -431,6 +431,12 @@ const Page = {
 
       if (!confirmed) return;
 
+      // Mark the block as being deleted before we hit the API so any
+      // blur-triggered stopEditing -> updateBlock that races with the
+      // delete becomes a no-op. The blur can fire when the confirm()
+      // dialog steals focus, or when loadPage() rerenders the tree.
+      this.deletingBlocks.add(block.uuid);
+
       try {
         const result = await window.apiService.deleteBlock(block.uuid);
         if (result.success) {
@@ -439,13 +445,16 @@ const Page = {
       } catch (error) {
         console.error("failed to delete block:", error);
         this.error = "failed to delete block";
+      } finally {
+        // Hold the guard briefly so any in-flight blur handlers that
+        // queued after the delete still see the block as "deleting".
+        setTimeout(() => {
+          this.deletingBlocks.delete(block.uuid);
+        }, 100);
       }
     },
 
     async deleteEmptyBlock(block) {
-      // Mark block as being deleted to prevent save conflicts
-      this.deletingBlocks.add(block.uuid);
-
       // Find the previous block to focus after deletion
       const previousBlock = this.findPreviousBlock(block);
 
@@ -473,13 +482,6 @@ const Page = {
         }
       } catch (error) {
         console.error("Failed to delete empty block:", error);
-        // Remove from deleting set on error
-        this.deletingBlocks.delete(block.uuid);
-      } finally {
-        // Clean up tracking after a delay to ensure blur events have processed
-        setTimeout(() => {
-          this.deletingBlocks.delete(block.uuid);
-        }, 100);
       }
     },
 
