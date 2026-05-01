@@ -166,6 +166,13 @@ MEDIA_ROOT = os.environ.get("MEDIA_ROOT", os.path.join(BASE_DIR, "media"))
 # Asset upload limits. The mime whitelist is conservative on purpose - this
 # is the door for user-uploaded bytes, so widen it deliberately rather than
 # by accident.
+#
+# Entries support a `type/*` wildcard (handled in
+# UploadAssetForm._mime_matches_whitelist). `text/*` is the cleanest way to
+# accept code/data files (csv, json, .py, .sh, .yaml, .toml, ...) without
+# enumerating every browser's per-extension MIME guess - browsers are
+# inconsistent about whether a .py uploads as text/x-python, text/plain,
+# or application/octet-stream depending on OS/file association.
 ASSET_UPLOAD_MAX_BYTES = int(
     os.environ.get("ASSET_UPLOAD_MAX_BYTES", str(25 * 1024 * 1024))
 )
@@ -175,7 +182,9 @@ ASSET_UPLOAD_MIME_WHITELIST = [
         "ASSET_UPLOAD_MIME_WHITELIST",
         "image/jpeg,image/png,image/gif,image/webp,image/svg+xml,"
         "application/pdf,"
-        "text/plain,text/markdown,text/html,"
+        "text/*,"
+        "application/json,application/x-sh,application/x-yaml,"
+        "application/yaml,application/toml,application/xml,"
         "audio/mpeg,audio/wav,audio/ogg,audio/webm,"
         "video/mp4,video/webm,video/quicktime",
     ).split(",")
