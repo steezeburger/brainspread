@@ -384,6 +384,25 @@ const Page = {
       }
     },
 
+    async setBlockProperties(block, partial) {
+      // Shallow-merge `partial` into the block's existing properties
+      // (so toggling one flag doesn't drop the others) and persist.
+      // Used by the context-menu render toggle for code blocks.
+      const merged = { ...(block.properties || {}), ...partial };
+      try {
+        const result = await window.apiService.updateBlock(block.uuid, {
+          properties: merged,
+        });
+        if (result.success) {
+          block.properties = merged;
+        } else {
+          console.error("failed to update block properties:", result.errors);
+        }
+      } catch (error) {
+        console.error("failed to update block properties:", error);
+      }
+    },
+
     async updateBlock(block, newContent, skipReload = false) {
       try {
         const result = await window.apiService.updateBlock(block.uuid, {
@@ -999,17 +1018,20 @@ const Page = {
 
       // Render a fenced code block. Recognized languages (mermaid, csv,
       // tsv) get specialized rendering; everything else falls through to
-      // <pre><code> tagged for Prism syntax highlighting.
-      const renderCodeBlock = (source, lang) => {
+      // <pre><code> tagged for Prism syntax highlighting. `forceRaw`
+      // suppresses the specialized renderers so the toggle in the block
+      // menu can fall back to the plain code view.
+      const renderCodeBlock = (source, lang, forceRaw = false) => {
         const langLower = lang ? lang.toLowerCase() : "";
         const langBadge = lang
           ? `<span class="block-code-lang">${escapeHtml(lang)}</span>`
           : "";
-        if (langLower === "mermaid") {
+        if (!forceRaw && langLower === "mermaid") {
           const attrEscaped = escapeHtml(source).replace(/"/g, "&quot;");
           return `<div class="block-mermaid-wrapper">${langBadge}<div class="block-mermaid" data-mermaid-source="${attrEscaped}"></div></div>`;
         }
         if (
+          !forceRaw &&
           (langLower === "csv" || langLower === "tsv") &&
           window.brainspreadCsv
         ) {
@@ -1037,7 +1059,8 @@ const Page = {
       // block with no other markdown formatting applied.
       if (blockType === "code") {
         const lang = properties?.language || "";
-        return renderCodeBlock(content, lang);
+        const forceRaw = properties?.render === "raw";
+        return renderCodeBlock(content, lang, forceRaw);
       }
 
       let formatted = content;
@@ -2894,6 +2917,7 @@ const Page = {
                 :stopEditing="stopEditing"
                 :deleteBlock="deleteBlock"
                 :toggleBlockTodo="toggleBlockTodo"
+                :setBlockProperties="setBlockProperties"
                 :formatContentWithTags="formatContentWithTags"
                 :isBlockInContext="isBlockInContext"
                 :isBlockSelected="isBlockSelected"
@@ -2931,6 +2955,7 @@ const Page = {
               :stopEditing="stopEditing"
               :deleteBlock="deleteBlock"
               :toggleBlockTodo="toggleBlockTodo"
+              :setBlockProperties="setBlockProperties"
               :formatContentWithTags="formatContentWithTags"
               :isBlockInContext="isBlockInContext"
               :isBlockSelected="isBlockSelected"
@@ -2979,6 +3004,7 @@ const Page = {
                 :stopEditing="stopEditing"
                 :deleteBlock="deleteBlock"
                 :toggleBlockTodo="toggleBlockTodo"
+                :setBlockProperties="setBlockProperties"
                 :formatContentWithTags="formatContentWithTags"
                 :isBlockInContext="isBlockInContext"
                 :isBlockSelected="isBlockSelected"

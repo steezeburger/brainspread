@@ -29,6 +29,10 @@ const BlockComponent = {
       type: Function,
       required: true,
     },
+    setBlockProperties: {
+      type: Function,
+      default: () => () => {},
+    },
     formatContentWithTags: {
       type: Function,
       required: true,
@@ -145,6 +149,17 @@ const BlockComponent = {
   computed: {
     blockInContext() {
       return this.isBlockInContext(this.block.uuid);
+    },
+    canToggleCodeRender() {
+      // Only code blocks whose language has a specialized renderer can
+      // toggle between rendered and raw views. Plain code (python, js,
+      // …) always renders the same way, so the toggle would be a no-op.
+      if (this.block.block_type !== "code") return false;
+      const lang = (this.block.properties?.language || "").toLowerCase();
+      return ["mermaid", "csv", "tsv"].includes(lang);
+    },
+    isCodeRenderedRaw() {
+      return this.block.properties?.render === "raw";
     },
     blockSelected() {
       return this.isBlockSelected(this.block.uuid);
@@ -1074,7 +1089,15 @@ const BlockComponent = {
         case "attachFile":
           this.triggerAttachFilePicker();
           break;
+        case "toggleCodeRender":
+          this.toggleCodeRender();
+          break;
       }
+    },
+
+    toggleCodeRender() {
+      const next = this.isCodeRenderedRaw ? "rendered" : "raw";
+      this.setBlockProperties(this.block, { render: next });
     },
 
     triggerAttachFilePicker() {
@@ -1541,6 +1564,13 @@ const BlockComponent = {
           <span class="context-menu-icon">←</span>
           <span>outdent</span>
         </button>
+        <template v-if="canToggleCodeRender">
+          <div class="context-menu-separator"></div>
+          <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('toggleCodeRender')">
+            <span class="context-menu-icon">⇄</span>
+            <span>{{ isCodeRenderedRaw ? 'show as rendered' : 'show as raw' }}</span>
+          </button>
+        </template>
         <div class="context-menu-separator"></div>
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('moveUp')">
           <span class="context-menu-icon">↑</span>
