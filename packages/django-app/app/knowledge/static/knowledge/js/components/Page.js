@@ -2918,6 +2918,14 @@ const Page = {
         <div class="page-header whiteboard-page-header">
           <div class="page-title-container page-header-flex">
             <div class="page-header-flex-left">
+              <button
+                type="button"
+                class="page-favorite-toggle"
+                :class="{ 'is-favorited': isFavorited }"
+                @click="toggleFavorited"
+                :title="isFavorited ? 'Remove from favorites' : 'Add to favorites'"
+                :aria-pressed="isFavorited"
+              >☆</button>
               <div v-if="!isEditingTitle" class="page-title-display">
                 <h1 class="page-title-text" tabindex="0" role="button" aria-label="Edit page title" @click="startEditingTitle" @keydown.enter.prevent="startEditingTitle" @keydown.space.prevent="startEditingTitle">{{ page.title || 'Untitled Whiteboard' }}</h1>
               </div>
@@ -2968,6 +2976,14 @@ const Page = {
                   class="date-picker"
                   title="Navigate to date"
                 />
+                <button
+                  type="button"
+                  class="page-favorite-toggle"
+                  :class="{ 'is-favorited': isFavorited }"
+                  @click="toggleFavorited"
+                  :title="isFavorited ? 'Remove from favorites' : 'Add to favorites'"
+                  :aria-pressed="isFavorited"
+                >☆</button>
               </div>
               <div class="header-controls">
                 <div class="context-menu-container">
@@ -2998,6 +3014,14 @@ const Page = {
             <!-- Regular Page Title (Editable) -->
             <div v-else class="page-title-container page-header-flex">
               <div class="page-header-flex-left">
+                <button
+                  type="button"
+                  class="page-favorite-toggle"
+                  :class="{ 'is-favorited': isFavorited }"
+                  @click="toggleFavorited"
+                  :title="isFavorited ? 'Remove from favorites' : 'Add to favorites'"
+                  :aria-pressed="isFavorited"
+                >☆</button>
                 <div v-if="!isEditingTitle" class="page-title-display">
                   <h1 class="page-title-text" tabindex="0" role="button" aria-label="Edit page title" @click="startEditingTitle" @keydown.enter.prevent="startEditingTitle" @keydown.space.prevent="startEditingTitle">{{ page.title || 'Untitled Page' }}</h1>
                 </div>

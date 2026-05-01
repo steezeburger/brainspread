@@ -4546,6 +4546,39 @@ a.sidebar-item:visited {
   flex: 1;
 }
 
+.page-favorite-toggle {
+  background: transparent;
+  border: none;
+  padding: 0.15rem 0.3rem;
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease;
+}
+
+/* Reveal on hover/focus of the surrounding title row, or whenever the
+   button itself has focus, so keyboard users can still reach it. The
+   star intentionally stays hollow + hover-only even when favorited;
+   the left-nav Favorites list and the page menu carry the state. */
+.page-header-flex-left:hover .page-favorite-toggle,
+.title-left:hover .page-favorite-toggle,
+.page-favorite-toggle:focus,
+.page-favorite-toggle:focus-visible {
+  opacity: 1;
+}
+
+.page-favorite-toggle:hover {
+  color: var(--text-primary);
+}
+
+.page-favorite-toggle.is-favorited {
+  color: var(--context-color);
+}
+
 .page-title-text {
   font-size: 2rem;
   font-weight: bold;
