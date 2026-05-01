@@ -157,12 +157,20 @@ const BlockComponent = {
       return this.isBlockInContext(this.block.uuid);
     },
     canToggleCodeRender() {
-      // Only code blocks whose language has a specialized renderer can
-      // toggle between rendered and raw views. Plain code (python, js,
-      // …) always renders the same way, so the toggle would be a no-op.
-      if (this.block.block_type !== "code") return false;
-      const lang = (this.block.properties?.language || "").toLowerCase();
-      return ["mermaid", "csv", "tsv"].includes(lang);
+      // Code-typed blocks: only those whose language has a specialized
+      // renderer get the toggle. Plain code (python, js, …) renders the
+      // same way either way so a toggle would be a no-op.
+      if (this.block.block_type === "code") {
+        const lang = (this.block.properties?.language || "").toLowerCase();
+        return ["mermaid", "csv", "tsv"].includes(lang);
+      }
+      // Text-typed blocks: the toggle lights up if the content contains
+      // an inline ```mermaid / ```csv / ```tsv fenced block. The
+      // formatter applies the toggle to every inline fence in the block
+      // together, so one block-level state covers however many fences
+      // the user pasted in.
+      const content = this.block.content || "";
+      return /```(mermaid|csv|tsv)\b[^\n`]*\n[\s\S]*?```/i.test(content);
     },
     canToggleAssetRender() {
       // The toggle applies to anything we render inline — images, plus

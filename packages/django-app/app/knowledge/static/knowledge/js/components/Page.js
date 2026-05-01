@@ -1216,11 +1216,16 @@ const Page = {
       });
 
       // Restore fenced code blocks last so their inner content was never
-      // run through any of the markdown transforms above.
+      // run through any of the markdown transforms above. The block's
+      // properties.render flag forces every inline fence in the block to
+      // its raw view together — that's the granularity the context-menu
+      // toggle operates at, since one block can hold several fences and
+      // toggling them individually would need per-fence UI.
+      const inlineForceRaw = properties?.render === "raw";
       fenceSegments.forEach((seg, idx) => {
         formatted = formatted
           .split(`\x00FENCE${idx}\x00`)
-          .join(renderCodeBlock(seg.code, seg.lang));
+          .join(renderCodeBlock(seg.code, seg.lang, inlineForceRaw));
       });
 
       return formatted;
