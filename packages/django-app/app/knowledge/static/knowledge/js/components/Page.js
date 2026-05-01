@@ -997,23 +997,38 @@ const Page = {
       const escapeHtml = (s) =>
         s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-      // Render a fenced code block (or a mermaid placeholder when the
-      // language is "mermaid"). Shared between the block-type=code path
-      // and inline ```fences``` inside text-typed blocks.
+      // Render a fenced code block. Recognized languages (mermaid, csv,
+      // tsv) get specialized rendering; everything else falls through to
+      // <pre><code> tagged for Prism syntax highlighting.
       const renderCodeBlock = (source, lang) => {
+        const langLower = lang ? lang.toLowerCase() : "";
         const langBadge = lang
           ? `<span class="block-code-lang">${escapeHtml(lang)}</span>`
           : "";
-        if (lang && lang.toLowerCase() === "mermaid") {
+        if (langLower === "mermaid") {
           const attrEscaped = escapeHtml(source).replace(/"/g, "&quot;");
           return `<div class="block-mermaid-wrapper">${langBadge}<div class="block-mermaid" data-mermaid-source="${attrEscaped}"></div></div>`;
+        }
+        if (
+          (langLower === "csv" || langLower === "tsv") &&
+          window.brainspreadCsv
+        ) {
+          const tableHtml = window.brainspreadCsv.renderCsvTable(
+            source,
+            langLower === "tsv" ? "\t" : ","
+          );
+          if (tableHtml) {
+            return `<div class="block-csv-wrapper">${langBadge}${tableHtml}</div>`;
+          }
+          // Empty/invalid CSV — fall through to the plain code rendering
+          // below so the user still sees their source.
         }
         const escaped = escapeHtml(source);
         // Tag <code> with a Prism language class so the autoloader can
         // pick up the right grammar after mount. The autoloader fetches
         // each language file lazily on first use, so unused languages
         // cost nothing at app boot.
-        const safeLang = lang ? lang.toLowerCase().replace(/[^\w-]/g, "") : "";
+        const safeLang = langLower.replace(/[^\w-]/g, "");
         const langClass = safeLang ? ` class="language-${safeLang}"` : "";
         return `<div class="block-code-wrapper">${langBadge}<pre class="block-code"><code${langClass}>${escaped}</code></pre></div>`;
       };

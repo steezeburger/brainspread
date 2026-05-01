@@ -5031,6 +5031,50 @@ kbd {
   white-space: pre-wrap;
 }
 
+.block-csv-wrapper {
+  position: relative;
+  display: block;
+  margin: 0.25em 0;
+}
+
+.block-csv-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
+  border-radius: 4px;
+  background-color: var(--bg-secondary, rgba(0, 0, 0, 0.04));
+}
+
+.block-csv {
+  border-collapse: collapse;
+  font-size: 0.85em;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.block-csv th,
+.block-csv td {
+  padding: 0.35em 0.7em;
+  border-right: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
+  border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
+  text-align: left;
+  vertical-align: top;
+  white-space: pre-wrap;
+}
+
+.block-csv th:last-child,
+.block-csv td:last-child {
+  border-right: none;
+}
+
+.block-csv tr:last-child td {
+  border-bottom: none;
+}
+
+.block-csv th {
+  font-weight: 600;
+  background-color: var(--bg-tertiary, rgba(0, 0, 0, 0.06));
+}
+
 /* Whiteboard page (tldraw) */
 .page-content-whiteboard {
   display: flex;
