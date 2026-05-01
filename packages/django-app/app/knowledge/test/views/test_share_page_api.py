@@ -1,8 +1,10 @@
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
+from assets.models import Asset
 from knowledge.test.helpers import BlockFactory, PageFactory, UserFactory
 
 
@@ -107,3 +109,147 @@ class PublicPageViewTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.content.decode("utf-8")
         self.assertIn("index, follow", body)
+
+
+class PublicAssetViewTestCase(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.owner = UserFactory(email="owner@example.com")
+        cls.outsider = UserFactory(email="outsider@example.com")
+
+        cls.page = PageFactory(user=cls.owner, title="With Pictures")
+        cls.page.share_token = "asset-share-token"
+        cls.page.share_mode = "link"
+        cls.page.save()
+
+        # Asset attached via FK on a block in the shared page.
+        cls.fk_asset = Asset.objects.create(
+            user=cls.owner,
+            file_type=Asset.FILE_TYPE_IMAGE,
+            asset_type=Asset.ASSET_TYPE_BLOCK_ATTACHMENT,
+            file=SimpleUploadedFile(
+                "fk.png", b"fake-fk-bytes", content_type="image/png"
+            ),
+            original_filename="fk.png",
+            mime_type="image/png",
+            byte_size=len(b"fake-fk-bytes"),
+        )
+        BlockFactory(
+            user=cls.owner, page=cls.page, content="caption", asset=cls.fk_asset
+        )
+
+        # Asset embedded only via /api/assets/<uuid>/ in markdown content,
+        # without an FK. This path should still resolve.
+        cls.inline_asset = Asset.objects.create(
+            user=cls.owner,
+            file_type=Asset.FILE_TYPE_IMAGE,
+            asset_type=Asset.ASSET_TYPE_BLOCK_ATTACHMENT,
+            file=SimpleUploadedFile(
+                "inline.png", b"fake-inline-bytes", content_type="image/png"
+            ),
+            original_filename="inline.png",
+            mime_type="image/png",
+            byte_size=len(b"fake-inline-bytes"),
+        )
+        BlockFactory(
+            user=cls.owner,
+            page=cls.page,
+            content=f"![](/api/assets/{cls.inline_asset.uuid}/)",
+        )
+
+        # Asset owned by the same user but NOT referenced by the shared
+        # page — must remain private.
+        cls.unrelated_asset = Asset.objects.create(
+            user=cls.owner,
+            file_type=Asset.FILE_TYPE_IMAGE,
+            asset_type=Asset.ASSET_TYPE_BLOCK_ATTACHMENT,
+            file=SimpleUploadedFile(
+                "secret.png", b"shouldnt-leak", content_type="image/png"
+            ),
+            original_filename="secret.png",
+            mime_type="image/png",
+            byte_size=len(b"shouldnt-leak"),
+        )
+        cls.private_page = PageFactory(user=cls.owner, title="Secret")
+        BlockFactory(
+            user=cls.owner,
+            page=cls.private_page,
+            content="confidential",
+            asset=cls.unrelated_asset,
+        )
+
+    def test_serves_asset_referenced_via_fk(self):
+        client = Client()
+        response = client.get(
+            f"/knowledge/share/{self.page.share_token}" f"/asset/{self.fk_asset.uuid}/"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/png")
+        self.assertEqual(response.content, b"fake-fk-bytes")
+
+    def test_serves_asset_referenced_in_markdown_content(self):
+        client = Client()
+        response = client.get(
+            f"/knowledge/share/{self.page.share_token}"
+            f"/asset/{self.inline_asset.uuid}/"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"fake-inline-bytes")
+
+    def test_404s_for_unrelated_asset_even_when_owned_by_same_user(self):
+        # Same user owns this asset, but it's only referenced by a private
+        # page — sharing one page must not leak unrelated uploads.
+        client = Client()
+        response = client.get(
+            f"/knowledge/share/{self.page.share_token}"
+            f"/asset/{self.unrelated_asset.uuid}/"
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_404s_when_share_is_revoked(self):
+        self.page.share_mode = "private"
+        self.page.save()
+        client = Client()
+        response = client.get(
+            f"/knowledge/share/{self.page.share_token}" f"/asset/{self.fk_asset.uuid}/"
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_404s_when_token_unknown(self):
+        client = Client()
+        response = client.get(
+            f"/knowledge/share/never-issued/asset/{self.fk_asset.uuid}/"
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_public_page_rewrites_inline_asset_urls(self):
+        # The page render should swap /api/assets/<uuid>/ for the
+        # token-scoped path so inline image markdown loads anonymously.
+        client = Client()
+        response = client.get(f"/knowledge/share/{self.page.share_token}/")
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode("utf-8")
+        self.assertIn(
+            f"/knowledge/share/{self.page.share_token}"
+            f"/asset/{self.inline_asset.uuid}/",
+            body,
+        )
+        self.assertNotIn(f"/api/assets/{self.inline_asset.uuid}/", body)
+
+    def test_public_page_renders_asset_image_tag_for_fk_attachments(self):
+        client = Client()
+        response = client.get(f"/knowledge/share/{self.page.share_token}/")
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode("utf-8")
+        self.assertIn(
+            f"/knowledge/share/{self.page.share_token}" f"/asset/{self.fk_asset.uuid}/",
+            body,
+        )
+
+    def test_404s_for_invalid_uuid_format(self):
+        # Even without a valid UUID, the view must 404 (not 500).
+        client = Client()
+        response = client.get(
+            f"/knowledge/share/{self.page.share_token}/asset/not-a-uuid/"
+        )
+        self.assertEqual(response.status_code, 404)

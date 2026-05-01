@@ -11,7 +11,9 @@
     {% elif block.block_type == 'wontdo' %}
       <span class="public-block-todo-marker" aria-label="won't do">[/]</span>
     {% endif %}
-    {% if block.content_type == 'image' and block.media_url %}
+    {% if block.asset_is_image and block.asset_url %}
+      <img class="public-block-image" src="{{ block.asset_url }}" alt="" loading="lazy" />
+    {% elif block.content_type == 'image' and block.media_url %}
       <img class="public-block-image" src="{{ block.media_url }}" alt="" loading="lazy" />
     {% endif %}
     <div class="public-block-content" data-md="{{ block.content }}">{{ block.content }}</div>

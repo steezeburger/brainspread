@@ -15,6 +15,11 @@ urlpatterns = [
         views.public_page,
         name="public_page",
     ),
+    path(
+        "share/<str:share_token>/asset/<str:asset_uuid>/",
+        views.public_asset,
+        name="public_asset",
+    ),
     # Block-centric API endpoints
     path("api/blocks/", views.create_block, name="create_block"),
     path("api/blocks/update/", views.update_block, name="update_block"),

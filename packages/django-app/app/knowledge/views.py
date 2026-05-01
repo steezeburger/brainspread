@@ -1,13 +1,15 @@
+import re
 from typing import Dict, List, Optional, TypedDict
 
 from django.core.exceptions import ValidationError
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.shortcuts import render
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from assets.models import Asset
 from knowledge.commands import (
     BulkDeleteBlocksCommand,
     BulkMoveBlocksCommand,
@@ -148,18 +150,52 @@ def index(request, date=None, tag_name=None, slug=None):
     return response
 
 
-def _serialize_block_tree(block) -> dict:
+def _public_asset_url(share_token: str, asset_uuid: str) -> str:
+    """Build the public, no-auth asset URL the share template should use."""
+    return f"/knowledge/share/{share_token}/asset/{asset_uuid}/"
+
+
+# Editor-side asset URLs look like "/api/assets/<uuid>/" and require auth.
+# The public view rewrites them to a token-scoped sibling that resolves
+# only for assets referenced by the currently shared page.
+_AUTHED_ASSET_URL = re.compile(r"/api/assets/([0-9a-fA-F-]{32,36})/")
+
+
+def _rewrite_asset_urls(content: str, share_token: str) -> str:
+    """Rewrite editor /api/assets/<uuid>/ URLs to the token-scoped public path.
+
+    Block content can embed image markdown like
+    ![](/api/assets/<uuid>/) — those URLs would 401 for anonymous viewers.
+    The public path checks both that the share is active AND that the
+    asset is referenced by the page, so this rewrite doesn't widen access.
+    """
+    if not content:
+        return content
+    return _AUTHED_ASSET_URL.sub(
+        lambda m: _public_asset_url(share_token, m.group(1)), content
+    )
+
+
+def _serialize_block_tree(block, share_token: str) -> dict:
     """Render a block + its descendants as a plain dict tree for the public
     template. Strips fields the public template doesn't need so we don't
     accidentally leak owner-only metadata (reminders, asset internals, etc.).
     """
+    asset_uuid = str(block.asset.uuid) if block.asset_id else None
+    asset_file_type = block.asset.file_type if block.asset_id else None
     return {
         "uuid": str(block.uuid),
-        "content": block.content,
+        "content": _rewrite_asset_urls(block.content, share_token),
         "block_type": block.block_type,
         "content_type": block.content_type,
         "media_url": block.media_url,
-        "children": [_serialize_block_tree(child) for child in block.get_children()],
+        "asset_url": (
+            _public_asset_url(share_token, asset_uuid) if asset_uuid else None
+        ),
+        "asset_is_image": asset_file_type == "image",
+        "children": [
+            _serialize_block_tree(child, share_token) for child in block.get_children()
+        ],
     }
 
 
@@ -176,7 +212,10 @@ def public_page(request, share_token: str):
     if not page.is_publicly_viewable:
         raise Http404("Shared page not found")
 
-    blocks = [_serialize_block_tree(b) for b in BlockRepository.get_root_blocks(page)]
+    blocks = [
+        _serialize_block_tree(b, share_token)
+        for b in BlockRepository.get_root_blocks(page)
+    ]
 
     response = render(
         request,
@@ -189,6 +228,62 @@ def public_page(request, share_token: str):
     )
     # Public pages can be cached briefly by the browser, but always revalidate
     # — owners can revoke or edit at any time.
+    response["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
+    return response
+
+
+def public_asset(request, share_token: str, asset_uuid: str):
+    """Public, no-auth asset bytes for assets referenced by a shared page.
+
+    The asset must satisfy two conditions to resolve:
+      1. The share_token belongs to a page whose current share_mode is
+         link or public (private = revoked, immediate 404).
+      2. Some block on that page references the asset (FK match) — or
+         embeds it in content via /api/assets/<uuid>/. This stops a
+         malicious viewer from substituting an unrelated asset_uuid into
+         the URL to read other content the owner hasn't actually shared.
+    """
+    try:
+        page = Page.objects.get(share_token=share_token)
+    except Page.DoesNotExist:
+        raise Http404("Shared asset not found")
+
+    if not page.is_publicly_viewable:
+        raise Http404("Shared asset not found")
+
+    try:
+        asset = Asset.objects.get(uuid=asset_uuid, user=page.user)
+    except (Asset.DoesNotExist, ValueError, ValidationError):
+        raise Http404("Shared asset not found")
+
+    # FK reference is the cheap, exact match. If a future code path embeds
+    # asset URLs inside block content without setting the FK, extend this
+    # check to also scan block.content for the uuid.
+    referenced_via_fk = page.blocks.filter(asset=asset).exists()
+    referenced_in_content = page.blocks.filter(
+        content__contains=f"/api/assets/{asset_uuid}/"
+    ).exists()
+    if not (referenced_via_fk or referenced_in_content):
+        raise Http404("Shared asset not found")
+
+    if not asset.file:
+        raise Http404("Shared asset not found")
+
+    try:
+        with asset.file.open("rb") as fh:
+            body = fh.read()
+    except FileNotFoundError:
+        raise Http404("Shared asset not found")
+
+    response = HttpResponse(
+        body, content_type=asset.mime_type or "application/octet-stream"
+    )
+    if asset.original_filename:
+        response["Content-Disposition"] = (
+            f'inline; filename="{asset.original_filename}"'
+        )
+    else:
+        response["Content-Disposition"] = "inline"
     response["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 
