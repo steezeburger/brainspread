@@ -16,6 +16,8 @@ from ..models import Asset
 _TEXT_LIKE_EXTENSIONS = {
     ".mmd": "text/plain",
     ".mermaid": "text/plain",
+    ".md": "text/markdown",
+    ".markdown": "text/markdown",
 }
 
 

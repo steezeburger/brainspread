@@ -5086,6 +5086,86 @@ kbd {
   font-style: italic;
 }
 
+.block-markdown {
+  font-size: 0.95em;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.block-markdown > :first-child {
+  margin-top: 0;
+}
+
+.block-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.block-markdown h1,
+.block-markdown h2,
+.block-markdown h3,
+.block-markdown h4,
+.block-markdown h5,
+.block-markdown h6 {
+  margin: 0.6em 0 0.3em;
+  font-weight: 600;
+}
+
+.block-markdown p,
+.block-markdown ul,
+.block-markdown ol,
+.block-markdown blockquote {
+  margin: 0.4em 0;
+}
+
+.block-markdown ul,
+.block-markdown ol {
+  padding-left: 1.5em;
+}
+
+.block-markdown code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.85em;
+  background-color: var(--bg-secondary, rgba(0, 0, 0, 0.08));
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}
+
+.block-markdown pre {
+  background-color: var(--bg-secondary, rgba(0, 0, 0, 0.08));
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
+  border-radius: 4px;
+  padding: 0.5em 0.75em;
+  overflow-x: auto;
+}
+
+.block-markdown pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+.block-markdown blockquote {
+  border-left: 3px solid var(--border-color, rgba(0, 0, 0, 0.2));
+  padding-left: 0.75em;
+  color: var(--text-secondary, #666);
+}
+
+.block-markdown table {
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+
+.block-markdown th,
+.block-markdown td {
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
+  padding: 0.3em 0.6em;
+}
+
+.block-markdown a {
+  color: var(--accent-color, #4a90e2);
+  text-decoration: underline;
+}
+
 /* Whiteboard page (tldraw) */
 .page-content-whiteboard {
   display: flex;

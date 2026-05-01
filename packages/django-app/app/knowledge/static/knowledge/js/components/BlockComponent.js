@@ -185,6 +185,7 @@ const BlockComponent = {
       if (name.endsWith(".csv")) return "csv";
       if (name.endsWith(".tsv")) return "tsv";
       if (name.endsWith(".mmd") || name.endsWith(".mermaid")) return "mermaid";
+      if (name.endsWith(".md") || name.endsWith(".markdown")) return "markdown";
       return null;
     },
     shouldRenderAsset() {
@@ -216,6 +217,19 @@ const BlockComponent = {
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;");
         return `<div class="block-mermaid-wrapper"><div class="block-mermaid" data-mermaid-source="${attr}"></div></div>`;
+      }
+      if (this.detectedAssetType === "markdown") {
+        if (!window.marked || !window.DOMPurify) return "";
+        // Per-call options (rather than marked.setOptions) so we don't
+        // mutate global state shared with the chat panel. gfm + breaks
+        // matches the chat panel's behavior, which is what users
+        // already expect for markdown rendering in this app.
+        const html = window.marked.parse(this.assetSource, {
+          gfm: true,
+          breaks: true,
+        });
+        const clean = window.DOMPurify.sanitize(html);
+        return `<div class="block-markdown">${clean}</div>`;
       }
       return "";
     },

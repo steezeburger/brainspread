@@ -182,6 +182,30 @@ class AssetAPITestCase(TestCase):
                 self.assertEqual(response.data["data"]["mime_type"], "text/plain")
                 self.assertEqual(response.data["data"]["original_filename"], filename)
 
+    def test_upload_accepts_markdown_extensions_with_octet_stream(self):
+        # Same story as .mmd: some browsers send octet-stream for .md
+        # because the OS hasn't registered a MIME. Normalize to
+        # text/markdown so the upload passes the text/* whitelist.
+        cases = [
+            ("notes.md", b"# Hello\n\nworld\n"),
+            ("README.markdown", b"## Title\n\n- item\n"),
+        ]
+        for filename, content in cases:
+            with self.subTest(filename=filename):
+                upload = SimpleUploadedFile(
+                    filename, content, content_type="application/octet-stream"
+                )
+                response = self.client.post(
+                    "/api/assets/", {"file": upload}, format="multipart"
+                )
+                self.assertEqual(
+                    response.status_code,
+                    status.HTTP_200_OK,
+                    f"{filename} should upload: {response.data}",
+                )
+                self.assertEqual(response.data["data"]["mime_type"], "text/markdown")
+                self.assertEqual(response.data["data"]["original_filename"], filename)
+
     def test_upload_assigns_image_file_type(self):
         upload = SimpleUploadedFile(
             "pic.png", b"\x89PNG\r\n\x1a\n", content_type="image/png"
