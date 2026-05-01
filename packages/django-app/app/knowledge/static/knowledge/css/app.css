@@ -5145,9 +5145,13 @@ kbd {
 /* After the user has dragged the corner handle, the wrapper has an
    explicit width. Stretch the image to fill it so dragging actually
    scales the picture rather than just leaving empty space inside the
-   wrapper. */
+   wrapper. The default .block-asset-image rule (further down in this
+   file) caps the height at 480px which would break the aspect ratio
+   once the user widens the picture past that — drop the cap when a
+   saved size exists so width × auto height stays proportional. */
 .block-asset-image-wrapper.has-saved-size > .block-asset-image {
   width: 100%;
+  max-height: none;
 }
 
 .block-markdown {

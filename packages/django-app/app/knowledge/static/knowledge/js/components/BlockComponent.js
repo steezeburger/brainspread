@@ -186,6 +186,9 @@ const BlockComponent = {
     isRenderedRaw() {
       return this.block.properties?.render === "raw";
     },
+    canResetSize() {
+      return !!this.block.properties?.size?.width;
+    },
     detectedAssetType() {
       // Sniff a renderable type from the asset's original filename. Any
       // extension we know how to render lights up; everything else
@@ -522,14 +525,22 @@ const BlockComponent = {
       // has either an image or a renderable text-shaped asset, never
       // both).
       if (!this.$el || this.$el.nodeType !== 1) return;
-      const savedWidth = this.block.properties?.size?.width;
+      // Bail mid-drag so we don't fight the in-progress resize by
+      // re-applying the old saved width on a reactive re-render.
+      if (this.$el.querySelector(".block-resize-handle.is-resizing")) return;
+      const savedWidth = this.block.properties?.size?.width || null;
+      const target = savedWidth ? String(savedWidth) : "";
       const wrappers = this.$el.querySelectorAll(".block-resizable");
       wrappers.forEach((el) => {
-        if (savedWidth && !el.dataset.savedSizeApplied) {
+        if (el.dataset.savedSizeApplied === target) return;
+        if (savedWidth) {
           el.style.width = `${savedWidth}px`;
           el.classList.add("has-saved-size");
-          el.dataset.savedSizeApplied = "true";
+        } else {
+          el.style.width = "";
+          el.classList.remove("has-saved-size");
         }
+        el.dataset.savedSizeApplied = target;
       });
       const handles = this.$el.querySelectorAll(
         ".block-resize-handle:not([data-resize-bound])"
@@ -1251,12 +1262,29 @@ const BlockComponent = {
         case "toggleCodeRender":
           this.toggleCodeRender();
           break;
+        case "resetSize":
+          this.resetSize();
+          break;
       }
     },
 
     toggleCodeRender() {
       const next = this.isRenderedRaw ? "rendered" : "raw";
       this.setBlockProperties(this.block, { render: next });
+    },
+
+    resetSize() {
+      // Clear the persisted size and the local DOM state so the
+      // wrappers fall back to their natural defaults (image at
+      // intrinsic size, mermaid at column width).
+      this.setBlockProperties(this.block, { size: null });
+      if (this.$el) {
+        this.$el.querySelectorAll(".block-resizable").forEach((el) => {
+          el.style.width = "";
+          el.classList.remove("has-saved-size");
+          el.dataset.savedSizeApplied = "";
+        });
+      }
     },
 
     async fetchAssetSource() {
@@ -1764,11 +1792,15 @@ const BlockComponent = {
           <span class="context-menu-icon">←</span>
           <span>outdent</span>
         </button>
-        <template v-if="canToggleRender">
+        <template v-if="canToggleRender || canResetSize">
           <div class="context-menu-separator"></div>
-          <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('toggleCodeRender')">
+          <button v-if="canToggleRender" class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('toggleCodeRender')">
             <span class="context-menu-icon">⇄</span>
             <span>{{ isRenderedRaw ? 'show as rendered' : 'show as raw' }}</span>
+          </button>
+          <button v-if="canResetSize" class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('resetSize')">
+            <span class="context-menu-icon">↺</span>
+            <span>reset size</span>
           </button>
         </template>
         <div class="context-menu-separator"></div>

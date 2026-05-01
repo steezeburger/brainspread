@@ -387,8 +387,14 @@ const Page = {
     async setBlockProperties(block, partial) {
       // Shallow-merge `partial` into the block's existing properties
       // (so toggling one flag doesn't drop the others) and persist.
-      // Used by the context-menu render toggle for code blocks.
+      // Pass a key with `null` to clear it — useful for "reset size"
+      // and similar opt-outs.
       const merged = { ...(block.properties || {}), ...partial };
+      Object.keys(merged).forEach((key) => {
+        if (merged[key] === null || merged[key] === undefined) {
+          delete merged[key];
+        }
+      });
       try {
         const result = await window.apiService.updateBlock(block.uuid, {
           properties: merged,
