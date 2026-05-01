@@ -1792,17 +1792,6 @@ const BlockComponent = {
           <span class="context-menu-icon">←</span>
           <span>outdent</span>
         </button>
-        <template v-if="canToggleRender || canResetSize">
-          <div class="context-menu-separator"></div>
-          <button v-if="canToggleRender" class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('toggleCodeRender')">
-            <span class="context-menu-icon">⇄</span>
-            <span>{{ isRenderedRaw ? 'show as rendered' : 'show as raw' }}</span>
-          </button>
-          <button v-if="canResetSize" class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('resetSize')">
-            <span class="context-menu-icon">↺</span>
-            <span>reset size</span>
-          </button>
-        </template>
         <div class="context-menu-separator"></div>
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('moveUp')">
           <span class="context-menu-icon">↑</span>
@@ -1830,6 +1819,17 @@ const BlockComponent = {
           <span class="context-menu-icon">▤</span>
           <span>attach file…</span>
         </button>
+        <template v-if="canToggleRender || canResetSize">
+          <div class="context-menu-separator"></div>
+          <button v-if="canToggleRender" class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('toggleCodeRender')">
+            <span class="context-menu-icon">⇄</span>
+            <span>{{ isRenderedRaw ? 'show as rendered' : 'show as raw' }}</span>
+          </button>
+          <button v-if="canResetSize" class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('resetSize')">
+            <span class="context-menu-icon">↺</span>
+            <span>reset size</span>
+          </button>
+        </template>
         <div class="context-menu-separator"></div>
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('schedule')">
           <span class="context-menu-icon"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="1"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg></span>
