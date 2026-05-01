@@ -86,6 +86,7 @@ jobs:
             just staging-up
             sleep 5
             just staging-migrate
+            just staging-populate-ai-models
             just staging-create-superuser
             just staging-seed
 
