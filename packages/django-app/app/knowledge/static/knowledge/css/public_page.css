@@ -1,0 +1,270 @@
+/* Public read-only share page styles. Self-contained so the public view
+   doesn't pull in the full editor CSS (which is heavy and references
+   editor-only state classes that don't apply here). */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+.public-page-body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  background: #f6f7f9;
+  color: #1f2328;
+  line-height: 1.55;
+  font-size: 16px;
+}
+
+.public-page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 48px 24px 80px;
+}
+
+.public-page-header {
+  border-bottom: 1px solid #e1e4e8;
+  padding-bottom: 16px;
+  margin-bottom: 24px;
+}
+
+.public-page-title {
+  margin: 0 0 6px;
+  font-size: 32px;
+  font-weight: 600;
+  color: #1f2328;
+  word-wrap: break-word;
+}
+
+.public-page-meta {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.public-page-meta-sep {
+  margin: 0 6px;
+  opacity: 0.6;
+}
+
+.public-page-empty {
+  color: #6b7280;
+  font-style: italic;
+}
+
+.public-block-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.public-block-list .public-block-list {
+  padding-left: 24px;
+  border-left: 1px solid #eef0f2;
+  margin-left: 6px;
+}
+
+.public-block {
+  position: relative;
+  padding: 6px 0 6px 18px;
+}
+
+.public-block::before {
+  content: "•";
+  position: absolute;
+  left: 4px;
+  top: 8px;
+  color: #9aa0a6;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.public-block-type-heading::before {
+  content: "";
+}
+
+.public-block-type-heading > .public-block-content {
+  font-size: 22px;
+  font-weight: 600;
+  margin-top: 8px;
+}
+
+.public-block-type-divider::before {
+  content: "";
+}
+
+.public-block-type-divider > .public-block-content::after {
+  content: "";
+  display: block;
+  border-top: 1px solid #d0d7de;
+  margin: 12px 0;
+}
+
+.public-block-type-quote {
+  border-left: 3px solid #d0d7de;
+  margin-left: 4px;
+}
+
+.public-block-type-quote > .public-block-content {
+  color: #6b7280;
+  font-style: italic;
+}
+
+.public-block-todo-marker {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  margin-right: 8px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.public-block-type-done > .public-block-content {
+  color: #6b7280;
+  text-decoration: line-through;
+}
+
+.public-block-type-wontdo > .public-block-content {
+  color: #9aa0a6;
+  text-decoration: line-through;
+}
+
+.public-block-content {
+  display: inline-block;
+  vertical-align: top;
+  width: calc(100% - 12px);
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.public-block-content p:first-child {
+  margin-top: 0;
+}
+
+.public-block-content p:last-child {
+  margin-bottom: 0;
+}
+
+.public-block-content p {
+  margin: 0.4em 0;
+}
+
+.public-block-content code {
+  background: #eef0f2;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.public-block-content pre {
+  background: #1f2328;
+  color: #eef0f2;
+  padding: 12px 14px;
+  border-radius: 3px;
+  overflow-x: auto;
+}
+
+.public-block-content pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+.public-block-content a {
+  color: #0969da;
+  text-decoration: underline;
+}
+
+.public-block-content blockquote {
+  border-left: 3px solid #d0d7de;
+  margin: 0;
+  padding: 0 12px;
+  color: #6b7280;
+}
+
+.public-block-content ul,
+.public-block-content ol {
+  padding-left: 24px;
+  margin: 0.4em 0;
+}
+
+.public-block-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 8px 0;
+  border-radius: 3px;
+}
+
+.public-block-empty {
+  color: #c4c8cc;
+  font-style: italic;
+}
+
+.public-page-footer {
+  margin-top: 48px;
+  padding-top: 16px;
+  border-top: 1px solid #e1e4e8;
+  text-align: center;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.public-page-footer-link {
+  color: #6b7280;
+  text-decoration: none;
+}
+
+.public-page-footer-link:hover {
+  color: #1f2328;
+  text-decoration: underline;
+}
+
+/* Dark mode for users whose OS prefers dark. Keeps the read-only view
+   pleasant when shared content is opened from a dark-themed reader. */
+@media (prefers-color-scheme: dark) {
+  .public-page-body {
+    background: #0d1117;
+    color: #e6edf3;
+  }
+  .public-page-title {
+    color: #e6edf3;
+  }
+  .public-page-header {
+    border-bottom-color: #30363d;
+  }
+  .public-page-footer {
+    border-top-color: #30363d;
+  }
+  .public-block-list .public-block-list {
+    border-left-color: #1f242b;
+  }
+  .public-block-content code {
+    background: #1f242b;
+  }
+  .public-block-content pre {
+    background: #010409;
+  }
+  .public-block-content a {
+    color: #2f81f7;
+  }
+  .public-page-meta,
+  .public-page-footer,
+  .public-page-footer-link,
+  .public-block-todo-marker,
+  .public-block-type-quote > .public-block-content,
+  .public-block-type-done > .public-block-content,
+  .public-block-content blockquote {
+    color: #8b949e;
+  }
+  .public-block::before {
+    color: #6b7280;
+  }
+  .public-block-type-quote {
+    border-left-color: #30363d;
+  }
+}

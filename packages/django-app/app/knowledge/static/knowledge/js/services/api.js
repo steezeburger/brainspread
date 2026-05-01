@@ -137,6 +137,13 @@ class ApiService {
     });
   }
 
+  async setPageShareMode(pageUuid, shareMode) {
+    return await this.request("/knowledge/api/pages/share/", {
+      method: "POST",
+      body: JSON.stringify({ page: pageUuid, share_mode: shareMode }),
+    });
+  }
+
   async getPages(publishedOnly = true, limit = 10, offset = 0) {
     return await this.request(
       `/knowledge/api/pages/list/?published_only=${publishedOnly}&limit=${limit}&offset=${offset}`

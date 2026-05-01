@@ -57,6 +57,12 @@ const Page = {
       // clicks on a block toggle it in/out of the selection instead of
       // entering edit mode, and a sticky toolbar shows bulk actions.
       selectionMode: false,
+      // Page sharing modal state. shareSavingMode tracks the mode that's
+      // currently being persisted so we can show a per-row spinner without
+      // disabling the whole modal.
+      shareModalOpen: false,
+      shareSavingMode: null,
+      shareLinkCopied: false,
     };
   },
 
@@ -95,6 +101,26 @@ const Page = {
 
     hasOverdueBlocks() {
       return this.overdueBlocks.length > 0;
+    },
+
+    // Sharing is meaningful for regular pages only. Daily notes and
+    // whiteboards are intentionally excluded — sharing a moving date or a
+    // tldraw snapshot has different UX considerations we can revisit later.
+    canShare() {
+      return this.page?.page_type === "page";
+    },
+
+    shareMode() {
+      return this.page?.share_mode || "private";
+    },
+
+    isShared() {
+      return this.shareMode !== "private" && !!this.page?.share_token;
+    },
+
+    shareUrl() {
+      if (!this.page?.share_token) return "";
+      return `${window.location.origin}/knowledge/share/${this.page.share_token}/`;
     },
   },
 
@@ -1400,6 +1426,60 @@ const Page = {
         if (!clickedBlock) {
           this.clearBlockSelection();
         }
+      }
+    },
+
+    openShareModal() {
+      this.shareModalOpen = true;
+      this.shareLinkCopied = false;
+      this.closePageMenu();
+    },
+
+    closeShareModal() {
+      this.shareModalOpen = false;
+      this.shareSavingMode = null;
+      this.shareLinkCopied = false;
+    },
+
+    async setShareMode(mode) {
+      if (!this.page || this.shareSavingMode) return;
+      if (mode === this.shareMode) return;
+
+      this.shareSavingMode = mode;
+      try {
+        const result = await window.apiService.setPageShareMode(
+          this.page.uuid,
+          mode
+        );
+        if (result.success && result.data) {
+          // Patch the local page object so the modal reflects the new mode
+          // and (when toggling on) the freshly-issued share_token.
+          this.page = { ...this.page, ...result.data };
+          this.shareLinkCopied = false;
+        } else {
+          this.error = "failed to update share settings";
+        }
+      } catch (error) {
+        console.error("failed to set share mode:", error);
+        this.$parent?.addToast?.("failed to update share settings", "error");
+      } finally {
+        this.shareSavingMode = null;
+      }
+    },
+
+    async copyShareLink() {
+      if (!this.shareUrl) return;
+      try {
+        await navigator.clipboard.writeText(this.shareUrl);
+        this.shareLinkCopied = true;
+        // Reset the "copied!" affordance so the button is clickable again
+        // if the user comes back to it later.
+        setTimeout(() => {
+          this.shareLinkCopied = false;
+        }, 2000);
+      } catch (error) {
+        console.error("failed to copy share link:", error);
+        this.$parent?.addToast?.("failed to copy link", "error");
       }
     },
 
@@ -2748,6 +2828,10 @@ const Page = {
                       <span class="context-menu-icon">◉</span>
                       <span>select multiple</span>
                     </button>
+                    <button @click="openShareModal" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">→</span>
+                      <span>share<span v-if="isShared" class="context-menu-badge">on</span></span>
+                    </button>
                     <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">
                       delete page
                     </button>
@@ -2923,6 +3007,91 @@ const Page = {
         @save="onSchedulePopoverSave"
         @cancel="onSchedulePopoverCancel"
       />
+
+      <!-- Share modal (issue #90) -->
+      <div
+        v-if="shareModalOpen"
+        class="share-modal-backdrop"
+        @click.self="closeShareModal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="share-modal-title"
+      >
+        <div class="share-modal">
+          <div class="share-modal-header">
+            <h2 id="share-modal-title" class="share-modal-title">share "{{ page?.title || 'page' }}"</h2>
+            <button @click="closeShareModal" class="share-modal-close" title="Close" aria-label="Close share dialog">×</button>
+          </div>
+          <div class="share-modal-body">
+            <p class="share-modal-help">
+              choose who can view this page. anyone with the link will see a read-only version of your blocks.
+            </p>
+            <div class="share-mode-options" role="radiogroup" aria-label="Share mode">
+              <label class="share-mode-option" :class="{ 'is-active': shareMode === 'private' }">
+                <input
+                  type="radio"
+                  name="share-mode"
+                  value="private"
+                  :checked="shareMode === 'private'"
+                  :disabled="shareSavingMode !== null"
+                  @change="setShareMode('private')"
+                />
+                <span class="share-mode-option-body">
+                  <span class="share-mode-option-title">private</span>
+                  <span class="share-mode-option-desc">only you can view this page</span>
+                </span>
+              </label>
+              <label class="share-mode-option" :class="{ 'is-active': shareMode === 'link' }">
+                <input
+                  type="radio"
+                  name="share-mode"
+                  value="link"
+                  :checked="shareMode === 'link'"
+                  :disabled="shareSavingMode !== null"
+                  @change="setShareMode('link')"
+                />
+                <span class="share-mode-option-body">
+                  <span class="share-mode-option-title">anyone with the link</span>
+                  <span class="share-mode-option-desc">anyone holding the link can view; not indexed</span>
+                </span>
+              </label>
+              <label class="share-mode-option" :class="{ 'is-active': shareMode === 'public' }">
+                <input
+                  type="radio"
+                  name="share-mode"
+                  value="public"
+                  :checked="shareMode === 'public'"
+                  :disabled="shareSavingMode !== null"
+                  @change="setShareMode('public')"
+                />
+                <span class="share-mode-option-body">
+                  <span class="share-mode-option-title">public</span>
+                  <span class="share-mode-option-desc">anyone can view; search engines may index</span>
+                </span>
+              </label>
+            </div>
+
+            <div v-if="isShared" class="share-link-row">
+              <input
+                ref="shareLinkInput"
+                type="text"
+                readonly
+                :value="shareUrl"
+                class="share-link-input"
+                @focus="$event.target.select()"
+                aria-label="Public share link"
+              />
+              <button @click="copyShareLink" class="btn btn-outline share-link-copy" :disabled="!shareUrl">
+                {{ shareLinkCopied ? 'copied' : 'copy' }}
+              </button>
+            </div>
+            <p v-else class="share-link-hint">switch to a sharing option to generate a link.</p>
+          </div>
+          <div class="share-modal-footer">
+            <button @click="closeShareModal" class="btn btn-outline">done</button>
+          </div>
+        </div>
+      </div>
     </div>
   `,
 };

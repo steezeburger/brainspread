@@ -9,6 +9,12 @@ urlpatterns = [
     path("", views.index, name="index"),
     path("graph/", views.index, name="graph"),
     path("page/<str:slug>/", views.index, name="page"),
+    # Public share view (no auth)
+    path(
+        "share/<str:share_token>/",
+        views.public_page,
+        name="public_page",
+    ),
     # Block-centric API endpoints
     path("api/blocks/", views.create_block, name="create_block"),
     path("api/blocks/update/", views.update_block, name="update_block"),
@@ -39,6 +45,7 @@ urlpatterns = [
     # Page-centric API endpoints
     path("api/pages/", views.create_page, name="create_page"),
     path("api/pages/update/", views.update_page, name="update_page"),
+    path("api/pages/share/", views.share_page, name="share_page"),
     path("api/pages/delete/", views.delete_page, name="delete_page"),
     path("api/pages/list/", views.get_pages, name="list_pages"),
     path("api/pages/search/", views.search_pages, name="search_pages"),

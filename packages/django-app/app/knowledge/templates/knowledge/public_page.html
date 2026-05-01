@@ -1,0 +1,57 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="{% if page.share_mode == 'public' %}index, follow{% else %}noindex, nofollow{% endif %}" />
+    <title>{{ page.title }}</title>
+    <link rel="stylesheet" href="{% static 'knowledge/css/public_page.css' %}?v={{ STATIC_VERSION }}" />
+  </head>
+  <body class="public-page-body">
+    <div class="public-page">
+      <header class="public-page-header">
+        <h1 class="public-page-title">{{ page.title }}</h1>
+        <div class="public-page-meta">
+          shared by {{ owner_email }}
+          <span class="public-page-meta-sep">·</span>
+          read-only
+        </div>
+      </header>
+
+      {% if blocks %}
+        <ul class="public-block-list">
+          {% include 'knowledge/_public_block_list.html' with blocks=blocks %}
+        </ul>
+      {% else %}
+        <p class="public-page-empty">This page has no content yet.</p>
+      {% endif %}
+
+      <footer class="public-page-footer">
+        <a href="/" class="public-page-footer-link">brainspread</a>
+      </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js"></script>
+    <script>
+      // Render each block's raw markdown into the corresponding container.
+      // Using data-md keeps the source text on the element so View Source
+      // still shows the original content, and we sanitize before injecting.
+      document.querySelectorAll("[data-md]").forEach(function (el) {
+        var raw = el.getAttribute("data-md") || "";
+        if (!raw.trim()) {
+          el.classList.add("public-block-empty");
+          el.textContent = "";
+          return;
+        }
+        try {
+          var html = marked.parse(raw, { breaks: true, gfm: true });
+          el.innerHTML = DOMPurify.sanitize(html);
+        } catch (e) {
+          el.textContent = raw;
+        }
+      });
+    </script>
+  </body>
+</html>

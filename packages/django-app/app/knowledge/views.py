@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional, TypedDict
 
 from django.core.exceptions import ValidationError
+from django.http import Http404
 from django.shortcuts import render
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -24,6 +25,7 @@ from knowledge.commands import (
     ReorderBlocksCommand,
     ScheduleBlockCommand,
     SearchPagesCommand,
+    SharePageCommand,
     ToggleBlockTodoCommand,
     UpdateBlockCommand,
     UpdatePageCommand,
@@ -52,12 +54,14 @@ from knowledge.forms import (
     ReorderBlocksForm,
     ScheduleBlockForm,
     SearchPagesForm,
+    SharePageForm,
     ToggleBlockTodoForm,
     UpdateBlockForm,
     UpdatePageForm,
 )
-from knowledge.models import BlockData, PageData, PagesData
+from knowledge.models import BlockData, Page, PageData, PagesData
 from knowledge.models.page import PageWithBlocksData
+from knowledge.repositories import BlockRepository
 
 
 # API Response Types with specific data types
@@ -141,6 +145,51 @@ def index(request, date=None, tag_name=None, slug=None):
     response["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
     response["Pragma"] = "no-cache"
     response["Expires"] = "0"
+    return response
+
+
+def _serialize_block_tree(block) -> dict:
+    """Render a block + its descendants as a plain dict tree for the public
+    template. Strips fields the public template doesn't need so we don't
+    accidentally leak owner-only metadata (reminders, asset internals, etc.).
+    """
+    return {
+        "uuid": str(block.uuid),
+        "content": block.content,
+        "block_type": block.block_type,
+        "content_type": block.content_type,
+        "media_url": block.media_url,
+        "children": [_serialize_block_tree(child) for child in block.get_children()],
+    }
+
+
+def public_page(request, share_token: str):
+    """Public, no-auth read-only view of a shared page. Resolves the
+    share_token to a Page only if its current share_mode is link/public —
+    flipping back to private breaks all outstanding links immediately.
+    """
+    try:
+        page = Page.objects.get(share_token=share_token)
+    except Page.DoesNotExist:
+        raise Http404("Shared page not found")
+
+    if not page.is_publicly_viewable:
+        raise Http404("Shared page not found")
+
+    blocks = [_serialize_block_tree(b) for b in BlockRepository.get_root_blocks(page)]
+
+    response = render(
+        request,
+        "knowledge/public_page.html",
+        {
+            "page": page,
+            "blocks": blocks,
+            "owner_email": page.user.email,
+        },
+    )
+    # Public pages can be cached briefly by the browser, but always revalidate
+    # — owners can revoke or edit at any time.
+    response["Cache-Control"] = "no-cache, must-revalidate, max-age=0"
     return response
 
 
@@ -283,6 +332,50 @@ def update_page(request):
                 "errors": form.errors,
             }
             return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    except Exception as e:
+        response: PageResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def share_page(request):
+    """Set the public share mode for a page. Returns the page with its
+    share_token populated so the client can render a copy-link UI.
+    """
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = SharePageForm(data)
+
+        if form.is_valid():
+            command = SharePageCommand(form)
+            page = command.execute()
+
+            response: PageResponse = {
+                "success": True,
+                "data": page.to_dict(),
+                "errors": None,
+            }
+            return Response(response)
+
+        response: PageResponse = {
+            "success": False,
+            "data": None,
+            "errors": form.errors,
+        }
+        return Response(response, status=status.HTTP_400_BAD_REQUEST)
 
     except ValidationError as e:
         return Response(
