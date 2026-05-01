@@ -11,10 +11,12 @@ out-of-band during resume. See ai_chat.commands.resume_approval_command.
 
 import logging
 import re
-from datetime import date, time, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import pytz
+from django.db.models import Count
+from django.db.models.functions import TruncDate
 from django.utils import timezone
 
 from core.helpers import today_for_user
@@ -31,7 +33,7 @@ from knowledge.forms.move_block_to_daily_form import MoveBlockToDailyForm
 from knowledge.forms.schedule_block_form import ScheduleBlockForm
 from knowledge.forms.set_block_type_form import SetBlockTypeForm
 from knowledge.forms.update_block_form import UpdateBlockForm
-from knowledge.models import Reminder
+from knowledge.models import Block, Page, Reminder
 from knowledge.repositories.block_repository import BlockRepository
 from knowledge.repositories.page_repository import PageRepository
 
@@ -49,6 +51,16 @@ MAX_LIST_LIMIT = 100
 DEFAULT_SCHEDULE_RANGE_LIMIT = 50
 MAX_SCHEDULE_RANGE_LIMIT = 200
 SCHEDULE_RANGE_DEFAULT_DAYS = 30
+
+DAILY_RANGE_MAX_DAYS = 60
+COMPLETION_STATS_MAX_DAYS = 366
+STREAKS_LOOKBACK_DAYS = 366
+DEFAULT_STALE_TODO_AGE_DAYS = 14
+MAX_STALE_TODO_AGE_DAYS = 365
+DEFAULT_STALE_TODO_LIMIT = 50
+MAX_STALE_TODO_LIMIT = 200
+OPEN_TODO_TYPES = ("todo", "doing", "later")
+COMPLETED_TODO_TYPES = ("done", "wontdo")
 
 
 class NotesToolExecutor:
@@ -98,6 +110,14 @@ class NotesToolExecutor:
                 return self._list_pending_reminders(args)
             if name == "list_scheduled_blocks":
                 return self._list_scheduled_blocks(args)
+            if name == "get_daily_pages_in_range":
+                return self._get_daily_pages_in_range(args)
+            if name == "get_completion_stats":
+                return self._get_completion_stats(args)
+            if name == "get_streaks":
+                return self._get_streaks(args)
+            if name == "find_stale_todos":
+                return self._find_stale_todos(args)
             if name == "create_page":
                 return self._create_page(args)
             if name == "create_block":
@@ -553,6 +573,308 @@ class NotesToolExecutor:
             "results": [_summarize_block(b) for b in blocks],
         }
 
+    def _get_daily_pages_in_range(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        today = today_for_user(self.user)
+        try:
+            start_date = _parse_relative_date(args.get("start_date"), today)
+        except ValueError as e:
+            return {"error": f"start_date: {e}"}
+        try:
+            end_date = _parse_relative_date(args.get("end_date"), today)
+        except ValueError as e:
+            return {"error": f"end_date: {e}"}
+        if start_date is None or end_date is None:
+            return {"error": "start_date and end_date are required"}
+        if end_date < start_date:
+            return {"error": "end_date must be on or after start_date"}
+        span_days = (end_date - start_date).days + 1
+        if span_days > DAILY_RANGE_MAX_DAYS:
+            return {
+                "error": (
+                    f"range too large ({span_days} days);"
+                    f" max {DAILY_RANGE_MAX_DAYS}"
+                )
+            }
+
+        pages = list(
+            Page.objects.filter(
+                user=self.user,
+                page_type="daily",
+                date__gte=start_date,
+                date__lte=end_date,
+            ).order_by("date")
+        )
+        if not pages:
+            return {
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "count": 0,
+                "results": [],
+            }
+
+        page_ids = [p.id for p in pages]
+        root_blocks = list(
+            Block.objects.filter(page_id__in=page_ids, parent__isnull=True).order_by(
+                "page_id", "order"
+            )
+        )
+        blocks_by_page: Dict[int, List[Block]] = {}
+        for block in root_blocks:
+            blocks_by_page.setdefault(block.page_id, []).append(block)
+
+        results: List[Dict[str, Any]] = []
+        for page in pages:
+            page_blocks = blocks_by_page.get(page.id, [])
+            results.append(
+                {
+                    "date": page.date.isoformat() if page.date else None,
+                    "page_uuid": str(page.uuid),
+                    "title": page.title,
+                    "slug": page.slug,
+                    "root_blocks": [
+                        {
+                            "block_uuid": str(b.uuid),
+                            "block_type": b.block_type,
+                            "content": b.content,
+                            "order": b.order,
+                        }
+                        for b in page_blocks
+                    ],
+                }
+            )
+        return {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "count": len(results),
+            "results": results,
+        }
+
+    def _get_completion_stats(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        today = today_for_user(self.user)
+        try:
+            start_date = _parse_relative_date(args.get("start_date"), today)
+        except ValueError as e:
+            return {"error": f"start_date: {e}"}
+        try:
+            end_date = _parse_relative_date(args.get("end_date"), today)
+        except ValueError as e:
+            return {"error": f"end_date: {e}"}
+        if start_date is None or end_date is None:
+            return {"error": "start_date and end_date are required"}
+        if end_date < start_date:
+            return {"error": "end_date must be on or after start_date"}
+        span_days = (end_date - start_date).days + 1
+        if span_days > COMPLETION_STATS_MAX_DAYS:
+            return {
+                "error": (
+                    f"range too large ({span_days} days);"
+                    f" max {COMPLETION_STATS_MAX_DAYS}"
+                )
+            }
+
+        tz = _user_tz(self.user)
+        # Bound completed_at by the user-local day boundaries converted to UTC.
+        start_dt = tz.localize(datetime.combine(start_date, time.min)).astimezone(
+            pytz.UTC
+        )
+        end_dt = tz.localize(
+            datetime.combine(end_date + timedelta(days=1), time.min)
+        ).astimezone(pytz.UTC)
+
+        completed_qs = Block.objects.filter(
+            user=self.user,
+            completed_at__gte=start_dt,
+            completed_at__lt=end_dt,
+        )
+        completed_counts = dict(
+            completed_qs.values_list("block_type").annotate(c=Count("id"))
+        )
+
+        # For todo/doing/later we count blocks created in the window. Use
+        # the user's tz to bucket created_at by local day so the boundary
+        # matches what the user actually sees.
+        open_qs = Block.objects.filter(
+            user=self.user,
+            block_type__in=OPEN_TODO_TYPES,
+            created_at__gte=start_dt,
+            created_at__lt=end_dt,
+        )
+        open_counts = dict(open_qs.values_list("block_type").annotate(c=Count("id")))
+
+        counts = {
+            "todo": int(open_counts.get("todo", 0)),
+            "doing": int(open_counts.get("doing", 0)),
+            "later": int(open_counts.get("later", 0)),
+            "done": int(completed_counts.get("done", 0)),
+            "wontdo": int(completed_counts.get("wontdo", 0)),
+        }
+
+        # Per-day done counts in the user's tz.
+        done_only = (
+            completed_qs.filter(block_type="done")
+            .annotate(local_day=TruncDate("completed_at", tzinfo=tz))
+            .values("local_day")
+            .annotate(c=Count("id"))
+            .order_by("local_day")
+        )
+        by_day_map = {row["local_day"]: int(row["c"]) for row in done_only}
+        by_day: List[Dict[str, Any]] = []
+        cursor = start_date
+        while cursor <= end_date:
+            by_day.append(
+                {
+                    "date": cursor.isoformat(),
+                    "done_count": by_day_map.get(cursor, 0),
+                }
+            )
+            cursor += timedelta(days=1)
+
+        return {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "counts": counts,
+            "by_day": by_day,
+        }
+
+    def _get_streaks(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        kind = (args.get("kind") or "").strip().lower()
+        if kind not in ("journal", "completion"):
+            return {"error": "kind must be 'journal' or 'completion'"}
+
+        today = today_for_user(self.user)
+        try:
+            as_of = _parse_relative_date(args.get("as_of"), today) or today
+        except ValueError as e:
+            return {"error": f"as_of: {e}"}
+
+        lookback_start = as_of - timedelta(days=STREAKS_LOOKBACK_DAYS - 1)
+
+        active_days: set = set()
+        if kind == "journal":
+            # A day is active when there's a daily page for that date AND
+            # at least one block lives on it. (An empty auto-created daily
+            # shouldn't count as journaling.)
+            page_ids = Page.objects.filter(
+                user=self.user,
+                page_type="daily",
+                date__gte=lookback_start,
+                date__lte=as_of,
+            ).values_list("id", flat=True)
+            day_rows = (
+                Block.objects.filter(page_id__in=list(page_ids))
+                .values_list("page__date", flat=True)
+                .distinct()
+            )
+            active_days = {d for d in day_rows if d is not None}
+        else:
+            tz = _user_tz(self.user)
+            start_dt = tz.localize(
+                datetime.combine(lookback_start, time.min)
+            ).astimezone(pytz.UTC)
+            end_dt = tz.localize(
+                datetime.combine(as_of + timedelta(days=1), time.min)
+            ).astimezone(pytz.UTC)
+            rows = (
+                Block.objects.filter(
+                    user=self.user,
+                    block_type__in=COMPLETED_TODO_TYPES,
+                    completed_at__gte=start_dt,
+                    completed_at__lt=end_dt,
+                )
+                .annotate(local_day=TruncDate("completed_at", tzinfo=tz))
+                .values_list("local_day", flat=True)
+                .distinct()
+            )
+            active_days = {d for d in rows if d is not None}
+
+        # Current streak: count back from as_of while consecutive days are
+        # in the set. If as_of itself isn't active, the streak is 0 — we
+        # don't peek backwards past today's gap.
+        current_streak = 0
+        cursor = as_of
+        while cursor in active_days:
+            current_streak += 1
+            cursor -= timedelta(days=1)
+
+        # Longest streak across the full lookback window.
+        longest_streak = 0
+        run = 0
+        cursor = lookback_start
+        while cursor <= as_of:
+            if cursor in active_days:
+                run += 1
+                longest_streak = max(longest_streak, run)
+            else:
+                run = 0
+            cursor += timedelta(days=1)
+
+        last_active = max(active_days) if active_days else None
+        return {
+            "kind": kind,
+            "as_of": as_of.isoformat(),
+            "current_streak": current_streak,
+            "longest_streak": longest_streak,
+            "last_active_date": last_active.isoformat() if last_active else None,
+        }
+
+    def _find_stale_todos(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        older_than = _coerce_limit(
+            args.get("older_than_days"),
+            default=DEFAULT_STALE_TODO_AGE_DAYS,
+            max_value=MAX_STALE_TODO_AGE_DAYS,
+        )
+        limit = _coerce_limit(
+            args.get("limit"),
+            default=DEFAULT_STALE_TODO_LIMIT,
+            max_value=MAX_STALE_TODO_LIMIT,
+        )
+        today = today_for_user(self.user)
+        cutoff_date = today - timedelta(days=older_than)
+        tz = _user_tz(self.user)
+        # Compare against the START of the cutoff day in the user's tz so
+        # that "older than 14 days" means the block was created before
+        # 14 days ago started.
+        cutoff_dt = tz.localize(datetime.combine(cutoff_date, time.min)).astimezone(
+            pytz.UTC
+        )
+
+        blocks = list(
+            Block.objects.filter(
+                user=self.user,
+                block_type="todo",
+                scheduled_for__isnull=True,
+                completed_at__isnull=True,
+                created_at__lt=cutoff_dt,
+            )
+            .select_related("page")
+            .order_by("created_at")[:limit]
+        )
+
+        now_utc = timezone.now()
+        results = []
+        for block in blocks:
+            age_days = (now_utc - block.created_at).days
+            preview = block.content or ""
+            if len(preview) > 160:
+                preview = preview[:157] + "..."
+            results.append(
+                {
+                    "block_uuid": str(block.uuid),
+                    "content_preview": preview,
+                    "page_title": block.page.title if block.page else None,
+                    "page_uuid": str(block.page.uuid) if block.page else None,
+                    "page_slug": block.page.slug if block.page else None,
+                    "age_days": age_days,
+                    "created_at": block.created_at.isoformat(),
+                }
+            )
+        return {
+            "today": today.isoformat(),
+            "older_than_days": older_than,
+            "count": len(results),
+            "results": results,
+        }
+
     def _schedule_block(self, args: Dict[str, Any]) -> Dict[str, Any]:
         block_uuid = (args.get("block_uuid") or "").strip()
         if not block_uuid:
@@ -750,6 +1072,13 @@ def _resolve_reminder_time(
             f"expected HH:MM or '+Nm' / '+Nh' offset, got '{value}'"
         ) from e
     return (None, text)
+
+
+def _user_tz(user: User):
+    try:
+        return pytz.timezone(user.timezone or "UTC")
+    except pytz.UnknownTimeZoneError:
+        return pytz.UTC
 
 
 def _parse_relative_date(value: Any, today: date) -> Optional[date]:
