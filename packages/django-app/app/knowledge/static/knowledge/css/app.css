@@ -5621,6 +5621,30 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
    * baseline as the sibling textarea. */
 }
 
+/* Image variant: the wrapper becomes a column container that holds
+ * image, caption, and tag-chip strip stacked vertically. flex: 1 +
+ * min-width: 0 lets it claim the row's remaining width without
+ * overflowing. The chip variant stays inline so the textarea sits
+ * on the same row as the chip - see .block-asset-chip. */
+.block-asset:has(.block-asset-image) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.block-asset-caption,
+.block-asset-caption-wrapper {
+  /* Caption shows in the same column as the image, indented zero so
+   * its left edge lines up with the image's left edge. */
+  margin-top: 0.125rem;
+}
+
+.block-asset-caption-placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 .block-asset-image {
   display: block;
   max-width: 100%;

@@ -1151,6 +1151,45 @@ const BlockComponent = {
             <span class="block-asset-chip-meta">{{ block.asset.file_type }} · {{ assetSizeLabel }}</span>
           </a>
           <!--
+            Caption / text input below the image. For chip blocks we
+            keep the textarea as a flex sibling of .block-asset (see
+            the v-else-if branch further down) so chip + textarea sit
+            on the same row. For image blocks the textarea sits
+            inline below the image so the user can describe what's in
+            the picture without hunting for a target outside the
+            image's flex column.
+          -->
+          <div
+            v-if="assetIsImage && !block.isEditing"
+            class="block-content-display block-asset-caption"
+            :class="{ completed: ['done', 'wontdo'].includes(block.block_type) }"
+            tabindex="0"
+            role="button"
+            :aria-label="'Edit caption: ' + (block.content || 'empty')"
+            @click="handleDisplayClick($event)"
+            @keydown="handleBlockDisplayKeydown"
+            @touchstart="handleTouchStart"
+            @touchend="handleContentTouchEnd"
+            v-html="formatContentWithTags(displayContent, block.block_type, block.properties) || '<span class=&quot;block-asset-caption-placeholder&quot;>add caption…</span>'"
+          ></div>
+          <div
+            v-else-if="assetIsImage"
+            class="block-content-wrapper block-asset-caption-wrapper"
+          >
+            <textarea
+              :value="block.content"
+              @input="handleTextareaInput"
+              @keydown="handleTextareaKeydown"
+              @paste="onBlockPaste($event, block)"
+              @blur="handleTextareaBlur"
+              class="block-content"
+              :class="{ completed: ['done', 'wontdo'].includes(block.block_type) }"
+              rows="1"
+              placeholder="add caption…"
+              ref="blockTextarea"
+            ></textarea>
+          </div>
+          <!--
             Tag chip strip - reuses the embed-tag plumbing (parser,
             state, methods) since it's all just a layer over
             block.content trailing hashtags. Same chips, same "+ tag"
@@ -1346,8 +1385,14 @@ const BlockComponent = {
             @click.stop
           >↗</a>
         </div>
+        <!--
+          Outer display chain: skipped for image-asset blocks because
+          the caption renders INSIDE .block-asset above (so it stacks
+          below the image instead of getting squeezed off to the
+          right of it as a flex sibling).
+        -->
         <div
-          v-else-if="!block.isEditing"
+          v-else-if="!block.isEditing && !(hasAsset && assetIsImage)"
           class="block-content-display"
           :class="{ 'completed': ['done', 'wontdo'].includes(block.block_type) }"
           tabindex="0"
@@ -1359,7 +1404,10 @@ const BlockComponent = {
           @touchend="handleContentTouchEnd"
           v-html="formatContentWithTags(displayContent, block.block_type, block.properties)"
         ></div>
-        <div v-else class="block-content-wrapper">
+        <div
+          v-else-if="!(hasAsset && assetIsImage)"
+          class="block-content-wrapper"
+        >
           <textarea
             :value="block.content"
             @input="handleTextareaInput"
