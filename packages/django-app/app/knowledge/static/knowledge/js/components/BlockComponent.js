@@ -144,6 +144,12 @@ const BlockComponent = {
       embedTagSuggestions: [],
       embedTagSelectedIndex: 0,
       embedTagSearchToken: 0,
+      // Asset-source rendering (csv/mmd/mermaid uploads). The bytes are
+      // fetched lazily on mount when the asset's filename matches a
+      // renderable extension; null until the fetch completes.
+      assetSource: null,
+      assetFetchError: null,
+      assetFetchInFlight: false,
     };
   },
   computed: {
@@ -158,8 +164,60 @@ const BlockComponent = {
       const lang = (this.block.properties?.language || "").toLowerCase();
       return ["mermaid", "csv", "tsv"].includes(lang);
     },
-    isCodeRenderedRaw() {
+    canToggleAssetRender() {
+      // Asset blocks with a renderable extension (csv, tsv, mmd,
+      // mermaid) get the same toggle so users can swap between the
+      // rendered table/diagram and the plain download chip.
+      return !!this.detectedAssetType;
+    },
+    canToggleRender() {
+      return this.canToggleCodeRender || this.canToggleAssetRender;
+    },
+    isRenderedRaw() {
       return this.block.properties?.render === "raw";
+    },
+    detectedAssetType() {
+      // Sniff a renderable type from the asset's original filename. Any
+      // extension we know how to render lights up; everything else
+      // continues to render as the default download chip.
+      if (!this.hasAsset || this.assetIsImage) return null;
+      const name = (this.block.asset.original_filename || "").toLowerCase();
+      if (name.endsWith(".csv")) return "csv";
+      if (name.endsWith(".tsv")) return "tsv";
+      if (name.endsWith(".mmd") || name.endsWith(".mermaid")) return "mermaid";
+      return null;
+    },
+    shouldRenderAsset() {
+      // Render the inline view unless the user explicitly toggled to
+      // raw. The fetch is a small text file so eager-loading is fine.
+      return this.canToggleAssetRender && !this.isRenderedRaw;
+    },
+    assetRenderHtml() {
+      // Compose the inline render HTML from the fetched bytes. Pure
+      // computed so the template's v-html stays in sync if the user
+      // toggles back to rendered after viewing raw.
+      if (!this.assetSource) return "";
+      if (
+        this.detectedAssetType === "csv" ||
+        this.detectedAssetType === "tsv"
+      ) {
+        if (!window.brainspreadCsv) return "";
+        const delim = this.detectedAssetType === "tsv" ? "\t" : ",";
+        const table = window.brainspreadCsv.renderCsvTable(
+          this.assetSource,
+          delim
+        );
+        return `<div class="block-csv-wrapper">${table}</div>`;
+      }
+      if (this.detectedAssetType === "mermaid") {
+        const attr = String(this.assetSource)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+        return `<div class="block-mermaid-wrapper"><div class="block-mermaid" data-mermaid-source="${attr}"></div></div>`;
+      }
+      return "";
     },
     blockSelected() {
       return this.isBlockSelected(this.block.uuid);
@@ -382,6 +440,9 @@ const BlockComponent = {
     if (this.isEmbed) {
       this.loadWebArchive();
     }
+    if (this.shouldRenderAsset && this.assetSource === null) {
+      this.fetchAssetSource();
+    }
     this.applyContentRenderers();
   },
   updated() {
@@ -390,6 +451,12 @@ const BlockComponent = {
     // placeholder. Re-run the dynamic renderers so the new DOM picks up
     // mermaid SVGs, syntax highlighting, etc.
     this.applyContentRenderers();
+    // If the asset just became renderable (e.g. user toggled out of raw,
+    // or the asset itself just got attached) and we haven't fetched the
+    // bytes yet, kick that off.
+    if (this.shouldRenderAsset && this.assetSource === null) {
+      this.fetchAssetSource();
+    }
   },
   beforeUnmount() {
     // Clean up event listener
@@ -1096,8 +1163,31 @@ const BlockComponent = {
     },
 
     toggleCodeRender() {
-      const next = this.isCodeRenderedRaw ? "rendered" : "raw";
+      const next = this.isRenderedRaw ? "rendered" : "raw";
       this.setBlockProperties(this.block, { render: next });
+    },
+
+    async fetchAssetSource() {
+      // Fetch the asset bytes so the inline csv/mermaid renderer has
+      // text to work with. The serve endpoint is gated by the Django
+      // session cookie (see core.views.me); same-origin fetch sends it
+      // automatically.
+      if (this.assetFetchInFlight || !this.hasAsset) return;
+      this.assetFetchInFlight = true;
+      this.assetFetchError = null;
+      try {
+        const response = await fetch(this.assetUrl, {
+          credentials: "same-origin",
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        this.assetSource = await response.text();
+      } catch (err) {
+        this.assetFetchError = err && err.message ? err.message : String(err);
+      } finally {
+        this.assetFetchInFlight = false;
+      }
     },
 
     triggerAttachFilePicker() {
@@ -1210,6 +1300,19 @@ const BlockComponent = {
             class="block-asset-image"
             loading="lazy"
           />
+          <div
+            v-else-if="shouldRenderAsset && assetSource !== null"
+            class="block-asset-rendered"
+            v-html="assetRenderHtml"
+          ></div>
+          <div
+            v-else-if="shouldRenderAsset && assetFetchError"
+            class="block-mermaid-error"
+          >failed to load {{ assetDisplayName }}: {{ assetFetchError }}</div>
+          <div
+            v-else-if="shouldRenderAsset"
+            class="block-asset-loading"
+          >loading {{ assetDisplayName }}…</div>
           <a
             v-else
             :href="assetUrl"
@@ -1564,11 +1667,11 @@ const BlockComponent = {
           <span class="context-menu-icon">←</span>
           <span>outdent</span>
         </button>
-        <template v-if="canToggleCodeRender">
+        <template v-if="canToggleRender">
           <div class="context-menu-separator"></div>
           <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('toggleCodeRender')">
             <span class="context-menu-icon">⇄</span>
-            <span>{{ isCodeRenderedRaw ? 'show as rendered' : 'show as raw' }}</span>
+            <span>{{ isRenderedRaw ? 'show as rendered' : 'show as raw' }}</span>
           </button>
         </template>
         <div class="context-menu-separator"></div>

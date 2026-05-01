@@ -5075,6 +5075,17 @@ kbd {
   background-color: var(--bg-tertiary, rgba(0, 0, 0, 0.06));
 }
 
+.block-asset-rendered {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.block-asset-loading {
+  font-size: 0.85em;
+  color: var(--text-secondary, #888);
+  font-style: italic;
+}
+
 /* Whiteboard page (tldraw) */
 .page-content-whiteboard {
   display: flex;
