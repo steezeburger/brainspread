@@ -13,13 +13,11 @@ from knowledge.models import BlockData
 # canonical set without grepping forms/commands.
 SHARE_MODE_PRIVATE = "private"
 SHARE_MODE_LINK = "link"
-SHARE_MODE_PUBLIC = "public"
 SHARE_MODE_CHOICES = [
     (SHARE_MODE_PRIVATE, "Private"),
     (SHARE_MODE_LINK, "Anyone with the link"),
-    (SHARE_MODE_PUBLIC, "Public"),
 ]
-PUBLICLY_VIEWABLE_SHARE_MODES = {SHARE_MODE_LINK, SHARE_MODE_PUBLIC}
+PUBLICLY_VIEWABLE_SHARE_MODES = {SHARE_MODE_LINK}
 
 
 def generate_share_token() -> str:

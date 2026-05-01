@@ -95,20 +95,9 @@ class PublicPageViewTestCase(TestCase):
         body = response.content.decode("utf-8")
         self.assertIn("Public Roadmap", body)
         self.assertIn("hello world", body)
-        # Link mode should be marked noindex so it's not crawled
+        # Shared pages must always be marked noindex — they're meant for a
+        # specific recipient, not for search engines.
         self.assertIn("noindex", body)
-
-    def test_public_view_marks_public_pages_as_indexable(self):
-        self.page.share_token = "public-mode-token"
-        self.page.share_mode = "public"
-        self.page.save()
-
-        client = Client()
-        response = client.get(f"/knowledge/share/{self.page.share_token}/")
-
-        self.assertEqual(response.status_code, 200)
-        body = response.content.decode("utf-8")
-        self.assertIn("index, follow", body)
 
 
 class PublicAssetViewTestCase(TestCase):

@@ -201,7 +201,7 @@ def _serialize_block_tree(block, share_token: str) -> dict:
 
 def public_page(request, share_token: str):
     """Public, no-auth read-only view of a shared page. Resolves the
-    share_token to a Page only if its current share_mode is link/public —
+    share_token to a Page only if its current share_mode is "link" —
     flipping back to private breaks all outstanding links immediately.
     """
     try:
@@ -237,7 +237,7 @@ def public_asset(request, share_token: str, asset_uuid: str):
 
     The asset must satisfy two conditions to resolve:
       1. The share_token belongs to a page whose current share_mode is
-         link or public (private = revoked, immediate 404).
+         "link" (private = revoked, immediate 404).
       2. Some block on that page references the asset (FK match) — or
          embeds it in content via /api/assets/<uuid>/. This stops a
          malicious viewer from substituting an unrelated asset_uuid into

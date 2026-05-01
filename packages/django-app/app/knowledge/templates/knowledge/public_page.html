@@ -4,7 +4,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="robots" content="{% if page.share_mode == 'public' %}index, follow{% else %}noindex, nofollow{% endif %}" />
+    <meta name="robots" content="noindex, nofollow" />
     <title>{{ page.title }}</title>
     <link rel="stylesheet" href="{% static 'knowledge/css/public_page.css' %}?v={{ STATIC_VERSION }}" />
   </head>

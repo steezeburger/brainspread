@@ -44,21 +44,25 @@ class TestSharePageCommand(TestCase):
         self.assertEqual(page.share_token, original_token)
         self.assertFalse(page.is_publicly_viewable)
 
-        page = self._share("public")
-        self.assertEqual(page.share_mode, "public")
+        page = self._share("link")
+        self.assertEqual(page.share_mode, "link")
         self.assertEqual(page.share_token, original_token)
         self.assertTrue(page.is_publicly_viewable)
 
     def test_should_reject_unknown_mode(self):
-        form = SharePageForm(
-            {
-                "user": self.user.id,
-                "page": self.page.uuid,
-                "share_mode": "everyone",
-            }
-        )
-        self.assertFalse(form.is_valid())
-        self.assertIn("share_mode", form.errors)
+        # "public" was the third mode in an earlier draft; ensure it (and
+        # any other unrecognized value) is rejected now that we only ship
+        # private/link.
+        for bad_mode in ("public", "everyone", "anyone"):
+            form = SharePageForm(
+                {
+                    "user": self.user.id,
+                    "page": self.page.uuid,
+                    "share_mode": bad_mode,
+                }
+            )
+            self.assertFalse(form.is_valid(), f"{bad_mode} should be rejected")
+            self.assertIn("share_mode", form.errors)
 
     def test_should_reject_other_users_page(self):
         other_user = UserFactory()

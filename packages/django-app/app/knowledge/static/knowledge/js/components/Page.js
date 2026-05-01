@@ -3226,20 +3226,6 @@ const Page = {
                   <span class="share-mode-option-desc">anyone holding the link can view; not indexed</span>
                 </span>
               </label>
-              <label class="share-mode-option" :class="{ 'is-active': shareMode === 'public' }">
-                <input
-                  type="radio"
-                  name="share-mode"
-                  value="public"
-                  :checked="shareMode === 'public'"
-                  :disabled="shareSavingMode !== null"
-                  @change="setShareMode('public')"
-                />
-                <span class="share-mode-option-body">
-                  <span class="share-mode-option-title">public</span>
-                  <span class="share-mode-option-desc">anyone can view; search engines may index</span>
-                </span>
-              </label>
             </div>
 
             <div v-if="isShared" class="share-link-row">

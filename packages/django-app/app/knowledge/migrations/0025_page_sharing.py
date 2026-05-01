@@ -17,7 +17,6 @@ class Migration(migrations.Migration):
                 choices=[
                     ("private", "Private"),
                     ("link", "Anyone with the link"),
-                    ("public", "Public"),
                 ],
                 default="private",
                 help_text="Public visibility of the page",
