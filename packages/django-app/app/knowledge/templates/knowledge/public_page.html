@@ -23,8 +23,33 @@
         <ul class="public-block-list">
           {% include 'knowledge/_public_block_list.html' with blocks=blocks %}
         </ul>
-      {% else %}
+      {% elif not references %}
         <p class="public-page-empty">This page has no content yet.</p>
+      {% endif %}
+
+      {% if references %}
+        <section class="public-references">
+          <h2 class="public-references-title">linked references</h2>
+          <ul class="public-block-list public-references-list">
+            {% for ref in references %}
+              <li class="public-block public-block-type-{{ ref.block_type }} public-reference">
+                <div class="public-reference-source">
+                  {% if ref.source_page_type == 'daily' and ref.source_page_date %}
+                    {{ ref.source_page_date }}
+                  {% else %}
+                    {{ ref.source_page_title }}
+                  {% endif %}
+                </div>
+                {% if ref.asset_is_image and ref.asset_url %}
+                  <img class="public-block-image" src="{{ ref.asset_url }}" alt="" loading="lazy" />
+                {% elif ref.content_type == 'image' and ref.media_url %}
+                  <img class="public-block-image" src="{{ ref.media_url }}" alt="" loading="lazy" />
+                {% endif %}
+                <div class="public-block-content" data-md="{{ ref.content }}">{{ ref.content }}</div>
+              </li>
+            {% endfor %}
+          </ul>
+        </section>
       {% endif %}
 
       <footer class="public-page-footer">
