@@ -290,6 +290,12 @@ const KnowledgeApp = createApp({
     applyTheme() {
       const theme = this.user?.theme || "dark";
       document.documentElement.setAttribute("data-theme", theme);
+      // Mermaid diagrams pick their palette at render time, so a theme
+      // swap only takes effect on already-rendered SVGs if we reset and
+      // re-render them.
+      if (window.brainspreadMermaid) {
+        window.brainspreadMermaid.rerenderAll(theme);
+      }
     },
 
     // Chat context management methods
@@ -857,6 +863,9 @@ const KnowledgeApp = createApp({
 
       document.documentElement.setAttribute("data-theme", theme);
       this.user = { ...this.user, theme };
+      if (window.brainspreadMermaid) {
+        window.brainspreadMermaid.rerenderAll(theme);
+      }
 
       try {
         const result = await window.apiService.updateUserTheme(theme);
@@ -867,6 +876,9 @@ const KnowledgeApp = createApp({
         console.error("failed to persist theme:", error);
         document.documentElement.setAttribute("data-theme", previous);
         this.user = { ...this.user, theme: previous };
+        if (window.brainspreadMermaid) {
+          window.brainspreadMermaid.rerenderAll(previous);
+        }
       }
     },
 

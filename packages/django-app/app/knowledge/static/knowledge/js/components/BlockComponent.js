@@ -29,6 +29,10 @@ const BlockComponent = {
       type: Function,
       required: true,
     },
+    setBlockProperties: {
+      type: Function,
+      default: () => () => {},
+    },
     formatContentWithTags: {
       type: Function,
       required: true,
@@ -140,11 +144,107 @@ const BlockComponent = {
       embedTagSuggestions: [],
       embedTagSelectedIndex: 0,
       embedTagSearchToken: 0,
+      // Asset-source rendering (csv/mmd/mermaid uploads). The bytes are
+      // fetched lazily on mount when the asset's filename matches a
+      // renderable extension; null until the fetch completes.
+      assetSource: null,
+      assetFetchError: null,
+      assetFetchInFlight: false,
     };
   },
   computed: {
     blockInContext() {
       return this.isBlockInContext(this.block.uuid);
+    },
+    canToggleCodeRender() {
+      // Code-typed blocks: only those whose language has a specialized
+      // renderer get the toggle. Plain code (python, js, …) renders the
+      // same way either way so a toggle would be a no-op.
+      if (this.block.block_type === "code") {
+        const lang = (this.block.properties?.language || "").toLowerCase();
+        return ["mermaid", "csv", "tsv"].includes(lang);
+      }
+      // Text-typed blocks: the toggle lights up if the content contains
+      // an inline ```mermaid / ```csv / ```tsv fenced block. The
+      // formatter applies the toggle to every inline fence in the block
+      // together, so one block-level state covers however many fences
+      // the user pasted in.
+      const content = this.block.content || "";
+      return /```(mermaid|csv|tsv)\b[^\n`]*\n[\s\S]*?```/i.test(content);
+    },
+    canToggleAssetRender() {
+      // The toggle applies to anything we render inline — images, plus
+      // the text-shaped types in detectedAssetType. Rule of thumb: if
+      // the asset block has a non-chip default render, expose a way
+      // back to the chip view.
+      if (!this.hasAsset || this.isEmbed) return false;
+      return this.assetIsImage || !!this.detectedAssetType;
+    },
+    canToggleRender() {
+      return this.canToggleCodeRender || this.canToggleAssetRender;
+    },
+    isRenderedRaw() {
+      return this.block.properties?.render === "raw";
+    },
+    canResetSize() {
+      return !!this.block.properties?.size?.width;
+    },
+    detectedAssetType() {
+      // Sniff a renderable type from the asset's original filename. Any
+      // extension we know how to render lights up; everything else
+      // continues to render as the default download chip.
+      if (!this.hasAsset || this.assetIsImage) return null;
+      const name = (this.block.asset.original_filename || "").toLowerCase();
+      if (name.endsWith(".csv")) return "csv";
+      if (name.endsWith(".tsv")) return "tsv";
+      if (name.endsWith(".mmd") || name.endsWith(".mermaid")) return "mermaid";
+      if (name.endsWith(".md") || name.endsWith(".markdown")) return "markdown";
+      return null;
+    },
+    shouldRenderAsset() {
+      // Render the inline view unless the user explicitly toggled to
+      // raw. The fetch is a small text file so eager-loading is fine.
+      return this.canToggleAssetRender && !this.isRenderedRaw;
+    },
+    assetRenderHtml() {
+      // Compose the inline render HTML from the fetched bytes. Pure
+      // computed so the template's v-html stays in sync if the user
+      // toggles back to rendered after viewing raw.
+      if (!this.assetSource) return "";
+      if (
+        this.detectedAssetType === "csv" ||
+        this.detectedAssetType === "tsv"
+      ) {
+        if (!window.brainspreadCsv) return "";
+        const delim = this.detectedAssetType === "tsv" ? "\t" : ",";
+        const table = window.brainspreadCsv.renderCsvTable(
+          this.assetSource,
+          delim
+        );
+        return `<div class="block-csv-wrapper">${table}</div>`;
+      }
+      if (this.detectedAssetType === "mermaid") {
+        const attr = String(this.assetSource)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+        return `<div class="block-mermaid-wrapper block-resizable"><div class="block-mermaid" data-mermaid-source="${attr}"></div><div class="block-resize-handle" aria-hidden="true"></div></div>`;
+      }
+      if (this.detectedAssetType === "markdown") {
+        if (!window.marked || !window.DOMPurify) return "";
+        // Per-call options (rather than marked.setOptions) so we don't
+        // mutate global state shared with the chat panel. gfm + breaks
+        // matches the chat panel's behavior, which is what users
+        // already expect for markdown rendering in this app.
+        const html = window.marked.parse(this.assetSource, {
+          gfm: true,
+          breaks: true,
+        });
+        const clean = window.DOMPurify.sanitize(html);
+        return `<div class="block-markdown">${clean}</div>`;
+      }
+      return "";
     },
     blockSelected() {
       return this.isBlockSelected(this.block.uuid);
@@ -367,6 +467,31 @@ const BlockComponent = {
     if (this.isEmbed) {
       this.loadWebArchive();
     }
+    if (
+      this.shouldRenderAsset &&
+      this.detectedAssetType &&
+      this.assetSource === null
+    ) {
+      this.fetchAssetSource();
+    }
+    this.applyContentRenderers();
+  },
+  updated() {
+    // The block-content div uses v-html, so when the block's content
+    // changes (edits, type swaps) Vue replaces the inner DOM with a fresh
+    // placeholder. Re-run the dynamic renderers so the new DOM picks up
+    // mermaid SVGs, syntax highlighting, etc.
+    this.applyContentRenderers();
+    // If the asset just became renderable (e.g. user toggled out of raw,
+    // or the asset itself just got attached) and we haven't fetched the
+    // bytes yet, kick that off.
+    if (
+      this.shouldRenderAsset &&
+      this.detectedAssetType &&
+      this.assetSource === null
+    ) {
+      this.fetchAssetSource();
+    }
   },
   beforeUnmount() {
     // Clean up event listener
@@ -381,6 +506,115 @@ const BlockComponent = {
     );
   },
   methods: {
+    applyContentRenderers() {
+      // Run after v-html replaces the block's display HTML so dynamic
+      // renderers (mermaid SVG, Prism syntax highlighting, etc.) can
+      // upgrade the static markup. Each renderer is no-op-cheap when
+      // its targets aren't present.
+      this.renderMermaidIfPresent();
+      this.highlightCodeIfPresent();
+      this.applyResizableHandles();
+    },
+
+    applyResizableHandles() {
+      // Apply the persisted block-level width to every resizable
+      // wrapper inside this block, and wire up corner-handle drag.
+      // A block has a single properties.size today, so multiple
+      // resizables in one block share the same width — fine for the
+      // current shapes (one mermaid wrapper per block; an asset block
+      // has either an image or a renderable text-shaped asset, never
+      // both).
+      if (!this.$el || this.$el.nodeType !== 1) return;
+      // Bail mid-drag so we don't fight the in-progress resize by
+      // re-applying the old saved width on a reactive re-render.
+      if (this.$el.querySelector(".block-resize-handle.is-resizing")) return;
+      const savedWidth = this.block.properties?.size?.width || null;
+      const target = savedWidth ? String(savedWidth) : "";
+      const wrappers = this.$el.querySelectorAll(".block-resizable");
+      wrappers.forEach((el) => {
+        if (el.dataset.savedSizeApplied === target) return;
+        if (savedWidth) {
+          el.style.width = `${savedWidth}px`;
+          el.classList.add("has-saved-size");
+        } else {
+          el.style.width = "";
+          el.classList.remove("has-saved-size");
+        }
+        el.dataset.savedSizeApplied = target;
+      });
+      const handles = this.$el.querySelectorAll(
+        ".block-resize-handle:not([data-resize-bound])"
+      );
+      handles.forEach((handle) => {
+        handle.dataset.resizeBound = "true";
+        handle.addEventListener("mousedown", (event) =>
+          this.startResize(event, handle)
+        );
+      });
+    },
+
+    startResize(event, handle) {
+      // Drag the corner handle to set wrapper width; height follows
+      // from the SVG/img's `height: auto`, so the aspect ratio is
+      // preserved without doing any math here.
+      const wrapper = handle.closest(".block-resizable");
+      if (!wrapper) return;
+      event.preventDefault();
+      event.stopPropagation();
+      handle.classList.add("is-resizing");
+      const startX = event.clientX;
+      const startWidth = wrapper.getBoundingClientRect().width;
+      const onMove = (e) => {
+        const delta = e.clientX - startX;
+        // Floor at 120px so the handle can't drag the wrapper into a
+        // sliver that's hard to recover from.
+        const next = Math.max(120, Math.round(startWidth + delta));
+        wrapper.style.width = `${next}px`;
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        handle.classList.remove("is-resizing");
+        wrapper.classList.add("has-saved-size");
+        const final = Math.round(wrapper.getBoundingClientRect().width);
+        this.setBlockProperties(this.block, { size: { width: final } });
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+
+    renderMermaidIfPresent() {
+      // Skip the work if neither the helper nor any placeholder are
+      // present. The helper takes care of one-shot mermaid initialization
+      // and idempotent rendering.
+      if (!window.brainspreadMermaid || !this.$el || this.$el.nodeType !== 1)
+        return;
+      if (!this.$el.querySelector || !this.$el.querySelector(".block-mermaid"))
+        return;
+      const appTheme =
+        document.documentElement.getAttribute("data-theme") || "dark";
+      window.brainspreadMermaid.renderIn(this.$el, appTheme);
+    },
+
+    highlightCodeIfPresent() {
+      // Apply Prism syntax highlighting to any <code class="language-*">
+      // emitted by formatContentWithTags. The autoloader fetches the
+      // grammar for each language on first use; calling highlightElement
+      // again on an already-tokenized node is a cheap no-op-ish retokenize.
+      if (!window.Prism || !this.$el || this.$el.nodeType !== 1) return;
+      const codeEls = this.$el.querySelectorAll(
+        "pre.block-code > code[class*='language-']"
+      );
+      codeEls.forEach((el) => {
+        try {
+          window.Prism.highlightElement(el);
+        } catch (_) {
+          // Highlighting failures shouldn't take the block down; the
+          // un-highlighted code is still legible.
+        }
+      });
+    },
+
     async loadWebArchive() {
       if (this.webArchiveLoading) return;
       this.webArchiveLoading = true;
@@ -1025,6 +1259,54 @@ const BlockComponent = {
         case "attachFile":
           this.triggerAttachFilePicker();
           break;
+        case "toggleCodeRender":
+          this.toggleCodeRender();
+          break;
+        case "resetSize":
+          this.resetSize();
+          break;
+      }
+    },
+
+    toggleCodeRender() {
+      const next = this.isRenderedRaw ? "rendered" : "raw";
+      this.setBlockProperties(this.block, { render: next });
+    },
+
+    resetSize() {
+      // Clear the persisted size and the local DOM state so the
+      // wrappers fall back to their natural defaults (image at
+      // intrinsic size, mermaid at column width).
+      this.setBlockProperties(this.block, { size: null });
+      if (this.$el) {
+        this.$el.querySelectorAll(".block-resizable").forEach((el) => {
+          el.style.width = "";
+          el.classList.remove("has-saved-size");
+          el.dataset.savedSizeApplied = "";
+        });
+      }
+    },
+
+    async fetchAssetSource() {
+      // Fetch the asset bytes so the inline csv/mermaid renderer has
+      // text to work with. The serve endpoint is gated by the Django
+      // session cookie (see core.views.me); same-origin fetch sends it
+      // automatically.
+      if (this.assetFetchInFlight || !this.hasAsset) return;
+      this.assetFetchInFlight = true;
+      this.assetFetchError = null;
+      try {
+        const response = await fetch(this.assetUrl, {
+          credentials: "same-origin",
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        this.assetSource = await response.text();
+      } catch (err) {
+        this.assetFetchError = err && err.message ? err.message : String(err);
+      } finally {
+        this.assetFetchInFlight = false;
       }
     },
 
@@ -1131,13 +1413,31 @@ const BlockComponent = {
           <span v-else>•</span>
         </div>
         <div v-if="hasAsset && !isEmbed" class="block-asset" @click.stop>
-          <img
-            v-if="assetIsImage"
-            :src="assetUrl"
-            :alt="assetDisplayName"
-            class="block-asset-image"
-            loading="lazy"
-          />
+          <div
+            v-if="assetIsImage && !isRenderedRaw"
+            class="block-asset-image-wrapper block-resizable"
+          >
+            <img
+              :src="assetUrl"
+              :alt="assetDisplayName"
+              class="block-asset-image"
+              loading="lazy"
+            />
+            <div class="block-resize-handle" aria-hidden="true"></div>
+          </div>
+          <div
+            v-else-if="shouldRenderAsset && assetSource !== null"
+            class="block-asset-rendered"
+            v-html="assetRenderHtml"
+          ></div>
+          <div
+            v-else-if="shouldRenderAsset && assetFetchError"
+            class="block-mermaid-error"
+          >failed to load {{ assetDisplayName }}: {{ assetFetchError }}</div>
+          <div
+            v-else-if="shouldRenderAsset"
+            class="block-asset-loading"
+          >loading {{ assetDisplayName }}…</div>
           <a
             v-else
             :href="assetUrl"
@@ -1519,6 +1819,17 @@ const BlockComponent = {
           <span class="context-menu-icon">▤</span>
           <span>attach file…</span>
         </button>
+        <template v-if="canToggleRender || canResetSize">
+          <div class="context-menu-separator"></div>
+          <button v-if="canToggleRender" class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('toggleCodeRender')">
+            <span class="context-menu-icon">⇄</span>
+            <span>{{ isRenderedRaw ? 'show as rendered' : 'show as raw' }}</span>
+          </button>
+          <button v-if="canResetSize" class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('resetSize')">
+            <span class="context-menu-icon">↺</span>
+            <span>reset size</span>
+          </button>
+        </template>
         <div class="context-menu-separator"></div>
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('schedule')">
           <span class="context-menu-icon"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="1"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg></span>
