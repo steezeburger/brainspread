@@ -253,6 +253,13 @@ const Page = {
           this.referencedBlocks = result.data.referenced_blocks || [];
           this.overdueBlocks = result.data.overdue_blocks || [];
           this.$emit("page-loaded", this.page);
+          // Flatten the block tree for consumers (e.g. ChatPanel's
+          // ctx picker) that want a single list of every block on
+          // the page, not just the root level.
+          this.$emit(
+            "visible-blocks-changed",
+            this.flattenBlockTree(this.directBlocks)
+          );
         } else {
           this.error = "failed to load page";
         }
@@ -286,6 +293,24 @@ const Page = {
 
         return block;
       });
+    },
+
+    flattenBlockTree(blocks) {
+      // Pre-order walk: root first, then its descendants, then the
+      // next sibling. ChatPanel's ctx picker uses this list so users
+      // can attach a deeply-nested block to context without first
+      // expanding it on the page.
+      const out = [];
+      const walk = (items) => {
+        for (const block of items || []) {
+          out.push(block);
+          if (block.children && block.children.length) {
+            walk(block.children);
+          }
+        }
+      };
+      walk(blocks);
+      return out;
     },
 
     async createBlock(

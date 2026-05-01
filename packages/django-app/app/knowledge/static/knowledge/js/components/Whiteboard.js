@@ -114,8 +114,39 @@ const Whiteboard = {
       this._reactRoot.render(
         React.createElement(Tldraw, {
           onMount: this.onTldrawMount,
+          // Route paste/drop image uploads through our /api/assets/
+          // endpoint so the bytes live in the Asset table (with
+          // sha256 dedupe + per-user owner check) instead of being
+          // serialized as a base64 data URL inside the snapshot
+          // JSON. Without this every pasted image bloats
+          // Page.whiteboard_snapshot.
+          assets: this.buildAssetStore(),
         })
       );
+    },
+
+    buildAssetStore() {
+      // tldraw v3 AssetStore: { upload, resolve, [remove] }.
+      // - upload(asset, file): persist the bytes, return { src }.
+      //   tldraw pre-generates an `asset` object with type +
+      //   placeholder src; we ignore it and just upload the file.
+      // - resolve(asset): return the URL tldraw should render. With
+      //   our `src` already stored, this is just identity.
+      const apiService = window.apiService;
+      return {
+        upload: async (asset, file) => {
+          // Older tldraw signatures swapped the order; handle both.
+          const f = file instanceof File ? file : asset;
+          const res = await apiService.uploadAsset(f, {
+            assetType: "whiteboard_asset",
+          });
+          if (!res?.success || !res?.data?.uuid) {
+            throw new Error("Whiteboard asset upload failed");
+          }
+          return { src: apiService.assetServeUrl(res.data.uuid) };
+        },
+        resolve: async (asset) => asset?.props?.src || null,
+      };
     },
 
     onTldrawMount(editor) {
