@@ -5634,7 +5634,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   gap: 0.4rem;
   padding: 0.25rem 0.5rem;
   border-radius: 3px;
-  background-color: var(--bg-secondary, #f4f4f4);
+  background-color: var(--accent-bg);
   border: 1px solid var(--border-secondary);
   color: var(--text-primary);
   text-decoration: none;
@@ -5644,7 +5644,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 }
 
 .block-asset-chip:hover {
-  background-color: var(--bg-hover, #e8e8e8);
+  background-color: var(--hover-bg);
   text-decoration: none;
 }
 
@@ -5684,7 +5684,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   border: 1px solid var(--border-secondary);
   border-radius: 3px;
   overflow: hidden;
-  background-color: var(--bg-secondary, #f4f4f4);
+  background-color: var(--accent-bg);
 }
 
 .chat-attachment-thumb {
@@ -5769,7 +5769,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   padding: 0.2rem 0.5rem;
   border: 1px solid var(--border-secondary);
   border-radius: 3px;
-  background-color: var(--bg-secondary, #f4f4f4);
+  background-color: var(--accent-bg);
   font-size: 0.85rem;
   color: var(--text-primary);
 }
