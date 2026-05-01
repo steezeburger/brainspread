@@ -4572,7 +4572,7 @@ a.sidebar-item:visited {
   opacity: 1;
 }
 
-.page-favorite-toggle:hover {
+.page-favorite-toggle.is-favorited {
   color: var(--text-primary);
 }
 
