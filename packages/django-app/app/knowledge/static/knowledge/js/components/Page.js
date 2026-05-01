@@ -118,6 +118,10 @@ const Page = {
       return this.shareMode !== "private" && !!this.page?.share_token;
     },
 
+    isFavorited() {
+      return !!this.page?.favorited;
+    },
+
     shareUrl() {
       if (!this.page?.share_token) return "";
       return `${window.location.origin}/knowledge/share/${this.page.share_token}/`;
@@ -1573,6 +1577,29 @@ const Page = {
       this.closePageMenu();
     },
 
+    async toggleFavorited() {
+      if (!this.page) return;
+      const next = !this.isFavorited;
+      try {
+        const result = await window.apiService.setPageFavorited(
+          this.page.uuid,
+          next
+        );
+        if (result.success && result.data) {
+          this.page = { ...this.page, ...result.data };
+          // The left-nav Favorites list listens for this and refetches.
+          document.dispatchEvent(new CustomEvent("favorites:changed"));
+        } else {
+          this.$parent?.addToast?.("failed to update favorite", "error");
+        }
+      } catch (error) {
+        console.error("failed to toggle favorite:", error);
+        this.$parent?.addToast?.("failed to update favorite", "error");
+      } finally {
+        this.closePageMenu();
+      }
+    },
+
     closeShareModal() {
       this.shareModalOpen = false;
       this.shareSavingMode = null;
@@ -2913,6 +2940,10 @@ const Page = {
                 <button @click="togglePageMenu" class="btn btn-outline context-menu-btn" title="Whiteboard options" :aria-expanded="showPageMenu" aria-haspopup="menu">⋮</button>
                 <div v-if="showPageMenu" class="context-menu" @click.stop @keydown="handlePageMenuKeydown" role="menu">
                   <button @click="startEditingTitle" class="context-menu-item" role="menuitem">edit title</button>
+                  <button @click="toggleFavorited" class="context-menu-item" role="menuitem">
+                    <span class="context-menu-icon">★</span>
+                    <span>{{ isFavorited ? 'unfavorite' : 'favorite' }}</span>
+                  </button>
                   <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">delete whiteboard</button>
                 </div>
               </div>
@@ -2950,6 +2981,10 @@ const Page = {
                     <button @click="enterSelectionMode" class="context-menu-item" role="menuitem">
                       <span class="context-menu-icon">◉</span>
                       <span>select multiple</span>
+                    </button>
+                    <button @click="toggleFavorited" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">★</span>
+                      <span>{{ isFavorited ? 'unfavorite' : 'favorite' }}</span>
                     </button>
                     <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">
                        <span class="context-menu-icon">×</span>
@@ -2995,6 +3030,10 @@ const Page = {
                     <button @click="enterSelectionMode" class="context-menu-item" role="menuitem">
                       <span class="context-menu-icon">◉</span>
                       <span>select multiple</span>
+                    </button>
+                    <button @click="toggleFavorited" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">★</span>
+                      <span>{{ isFavorited ? 'unfavorite' : 'favorite' }}</span>
                     </button>
                     <button @click="openShareModal" class="context-menu-item" role="menuitem">
                       <span class="context-menu-icon">→</span>

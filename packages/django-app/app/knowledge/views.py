@@ -17,6 +17,7 @@ from knowledge.commands import (
     CreatePageCommand,
     DeleteBlockCommand,
     DeletePageCommand,
+    GetFavoritedPagesCommand,
     GetGraphDataCommand,
     GetHistoricalDataCommand,
     GetPageWithBlocksCommand,
@@ -27,6 +28,7 @@ from knowledge.commands import (
     ReorderBlocksCommand,
     ScheduleBlockCommand,
     SearchPagesCommand,
+    SetPageFavoritedCommand,
     SharePageCommand,
     ToggleBlockTodoCommand,
     UpdateBlockCommand,
@@ -46,6 +48,7 @@ from knowledge.forms import (
     CreatePageForm,
     DeleteBlockForm,
     DeletePageForm,
+    GetFavoritedPagesForm,
     GetGraphDataForm,
     GetHistoricalDataForm,
     GetPageWithBlocksForm,
@@ -56,6 +59,7 @@ from knowledge.forms import (
     ReorderBlocksForm,
     ScheduleBlockForm,
     SearchPagesForm,
+    SetPageFavoritedForm,
     SharePageForm,
     ToggleBlockTodoForm,
     UpdateBlockForm,
@@ -529,6 +533,88 @@ def share_page(request):
 
     except Exception as e:
         response: PageResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def set_page_favorited(request):
+    """Star or unstar a page for the Favorites section in the left nav."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = SetPageFavoritedForm(data)
+
+        if form.is_valid():
+            command = SetPageFavoritedCommand(form)
+            page = command.execute()
+
+            response: PageResponse = {
+                "success": True,
+                "data": page.to_dict(),
+                "errors": None,
+            }
+            return Response(response)
+
+        response: PageResponse = {
+            "success": False,
+            "data": None,
+            "errors": form.errors,
+        }
+        return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    except Exception as e:
+        response: PageResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_favorited_pages(request):
+    """Return the user's starred pages for the Favorites left-nav section."""
+    try:
+        form = GetFavoritedPagesForm({"user": request.user.id})
+
+        if form.is_valid():
+            command = GetFavoritedPagesCommand(form)
+            pages = command.execute()
+
+            pages_data: PagesData = {
+                "pages": [page.to_dict() for page in pages],
+                "total_count": len(pages),
+                "has_more": False,
+            }
+
+            response: PagesResponse = {
+                "success": True,
+                "data": pages_data,
+                "errors": None,
+            }
+            return Response(response)
+
+        response: PagesResponse = {
+            "success": False,
+            "data": None,
+            "errors": form.errors,
+        }
+        return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        response: PagesResponse = {
             "success": False,
             "data": None,
             "errors": {"non_field_errors": [str(e)]},

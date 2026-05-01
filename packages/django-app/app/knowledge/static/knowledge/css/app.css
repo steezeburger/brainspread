@@ -2380,6 +2380,35 @@ kbd {
   transform: rotate(90deg);
 }
 
+.leftnav-section-count {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-weight: normal;
+  font-size: 0.7rem;
+}
+
+.leftnav-favorites-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0.1rem 0 0.4rem;
+}
+
+.leftnav-favorites-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.leftnav-favorite-item .leftnav-icon {
+  color: var(--text-muted);
+}
+
+.leftnav-empty {
+  padding: 0.4rem 0.6rem 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-style: italic;
+}
+
 .leftnav-recent {
   flex: 1;
   min-height: 0;

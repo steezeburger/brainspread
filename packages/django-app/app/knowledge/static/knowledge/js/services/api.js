@@ -144,6 +144,17 @@ class ApiService {
     });
   }
 
+  async setPageFavorited(pageUuid, favorited) {
+    return await this.request("/knowledge/api/pages/favorite/", {
+      method: "POST",
+      body: JSON.stringify({ page: pageUuid, favorited: !!favorited }),
+    });
+  }
+
+  async getFavoritedPages() {
+    return await this.request("/knowledge/api/pages/favorites/");
+  }
+
   async getPages(publishedOnly = true, limit = 10, offset = 0) {
     return await this.request(
       `/knowledge/api/pages/list/?published_only=${publishedOnly}&limit=${limit}&offset=${offset}`

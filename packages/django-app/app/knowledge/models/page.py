@@ -75,6 +75,13 @@ class Page(UUIDModelMixin, CRUDTimestampsMixin):
         help_text="Unguessable token used in public share URLs",
     )
 
+    # User-curated "starred" flag. Pinned pages render in the left-nav
+    # Favorites section so the user can jump to their working set without
+    # searching. Unrelated to is_published / share_mode.
+    favorited = models.BooleanField(
+        default=False, help_text="Whether the user has starred this page"
+    )
+
     class Meta:
         db_table = "pages"
         unique_together = [("user", "slug")]
@@ -126,6 +133,7 @@ class Page(UUIDModelMixin, CRUDTimestampsMixin):
             "recent_blocks": None,  # fill these in later
             "share_mode": self.share_mode,
             "share_token": self.share_token,
+            "favorited": self.favorited,
         }
 
 
@@ -144,6 +152,7 @@ class PageData(TypedDict):
     recent_blocks: Optional[List[BlockData]]
     share_mode: str
     share_token: Optional[str]
+    favorited: bool
 
 
 class PagesData(TypedDict):

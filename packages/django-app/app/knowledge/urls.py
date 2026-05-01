@@ -51,6 +51,12 @@ urlpatterns = [
     path("api/pages/", views.create_page, name="create_page"),
     path("api/pages/update/", views.update_page, name="update_page"),
     path("api/pages/share/", views.share_page, name="share_page"),
+    path("api/pages/favorite/", views.set_page_favorited, name="set_page_favorited"),
+    path(
+        "api/pages/favorites/",
+        views.get_favorited_pages,
+        name="get_favorited_pages",
+    ),
     path("api/pages/delete/", views.delete_page, name="delete_page"),
     path("api/pages/list/", views.get_pages, name="list_pages"),
     path("api/pages/search/", views.search_pages, name="search_pages"),
