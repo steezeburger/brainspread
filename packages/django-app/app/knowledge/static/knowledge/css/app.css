@@ -5621,14 +5621,14 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
    * baseline as the sibling textarea. */
 }
 
-/* Image variant: the wrapper becomes a column container that holds
- * image, caption, and tag-chip strip stacked vertically. flex: 1 +
- * min-width: 0 lets it claim the row's remaining width without
- * overflowing. The chip variant stays inline so the textarea sits
- * on the same row as the chip - see .block-asset-chip. */
+/* Image variant: the wrapper claims the row's remaining width and
+ * lets its block-level children (image, caption, tag chip strip)
+ * stack naturally. We deliberately do NOT use `display: flex` here
+ * - flex column would default to align-items: stretch, which scales
+ * the image up to the wrapper's full width and distorts small
+ * pictures. The chip variant stays inline so the textarea sits on
+ * the same row as the chip - see .block-asset-chip. */
 .block-asset:has(.block-asset-image) {
-  display: flex;
-  flex-direction: column;
   flex: 1;
   min-width: 0;
 }
