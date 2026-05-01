@@ -10,13 +10,17 @@
   let initialized = false;
   let currentMermaidTheme = null;
 
-  // Map the app's user-facing themes to mermaid's built-in themes. Mermaid
-  // ships with `default`, `dark`, `forest`, and `neutral`. Anything that
-  // isn't obviously light gets the dark mermaid theme so contrast stays
-  // readable on dark backgrounds.
+  // Map the app's user-facing themes to mermaid's built-in themes.
+  // Mermaid ships with `default` (dark-on-light), `dark`
+  // (light-on-dark), `forest`, and `neutral`. Pick the variant whose
+  // foreground contrasts with the app theme's background — picking the
+  // wrong one leaves the diagram lines almost invisible (e.g. earthy's
+  // cream background under mermaid's dark theme).
+  const LIGHT_BG_THEMES = new Set(["light", "earthy"]);
+
   function mermaidThemeFor(appTheme) {
-    if (appTheme === "light") return "default";
     if (appTheme === "forest") return "forest";
+    if (LIGHT_BG_THEMES.has(appTheme)) return "default";
     return "dark";
   }
 
