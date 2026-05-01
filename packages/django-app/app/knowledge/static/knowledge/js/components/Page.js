@@ -1702,8 +1702,9 @@ const Page = {
         }
 
         if (fenceMatch) {
-          // Opening fence: only intercept if we've started processing a list
-          if (!sawFirstNonEmpty) return [];
+          // Opening fence — accept this as the start of a list-style paste
+          // even when no bullet has been seen yet, so a bare ```lang
+          // fenced block (e.g. ```mermaid) round-trips into a code block.
           const leading = fenceMatch[1];
           codeFenceOpen = true;
           codeFenceIndentStr = leading;
