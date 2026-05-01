@@ -35,6 +35,16 @@ window.LeftNav = {
       // localStorage can throw in private mode / disabled-cookie setups.
       // Fall back to the viewport default.
     }
+    let favoritesExpanded = true;
+    try {
+      const savedFavExpanded =
+        typeof window !== "undefined" && window.localStorage
+          ? window.localStorage.getItem("brainspread.leftNavFavoritesExpanded")
+          : null;
+      if (savedFavExpanded === "0") favoritesExpanded = false;
+    } catch (_) {
+      // ignore localStorage failures
+    }
     return {
       historicalData: null,
       loading: false,
@@ -47,6 +57,10 @@ window.LeftNav = {
       minWidth: 240,
       maxWidth: 800,
       recentExpanded: true,
+      favorites: [],
+      favoritesLoading: false,
+      favoritesError: null,
+      favoritesExpanded,
     };
   },
 
@@ -71,11 +85,22 @@ window.LeftNav = {
 
   mounted() {
     this.loadHistoricalData();
+    this.loadFavorites();
     this.setupResizeListener();
+    // The page header dispatches this when a user stars/unstars the
+    // current page so the Favorites list refreshes without a reload.
+    this.handleFavoritesChanged = () => this.loadFavorites();
+    document.addEventListener("favorites:changed", this.handleFavoritesChanged);
   },
 
   beforeUnmount() {
     this.removeResizeListener();
+    if (this.handleFavoritesChanged) {
+      document.removeEventListener(
+        "favorites:changed",
+        this.handleFavoritesChanged
+      );
+    }
   },
 
   watch: {},
@@ -125,6 +150,39 @@ window.LeftNav = {
 
     toggleRecent() {
       this.recentExpanded = !this.recentExpanded;
+    },
+
+    toggleFavorites() {
+      this.favoritesExpanded = !this.favoritesExpanded;
+      try {
+        if (typeof window !== "undefined" && window.localStorage) {
+          window.localStorage.setItem(
+            "brainspread.leftNavFavoritesExpanded",
+            this.favoritesExpanded ? "1" : "0"
+          );
+        }
+      } catch (_) {
+        // localStorage can throw in private mode; toggle still works for
+        // the current session.
+      }
+    },
+
+    async loadFavorites() {
+      this.favoritesLoading = true;
+      this.favoritesError = null;
+      try {
+        const result = await window.apiService.getFavoritedPages();
+        if (result.success) {
+          this.favorites = result.data?.pages || [];
+        } else {
+          this.favoritesError = "failed to load favorites";
+        }
+      } catch (error) {
+        console.error("error loading favorites:", error);
+        this.favoritesError = error.message || "failed to load favorites";
+      } finally {
+        this.favoritesLoading = false;
+      }
     },
 
     formatDate(dateString) {
@@ -605,6 +663,46 @@ window.LeftNav = {
               <span class="leftnav-label">graph</span>
             </a>
           </nav>
+
+          <!-- Favorites (collapsible) -->
+          <section class="leftnav-section leftnav-favorites" aria-label="Favorites">
+            <button
+              type="button"
+              class="leftnav-section-toggle"
+              @click="toggleFavorites"
+              :aria-expanded="favoritesExpanded"
+            >
+              <span class="leftnav-chevron" :class="{ open: favoritesExpanded }" aria-hidden="true">▸</span>
+              <span>favorites</span>
+              <span v-if="favorites.length" class="leftnav-section-count">{{ favorites.length }}</span>
+            </button>
+
+            <div v-if="favoritesExpanded" class="leftnav-favorites-body">
+              <div v-if="favoritesLoading" class="sidebar-loading">
+                Loading...
+              </div>
+              <div v-else-if="favoritesError" class="sidebar-error">
+                {{ favoritesError }}
+              </div>
+              <div v-else-if="!favorites.length" class="leftnav-empty">
+                No favorites yet. Star a page from its menu.
+              </div>
+              <div v-else class="leftnav-favorites-list">
+                <a
+                  v-for="page in favorites"
+                  :key="page.uuid"
+                  :href="pageUrl(page.slug)"
+                  class="leftnav-item leftnav-favorite-item"
+                  @click="handleNavClick($event, page.slug)"
+                  @auxclick="handleNavClick($event, page.slug)"
+                  :title="'Open ' + page.title"
+                >
+                  <span class="leftnav-icon" aria-hidden="true">★</span>
+                  <span class="leftnav-label">{{ formatPageTitle(page) }}</span>
+                </a>
+              </div>
+            </div>
+          </section>
 
           <!-- Recent (collapsible) -->
           <section class="leftnav-section leftnav-recent" aria-label="Recent">

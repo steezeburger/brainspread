@@ -4,6 +4,7 @@ from .create_block_command import CreateBlockCommand
 from .create_page_command import CreatePageCommand
 from .delete_block_command import DeleteBlockCommand
 from .delete_page_command import DeletePageCommand
+from .get_favorited_pages_command import GetFavoritedPagesCommand
 from .get_graph_data_command import GetGraphDataCommand
 from .get_historical_data_command import GetHistoricalDataCommand
 from .get_page_with_blocks_command import GetPageWithBlocksCommand
@@ -16,6 +17,7 @@ from .schedule_block_command import ScheduleBlockCommand
 from .search_pages_command import SearchPagesCommand
 from .send_due_reminders_command import SendDueRemindersCommand
 from .set_block_type_command import SetBlockTypeCommand
+from .set_page_favorited_command import SetPageFavoritedCommand
 from .share_page_command import SharePageCommand
 from .sync_block_tags_command import SyncBlockTagsCommand
 from .toggle_block_todo_command import ToggleBlockTodoCommand

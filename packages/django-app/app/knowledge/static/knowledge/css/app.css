@@ -2380,6 +2380,35 @@ kbd {
   transform: rotate(90deg);
 }
 
+.leftnav-section-count {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-weight: normal;
+  font-size: 0.7rem;
+}
+
+.leftnav-favorites-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0.1rem 0 0.4rem;
+}
+
+.leftnav-favorites-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.leftnav-favorite-item .leftnav-icon {
+  color: var(--text-muted);
+}
+
+.leftnav-empty {
+  padding: 0.4rem 0.6rem 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-style: italic;
+}
+
 .leftnav-recent {
   flex: 1;
   min-height: 0;
@@ -4517,6 +4546,30 @@ a.sidebar-item:visited {
   flex: 1;
 }
 
+.page-favorite-toggle {
+  background: transparent;
+  border: none;
+  padding: 0.15rem 0.3rem;
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--text-primary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+/* Hidden by default so it doesn't add chrome to every title row.
+   Reveal on hover of the title row, on keyboard focus of the button
+   (`:focus-visible` skips mouse focus so a click doesn't pin it
+   visible after the cursor leaves), or whenever the page is
+   favorited — the filled ★ then advertises the state at a glance. */
+.page-header-flex-left:hover .page-favorite-toggle,
+.title-left:hover .page-favorite-toggle,
+.page-favorite-toggle:focus-visible,
+.page-favorite-toggle.is-favorited {
+  opacity: 1;
+}
+
 .page-title-text {
   font-size: 2rem;
   font-weight: bold;
@@ -4598,6 +4651,10 @@ a.sidebar-item:visited {
 
 .page-header-flex-left {
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
 }
 
 .page-title-text,

@@ -148,6 +148,11 @@ class PageRepository(BaseRepository):
         )
 
     @classmethod
+    def get_favorited(cls, user) -> QuerySet:
+        """Get the user's starred pages, ordered by title for the sidebar."""
+        return cls.get_queryset().filter(user=user, favorited=True).order_by("title")
+
+    @classmethod
     def get_tag_page(cls, tag_name: str, user) -> Optional[Page]:
         """Get tag page by tag name"""
         try:
