@@ -4561,12 +4561,12 @@ a.sidebar-item:visited {
 }
 
 /* Hidden by default so it doesn't add chrome to every title row.
-   Reveal on hover/focus of the title row, on focus of the button
-   itself (keyboard nav), or whenever the page is favorited — a
-   filled ★ then advertises the state at a glance. */
+   Reveal on hover of the title row, on keyboard focus of the button
+   (`:focus-visible` skips mouse focus so a click doesn't pin it
+   visible after the cursor leaves), or whenever the page is
+   favorited — the filled ★ then advertises the state at a glance. */
 .page-header-flex-left:hover .page-favorite-toggle,
 .title-left:hover .page-favorite-toggle,
-.page-favorite-toggle:focus,
 .page-favorite-toggle:focus-visible,
 .page-favorite-toggle.is-favorited {
   opacity: 1;
@@ -4574,10 +4574,6 @@ a.sidebar-item:visited {
 
 .page-favorite-toggle:hover {
   color: var(--text-primary);
-}
-
-.page-favorite-toggle.is-favorited {
-  color: var(--context-color);
 }
 
 .page-title-text {
