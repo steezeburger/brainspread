@@ -16,6 +16,7 @@ from .schedule_block_command import ScheduleBlockCommand
 from .search_pages_command import SearchPagesCommand
 from .send_due_reminders_command import SendDueRemindersCommand
 from .set_block_type_command import SetBlockTypeCommand
+from .share_page_command import SharePageCommand
 from .sync_block_tags_command import SyncBlockTagsCommand
 from .toggle_block_todo_command import ToggleBlockTodoCommand
 from .touch_page_command import TouchPageCommand

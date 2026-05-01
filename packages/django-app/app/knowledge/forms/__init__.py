@@ -16,6 +16,7 @@ from .schedule_block_form import ScheduleBlockForm
 from .search_pages_form import SearchPagesForm
 from .send_due_reminders_form import SendDueRemindersForm
 from .set_block_type_form import SetBlockTypeForm
+from .share_page_form import SharePageForm
 from .sync_block_tags_form import SyncBlockTagsForm
 from .toggle_block_todo_form import ToggleBlockTodoForm
 from .touch_page_form import TouchPageForm

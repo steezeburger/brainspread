@@ -1,0 +1,26 @@
+{% for block in blocks %}
+  <li class="public-block public-block-type-{{ block.block_type }}">
+    {% if block.block_type == 'todo' %}
+      <span class="public-block-todo-marker" aria-label="todo">[ ]</span>
+    {% elif block.block_type == 'doing' %}
+      <span class="public-block-todo-marker" aria-label="doing">[~]</span>
+    {% elif block.block_type == 'done' %}
+      <span class="public-block-todo-marker" aria-label="done">[x]</span>
+    {% elif block.block_type == 'later' %}
+      <span class="public-block-todo-marker" aria-label="later">[…]</span>
+    {% elif block.block_type == 'wontdo' %}
+      <span class="public-block-todo-marker" aria-label="won't do">[/]</span>
+    {% endif %}
+    {% if block.asset_is_image and block.asset_url %}
+      <img class="public-block-image" src="{{ block.asset_url }}" alt="" loading="lazy" />
+    {% elif block.content_type == 'image' and block.media_url %}
+      <img class="public-block-image" src="{{ block.media_url }}" alt="" loading="lazy" />
+    {% endif %}
+    <div class="public-block-content" data-md="{{ block.content }}">{{ block.content }}</div>
+    {% if block.children %}
+      <ul class="public-block-list">
+        {% include 'knowledge/_public_block_list.html' with blocks=block.children %}
+      </ul>
+    {% endif %}
+  </li>
+{% endfor %}
