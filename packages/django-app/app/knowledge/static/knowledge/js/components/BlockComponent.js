@@ -226,7 +226,7 @@ const BlockComponent = {
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;");
-        return `<div class="block-mermaid-wrapper"><div class="block-mermaid" data-mermaid-source="${attr}"></div></div>`;
+        return `<div class="block-mermaid-wrapper block-resizable"><div class="block-mermaid" data-mermaid-source="${attr}"></div><div class="block-resize-handle" aria-hidden="true"></div></div>`;
       }
       if (this.detectedAssetType === "markdown") {
         if (!window.marked || !window.DOMPurify) return "";
@@ -510,6 +510,63 @@ const BlockComponent = {
       // its targets aren't present.
       this.renderMermaidIfPresent();
       this.highlightCodeIfPresent();
+      this.applyResizableHandles();
+    },
+
+    applyResizableHandles() {
+      // Apply the persisted block-level width to every resizable
+      // wrapper inside this block, and wire up corner-handle drag.
+      // A block has a single properties.size today, so multiple
+      // resizables in one block share the same width — fine for the
+      // current shapes (one mermaid wrapper per code block, one image
+      // wrapper per asset block).
+      if (!this.$el || this.$el.nodeType !== 1) return;
+      const savedWidth = this.block.properties?.size?.width;
+      const wrappers = this.$el.querySelectorAll(".block-resizable");
+      wrappers.forEach((el) => {
+        if (savedWidth && !el.dataset.savedSizeApplied) {
+          el.style.width = `${savedWidth}px`;
+          el.dataset.savedSizeApplied = "true";
+        }
+      });
+      const handles = this.$el.querySelectorAll(
+        ".block-resize-handle:not([data-resize-bound])"
+      );
+      handles.forEach((handle) => {
+        handle.dataset.resizeBound = "true";
+        handle.addEventListener("mousedown", (event) =>
+          this.startResize(event, handle)
+        );
+      });
+    },
+
+    startResize(event, handle) {
+      // Drag the corner handle to set wrapper width; height follows
+      // from the SVG/img's `height: auto`, so the aspect ratio is
+      // preserved without doing any math here.
+      const wrapper = handle.closest(".block-resizable");
+      if (!wrapper) return;
+      event.preventDefault();
+      event.stopPropagation();
+      handle.classList.add("is-resizing");
+      const startX = event.clientX;
+      const startWidth = wrapper.getBoundingClientRect().width;
+      const onMove = (e) => {
+        const delta = e.clientX - startX;
+        // Floor at 120px so the handle can't drag the wrapper into a
+        // sliver that's hard to recover from.
+        const next = Math.max(120, Math.round(startWidth + delta));
+        wrapper.style.width = `${next}px`;
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        handle.classList.remove("is-resizing");
+        const final = Math.round(wrapper.getBoundingClientRect().width);
+        this.setBlockProperties(this.block, { size: { width: final } });
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
     },
 
     renderMermaidIfPresent() {
@@ -1325,13 +1382,18 @@ const BlockComponent = {
           <span v-else>•</span>
         </div>
         <div v-if="hasAsset && !isEmbed" class="block-asset" @click.stop>
-          <img
+          <div
             v-if="assetIsImage && !isRenderedRaw"
-            :src="assetUrl"
-            :alt="assetDisplayName"
-            class="block-asset-image"
-            loading="lazy"
-          />
+            class="block-asset-image-wrapper block-resizable"
+          >
+            <img
+              :src="assetUrl"
+              :alt="assetDisplayName"
+              class="block-asset-image"
+              loading="lazy"
+            />
+            <div class="block-resize-handle" aria-hidden="true"></div>
+          </div>
           <div
             v-else-if="shouldRenderAsset && assetSource !== null"
             class="block-asset-rendered"

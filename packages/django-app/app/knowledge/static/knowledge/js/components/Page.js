@@ -1020,15 +1020,29 @@ const Page = {
       // tsv) get specialized rendering; everything else falls through to
       // <pre><code> tagged for Prism syntax highlighting. `forceRaw`
       // suppresses the specialized renderers so the toggle in the block
-      // menu can fall back to the plain code view.
-      const renderCodeBlock = (source, lang, forceRaw = false) => {
+      // menu can fall back to the plain code view. `resizable` adds a
+      // corner drag-handle on the mermaid wrapper — only meaningful for
+      // code-typed blocks where the block-level properties.size has
+      // somewhere to land.
+      const renderCodeBlock = (
+        source,
+        lang,
+        forceRaw = false,
+        resizable = false
+      ) => {
         const langLower = lang ? lang.toLowerCase() : "";
         const langBadge = lang
           ? `<span class="block-code-lang">${escapeHtml(lang)}</span>`
           : "";
         if (!forceRaw && langLower === "mermaid") {
           const attrEscaped = escapeHtml(source).replace(/"/g, "&quot;");
-          return `<div class="block-mermaid-wrapper">${langBadge}<div class="block-mermaid" data-mermaid-source="${attrEscaped}"></div></div>`;
+          const wrapperClass = resizable
+            ? "block-mermaid-wrapper block-resizable"
+            : "block-mermaid-wrapper";
+          const handle = resizable
+            ? '<div class="block-resize-handle" aria-hidden="true"></div>'
+            : "";
+          return `<div class="${wrapperClass}">${langBadge}<div class="block-mermaid" data-mermaid-source="${attrEscaped}"></div>${handle}</div>`;
         }
         if (
           !forceRaw &&
@@ -1056,11 +1070,13 @@ const Page = {
       };
 
       // Code-typed blocks render their entire content as a single fenced
-      // block with no other markdown formatting applied.
+      // block with no other markdown formatting applied. The wrapper is
+      // resizable (mermaid only) since the block-level properties.size
+      // has somewhere to land.
       if (blockType === "code") {
         const lang = properties?.language || "";
         const forceRaw = properties?.render === "raw";
-        return renderCodeBlock(content, lang, forceRaw);
+        return renderCodeBlock(content, lang, forceRaw, true);
       }
 
       let formatted = content;

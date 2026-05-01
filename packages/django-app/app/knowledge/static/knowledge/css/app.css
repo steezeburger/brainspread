@@ -5005,6 +5005,7 @@ kbd {
   position: relative;
   display: block;
   margin: 0.25em 0;
+  max-width: 100%;
 }
 
 .block-mermaid {
@@ -5019,8 +5020,9 @@ kbd {
 }
 
 .block-mermaid svg {
-  max-width: 100%;
+  width: 100%;
   height: auto;
+  display: block;
 }
 
 .block-mermaid-error {
@@ -5084,6 +5086,56 @@ kbd {
   font-size: 0.85em;
   color: var(--text-secondary, #888);
   font-style: italic;
+}
+
+/* Proportional resize handle for renders with an intrinsic aspect
+   ratio (mermaid SVGs, images). Width is the only thing the user
+   controls; the inner content's `height: auto` keeps the ratio. */
+.block-resizable {
+  position: relative;
+  display: block;
+  max-width: 100%;
+}
+
+.block-resize-handle {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  opacity: 0;
+  background: linear-gradient(
+    135deg,
+    transparent 50%,
+    var(--text-secondary, #888) 50%,
+    var(--text-secondary, #888) 60%,
+    transparent 60%,
+    transparent 70%,
+    var(--text-secondary, #888) 70%,
+    var(--text-secondary, #888) 80%,
+    transparent 80%
+  );
+  transition: opacity 120ms ease;
+  z-index: 1;
+  user-select: none;
+}
+
+.block-resizable:hover .block-resize-handle,
+.block-resize-handle.is-resizing {
+  opacity: 0.7;
+}
+
+.block-asset-image-wrapper {
+  position: relative;
+  display: block;
+  max-width: 100%;
+}
+
+.block-asset-image-wrapper > .block-asset-image {
+  width: 100%;
+  height: auto;
+  display: block;
 }
 
 .block-markdown {
