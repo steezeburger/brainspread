@@ -302,6 +302,10 @@ const KnowledgeApp = createApp({
           block_type: block.block_type,
           created_at: block.created_at,
           parent_uuid: parentUuid,
+          // page_uuid lets the backend formatter surface "block X on
+          // page Y" to the model, which is what create_block actually
+          // needs (it requires page_uuid alongside parent_uuid).
+          page_uuid: block.page_uuid || null,
           // Carry the block's attached asset (if any) so ChatPanel can
           // include image bytes alongside the text context. Without
           // this, an image-only block would land in context with empty
@@ -956,7 +960,9 @@ const KnowledgeApp = createApp({
                             ref="chatPanel"
                             :chat-context-blocks="chatContextBlocks"
                             :visible-blocks="visibleBlocks"
+                            :is-block-in-context="isBlockInContext"
                             @open-settings="onChatPanelOpenSettings"
+                            @add-context-block="onBlockAddToContext"
                             @remove-context-block="onBlockRemoveFromContext"
                             @clear-context="clearChatContext"
                         />

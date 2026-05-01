@@ -420,6 +420,89 @@ body {
   opacity: 0.85;
 }
 
+/* Context picker popover - lives inside the chat-controls row, anchored
+ * above the ctx button. Lists the current page's visible blocks and
+ * lets the user toggle each one in/out of context with a click. */
+.context-picker-wrapper {
+  position: relative;
+}
+
+.context-picker {
+  position: absolute;
+  bottom: calc(100% + 0.4rem);
+  left: 0;
+  width: 280px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  border: 2px solid var(--border-primary);
+  box-shadow: 4px 4px 0 var(--border-primary);
+  /* Above the chat panel (1000) and its resize handle (1001) so the
+   * popover never tucks behind page chrome. */
+  z-index: 1200;
+  padding: 0.4rem 0;
+}
+
+.context-picker-header {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 0 0.6rem 0.4rem;
+}
+
+.context-picker-empty {
+  padding: 0.5rem 0.6rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.context-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  background: transparent;
+  border: none;
+  text-align: left;
+  font: inherit;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.context-picker-item:hover {
+  background: var(--hover-bg);
+}
+
+.context-picker-item.is-selected {
+  background: var(--accent-bg);
+}
+
+.context-picker-check {
+  flex-shrink: 0;
+  font-size: 0.95rem;
+  width: 1.2em;
+  text-align: center;
+}
+
+.context-picker-thumb {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+}
+
+.context-picker-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+}
+
 /* Tools chip inverts fg/bg when any tool is on — matches the ctx chip
    treatment so "chip inverted = feature on" is a single consistent rule. */
 .chat-controls .tools-btn.active {
@@ -5532,8 +5615,34 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
  * block reads like a richtext note; non-image renders as a chip linking
  * to the access-controlled serve endpoint. */
 .block-asset {
-  margin-top: 0.25rem;
-  margin-bottom: 0.25rem;
+  /* No vertical margin on the wrapper itself - the image variant
+   * adds its own breathing room below since it occupies its own
+   * vertical space, while the chip variant should sit on the same
+   * baseline as the sibling textarea. */
+}
+
+/* Image variant: the wrapper claims the row's remaining width and
+ * lets its block-level children (image, caption, tag chip strip)
+ * stack naturally. We deliberately do NOT use `display: flex` here
+ * - flex column would default to align-items: stretch, which scales
+ * the image up to the wrapper's full width and distorts small
+ * pictures. The chip variant stays inline so the textarea sits on
+ * the same row as the chip - see .block-asset-chip. */
+.block-asset:has(.block-asset-image) {
+  flex: 1;
+  min-width: 0;
+}
+
+.block-asset-caption,
+.block-asset-caption-wrapper {
+  /* Caption shows in the same column as the image, indented zero so
+   * its left edge lines up with the image's left edge. */
+  margin-top: 0.125rem;
+}
+
+.block-asset-caption-placeholder {
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .block-asset-image {
@@ -5543,25 +5652,30 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   height: auto;
   border-radius: 3px;
   border: 1px solid var(--border-secondary);
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
 }
 
 .block-asset-chip {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.25rem 0.5rem;
+  /* Match .block-content's vertical padding (0.125rem) and font
+   * metrics (1rem / 1.5 line-height) so chip + textarea share the
+   * same line box and align cleanly on the flex row. */
+  padding: 0.125rem 0.5rem;
   border-radius: 3px;
-  background-color: var(--bg-secondary, #f4f4f4);
+  background-color: var(--accent-bg);
   border: 1px solid var(--border-secondary);
   color: var(--text-primary);
   text-decoration: none;
-  font-size: 0.85rem;
-  line-height: 1.2;
+  font-size: 1rem;
+  line-height: 1.5;
   max-width: 100%;
 }
 
 .block-asset-chip:hover {
-  background-color: var(--bg-hover, #e8e8e8);
+  background-color: var(--hover-bg);
   text-decoration: none;
 }
 
@@ -5580,7 +5694,9 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 .block-asset-chip-meta {
   flex: 0 0 auto;
   opacity: 0.6;
-  font-size: 0.75rem;
+  /* The meta text stays slightly smaller than the chip's main label
+   * so file_type · size doesn't crowd the filename. */
+  font-size: 0.85rem;
 }
 
 /* Chat input: pending attachment preview + attach button. The chip strip
@@ -5601,7 +5717,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   border: 1px solid var(--border-secondary);
   border-radius: 3px;
   overflow: hidden;
-  background-color: var(--bg-secondary, #f4f4f4);
+  background-color: var(--accent-bg);
 }
 
 .chat-attachment-thumb {
@@ -5686,7 +5802,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   padding: 0.2rem 0.5rem;
   border: 1px solid var(--border-secondary);
   border-radius: 3px;
-  background-color: var(--bg-secondary, #f4f4f4);
+  background-color: var(--accent-bg);
   font-size: 0.85rem;
   color: var(--text-primary);
 }
