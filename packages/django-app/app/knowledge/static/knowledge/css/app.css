@@ -6178,13 +6178,18 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 .share-link-input {
   flex: 1;
   padding: 6px 10px;
-  border: 1px solid var(--border-secondary);
+  border: 1px solid var(--border-primary);
   border-radius: 3px;
-  background: var(--bg-secondary, #f4f4f4);
+  background: var(--bg-primary);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.8rem;
   color: var(--text-primary);
   min-width: 0;
+}
+
+.share-link-input:focus {
+  outline: 2px solid var(--border-primary);
+  outline-offset: 1px;
 }
 
 .share-link-copy {

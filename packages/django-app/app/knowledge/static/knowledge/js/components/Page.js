@@ -1607,17 +1607,46 @@ const Page = {
 
     async copyShareLink() {
       if (!this.shareUrl) return;
-      try {
-        await navigator.clipboard.writeText(this.shareUrl);
+
+      const markCopied = () => {
         this.shareLinkCopied = true;
         // Reset the "copied!" affordance so the button is clickable again
         // if the user comes back to it later.
         setTimeout(() => {
           this.shareLinkCopied = false;
         }, 2000);
+      };
+
+      // navigator.clipboard is only available in secure contexts (HTTPS or
+      // localhost). Fall back to selecting the input + execCommand so the
+      // button still works on non-HTTPS deploys / private network IPs.
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(this.shareUrl);
+          markCopied();
+          return;
+        }
+      } catch (error) {
+        console.warn("clipboard API failed, falling back:", error);
+      }
+
+      try {
+        const input = this.$refs.shareLinkInput;
+        if (!input) throw new Error("share link input not mounted");
+        input.focus();
+        input.select();
+        input.setSelectionRange(0, input.value.length);
+        const ok = document.execCommand("copy");
+        // Leave the link selected so the user can hit Cmd/Ctrl+C if the
+        // execCommand fallback also fails (e.g. browser blocked it).
+        if (!ok) throw new Error("execCommand returned false");
+        markCopied();
       } catch (error) {
         console.error("failed to copy share link:", error);
-        this.$parent?.addToast?.("failed to copy link", "error");
+        this.$parent?.addToast?.(
+          "could not copy automatically — press Cmd/Ctrl+C to copy the selected link",
+          "error"
+        );
       }
     },
 
