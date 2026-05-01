@@ -163,6 +163,15 @@ def logout(request):
 def me(request):
     """Get current user info"""
     try:
+        # Re-establish a Django session if the cookie has expired but the
+        # API token is still valid. Token auth has no expiry; the session
+        # cookie defaults to 2 weeks. Without this, <img src="/api/assets/.../">
+        # tags 401 after the cookie expires (they can only carry cookies,
+        # not the Authorization header) and the user has to log out and
+        # back in to render images. The frontend hits /me/ on every app
+        # boot, so this is the natural place to keep the cookie fresh.
+        if not request.session.session_key:
+            django_login(request, request.user)
         data: GetUserProfileResponse = {"user": request.user.to_user_data()}
         return Response({"success": True, "data": data})
     except Exception as e:
