@@ -5615,8 +5615,10 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
  * block reads like a richtext note; non-image renders as a chip linking
  * to the access-controlled serve endpoint. */
 .block-asset {
-  margin-top: 0.25rem;
-  margin-bottom: 0.25rem;
+  /* No vertical margin on the wrapper itself - the image variant
+   * adds its own breathing room below since it occupies its own
+   * vertical space, while the chip variant should sit on the same
+   * baseline as the sibling textarea. */
 }
 
 .block-asset-image {
@@ -5626,20 +5628,25 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   height: auto;
   border-radius: 3px;
   border: 1px solid var(--border-secondary);
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
 }
 
 .block-asset-chip {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.25rem 0.5rem;
+  /* Match .block-content's vertical padding (0.125rem) and font
+   * metrics (1rem / 1.5 line-height) so chip + textarea share the
+   * same line box and align cleanly on the flex row. */
+  padding: 0.125rem 0.5rem;
   border-radius: 3px;
   background-color: var(--accent-bg);
   border: 1px solid var(--border-secondary);
   color: var(--text-primary);
   text-decoration: none;
-  font-size: 0.85rem;
-  line-height: 1.2;
+  font-size: 1rem;
+  line-height: 1.5;
   max-width: 100%;
 }
 
@@ -5663,7 +5670,9 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 .block-asset-chip-meta {
   flex: 0 0 auto;
   opacity: 0.6;
-  font-size: 0.75rem;
+  /* The meta text stays slightly smaller than the chip's main label
+   * so file_type · size doesn't crowd the filename. */
+  font-size: 0.85rem;
 }
 
 /* Chat input: pending attachment preview + attach button. The chip strip
