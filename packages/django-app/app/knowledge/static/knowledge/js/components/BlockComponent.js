@@ -367,13 +367,14 @@ const BlockComponent = {
     if (this.isEmbed) {
       this.loadWebArchive();
     }
-    this.renderMermaidIfPresent();
+    this.applyContentRenderers();
   },
   updated() {
     // The block-content div uses v-html, so when the block's content
     // changes (edits, type swaps) Vue replaces the inner DOM with a fresh
-    // mermaid placeholder. Re-run the mermaid renderer to pick those up.
-    this.renderMermaidIfPresent();
+    // placeholder. Re-run the dynamic renderers so the new DOM picks up
+    // mermaid SVGs, syntax highlighting, etc.
+    this.applyContentRenderers();
   },
   beforeUnmount() {
     // Clean up event listener
@@ -388,6 +389,15 @@ const BlockComponent = {
     );
   },
   methods: {
+    applyContentRenderers() {
+      // Run after v-html replaces the block's display HTML so dynamic
+      // renderers (mermaid SVG, Prism syntax highlighting, etc.) can
+      // upgrade the static markup. Each renderer is no-op-cheap when
+      // its targets aren't present.
+      this.renderMermaidIfPresent();
+      this.highlightCodeIfPresent();
+    },
+
     renderMermaidIfPresent() {
       // Skip the work if neither the helper nor any placeholder are
       // present. The helper takes care of one-shot mermaid initialization
@@ -399,6 +409,25 @@ const BlockComponent = {
       const appTheme =
         document.documentElement.getAttribute("data-theme") || "dark";
       window.brainspreadMermaid.renderIn(this.$el, appTheme);
+    },
+
+    highlightCodeIfPresent() {
+      // Apply Prism syntax highlighting to any <code class="language-*">
+      // emitted by formatContentWithTags. The autoloader fetches the
+      // grammar for each language on first use; calling highlightElement
+      // again on an already-tokenized node is a cheap no-op-ish retokenize.
+      if (!window.Prism || !this.$el || this.$el.nodeType !== 1) return;
+      const codeEls = this.$el.querySelectorAll(
+        "pre.block-code > code[class*='language-']"
+      );
+      codeEls.forEach((el) => {
+        try {
+          window.Prism.highlightElement(el);
+        } catch (_) {
+          // Highlighting failures shouldn't take the block down; the
+          // un-highlighted code is still legible.
+        }
+      });
     },
 
     async loadWebArchive() {

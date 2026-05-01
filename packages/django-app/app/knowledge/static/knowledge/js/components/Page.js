@@ -1009,7 +1009,13 @@ const Page = {
           return `<div class="block-mermaid-wrapper">${langBadge}<div class="block-mermaid" data-mermaid-source="${attrEscaped}"></div></div>`;
         }
         const escaped = escapeHtml(source);
-        return `<div class="block-code-wrapper">${langBadge}<pre class="block-code"><code>${escaped}</code></pre></div>`;
+        // Tag <code> with a Prism language class so the autoloader can
+        // pick up the right grammar after mount. The autoloader fetches
+        // each language file lazily on first use, so unused languages
+        // cost nothing at app boot.
+        const safeLang = lang ? lang.toLowerCase().replace(/[^\w-]/g, "") : "";
+        const langClass = safeLang ? ` class="language-${safeLang}"` : "";
+        return `<div class="block-code-wrapper">${langBadge}<pre class="block-code"><code${langClass}>${escaped}</code></pre></div>`;
       };
 
       // Code-typed blocks render their entire content as a single fenced
