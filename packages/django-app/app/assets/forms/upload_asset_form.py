@@ -46,9 +46,35 @@ class UploadAssetForm(BaseForm):
         # content_type can include parameters (e.g. "text/html; charset=utf-8");
         # only the bare type counts for the whitelist check.
         content_type = (uploaded.content_type or "").split(";", 1)[0].strip().lower()
-        if whitelist and content_type not in whitelist:
+        if whitelist and not _mime_matches_whitelist(content_type, whitelist):
             raise forms.ValidationError(
                 f"Unsupported file type: {content_type or 'unknown'}"
             )
 
         return uploaded
+
+
+def _mime_matches_whitelist(content_type: str, whitelist) -> bool:
+    """
+    Check `content_type` against a whitelist that may contain literal
+    MIME strings ("image/png") or `prefix/*` wildcards ("text/*").
+
+    The wildcard form lets us accept text-shaped uploads
+    (text/plain, text/csv, text/x-python, text/x-shellscript, ...) in
+    one entry rather than enumerating every code extension's MIME -
+    browsers are inconsistent about which one they send for a given
+    extension and we'd otherwise reject perfectly reasonable files.
+    """
+    if not content_type:
+        return False
+    for entry in whitelist:
+        entry = entry.strip().lower()
+        if not entry:
+            continue
+        if entry.endswith("/*"):
+            prefix = entry[:-1]  # keep the trailing slash so "text/" matches
+            if content_type.startswith(prefix):
+                return True
+        elif entry == content_type:
+            return True
+    return False
