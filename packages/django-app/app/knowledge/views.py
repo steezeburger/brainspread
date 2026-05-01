@@ -199,6 +199,37 @@ def _serialize_block_tree(block, share_token: str) -> dict:
     }
 
 
+def _serialize_referenced_block(block, share_token: str) -> dict:
+    """Flat dict for a block that lives on another page but is tagged with
+    the shared page. Carries source-page context so the template can
+    label "from <daily date> / <page title>" without exposing a working
+    link to the source page.
+
+    Renders flat (no children) to match how the editor surfaces linked
+    references — the recipient sees the same scope of content the owner
+    sees in their own "Linked References" section.
+    """
+    asset_uuid = str(block.asset.uuid) if block.asset_id else None
+    asset_file_type = block.asset.file_type if block.asset_id else None
+    source = block.page
+    return {
+        "uuid": str(block.uuid),
+        "content": _rewrite_asset_urls(block.content, share_token),
+        "block_type": block.block_type,
+        "content_type": block.content_type,
+        "media_url": block.media_url,
+        "asset_url": (
+            _public_asset_url(share_token, asset_uuid) if asset_uuid else None
+        ),
+        "asset_is_image": asset_file_type == "image",
+        "source_page_title": source.title if source else "",
+        "source_page_type": source.page_type if source else "",
+        "source_page_date": (
+            source.date.isoformat() if source and source.date else None
+        ),
+    }
+
+
 def public_page(request, share_token: str):
     """Public, no-auth read-only view of a shared page. Resolves the
     share_token to a Page only if its current share_mode is "link" —
@@ -216,6 +247,17 @@ def public_page(request, share_token: str):
         _serialize_block_tree(b, share_token)
         for b in BlockRepository.get_root_blocks(page)
     ]
+    # Linked references — blocks elsewhere that tag this page (e.g. daily
+    # notes that mention #food-log). For a topic / tag-style page these
+    # ARE the content, so the share view would be empty without them.
+    referenced_blocks = (
+        page.tagged_blocks.exclude(page=page)
+        .select_related("user", "page", "asset")
+        .order_by("-page__date", "-modified_at", "order")
+    )
+    references = [
+        _serialize_referenced_block(b, share_token) for b in referenced_blocks
+    ]
 
     response = render(
         request,
@@ -223,6 +265,7 @@ def public_page(request, share_token: str):
         {
             "page": page,
             "blocks": blocks,
+            "references": references,
             "owner_email": page.user.email,
         },
     )
@@ -256,14 +299,20 @@ def public_asset(request, share_token: str, asset_uuid: str):
     except (Asset.DoesNotExist, ValueError, ValidationError):
         raise Http404("Shared asset not found")
 
-    # FK reference is the cheap, exact match. If a future code path embeds
-    # asset URLs inside block content without setting the FK, extend this
-    # check to also scan block.content for the uuid.
-    referenced_via_fk = page.blocks.filter(asset=asset).exists()
-    referenced_in_content = page.blocks.filter(
-        content__contains=f"/api/assets/{asset_uuid}/"
-    ).exists()
-    if not (referenced_via_fk or referenced_in_content):
+    # An asset is considered "shared" if any block visible on the public
+    # page uses it. That includes both blocks living on the page itself
+    # (page.blocks) and blocks tagged with the page (page.tagged_blocks)
+    # — the public render shows both, so both must be able to load images.
+    inline_marker = f"/api/assets/{asset_uuid}/"
+    direct_match = (
+        page.blocks.filter(asset=asset).exists()
+        or page.blocks.filter(content__contains=inline_marker).exists()
+    )
+    tagged_match = (
+        page.tagged_blocks.filter(asset=asset).exists()
+        or page.tagged_blocks.filter(content__contains=inline_marker).exists()
+    )
+    if not (direct_match or tagged_match):
         raise Http404("Shared asset not found")
 
     if not asset.file:

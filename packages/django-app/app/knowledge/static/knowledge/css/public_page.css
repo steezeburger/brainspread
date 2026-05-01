@@ -205,6 +205,36 @@ body {
   font-style: italic;
 }
 
+.public-references {
+  margin-top: 32px;
+  padding-top: 18px;
+  border-top: 1px solid #e1e4e8;
+}
+
+.public-references-title {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+}
+
+.public-reference {
+  padding-left: 0;
+}
+
+.public-reference::before {
+  content: "";
+}
+
+.public-reference-source {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 .public-page-footer {
   margin-top: 48px;
   padding-top: 16px;
@@ -266,5 +296,12 @@ body {
   }
   .public-block-type-quote {
     border-left-color: #30363d;
+  }
+  .public-references {
+    border-top-color: #30363d;
+  }
+  .public-references-title,
+  .public-reference-source {
+    color: #8b949e;
   }
 }

@@ -99,6 +99,66 @@ class PublicPageViewTestCase(TestCase):
         # specific recipient, not for search engines.
         self.assertIn("noindex", body)
 
+    def test_public_view_includes_linked_references(self):
+        # Topic / tag-style pages live on tagged blocks scattered across
+        # daily notes. Sharing the topic page should surface those
+        # references — without them a #food-log share would be empty.
+        from datetime import date
+
+        self.page.share_token = "tag-share-token"
+        self.page.share_mode = "link"
+        self.page.save()
+
+        daily = PageFactory(
+            user=self.user,
+            title="2026-04-30",
+            slug="2026-04-30",
+            page_type="daily",
+            date=date(2026, 4, 30),
+        )
+        tagged_block = BlockFactory(
+            user=self.user,
+            page=daily,
+            content="ate spaghetti #food-log",
+            order=0,
+        )
+        tagged_block.pages.add(self.page)
+
+        client = Client()
+        response = client.get(f"/knowledge/share/{self.page.share_token}/")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode("utf-8")
+        self.assertIn("ate spaghetti", body)
+        self.assertIn("linked references", body)
+        # Source-page label uses the daily's date, not its raw title.
+        self.assertIn("2026-04-30", body)
+
+    def test_public_view_excludes_blocks_tagged_with_other_pages(self):
+        # A block tagged only with a different page must not leak just
+        # because both pages belong to the same user.
+        self.page.share_token = "scope-token"
+        self.page.share_mode = "link"
+        self.page.save()
+
+        unrelated_topic = PageFactory(
+            user=self.user, title="Other Topic", slug="other-topic"
+        )
+        other_block = BlockFactory(
+            user=self.user,
+            page=PageFactory(user=self.user, title="diary", slug="diary"),
+            content="secret diary entry",
+            order=0,
+        )
+        other_block.pages.add(unrelated_topic)
+
+        client = Client()
+        response = client.get(f"/knowledge/share/{self.page.share_token}/")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode("utf-8")
+        self.assertNotIn("secret diary entry", body)
+
 
 class PublicAssetViewTestCase(TestCase):
     @classmethod
@@ -184,6 +244,43 @@ class PublicAssetViewTestCase(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"fake-inline-bytes")
+
+    def test_serves_asset_attached_to_a_tagged_block(self):
+        # An image on a daily-note block tagged with the shared page must
+        # load — otherwise sharing a topic page with image references is
+        # broken.
+        tagged_asset = Asset.objects.create(
+            user=self.owner,
+            file_type=Asset.FILE_TYPE_IMAGE,
+            asset_type=Asset.ASSET_TYPE_BLOCK_ATTACHMENT,
+            file=SimpleUploadedFile(
+                "tagged.png", b"tagged-bytes", content_type="image/png"
+            ),
+            original_filename="tagged.png",
+            mime_type="image/png",
+            byte_size=len(b"tagged-bytes"),
+        )
+        daily = PageFactory(
+            user=self.owner,
+            title="2026-04-29",
+            slug="2026-04-29",
+            page_type="daily",
+        )
+        tagged_block = BlockFactory(
+            user=self.owner,
+            page=daily,
+            content="dinner",
+            asset=tagged_asset,
+            order=0,
+        )
+        tagged_block.pages.add(self.page)
+
+        client = Client()
+        response = client.get(
+            f"/knowledge/share/{self.page.share_token}/asset/{tagged_asset.uuid}/"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"tagged-bytes")
 
     def test_404s_for_unrelated_asset_even_when_owned_by_same_user(self):
         # Same user owns this asset, but it's only referenced by a private
