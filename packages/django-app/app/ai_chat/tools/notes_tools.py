@@ -78,6 +78,21 @@ NOTES_READ_TOOLS: List[Dict[str, Any]] = [
         },
     },
     {
+        "name": "get_current_time",
+        "description": (
+            "Return the current date + time in the user's timezone. Call"
+            " this before scheduling a block / reminder when the user says"
+            " something time-relative ('in 5 minutes', 'this afternoon')"
+            " and you don't already know the exact local time. Returns"
+            " ISO-8601 'now', plus separate date / time / weekday / timezone"
+            " fields for convenience."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
         "name": "list_overdue_blocks",
         "description": (
             "List the user's overdue scheduled blocks: blocks whose"
@@ -359,9 +374,12 @@ NOTES_WRITE_TOOLS: List[Dict[str, Any]] = [
                     "type": "string",
                     "description": (
                         "Optional HH:MM 24-hour wall-clock time in the"
-                        " user's timezone. Required to actually create a"
-                        " reminder; without it the block is scheduled but"
-                        " no ping fires."
+                        " user's timezone, OR a relative offset from now:"
+                        " '+Nm' / '+Nh' (e.g. '+3m', '+2h'). Required to"
+                        " actually create a reminder; without it the block"
+                        " is scheduled but no ping fires. Relative offsets"
+                        " override reminder_date if the offset crosses"
+                        " midnight."
                     ),
                 },
             },

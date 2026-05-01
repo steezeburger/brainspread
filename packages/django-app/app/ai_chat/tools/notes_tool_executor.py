@@ -11,8 +11,11 @@ out-of-band during resume. See ai_chat.commands.resume_approval_command.
 
 import logging
 import re
-from datetime import date, timedelta
-from typing import Any, Dict, List, Optional
+from datetime import date, time, timedelta
+from typing import Any, Dict, List, Optional, Tuple
+
+import pytz
+from django.utils import timezone
 
 from core.helpers import today_for_user
 from core.models import User
@@ -87,6 +90,8 @@ class NotesToolExecutor:
                 return self._get_page_by_title(args)
             if name == "get_block_by_id":
                 return self._get_block_by_id(args)
+            if name == "get_current_time":
+                return self._get_current_time(args)
             if name == "list_overdue_blocks":
                 return self._list_overdue_blocks(args)
             if name == "list_pending_reminders":
@@ -205,6 +210,22 @@ class NotesToolExecutor:
                 }
                 for child in children
             ],
+        }
+
+    def _get_current_time(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        tz_name = self.user.timezone or "UTC"
+        try:
+            tz = pytz.timezone(tz_name)
+        except pytz.UnknownTimeZoneError:
+            tz = pytz.UTC
+            tz_name = "UTC"
+        now_local = timezone.now().astimezone(tz)
+        return {
+            "now": now_local.isoformat(),
+            "date": now_local.date().isoformat(),
+            "time": now_local.strftime("%H:%M"),
+            "weekday": now_local.strftime("%A"),
+            "timezone": tz_name,
         }
 
     def _create_page(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -557,6 +578,18 @@ class NotesToolExecutor:
         except ValueError as e:
             return {"error": f"reminder_date: {e}"}
 
+        # Resolve reminder_time. A relative offset ("+3m", "+2h") wins
+        # over reminder_date — if the offset crosses midnight the date
+        # rolls forward with it.
+        try:
+            resolved_date, resolved_time = _resolve_reminder_time(
+                args.get("reminder_time"), self.user
+            )
+        except ValueError as e:
+            return {"error": f"reminder_time: {e}"}
+        if resolved_date is not None:
+            reminder_date = resolved_date
+
         form_data: Dict[str, Any] = {
             "user": self.user.id,
             "block": block.uuid,
@@ -564,9 +597,8 @@ class NotesToolExecutor:
         }
         if reminder_date is not None:
             form_data["reminder_date"] = reminder_date.isoformat()
-        reminder_time = (args.get("reminder_time") or "").strip()
-        if reminder_time:
-            form_data["reminder_time"] = reminder_time
+        if resolved_time:
+            form_data["reminder_time"] = resolved_time
 
         form = ScheduleBlockForm(form_data)
         if not form.is_valid():
@@ -674,6 +706,50 @@ class NotesToolExecutor:
 
 
 _RELATIVE_OFFSET_RE = re.compile(r"^([+-])(\d+)([dw])$")
+_RELATIVE_TIME_OFFSET_RE = re.compile(r"^([+-])(\d+)([mh])$")
+
+
+def _resolve_reminder_time(
+    value: Any, user: User
+) -> Tuple[Optional[date], Optional[str]]:
+    """Resolve a `reminder_time` arg into (date_override, 'HH:MM' or None).
+
+    - Empty / None    -> (None, None) — caller should leave reminder unset.
+    - 'HH:MM'         -> (None, 'HH:MM') — let the form parse it; the
+                          caller's reminder_date / scheduled_for fallback
+                          decides which day it fires on.
+    - '+Nm' / '+Nh'   -> (target_date, 'HH:MM') in the user's tz, computed
+                          from now() + offset. The date is returned so the
+                          caller can roll reminder_date forward when the
+                          offset crosses midnight.
+    """
+    if value is None:
+        return (None, None)
+    text = str(value).strip().lower()
+    if not text:
+        return (None, None)
+
+    match = _RELATIVE_TIME_OFFSET_RE.match(text)
+    if match:
+        sign, num, unit = match.groups()
+        amount = int(num) * (1 if sign == "+" else -1)
+        delta = timedelta(minutes=amount) if unit == "m" else timedelta(hours=amount)
+        try:
+            tz = pytz.timezone(user.timezone or "UTC")
+        except pytz.UnknownTimeZoneError:
+            tz = pytz.UTC
+        target = timezone.now().astimezone(tz) + delta
+        return (target.date(), target.strftime("%H:%M"))
+
+    # Wall-clock — accept HH:MM or HH:MM:SS so we error early on garbage.
+    # We return the original string; the form's TimeField parses it.
+    try:
+        time.fromisoformat(text)
+    except ValueError as e:
+        raise ValueError(
+            f"expected HH:MM or '+Nm' / '+Nh' offset, got '{value}'"
+        ) from e
+    return (None, text)
 
 
 def _parse_relative_date(value: Any, today: date) -> Optional[date]:

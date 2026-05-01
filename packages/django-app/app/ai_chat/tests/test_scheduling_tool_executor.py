@@ -7,6 +7,7 @@ from django.utils import timezone
 from ai_chat.tools.notes_tool_executor import (
     NotesToolExecutor,
     _parse_relative_date,
+    _resolve_reminder_time,
 )
 from ai_chat.tools.notes_tools import (
     NOTES_READ_TOOL_NAMES,
@@ -397,3 +398,106 @@ class ListReadToolsTestCase(TestCase):
             {"start_date": "2026-06-15", "end_date": "2026-06-01"},
         )
         self.assertIn("error", result)
+
+
+class GetCurrentTimeToolTestCase(TestCase):
+    def test_returns_user_local_now(self):
+        user = UserFactory(email="now@example.com", timezone="America/New_York")
+        ex = NotesToolExecutor(user)
+
+        result = ex.execute("get_current_time", {})
+
+        self.assertEqual(result["timezone"], "America/New_York")
+        # Sanity-check that the response is a real ISO timestamp matching
+        # America/New_York (the offset string varies by DST so just check
+        # a tz suffix is present).
+        self.assertIn("T", result["now"])
+        self.assertRegex(result["time"], r"^\d{2}:\d{2}$")
+        self.assertRegex(result["date"], r"^\d{4}-\d{2}-\d{2}$")
+        self.assertIn(
+            result["weekday"],
+            {
+                "Monday",
+                "Tuesday",
+                "Wednesday",
+                "Thursday",
+                "Friday",
+                "Saturday",
+                "Sunday",
+            },
+        )
+
+    def test_falls_back_to_utc_for_unset_tz(self):
+        user = UserFactory(email="no-tz@example.com", timezone="")
+        ex = NotesToolExecutor(user)
+
+        result = ex.execute("get_current_time", {})
+
+        self.assertEqual(result["timezone"], "UTC")
+
+
+class ResolveReminderTimeTestCase(TestCase):
+    def setUp(self):
+        self.user = UserFactory(email="rt@example.com", timezone="UTC")
+
+    def test_empty_returns_none_pair(self):
+        self.assertEqual(_resolve_reminder_time(None, self.user), (None, None))
+        self.assertEqual(_resolve_reminder_time("", self.user), (None, None))
+
+    def test_wallclock_passes_through(self):
+        d, t = _resolve_reminder_time("09:30", self.user)
+        self.assertIsNone(d)
+        self.assertEqual(t, "09:30")
+
+    def test_relative_minutes_returns_now_plus_offset(self):
+        d, t = _resolve_reminder_time("+5m", self.user)
+        # Date should be today (in UTC for this user); time should be
+        # within a minute of now+5m.
+        now_utc = timezone.now()
+        expected = now_utc + timedelta(minutes=5)
+        self.assertEqual(d, expected.date())
+        # Allow a 1-minute drift since clock advances during the test.
+        actual = datetime.strptime(t, "%H:%M").replace(
+            year=expected.year, month=expected.month, day=expected.day
+        )
+        actual = pytz.UTC.localize(actual)
+        diff = abs((actual - expected.replace(second=0, microsecond=0)).total_seconds())
+        self.assertLess(diff, 90)
+
+    def test_relative_hours(self):
+        d, _ = _resolve_reminder_time("+2h", self.user)
+        expected = (timezone.now() + timedelta(hours=2)).date()
+        self.assertEqual(d, expected)
+
+    def test_garbage_raises(self):
+        with self.assertRaises(ValueError):
+            _resolve_reminder_time("not a time", self.user)
+
+
+class ScheduleBlockRelativeTimeTestCase(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory(email="rel-time@example.com", timezone="UTC")
+        cls.page = PageFactory(user=cls.user)
+
+    def test_relative_minute_offset_creates_reminder_at_now_plus_n(self):
+        block = BlockFactory(user=self.user, page=self.page, content="leave soon")
+        ex = NotesToolExecutor(self.user, allow_writes=True)
+        before = timezone.now()
+
+        result = ex.execute(
+            "schedule_block",
+            {
+                "block_uuid": str(block.uuid),
+                "scheduled_for": "today",
+                "reminder_time": "+3m",
+            },
+        )
+
+        self.assertTrue(result.get("scheduled"))
+        reminder = Reminder.objects.get(block=block)
+        # The reminder fires within ~3m of when we called the tool
+        # (allow a generous bound for slow CI).
+        delta = (reminder.fire_at - before).total_seconds()
+        self.assertGreater(delta, 60)
+        self.assertLess(delta, 240)
