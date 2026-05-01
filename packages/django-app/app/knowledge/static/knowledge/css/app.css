@@ -4918,6 +4918,36 @@ kbd {
   pointer-events: none;
 }
 
+.block-mermaid-wrapper {
+  position: relative;
+  display: block;
+  margin: 0.25em 0;
+}
+
+.block-mermaid {
+  background-color: var(--bg-secondary, rgba(0, 0, 0, 0.08));
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
+  border-radius: 4px;
+  padding: 0.75em;
+  overflow-x: auto;
+  text-align: center;
+  color: var(--text-primary);
+  min-height: 1.5em;
+}
+
+.block-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.block-mermaid-error {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.85em;
+  color: var(--text-secondary, #b00);
+  text-align: left;
+  white-space: pre-wrap;
+}
+
 /* Whiteboard page (tldraw) */
 .page-content-whiteboard {
   display: flex;

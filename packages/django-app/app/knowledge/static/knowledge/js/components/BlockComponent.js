@@ -355,6 +355,13 @@ const BlockComponent = {
     if (this.isEmbed) {
       this.loadWebArchive();
     }
+    this.renderMermaidIfPresent();
+  },
+  updated() {
+    // The block-content div uses v-html, so when the block's content
+    // changes (edits, type swaps) Vue replaces the inner DOM with a fresh
+    // mermaid placeholder. Re-run the mermaid renderer to pick those up.
+    this.renderMermaidIfPresent();
   },
   beforeUnmount() {
     // Clean up event listener
@@ -369,6 +376,19 @@ const BlockComponent = {
     );
   },
   methods: {
+    renderMermaidIfPresent() {
+      // Skip the work if neither the helper nor any placeholder are
+      // present. The helper takes care of one-shot mermaid initialization
+      // and idempotent rendering.
+      if (!window.brainspreadMermaid || !this.$el || this.$el.nodeType !== 1)
+        return;
+      if (!this.$el.querySelector || !this.$el.querySelector(".block-mermaid"))
+        return;
+      const appTheme =
+        document.documentElement.getAttribute("data-theme") || "dark";
+      window.brainspreadMermaid.renderIn(this.$el, appTheme);
+    },
+
     async loadWebArchive() {
       if (this.webArchiveLoading) return;
       this.webArchiveLoading = true;

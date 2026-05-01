@@ -968,15 +968,24 @@ const Page = {
       if (!content) return "";
 
       // Code blocks render as <pre><code> with content escaped and no other
-      // markdown formatting applied.
+      // markdown formatting applied. Mermaid is a special case: the source
+      // is stashed on a placeholder element which BlockComponent renders
+      // to SVG via the mermaid library after mount.
       if (blockType === "code") {
         const escapeHtml = (s) =>
           s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        const escaped = escapeHtml(content);
         const lang = properties?.language || "";
         const langBadge = lang
           ? `<span class="block-code-lang">${escapeHtml(lang)}</span>`
           : "";
+        if (lang.toLowerCase() === "mermaid") {
+          // Encode the source via attribute escaping. Quotes are the only
+          // characters that need extra handling beyond the standard set
+          // since the value sits inside a double-quoted attribute.
+          const attrEscaped = escapeHtml(content).replace(/"/g, "&quot;");
+          return `<div class="block-mermaid-wrapper">${langBadge}<div class="block-mermaid" data-mermaid-source="${attrEscaped}"></div></div>`;
+        }
+        const escaped = escapeHtml(content);
         return `<div class="block-code-wrapper">${langBadge}<pre class="block-code"><code>${escaped}</code></pre></div>`;
       }
 
