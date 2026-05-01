@@ -20,13 +20,28 @@ window.LeftNav = {
 
   data() {
     const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
+    // Persist the open/closed pref so a refresh doesn't blow away the
+    // user's choice. First visit (no saved value) still defaults to
+    // open on desktop, closed on mobile.
+    let isOpen = !isMobile;
+    try {
+      const saved =
+        typeof window !== "undefined" && window.localStorage
+          ? window.localStorage.getItem("brainspread.leftNavOpen")
+          : null;
+      if (saved === "1") isOpen = true;
+      else if (saved === "0") isOpen = false;
+    } catch (_) {
+      // localStorage can throw in private mode / disabled-cookie setups.
+      // Fall back to the viewport default.
+    }
     return {
       historicalData: null,
       loading: false,
       error: null,
       daysBack: 30,
       limit: 25,
-      isOpen: !isMobile,
+      isOpen,
       width: 320,
       isResizing: false,
       minWidth: 240,
@@ -95,6 +110,17 @@ window.LeftNav = {
 
     toggleSidebar() {
       this.isOpen = !this.isOpen;
+      try {
+        if (typeof window !== "undefined" && window.localStorage) {
+          window.localStorage.setItem(
+            "brainspread.leftNavOpen",
+            this.isOpen ? "1" : "0"
+          );
+        }
+      } catch (_) {
+        // localStorage can throw in private mode; the toggle still
+        // works for the current session, just won't persist.
+      }
     },
 
     toggleRecent() {
