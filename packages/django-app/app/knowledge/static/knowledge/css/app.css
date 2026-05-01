@@ -5128,14 +5128,26 @@ kbd {
 
 .block-asset-image-wrapper {
   position: relative;
-  display: block;
+  display: inline-block;
   max-width: 100%;
 }
 
+/* Default: render the image at its natural pixel size, clamped to the
+   column. The wrapper is `inline-block` so it shrinks around the
+   image and the resize handle pins to the actual image edge instead
+   of the empty column to the right. */
 .block-asset-image-wrapper > .block-asset-image {
-  width: 100%;
+  max-width: 100%;
   height: auto;
   display: block;
+}
+
+/* After the user has dragged the corner handle, the wrapper has an
+   explicit width. Stretch the image to fill it so dragging actually
+   scales the picture rather than just leaving empty space inside the
+   wrapper. */
+.block-asset-image-wrapper.has-saved-size > .block-asset-image {
+  width: 100%;
 }
 
 .block-markdown {

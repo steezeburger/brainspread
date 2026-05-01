@@ -1236,12 +1236,14 @@ const Page = {
       // properties.render flag forces every inline fence in the block to
       // its raw view together — that's the granularity the context-menu
       // toggle operates at, since one block can hold several fences and
-      // toggling them individually would need per-fence UI.
+      // toggling them individually would need per-fence UI. Same story
+      // for resize: every inline mermaid fence in the block shares the
+      // block-level properties.size.
       const inlineForceRaw = properties?.render === "raw";
       fenceSegments.forEach((seg, idx) => {
         formatted = formatted
           .split(`\x00FENCE${idx}\x00`)
-          .join(renderCodeBlock(seg.code, seg.lang, inlineForceRaw));
+          .join(renderCodeBlock(seg.code, seg.lang, inlineForceRaw, true));
       });
 
       return formatted;

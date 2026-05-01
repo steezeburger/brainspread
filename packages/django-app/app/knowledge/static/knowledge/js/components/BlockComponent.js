@@ -518,14 +518,16 @@ const BlockComponent = {
       // wrapper inside this block, and wire up corner-handle drag.
       // A block has a single properties.size today, so multiple
       // resizables in one block share the same width — fine for the
-      // current shapes (one mermaid wrapper per code block, one image
-      // wrapper per asset block).
+      // current shapes (one mermaid wrapper per block; an asset block
+      // has either an image or a renderable text-shaped asset, never
+      // both).
       if (!this.$el || this.$el.nodeType !== 1) return;
       const savedWidth = this.block.properties?.size?.width;
       const wrappers = this.$el.querySelectorAll(".block-resizable");
       wrappers.forEach((el) => {
         if (savedWidth && !el.dataset.savedSizeApplied) {
           el.style.width = `${savedWidth}px`;
+          el.classList.add("has-saved-size");
           el.dataset.savedSizeApplied = "true";
         }
       });
@@ -562,6 +564,7 @@ const BlockComponent = {
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
         handle.classList.remove("is-resizing");
+        wrapper.classList.add("has-saved-size");
         const final = Math.round(wrapper.getBoundingClientRect().width);
         this.setBlockProperties(this.block, { size: { width: final } });
       };
