@@ -130,6 +130,7 @@ class SendMessageCommandTestCase(TestCase):
             [{"type": "web_search_preview", "search_context_size": "medium"}],
             system=BRAINSPREAD_SYSTEM_PROMPT,
             tool_executor=None,
+            response_format=None,
         )
 
     @patch("ai_chat.services.ai_service_factory.AIServiceFactory.create_service")
@@ -472,6 +473,85 @@ class SendMessageCommandTestCase(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
         self.assertFalse(form.cleaned_data["enable_web_search"])
 
+    def test_form_omits_response_format_by_default(self):
+        # response_format is opt-in; when the client doesn't send it the
+        # cleaned value is None and downstream services pass through the
+        # provider default (free-form text).
+        form = self._create_form()
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertIsNone(form.cleaned_data.get("response_format"))
+
+    def test_form_accepts_valid_json_schema_response_format(self):
+        form_data = {
+            "user": self.user.id,
+            "message": "extract",
+            "model": "gpt-4",
+            "context_blocks": [],
+            "response_format": {
+                "type": "json_schema",
+                "name": "tag_list",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "tags": {"type": "array", "items": {"type": "string"}}
+                    },
+                    "required": ["tags"],
+                },
+                "strict": True,
+            },
+        }
+        form = SendMessageForm(form_data)
+        self.assertTrue(form.is_valid(), form.errors)
+        cleaned = form.cleaned_data["response_format"]
+        self.assertEqual(cleaned["type"], "json_schema")
+        self.assertEqual(cleaned["name"], "tag_list")
+        self.assertTrue(cleaned["strict"])
+        self.assertEqual(cleaned["schema"]["required"], ["tags"])
+
+    def test_form_assigns_default_response_format_name(self):
+        form_data = {
+            "user": self.user.id,
+            "message": "extract",
+            "model": "gpt-4",
+            "context_blocks": [],
+            "response_format": {
+                "type": "json_schema",
+                "schema": {"type": "object", "properties": {}},
+            },
+        }
+        form = SendMessageForm(form_data)
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(
+            form.cleaned_data["response_format"]["name"], "structured_response"
+        )
+        # `strict` is omitted unless the caller sets it — keeps OpenAI from
+        # rejecting requests on models that don't accept the flag.
+        self.assertNotIn("strict", form.cleaned_data["response_format"])
+
+    def test_form_rejects_unsupported_response_format_type(self):
+        form_data = {
+            "user": self.user.id,
+            "message": "x",
+            "model": "gpt-4",
+            "context_blocks": [],
+            "response_format": {"type": "regex", "schema": {"type": "object"}},
+        }
+        form = SendMessageForm(form_data)
+        self.assertFalse(form.is_valid())
+        self.assertIn("response_format", form.errors)
+
+    def test_form_rejects_response_format_without_schema(self):
+        form_data = {
+            "user": self.user.id,
+            "message": "x",
+            "model": "gpt-4",
+            "context_blocks": [],
+            "response_format": {"type": "json_schema"},
+        }
+        form = SendMessageForm(form_data)
+        self.assertFalse(form.is_valid())
+        self.assertIn("response_format", form.errors)
+
     def test_format_message_no_context_blocks(self):
         """Test message formatting without context blocks"""
         form = self._create_form(message="Simple question")
@@ -496,6 +576,58 @@ class SendMessageCommandTestCase(TestCase):
             "Question with empty context", context_blocks
         )
         self.assertEqual(formatted_message, "Question with empty context")
+
+    @patch("ai_chat.services.ai_service_factory.AIServiceFactory.create_service")
+    @patch(
+        "ai_chat.repositories.chat_session_repository.ChatSessionRepository.create_session"
+    )
+    @patch(
+        "ai_chat.repositories.chat_message_repository.ChatMessageRepository.add_message"
+    )
+    @patch(
+        "ai_chat.repositories.chat_message_repository.ChatMessageRepository.get_messages"
+    )
+    def test_execute_passes_response_format_to_service(
+        self,
+        mock_get_messages,
+        mock_add_message,
+        mock_create_session,
+        mock_create_service,
+    ):
+        """response_format flows from the form through to service.send_message."""
+        mock_session = Mock()
+        mock_session.uuid = "test-session-uuid"
+        mock_create_session.return_value = mock_session
+
+        mock_message = Mock(role="user", content="extract")
+        mock_get_messages.return_value = [mock_message]
+
+        mock_service = Mock()
+        mock_service.send_message.return_value = AIServiceResult(content="{}")
+        mock_create_service.return_value = mock_service
+
+        form_data = {
+            "user": self.user.id,
+            "message": "extract",
+            "model": "gpt-4",
+            "context_blocks": [],
+            "response_format": {
+                "type": "json_schema",
+                "schema": {
+                    "type": "object",
+                    "properties": {"tags": {"type": "array"}},
+                },
+            },
+        }
+        form = SendMessageForm(form_data)
+        self.assertTrue(form.is_valid(), form.errors)
+        SendMessageCommand(form).execute()
+
+        kwargs = mock_service.send_message.call_args.kwargs
+        rf = kwargs["response_format"]
+        self.assertEqual(rf["type"], "json_schema")
+        self.assertEqual(rf["name"], "structured_response")
+        self.assertEqual(rf["schema"]["properties"]["tags"], {"type": "array"})
 
     @patch("ai_chat.services.ai_service_factory.AIServiceFactory.create_service")
     @patch(

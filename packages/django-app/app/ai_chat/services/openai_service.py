@@ -37,6 +37,7 @@ class OpenAIService(BaseAIService):
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
         tool_executor: Optional[ToolExecutor] = None,
+        response_format: Optional[Dict[str, Any]] = None,
     ) -> AIServiceResult:
         try:
             self.validate_messages(messages)
@@ -51,12 +52,15 @@ class OpenAIService(BaseAIService):
             if tools:
                 return self._send_message_with_responses_api(chat_messages, tools)
 
-            kwargs = {
+            kwargs: Dict[str, Any] = {
                 "model": self.model,
                 "messages": chat_messages,
                 "max_tokens": 2000,
                 "temperature": 0.7,
             }
+            openai_response_format = self._to_openai_response_format(response_format)
+            if openai_response_format is not None:
+                kwargs["response_format"] = openai_response_format
             response: ChatCompletion = self.client.chat.completions.create(**kwargs)
 
             if not response.choices:
@@ -82,6 +86,7 @@ class OpenAIService(BaseAIService):
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
         tool_executor: Optional[ToolExecutor] = None,
+        response_format: Optional[Dict[str, Any]] = None,
     ) -> Iterator[Dict[str, Any]]:
         try:
             self.validate_messages(messages)
@@ -96,11 +101,15 @@ class OpenAIService(BaseAIService):
             # stream in either case.
             if tools or tool_executor is not None:
                 yield from super().stream_message(
-                    messages, tools, system=system, tool_executor=tool_executor
+                    messages,
+                    tools,
+                    system=system,
+                    tool_executor=tool_executor,
+                    response_format=response_format,
                 )
                 return
 
-            kwargs = {
+            kwargs: Dict[str, Any] = {
                 "model": self.model,
                 "messages": chat_messages,
                 "max_tokens": 2000,
@@ -108,6 +117,9 @@ class OpenAIService(BaseAIService):
                 "stream": True,
                 "stream_options": {"include_usage": True},
             }
+            openai_response_format = self._to_openai_response_format(response_format)
+            if openai_response_format is not None:
+                kwargs["response_format"] = openai_response_format
 
             content_parts: List[str] = []
             usage = AIUsage()
@@ -232,6 +244,26 @@ class OpenAIService(BaseAIService):
             content=content,
             usage=self._extract_usage(getattr(response, "usage", None)),
         )
+
+    @staticmethod
+    def _to_openai_response_format(
+        response_format: Optional[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """Translate the unified structured-output spec into OpenAI's wire shape.
+
+        OpenAI expects `{type: "json_schema", json_schema: {name, schema, strict?}}`
+        on chat.completions. Returns None if the caller didn't request a
+        structured output.
+        """
+        if not response_format or response_format.get("type") != "json_schema":
+            return None
+        json_schema: Dict[str, Any] = {
+            "name": response_format.get("name") or "structured_response",
+            "schema": response_format["schema"],
+        }
+        if "strict" in response_format:
+            json_schema["strict"] = bool(response_format["strict"])
+        return {"type": "json_schema", "json_schema": json_schema}
 
     @staticmethod
     def _to_openai_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

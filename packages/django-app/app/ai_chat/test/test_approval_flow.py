@@ -74,7 +74,9 @@ class ApprovalPausePersistTestCase(TestCase):
             ],
         )
 
-        def fake_stream(messages, tools, system=None, tool_executor=None):
+        def fake_stream(
+            messages, tools, system=None, tool_executor=None, response_format=None
+        ):
             yield {"type": "text", "delta": "I'll edit block X."}
             yield {"type": "approval_required", "tool_uses": pending.tool_uses}
             yield {
@@ -171,7 +173,9 @@ class ResumeApprovalCommandTestCase(TestCase):
     ):
         session, approval = self._create_pending()
 
-        def fake_stream(messages, tools, system=None, tool_executor=None):
+        def fake_stream(
+            messages, tools, system=None, tool_executor=None, response_format=None
+        ):
             yield {"type": "text", "delta": "Done."}
             yield {
                 "type": "done",
@@ -215,7 +219,9 @@ class ResumeApprovalCommandTestCase(TestCase):
     def test_resume_rejected_skips_execute(self, mock_execute, mock_create_service):
         session, approval = self._create_pending()
 
-        def fake_stream(messages, tools, system=None, tool_executor=None):
+        def fake_stream(
+            messages, tools, system=None, tool_executor=None, response_format=None
+        ):
             yield {
                 "type": "done",
                 "content": "",
@@ -265,7 +271,9 @@ class ResumeApprovalCommandTestCase(TestCase):
 
         captured_executor = {}
 
-        def fake_stream(messages, tools, system=None, tool_executor=None):
+        def fake_stream(
+            messages, tools, system=None, tool_executor=None, response_format=None
+        ):
             captured_executor["e"] = tool_executor
             yield {
                 "type": "done",

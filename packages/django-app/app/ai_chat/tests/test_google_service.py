@@ -160,6 +160,51 @@ class TestGoogleService:
         result = service.validate_api_key()
         assert result is False
 
+    @patch("google.generativeai.GenerativeModel")
+    def test_send_message_passes_response_format_via_generation_config(
+        self, mock_model_class
+    ):
+        """Caller-supplied json_schema should land in generation_config."""
+        mock_response = Mock()
+        mock_response.text = '{"a":1}'
+        mock_response.usage_metadata = None
+
+        mock_model = Mock()
+        mock_model.generate_content.return_value = mock_response
+        mock_model_class.return_value = mock_model
+
+        service = GoogleService(api_key="test-key", model="gemini-1.5-pro")
+        schema = {"type": "object", "properties": {"a": {"type": "integer"}}}
+        service.send_message(
+            [{"role": "user", "content": "extract"}],
+            response_format={"type": "json_schema", "schema": schema},
+        )
+
+        kwargs = mock_model.generate_content.call_args.kwargs
+        gen_config = kwargs["generation_config"]
+        assert gen_config["response_mime_type"] == "application/json"
+        assert gen_config["response_schema"] == schema
+
+    @patch("google.generativeai.GenerativeModel")
+    def test_send_message_omits_generation_config_when_no_response_format(
+        self, mock_model_class
+    ):
+        mock_response = Mock()
+        mock_response.text = "ok"
+        mock_response.usage_metadata = None
+
+        mock_model = Mock()
+        mock_model.generate_content.return_value = mock_response
+        mock_model_class.return_value = mock_model
+
+        service = GoogleService(api_key="test-key", model="gemini-1.5-pro")
+        service.send_message([{"role": "user", "content": "hi"}])
+
+        kwargs = mock_model.generate_content.call_args.kwargs
+        # Without a structured-output request we don't pass generation_config
+        # at all — keeps default decoding behavior intact.
+        assert "generation_config" not in kwargs
+
     def test_format_messages_for_google(self):
         """Test message formatting for Google AI"""
         service = GoogleService(api_key="test-key", model="gemini-1.5-pro")

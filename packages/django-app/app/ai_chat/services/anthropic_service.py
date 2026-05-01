@@ -140,10 +140,11 @@ class AnthropicService(BaseAIService):
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
         tool_executor: Optional[ToolExecutor] = None,
+        response_format: Optional[Dict[str, Any]] = None,
     ) -> AIServiceResult:
         try:
             self.validate_messages(messages)
-            kwargs = self._build_kwargs(messages, tools, system)
+            kwargs = self._build_kwargs(messages, tools, system, response_format)
 
             text_parts: List[str] = []
             thinking_parts: List[str] = []
@@ -350,10 +351,11 @@ class AnthropicService(BaseAIService):
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
         tool_executor: Optional[ToolExecutor] = None,
+        response_format: Optional[Dict[str, Any]] = None,
     ) -> Iterator[Dict[str, Any]]:
         try:
             self.validate_messages(messages)
-            kwargs = self._build_kwargs(messages, tools, system)
+            kwargs = self._build_kwargs(messages, tools, system, response_format)
 
             content_parts: List[str] = []
             thinking_parts: List[str] = []
@@ -576,6 +578,7 @@ class AnthropicService(BaseAIService):
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]],
         system: Optional[str],
+        response_format: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         anthropic_messages: List[Dict[str, Any]] = []
         embedded_system: Optional[str] = None
@@ -644,8 +647,19 @@ class AnthropicService(BaseAIService):
                     "type": "enabled",
                     "budget_tokens": ENABLED_THINKING_BUDGET_TOKENS,
                 }
+        output_config: Dict[str, Any] = {}
         if self._supports_effort():
-            kwargs["output_config"] = {"effort": "high"}
+            output_config["effort"] = "high"
+        if response_format and response_format.get("type") == "json_schema":
+            # Anthropic's structured output: nest the JSON schema under
+            # output_config.format. The `name`/`strict` fields from the
+            # unified shape are OpenAI-only; Anthropic just needs the schema.
+            output_config["format"] = {
+                "type": "json_schema",
+                "schema": response_format["schema"],
+            }
+        if output_config:
+            kwargs["output_config"] = output_config
         return kwargs
 
     @staticmethod

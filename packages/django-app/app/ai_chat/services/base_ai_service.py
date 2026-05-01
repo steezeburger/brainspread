@@ -92,6 +92,7 @@ class BaseAIService(ABC):
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
         tool_executor: Optional[ToolExecutor] = None,
+        response_format: Optional[Dict[str, Any]] = None,
     ) -> AIServiceResult:
         """
         Send messages to AI service and return the response.
@@ -103,6 +104,11 @@ class BaseAIService(ABC):
                 system slot should mark it with cache_control where possible.
             tool_executor: Optional callback that runs client-side tools and
                 returns results so the service can complete the tool-use loop.
+            response_format: Optional unified structured-output spec
+                (`{type: "json_schema", schema, name, strict?}`). When set,
+                each provider switches to its native JSON-schema mode and
+                `AIServiceResult.content` contains a JSON string the caller
+                can parse.
 
         Returns:
             AIServiceResult: Structured result containing the assistant text,
@@ -119,6 +125,7 @@ class BaseAIService(ABC):
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
         tool_executor: Optional[ToolExecutor] = None,
+        response_format: Optional[Dict[str, Any]] = None,
     ) -> Iterator[Dict[str, Any]]:
         """
         Stream the assistant response as incremental events.
@@ -134,7 +141,11 @@ class BaseAIService(ABC):
         Subclasses should override for true streaming.
         """
         result = self.send_message(
-            messages, tools, system=system, tool_executor=tool_executor
+            messages,
+            tools,
+            system=system,
+            tool_executor=tool_executor,
+            response_format=response_format,
         )
         if result.content:
             yield {"type": "text", "delta": result.content}
