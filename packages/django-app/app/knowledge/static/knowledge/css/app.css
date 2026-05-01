@@ -4560,14 +4560,15 @@ a.sidebar-item:visited {
     color 0.15s ease;
 }
 
-/* Reveal on hover/focus of the surrounding title row, or whenever the
-   button itself has focus, so keyboard users can still reach it. The
-   star intentionally stays hollow + hover-only even when favorited;
-   the left-nav Favorites list and the page menu carry the state. */
+/* Hidden by default so it doesn't add chrome to every title row.
+   Reveal on hover/focus of the title row, on focus of the button
+   itself (keyboard nav), or whenever the page is favorited — a
+   filled ★ then advertises the state at a glance. */
 .page-header-flex-left:hover .page-favorite-toggle,
 .title-left:hover .page-favorite-toggle,
 .page-favorite-toggle:focus,
-.page-favorite-toggle:focus-visible {
+.page-favorite-toggle:focus-visible,
+.page-favorite-toggle.is-favorited {
   opacity: 1;
 }
 
@@ -4660,6 +4661,10 @@ a.sidebar-item:visited {
 
 .page-header-flex-left {
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
 }
 
 .page-title-text,

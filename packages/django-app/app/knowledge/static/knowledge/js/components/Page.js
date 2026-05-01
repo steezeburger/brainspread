@@ -2925,7 +2925,7 @@ const Page = {
                 @click="toggleFavorited"
                 :title="isFavorited ? 'Remove from favorites' : 'Add to favorites'"
                 :aria-pressed="isFavorited"
-              >☆</button>
+              >{{ isFavorited ? '★' : '☆' }}</button>
               <div v-if="!isEditingTitle" class="page-title-display">
                 <h1 class="page-title-text" tabindex="0" role="button" aria-label="Edit page title" @click="startEditingTitle" @keydown.enter.prevent="startEditingTitle" @keydown.space.prevent="startEditingTitle">{{ page.title || 'Untitled Whiteboard' }}</h1>
               </div>
@@ -2983,7 +2983,7 @@ const Page = {
                   @click="toggleFavorited"
                   :title="isFavorited ? 'Remove from favorites' : 'Add to favorites'"
                   :aria-pressed="isFavorited"
-                >☆</button>
+                >{{ isFavorited ? '★' : '☆' }}</button>
               </div>
               <div class="header-controls">
                 <div class="context-menu-container">
@@ -3021,7 +3021,7 @@ const Page = {
                   @click="toggleFavorited"
                   :title="isFavorited ? 'Remove from favorites' : 'Add to favorites'"
                   :aria-pressed="isFavorited"
-                >☆</button>
+                >{{ isFavorited ? '★' : '☆' }}</button>
                 <div v-if="!isEditingTitle" class="page-title-display">
                   <h1 class="page-title-text" tabindex="0" role="button" aria-label="Edit page title" @click="startEditingTitle" @keydown.enter.prevent="startEditingTitle" @keydown.space.prevent="startEditingTitle">{{ page.title || 'Untitled Page' }}</h1>
                 </div>
