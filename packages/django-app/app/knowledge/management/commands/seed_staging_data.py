@@ -1,5 +1,6 @@
 import pytz
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
@@ -28,6 +29,14 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        # AIProvider / AIModel are referenced by the chat dropdown the
+        # moment a user opens the chat panel; without them the panel
+        # has nothing selectable. populate_ai_providers_and_models is
+        # idempotent (get_or_create), so running it on every staging
+        # deploy keeps things in sync without harm.
+        self.stdout.write("Populating AI providers and models...")
+        call_command("populate_ai_providers_and_models")
+
         user = User.objects.filter(is_superuser=True).first()
         if not user:
             self.stdout.write(

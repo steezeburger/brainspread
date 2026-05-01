@@ -118,6 +118,94 @@ class AssetAPITestCase(TestCase):
         self.assertIn("file", response.data["errors"])
         self.assertEqual(Asset.objects.count(), 0)
 
+    def test_upload_accepts_text_wildcard_mimes(self):
+        # The default whitelist now contains `text/*`; this exercises
+        # code / data extensions whose MIME varies by browser:
+        # text/x-python, text/csv, text/x-shellscript, text/yaml.
+        cases = [
+            ("script.py", b"print('hi')", "text/x-python"),
+            ("data.csv", b"a,b,c\n1,2,3\n", "text/csv"),
+            ("run.sh", b"#!/bin/sh\necho hi\n", "text/x-shellscript"),
+            ("config.yaml", b"key: value\n", "text/yaml"),
+        ]
+        for filename, content, mime in cases:
+            with self.subTest(mime=mime):
+                upload = SimpleUploadedFile(filename, content, content_type=mime)
+                response = self.client.post(
+                    "/api/assets/", {"file": upload}, format="multipart"
+                )
+                self.assertEqual(
+                    response.status_code,
+                    status.HTTP_200_OK,
+                    f"{mime} should pass: {response.data}",
+                )
+
+    def test_upload_accepts_code_application_mimes(self):
+        # Some browsers send application/* for code-ish content
+        # (json, sh, yaml, toml). Whitelist covers those explicitly.
+        cases = [
+            ("data.json", b"{}", "application/json"),
+            ("run.sh", b"#!/bin/sh\n", "application/x-sh"),
+            ("config.yaml", b"k: v\n", "application/yaml"),
+            ("pyproject.toml", b"[project]\n", "application/toml"),
+        ]
+        for filename, content, mime in cases:
+            with self.subTest(mime=mime):
+                upload = SimpleUploadedFile(filename, content, content_type=mime)
+                response = self.client.post(
+                    "/api/assets/", {"file": upload}, format="multipart"
+                )
+                self.assertEqual(response.status_code, status.HTTP_200_OK, mime)
+
+    def test_upload_accepts_mermaid_extensions_with_octet_stream(self):
+        # Browsers send application/octet-stream for .mmd / .mermaid
+        # because there's no registered MIME for them. The form
+        # normalizes those to text/plain by extension so the upload
+        # passes the whitelist instead of erroring out.
+        cases = [
+            ("diagram.mmd", b"flowchart LR\nA --> B\n"),
+            ("diagram.mermaid", b"sequenceDiagram\nA->>B: hi\n"),
+        ]
+        for filename, content in cases:
+            with self.subTest(filename=filename):
+                upload = SimpleUploadedFile(
+                    filename, content, content_type="application/octet-stream"
+                )
+                response = self.client.post(
+                    "/api/assets/", {"file": upload}, format="multipart"
+                )
+                self.assertEqual(
+                    response.status_code,
+                    status.HTTP_200_OK,
+                    f"{filename} should upload: {response.data}",
+                )
+                self.assertEqual(response.data["data"]["mime_type"], "text/plain")
+                self.assertEqual(response.data["data"]["original_filename"], filename)
+
+    def test_upload_accepts_markdown_extensions_with_octet_stream(self):
+        # Same story as .mmd: some browsers send octet-stream for .md
+        # because the OS hasn't registered a MIME. Normalize to
+        # text/markdown so the upload passes the text/* whitelist.
+        cases = [
+            ("notes.md", b"# Hello\n\nworld\n"),
+            ("README.markdown", b"## Title\n\n- item\n"),
+        ]
+        for filename, content in cases:
+            with self.subTest(filename=filename):
+                upload = SimpleUploadedFile(
+                    filename, content, content_type="application/octet-stream"
+                )
+                response = self.client.post(
+                    "/api/assets/", {"file": upload}, format="multipart"
+                )
+                self.assertEqual(
+                    response.status_code,
+                    status.HTTP_200_OK,
+                    f"{filename} should upload: {response.data}",
+                )
+                self.assertEqual(response.data["data"]["mime_type"], "text/markdown")
+                self.assertEqual(response.data["data"]["original_filename"], filename)
+
     def test_upload_assigns_image_file_type(self):
         upload = SimpleUploadedFile(
             "pic.png", b"\x89PNG\r\n\x1a\n", content_type="image/png"

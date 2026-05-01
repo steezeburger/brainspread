@@ -126,6 +126,25 @@ class UserAPITestCase(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    def test_me_refreshes_session_for_token_only_caller(self):
+        """
+        /me/ called with token auth and no active session should
+        re-establish a Django session, so cookie-only consumers
+        (e.g. <img src="/api/assets/.../">) keep working after the
+        original session cookie expires.
+        """
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
+        # Sanity check: the test client has no session cookie yet.
+        self.assertNotIn("sessionid", self.client.cookies)
+
+        response = self.client.get("/api/auth/me/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # The response should set a session cookie that subsequent
+        # cookie-only requests can use.
+        self.assertIn("sessionid", response.cookies)
+        self.assertTrue(response.cookies["sessionid"].value)
+
     def test_update_timezone_success(self):
         """Test successful timezone update"""
         self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)

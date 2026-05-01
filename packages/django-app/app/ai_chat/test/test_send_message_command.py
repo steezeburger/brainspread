@@ -308,14 +308,79 @@ class SendMessageCommandTestCase(TestCase):
             "What should I do?", context_blocks
         )
 
-        # Verify context formatting
+        # Verify context formatting. Block uuid prefix may be present
+        # when it's been included on the dict, but isn't required here -
+        # these test inputs omit uuid so we just check the bullet glyph
+        # and content land in the text.
         self.assertIn("**Context from my notes:**", formatted_message)
-        self.assertIn("☐ Buy groceries", formatted_message)
-        self.assertIn("☑ Call dentist", formatted_message)
+        self.assertIn("☐", formatted_message)
+        self.assertIn("Buy groceries", formatted_message)
+        self.assertIn("☑", formatted_message)
+        self.assertIn("Call dentist", formatted_message)
         self.assertIn("• Regular note", formatted_message)
         self.assertIn("• Heading note", formatted_message)  # Default to bullet
         self.assertIn("**My question:**", formatted_message)
         self.assertIn("What should I do?", formatted_message)
+
+    def test_format_message_includes_block_uuid_and_image_marker(self):
+        """
+        A context block with an uuid + attached image should produce a
+        bullet that includes the uuid + page uuid (so the AI can target
+        it with notes tools — create_block needs page_uuid alongside
+        parent_uuid) and an image-attached marker (so the AI can tell
+        which block the multimodal image bytes go with).
+        """
+        context_blocks = [
+            {
+                "uuid": "7c8a3b9d-1234-5678-90ab-cdef01234567",
+                "page_uuid": "aaaaaaaa-1111-2222-3333-444444444444",
+                "content": "Screenshot from yesterday",
+                "block_type": "bullet",
+                "asset": {
+                    "asset_uuid": "deadbeef-1111-2222-3333-444444444444",
+                    "file_type": "image",
+                    "original_filename": "screenshot.png",
+                    "mime_type": "image/png",
+                    "byte_size": 12345,
+                },
+            },
+            {
+                "uuid": "9d2f1a4c-1234-5678-90ab-cdef01234567",
+                "page_uuid": "bbbbbbbb-1111-2222-3333-444444444444",
+                "content": "",
+                "block_type": "bullet",
+                "asset": {
+                    "asset_uuid": "cafebabe-1111-2222-3333-444444444444",
+                    "file_type": "image",
+                    "original_filename": "diagram.png",
+                    "mime_type": "image/png",
+                    "byte_size": 9999,
+                },
+            },
+        ]
+
+        formatted = SendMessageCommand._format_message_with_context(
+            "what's in these", context_blocks
+        )
+
+        # Block + page uuids both surface so the AI can call
+        # create_block(page_uuid=..., parent_uuid=...) directly without
+        # going hunting via search_notes.
+        self.assertIn(
+            "[block 7c8a3b9d-1234-5678-90ab-cdef01234567"
+            " on page aaaaaaaa-1111-2222-3333-444444444444]",
+            formatted,
+        )
+        self.assertIn(
+            "[block 9d2f1a4c-1234-5678-90ab-cdef01234567"
+            " on page bbbbbbbb-1111-2222-3333-444444444444]",
+            formatted,
+        )
+        # And both image filenames are flagged.
+        self.assertIn("(image attached: screenshot.png)", formatted)
+        self.assertIn("(image attached: diagram.png)", formatted)
+        # The image-only block (no caption) isn't silently dropped now.
+        self.assertIn("Screenshot from yesterday", formatted)
 
     def test_build_tools_web_search_enabled_by_default(self):
         tools, executor = SendMessageCommand._build_tools(

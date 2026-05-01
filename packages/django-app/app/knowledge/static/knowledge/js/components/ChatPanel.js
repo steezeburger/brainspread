@@ -12,8 +12,17 @@ const ChatPanel = {
       type: Array,
       default: () => [],
     },
+    isBlockInContext: {
+      type: Function,
+      default: () => () => false,
+    },
   },
-  emits: ["open-settings", "remove-context-block", "clear-context"],
+  emits: [
+    "open-settings",
+    "remove-context-block",
+    "add-context-block",
+    "clear-context",
+  ],
   data() {
     return {
       isOpen: this.loadOpenState(),
@@ -28,7 +37,10 @@ const ChatPanel = {
       showModelSelector: false,
       aiSettings: null,
       selectedModel: null,
-      showContextArea: false,
+      // ctx button popover: lists the current page's visible blocks so
+      // the user can toggle them in/out of chat context without
+      // hunting for each block's "+ to context" affordance on the page.
+      showContextPicker: false,
       messageMenus: {},
       expandedThinking: {},
       expandedToolCalls: {},
@@ -822,8 +834,35 @@ const ChatPanel = {
     },
 
     // Context management methods
-    toggleContextArea() {
-      this.showContextArea = !this.showContextArea;
+    toggleContextPicker() {
+      this.showContextPicker = !this.showContextPicker;
+    },
+
+    closeContextPicker() {
+      this.showContextPicker = false;
+    },
+
+    pickContextBlock(block) {
+      // One-click toggle: if the block is already in context, this
+      // removes it; otherwise adds it. Keeps the popover open so the
+      // user can flip multiple blocks in one session.
+      if (this.isBlockInContext(block.uuid)) {
+        this.$emit("remove-context-block", block.uuid);
+      } else {
+        this.$emit("add-context-block", block);
+      }
+    },
+
+    contextPickerLabel(block) {
+      const content = (block.content || "").trim();
+      if (content.length > 60) return content.substring(0, 60) + "…";
+      if (content) return content;
+      // Image-only blocks get filename or generic placeholder so the
+      // row still has something to click.
+      if (block.asset && block.asset.file_type === "image") {
+        return block.asset.original_filename || "[image]";
+      }
+      return "[empty block]";
     },
 
     removeContextBlock(blockId) {
@@ -1412,6 +1451,16 @@ const ChatPanel = {
           this.showToolsMenu = false;
         }
 
+        // Same pattern for the context picker — clicks inside the
+        // picker (or on the ctx button itself) are allowed so the
+        // user can toggle multiple blocks in one session.
+        if (
+          this.showContextPicker &&
+          !e.target.closest(".context-picker-wrapper")
+        ) {
+          this.showContextPicker = false;
+        }
+
         // Only close if panel is open and click is outside the panel
         if (this.isOpen && !this.$el.contains(e.target)) {
           // Check if click is within the history dropdown (teleported content)
@@ -1618,7 +1667,7 @@ const ChatPanel = {
         </div>
         
         <!-- Context Area -->
-        <div class="context-area" v-if="hasContext() || showContextArea">
+        <div class="context-area" v-if="hasContext()">
           <div class="context-header">
             <span class="context-title">
               Context ({{ getContextCount() }})
@@ -1698,14 +1747,49 @@ const ChatPanel = {
                 </div>
               </div>
             </div>
-            <button
-              class="context-btn"
-              @click="toggleContextArea"
-              :class="{ active: hasContext() }"
-              :title="hasContext() ? 'Context (' + getContextCount() + ')' : 'Add context'"
-            >
-              ctx
-            </button>
+            <div class="context-picker-wrapper">
+              <button
+                class="context-btn"
+                @click.stop="toggleContextPicker"
+                :class="{ active: hasContext() || showContextPicker }"
+                :title="hasContext() ? 'Add to context (' + getContextCount() + ' attached)' : 'Add blocks to context'"
+              >
+                ctx{{ hasContext() ? ' (' + getContextCount() + ')' : '' }}
+              </button>
+              <div
+                v-if="showContextPicker"
+                class="context-picker"
+                @click.stop
+              >
+                <div class="context-picker-header">
+                  add blocks to context
+                </div>
+                <div
+                  v-if="visibleBlocks.length === 0"
+                  class="context-picker-empty"
+                >
+                  No blocks on this page yet.
+                </div>
+                <button
+                  v-for="block in visibleBlocks"
+                  :key="block.uuid"
+                  type="button"
+                  class="context-picker-item"
+                  :class="{ 'is-selected': isBlockInContext(block.uuid) }"
+                  :title="contextPickerLabel(block)"
+                  @click="pickContextBlock(block)"
+                >
+                  <span class="context-picker-check">{{ isBlockInContext(block.uuid) ? '☑' : '☐' }}</span>
+                  <img
+                    v-if="block.asset && block.asset.file_type === 'image'"
+                    :src="chatAttachmentUrl(block.asset)"
+                    alt=""
+                    class="context-picker-thumb"
+                  />
+                  <span class="context-picker-text">{{ contextPickerLabel(block) }}</span>
+                </button>
+              </div>
+            </div>
             <div class="tools-container">
               <button
                 class="tools-btn"

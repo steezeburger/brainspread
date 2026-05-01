@@ -279,6 +279,13 @@ const Page = {
           this.referencedBlocks = result.data.referenced_blocks || [];
           this.overdueBlocks = result.data.overdue_blocks || [];
           this.$emit("page-loaded", this.page);
+          // Flatten the block tree for consumers (e.g. ChatPanel's
+          // ctx picker) that want a single list of every block on
+          // the page, not just the root level.
+          this.$emit(
+            "visible-blocks-changed",
+            this.flattenBlockTree(this.directBlocks)
+          );
         } else {
           this.error = "failed to load page";
         }
@@ -312,6 +319,24 @@ const Page = {
 
         return block;
       });
+    },
+
+    flattenBlockTree(blocks) {
+      // Pre-order walk: root first, then its descendants, then the
+      // next sibling. ChatPanel's ctx picker uses this list so users
+      // can attach a deeply-nested block to context without first
+      // expanding it on the page.
+      const out = [];
+      const walk = (items) => {
+        for (const block of items || []) {
+          out.push(block);
+          if (block.children && block.children.length) {
+            walk(block.children);
+          }
+        }
+      };
+      walk(blocks);
+      return out;
     },
 
     async createBlock(
@@ -385,6 +410,31 @@ const Page = {
       }
     },
 
+    async setBlockProperties(block, partial) {
+      // Shallow-merge `partial` into the block's existing properties
+      // (so toggling one flag doesn't drop the others) and persist.
+      // Pass a key with `null` to clear it — useful for "reset size"
+      // and similar opt-outs.
+      const merged = { ...(block.properties || {}), ...partial };
+      Object.keys(merged).forEach((key) => {
+        if (merged[key] === null || merged[key] === undefined) {
+          delete merged[key];
+        }
+      });
+      try {
+        const result = await window.apiService.updateBlock(block.uuid, {
+          properties: merged,
+        });
+        if (result.success) {
+          block.properties = merged;
+        } else {
+          console.error("failed to update block properties:", result.errors);
+        }
+      } catch (error) {
+        console.error("failed to update block properties:", error);
+      }
+    },
+
     async updateBlock(block, newContent, skipReload = false) {
       try {
         const result = await window.apiService.updateBlock(block.uuid, {
@@ -432,6 +482,12 @@ const Page = {
 
       if (!confirmed) return;
 
+      // Mark the block as being deleted before we hit the API so any
+      // blur-triggered stopEditing -> updateBlock that races with the
+      // delete becomes a no-op. The blur can fire when the confirm()
+      // dialog steals focus, or when loadPage() rerenders the tree.
+      this.deletingBlocks.add(block.uuid);
+
       try {
         const result = await window.apiService.deleteBlock(block.uuid);
         if (result.success) {
@@ -440,13 +496,16 @@ const Page = {
       } catch (error) {
         console.error("failed to delete block:", error);
         this.error = "failed to delete block";
+      } finally {
+        // Hold the guard briefly so any in-flight blur handlers that
+        // queued after the delete still see the block as "deleting".
+        setTimeout(() => {
+          this.deletingBlocks.delete(block.uuid);
+        }, 100);
       }
     },
 
     async deleteEmptyBlock(block) {
-      // Mark block as being deleted to prevent save conflicts
-      this.deletingBlocks.add(block.uuid);
-
       // Find the previous block to focus after deletion
       const previousBlock = this.findPreviousBlock(block);
 
@@ -474,13 +533,6 @@ const Page = {
         }
       } catch (error) {
         console.error("Failed to delete empty block:", error);
-        // Remove from deleting set on error
-        this.deletingBlocks.delete(block.uuid);
-      } finally {
-        // Clean up tracking after a delay to ensure blur events have processed
-        setTimeout(() => {
-          this.deletingBlocks.delete(block.uuid);
-        }, 100);
       }
     },
 
@@ -993,17 +1045,70 @@ const Page = {
     formatContentWithTags(content, blockType = null, properties = null) {
       if (!content) return "";
 
-      // Code blocks render as <pre><code> with content escaped and no other
-      // markdown formatting applied.
-      if (blockType === "code") {
-        const escapeHtml = (s) =>
-          s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        const escaped = escapeHtml(content);
-        const lang = properties?.language || "";
+      const escapeHtml = (s) =>
+        s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+      // Render a fenced code block. Recognized languages (mermaid, csv,
+      // tsv) get specialized rendering; everything else falls through to
+      // <pre><code> tagged for Prism syntax highlighting. `forceRaw`
+      // suppresses the specialized renderers so the toggle in the block
+      // menu can fall back to the plain code view. `resizable` adds a
+      // corner drag-handle on the mermaid wrapper — only meaningful for
+      // code-typed blocks where the block-level properties.size has
+      // somewhere to land.
+      const renderCodeBlock = (
+        source,
+        lang,
+        forceRaw = false,
+        resizable = false
+      ) => {
+        const langLower = lang ? lang.toLowerCase() : "";
         const langBadge = lang
           ? `<span class="block-code-lang">${escapeHtml(lang)}</span>`
           : "";
-        return `<div class="block-code-wrapper">${langBadge}<pre class="block-code"><code>${escaped}</code></pre></div>`;
+        if (!forceRaw && langLower === "mermaid") {
+          const attrEscaped = escapeHtml(source).replace(/"/g, "&quot;");
+          const wrapperClass = resizable
+            ? "block-mermaid-wrapper block-resizable"
+            : "block-mermaid-wrapper";
+          const handle = resizable
+            ? '<div class="block-resize-handle" aria-hidden="true"></div>'
+            : "";
+          return `<div class="${wrapperClass}">${langBadge}<div class="block-mermaid" data-mermaid-source="${attrEscaped}"></div>${handle}</div>`;
+        }
+        if (
+          !forceRaw &&
+          (langLower === "csv" || langLower === "tsv") &&
+          window.brainspreadCsv
+        ) {
+          const tableHtml = window.brainspreadCsv.renderCsvTable(
+            source,
+            langLower === "tsv" ? "\t" : ","
+          );
+          if (tableHtml) {
+            return `<div class="block-csv-wrapper">${langBadge}${tableHtml}</div>`;
+          }
+          // Empty/invalid CSV — fall through to the plain code rendering
+          // below so the user still sees their source.
+        }
+        const escaped = escapeHtml(source);
+        // Tag <code> with a Prism language class so the autoloader can
+        // pick up the right grammar after mount. The autoloader fetches
+        // each language file lazily on first use, so unused languages
+        // cost nothing at app boot.
+        const safeLang = langLower.replace(/[^\w-]/g, "");
+        const langClass = safeLang ? ` class="language-${safeLang}"` : "";
+        return `<div class="block-code-wrapper">${langBadge}<pre class="block-code"><code${langClass}>${escaped}</code></pre></div>`;
+      };
+
+      // Code-typed blocks render their entire content as a single fenced
+      // block with no other markdown formatting applied. The wrapper is
+      // resizable (mermaid only) since the block-level properties.size
+      // has somewhere to land.
+      if (blockType === "code") {
+        const lang = properties?.language || "";
+        const forceRaw = properties?.render === "raw";
+        return renderCodeBlock(content, lang, forceRaw, true);
       }
 
       let formatted = content;
@@ -1018,6 +1123,24 @@ const Page = {
           ""
         );
       }
+
+      // Extract triple-backtick fenced code blocks BEFORE the single-
+      // backtick span regex below; otherwise the leading ``` gets eaten as
+      // an inline code span and the remaining backticks render as stray
+      // text. The placeholder survives the rest of the markdown
+      // transforms and is restored at the end.
+      const fenceSegments = [];
+      formatted = formatted.replace(
+        /```([^\n`]*)\n([\s\S]*?)```/g,
+        (_match, lang, code) => {
+          const idx = fenceSegments.length;
+          // Drop the trailing newline before the closing fence so the
+          // rendered <pre> doesn't carry an extra blank line.
+          const trimmedCode = code.replace(/\n$/, "");
+          fenceSegments.push({ lang: lang.trim(), code: trimmedCode });
+          return `\x00FENCE${idx}\x00`;
+        }
+      );
 
       // Extract backtick code spans first to protect them from other formatting
       const codeSegments = [];
@@ -1138,6 +1261,21 @@ const Page = {
       // doesn't get re-matched by the hashtag regex).
       escapedChars.forEach((char, idx) => {
         formatted = formatted.split(`\x00ESC${idx}\x00`).join(char);
+      });
+
+      // Restore fenced code blocks last so their inner content was never
+      // run through any of the markdown transforms above. The block's
+      // properties.render flag forces every inline fence in the block to
+      // its raw view together — that's the granularity the context-menu
+      // toggle operates at, since one block can hold several fences and
+      // toggling them individually would need per-fence UI. Same story
+      // for resize: every inline mermaid fence in the block shares the
+      // block-level properties.size.
+      const inlineForceRaw = properties?.render === "raw";
+      fenceSegments.forEach((seg, idx) => {
+        formatted = formatted
+          .split(`\x00FENCE${idx}\x00`)
+          .join(renderCodeBlock(seg.code, seg.lang, inlineForceRaw, true));
       });
 
       return formatted;
@@ -1748,8 +1886,9 @@ const Page = {
         }
 
         if (fenceMatch) {
-          // Opening fence: only intercept if we've started processing a list
-          if (!sawFirstNonEmpty) return [];
+          // Opening fence — accept this as the start of a list-style paste
+          // even when no bullet has been seen yet, so a bare ```lang
+          // fenced block (e.g. ```mermaid) round-trips into a code block.
           const leading = fenceMatch[1];
           codeFenceOpen = true;
           codeFenceIndentStr = leading;
@@ -2891,6 +3030,7 @@ const Page = {
                 :stopEditing="stopEditing"
                 :deleteBlock="deleteBlock"
                 :toggleBlockTodo="toggleBlockTodo"
+                :setBlockProperties="setBlockProperties"
                 :formatContentWithTags="formatContentWithTags"
                 :isBlockInContext="isBlockInContext"
                 :isBlockSelected="isBlockSelected"
@@ -2928,6 +3068,7 @@ const Page = {
               :stopEditing="stopEditing"
               :deleteBlock="deleteBlock"
               :toggleBlockTodo="toggleBlockTodo"
+              :setBlockProperties="setBlockProperties"
               :formatContentWithTags="formatContentWithTags"
               :isBlockInContext="isBlockInContext"
               :isBlockSelected="isBlockSelected"
@@ -2976,6 +3117,7 @@ const Page = {
                 :stopEditing="stopEditing"
                 :deleteBlock="deleteBlock"
                 :toggleBlockTodo="toggleBlockTodo"
+                :setBlockProperties="setBlockProperties"
                 :formatContentWithTags="formatContentWithTags"
                 :isBlockInContext="isBlockInContext"
                 :isBlockSelected="isBlockSelected"

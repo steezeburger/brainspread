@@ -290,6 +290,12 @@ const KnowledgeApp = createApp({
     applyTheme() {
       const theme = this.user?.theme || "dark";
       document.documentElement.setAttribute("data-theme", theme);
+      // Mermaid diagrams pick their palette at render time, so a theme
+      // swap only takes effect on already-rendered SVGs if we reset and
+      // re-render them.
+      if (window.brainspreadMermaid) {
+        window.brainspreadMermaid.rerenderAll(theme);
+      }
     },
 
     // Chat context management methods
@@ -302,6 +308,10 @@ const KnowledgeApp = createApp({
           block_type: block.block_type,
           created_at: block.created_at,
           parent_uuid: parentUuid,
+          // page_uuid lets the backend formatter surface "block X on
+          // page Y" to the model, which is what create_block actually
+          // needs (it requires page_uuid alongside parent_uuid).
+          page_uuid: block.page_uuid || null,
           // Carry the block's attached asset (if any) so ChatPanel can
           // include image bytes alongside the text context. Without
           // this, an image-only block would land in context with empty
@@ -853,6 +863,9 @@ const KnowledgeApp = createApp({
 
       document.documentElement.setAttribute("data-theme", theme);
       this.user = { ...this.user, theme };
+      if (window.brainspreadMermaid) {
+        window.brainspreadMermaid.rerenderAll(theme);
+      }
 
       try {
         const result = await window.apiService.updateUserTheme(theme);
@@ -863,6 +876,9 @@ const KnowledgeApp = createApp({
         console.error("failed to persist theme:", error);
         document.documentElement.setAttribute("data-theme", previous);
         this.user = { ...this.user, theme: previous };
+        if (window.brainspreadMermaid) {
+          window.brainspreadMermaid.rerenderAll(previous);
+        }
       }
     },
 
@@ -956,7 +972,9 @@ const KnowledgeApp = createApp({
                             ref="chatPanel"
                             :chat-context-blocks="chatContextBlocks"
                             :visible-blocks="visibleBlocks"
+                            :is-block-in-context="isBlockInContext"
                             @open-settings="onChatPanelOpenSettings"
+                            @add-context-block="onBlockAddToContext"
                             @remove-context-block="onBlockRemoveFromContext"
                             @clear-context="clearChatContext"
                         />

@@ -21,11 +21,16 @@
     <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
 
+    <!-- Mermaid diagram rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+
     <!-- Prism CSS Theme -->
     <link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
 
     <!-- API Service -->
     <script src="{% static 'knowledge/js/services/api.js' %}?v={{ STATIC_VERSION }}"></script>
+    <script src="{% static 'knowledge/js/services/mermaid.js' %}?v={{ STATIC_VERSION }}"></script>
+    <script src="{% static 'knowledge/js/services/csv.js' %}?v={{ STATIC_VERSION }}"></script>
 
     <!-- Vue Components -->
     <script src="{% static 'knowledge/js/components/BlockComponent.js' %}?v={{ STATIC_VERSION }}"></script>

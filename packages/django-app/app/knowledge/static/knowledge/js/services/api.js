@@ -636,15 +636,50 @@ class ApiService {
       body: form,
       credentials: "include",
     });
-    const data = await response.json();
+
+    // The server always returns JSON on the happy path; non-JSON
+    // responses come from nginx / Django debug pages when something
+    // intercepted the request before Django could format an error
+    // (most commonly: nginx client_max_body_size truncating a large
+    // phone-camera JPEG into a 413). Try JSON first, fall back to a
+    // status-aware message so users don't see "Unexpected token '<'".
+    const contentType = response.headers.get("Content-Type") || "";
+    const looksJson = contentType.includes("application/json");
+    let data = null;
+    if (looksJson) {
+      try {
+        data = await response.json();
+      } catch (_) {
+        data = null;
+      }
+    }
+
     if (!response.ok) {
-      const msg =
-        data?.errors?.file?.[0] ||
-        data?.errors?.non_field_errors?.[0] ||
-        "Upload failed";
-      throw new Error(msg);
+      const fromJson =
+        data?.errors?.file?.[0] || data?.errors?.non_field_errors?.[0];
+      throw new Error(fromJson || this._uploadStatusMessage(response.status));
+    }
+
+    if (!data) {
+      // 200 OK but the body wasn't JSON - shouldn't happen with our
+      // own view, but cover it defensively rather than crashing.
+      throw new Error(
+        "Upload succeeded but the server returned an unexpected response"
+      );
     }
     return data;
+  }
+
+  _uploadStatusMessage(status) {
+    if (status === 401) return "Not signed in. Try logging out and back in.";
+    if (status === 403)
+      return "Upload rejected by the server (CSRF or permission issue).";
+    if (status === 413)
+      return "File too large for the server. Try a smaller image, or ask the admin to raise the upload limit.";
+    if (status === 415) return "Unsupported file type.";
+    if (status >= 500)
+      return `Upload failed (${status}). The server hit an error - check the logs.`;
+    return `Upload failed (${status}).`;
   }
 
   // URL the browser hits to render an asset's bytes. The endpoint
