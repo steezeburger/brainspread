@@ -1,10 +1,13 @@
+from datetime import timedelta
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from knowledge.commands import SetBlockTypeCommand
 from knowledge.forms import SetBlockTypeForm
-from knowledge.models import Block, Page
+from knowledge.models import Block, Page, Reminder
 
 User = get_user_model()
 
@@ -52,8 +55,6 @@ class TestSetBlockTypeCommand:
         assert result.completed_at is not None
 
     def test_clears_completed_at_on_transition_out_of_done(self):
-        from django.utils import timezone
-
         block = self._make_block(
             content="DONE ship it",
             block_type="done",
@@ -64,8 +65,6 @@ class TestSetBlockTypeCommand:
         assert result.completed_at is None
 
     def test_clears_completed_at_on_transition_out_of_wontdo(self):
-        from django.utils import timezone
-
         block = self._make_block(
             content="WONTDO ship it",
             block_type="wontdo",
@@ -75,8 +74,6 @@ class TestSetBlockTypeCommand:
         assert result.completed_at is None
 
     def test_preserves_completed_at_when_staying_completed(self):
-        from django.utils import timezone
-
         original = timezone.now()
         block = self._make_block(
             content="DONE ship it",
@@ -110,6 +107,126 @@ class TestSetBlockTypeCommand:
         result = self._run(block, "bullet")
         assert result.content == "write docs"
         assert result.completed_at is None
+
+    def test_skips_pending_reminders_when_entering_done(self):
+        block = self._make_block(content="TODO ship it", block_type="todo")
+        future = timezone.now() + timedelta(hours=1)
+        reminder = Reminder.objects.create(block=block, fire_at=future)
+
+        self._run(block, "done")
+
+        reminder.refresh_from_db()
+        assert reminder.status == Reminder.STATUS_SKIPPED
+        # sent_at must also be set: the block-level "pending reminder" UI
+        # filters on sent_at IS NULL, not on status.
+        assert reminder.sent_at is not None
+
+    def test_skipped_reminder_disappears_from_block_serialization(self):
+        block = self._make_block(content="TODO ship it", block_type="todo")
+        future = timezone.now() + timedelta(hours=1)
+        Reminder.objects.create(block=block, fire_at=future)
+        # Sanity check: before completion the reminder shows on the block.
+        assert block.to_dict()["pending_reminder_date"] is not None
+
+        result = self._run(block, "done")
+
+        assert result.to_dict()["pending_reminder_date"] is None
+        assert result.to_dict()["pending_reminder_time"] is None
+
+    def test_skips_pending_reminders_when_entering_wontdo(self):
+        block = self._make_block(content="TODO ship it", block_type="todo")
+        future = timezone.now() + timedelta(hours=1)
+        reminder = Reminder.objects.create(block=block, fire_at=future)
+
+        self._run(block, "wontdo")
+
+        reminder.refresh_from_db()
+        assert reminder.status == Reminder.STATUS_SKIPPED
+        assert reminder.sent_at is not None
+
+    def test_does_not_resurrect_skipped_reminders_when_leaving_done(self):
+        block = self._make_block(
+            content="DONE ship it",
+            block_type="done",
+            completed_at=timezone.now(),
+        )
+        future = timezone.now() + timedelta(hours=1)
+        reminder = Reminder.objects.create(
+            block=block, fire_at=future, status=Reminder.STATUS_SKIPPED
+        )
+
+        self._run(block, "todo")
+
+        reminder.refresh_from_db()
+        assert reminder.status == Reminder.STATUS_SKIPPED
+
+    def test_does_not_touch_already_sent_reminders(self):
+        block = self._make_block(content="TODO ship it", block_type="todo")
+        past = timezone.now() - timedelta(hours=1)
+        reminder = Reminder.objects.create(
+            block=block,
+            fire_at=past,
+            status=Reminder.STATUS_SENT,
+            sent_at=past,
+        )
+
+        self._run(block, "done")
+
+        reminder.refresh_from_db()
+        assert reminder.status == Reminder.STATUS_SENT
+
+    def test_does_not_touch_failed_reminders(self):
+        block = self._make_block(content="TODO ship it", block_type="todo")
+        past = timezone.now() - timedelta(minutes=5)
+        reminder = Reminder.objects.create(
+            block=block,
+            fire_at=past,
+            status=Reminder.STATUS_FAILED,
+            last_error="boom",
+        )
+
+        self._run(block, "done")
+
+        reminder.refresh_from_db()
+        assert reminder.status == Reminder.STATUS_FAILED
+
+    def test_only_affects_reminders_on_the_completed_block(self):
+        user = User.objects.create_user(email="multi@example.com", password="p")
+        page_a = Page.objects.create(title="Page A", slug="page-a", user=user)
+        page_b = Page.objects.create(title="Page B", slug="page-b", user=user)
+        block_a = Block.objects.create(
+            page=page_a, user=user, content="TODO a", block_type="todo", order=0
+        )
+        block_b = Block.objects.create(
+            page=page_b, user=user, content="TODO b", block_type="todo", order=0
+        )
+        future = timezone.now() + timedelta(hours=1)
+        reminder_a = Reminder.objects.create(block=block_a, fire_at=future)
+        reminder_b = Reminder.objects.create(block=block_b, fire_at=future)
+
+        self._run(block_a, "done")
+
+        reminder_a.refresh_from_db()
+        reminder_b.refresh_from_db()
+        assert reminder_a.status == Reminder.STATUS_SKIPPED
+        assert reminder_b.status == Reminder.STATUS_PENDING
+
+    def test_does_not_skip_when_transitioning_between_terminal_states(self):
+        block = self._make_block(
+            content="DONE ship it",
+            block_type="done",
+            completed_at=timezone.now(),
+        )
+        # If a reminder is somehow still pending (e.g. created after completion),
+        # a done -> wontdo transition shouldn't re-skip it — we only skip on the
+        # transition into a terminal state, not on movement within them.
+        future = timezone.now() + timedelta(hours=1)
+        reminder = Reminder.objects.create(block=block, fire_at=future)
+
+        self._run(block, "wontdo")
+
+        reminder.refresh_from_db()
+        assert reminder.status == Reminder.STATUS_PENDING
 
     def test_rejects_block_from_other_user(self):
         u1 = User.objects.create_user(email="u1@example.com", password="p")

@@ -7,7 +7,7 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.set_block_type_form import SetBlockTypeForm
 from ..forms.touch_page_form import TouchPageForm
-from ..models import Block
+from ..models import Block, Reminder
 from .touch_page_command import TouchPageCommand
 
 # Block types that carry a leading content prefix (e.g. "TODO write docs").
@@ -46,6 +46,21 @@ class SetBlockTypeCommand(AbstractBaseCommand):
         )
         block.block_type = new_type
         block.save()
+
+        # Once a block enters a terminal state, pending reminders are noise.
+        # Stay-skipped on un-complete: user can reschedule manually. We set
+        # sent_at alongside status because the block-level "pending reminder"
+        # lookup (see Block._pending_reminder_local) keys off sent_at IS NULL.
+        entering_terminal = (
+            new_type in COMPLETED_TYPES and old_type not in COMPLETED_TYPES
+        )
+        if entering_terminal:
+            now = timezone.now()
+            Reminder.objects.filter(block=block, status=Reminder.STATUS_PENDING).update(
+                status=Reminder.STATUS_SKIPPED,
+                sent_at=now,
+                modified_at=now,
+            )
 
         touch_form = TouchPageForm(data={"user": user.id, "page": str(block.page.uuid)})
         if touch_form.is_valid():
