@@ -165,10 +165,12 @@ const BlockComponent = {
       return ["mermaid", "csv", "tsv"].includes(lang);
     },
     canToggleAssetRender() {
-      // Asset blocks with a renderable extension (csv, tsv, mmd,
-      // mermaid) get the same toggle so users can swap between the
-      // rendered table/diagram and the plain download chip.
-      return !!this.detectedAssetType;
+      // The toggle applies to anything we render inline — images, plus
+      // the text-shaped types in detectedAssetType. Rule of thumb: if
+      // the asset block has a non-chip default render, expose a way
+      // back to the chip view.
+      if (!this.hasAsset || this.isEmbed) return false;
+      return this.assetIsImage || !!this.detectedAssetType;
     },
     canToggleRender() {
       return this.canToggleCodeRender || this.canToggleAssetRender;
@@ -454,7 +456,11 @@ const BlockComponent = {
     if (this.isEmbed) {
       this.loadWebArchive();
     }
-    if (this.shouldRenderAsset && this.assetSource === null) {
+    if (
+      this.shouldRenderAsset &&
+      this.detectedAssetType &&
+      this.assetSource === null
+    ) {
       this.fetchAssetSource();
     }
     this.applyContentRenderers();
@@ -468,7 +474,11 @@ const BlockComponent = {
     // If the asset just became renderable (e.g. user toggled out of raw,
     // or the asset itself just got attached) and we haven't fetched the
     // bytes yet, kick that off.
-    if (this.shouldRenderAsset && this.assetSource === null) {
+    if (
+      this.shouldRenderAsset &&
+      this.detectedAssetType &&
+      this.assetSource === null
+    ) {
       this.fetchAssetSource();
     }
   },
@@ -1308,7 +1318,7 @@ const BlockComponent = {
         </div>
         <div v-if="hasAsset && !isEmbed" class="block-asset" @click.stop>
           <img
-            v-if="assetIsImage"
+            v-if="assetIsImage && !isRenderedRaw"
             :src="assetUrl"
             :alt="assetDisplayName"
             class="block-asset-image"
