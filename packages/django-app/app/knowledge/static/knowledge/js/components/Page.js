@@ -992,26 +992,29 @@ const Page = {
     formatContentWithTags(content, blockType = null, properties = null) {
       if (!content) return "";
 
-      // Code blocks render as <pre><code> with content escaped and no other
-      // markdown formatting applied. Mermaid is a special case: the source
-      // is stashed on a placeholder element which BlockComponent renders
-      // to SVG via the mermaid library after mount.
-      if (blockType === "code") {
-        const escapeHtml = (s) =>
-          s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        const lang = properties?.language || "";
+      const escapeHtml = (s) =>
+        s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+      // Render a fenced code block (or a mermaid placeholder when the
+      // language is "mermaid"). Shared between the block-type=code path
+      // and inline ```fences``` inside text-typed blocks.
+      const renderCodeBlock = (source, lang) => {
         const langBadge = lang
           ? `<span class="block-code-lang">${escapeHtml(lang)}</span>`
           : "";
-        if (lang.toLowerCase() === "mermaid") {
-          // Encode the source via attribute escaping. Quotes are the only
-          // characters that need extra handling beyond the standard set
-          // since the value sits inside a double-quoted attribute.
-          const attrEscaped = escapeHtml(content).replace(/"/g, "&quot;");
+        if (lang && lang.toLowerCase() === "mermaid") {
+          const attrEscaped = escapeHtml(source).replace(/"/g, "&quot;");
           return `<div class="block-mermaid-wrapper">${langBadge}<div class="block-mermaid" data-mermaid-source="${attrEscaped}"></div></div>`;
         }
-        const escaped = escapeHtml(content);
+        const escaped = escapeHtml(source);
         return `<div class="block-code-wrapper">${langBadge}<pre class="block-code"><code>${escaped}</code></pre></div>`;
+      };
+
+      // Code-typed blocks render their entire content as a single fenced
+      // block with no other markdown formatting applied.
+      if (blockType === "code") {
+        const lang = properties?.language || "";
+        return renderCodeBlock(content, lang);
       }
 
       let formatted = content;
@@ -1026,6 +1029,24 @@ const Page = {
           ""
         );
       }
+
+      // Extract triple-backtick fenced code blocks BEFORE the single-
+      // backtick span regex below; otherwise the leading ``` gets eaten as
+      // an inline code span and the remaining backticks render as stray
+      // text. The placeholder survives the rest of the markdown
+      // transforms and is restored at the end.
+      const fenceSegments = [];
+      formatted = formatted.replace(
+        /```([^\n`]*)\n([\s\S]*?)```/g,
+        (_match, lang, code) => {
+          const idx = fenceSegments.length;
+          // Drop the trailing newline before the closing fence so the
+          // rendered <pre> doesn't carry an extra blank line.
+          const trimmedCode = code.replace(/\n$/, "");
+          fenceSegments.push({ lang: lang.trim(), code: trimmedCode });
+          return `\x00FENCE${idx}\x00`;
+        }
+      );
 
       // Extract backtick code spans first to protect them from other formatting
       const codeSegments = [];
@@ -1146,6 +1167,14 @@ const Page = {
       // doesn't get re-matched by the hashtag regex).
       escapedChars.forEach((char, idx) => {
         formatted = formatted.split(`\x00ESC${idx}\x00`).join(char);
+      });
+
+      // Restore fenced code blocks last so their inner content was never
+      // run through any of the markdown transforms above.
+      fenceSegments.forEach((seg, idx) => {
+        formatted = formatted
+          .split(`\x00FENCE${idx}\x00`)
+          .join(renderCodeBlock(seg.code, seg.lang));
       });
 
       return formatted;
