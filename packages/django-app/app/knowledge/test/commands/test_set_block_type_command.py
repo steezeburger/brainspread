@@ -117,6 +117,21 @@ class TestSetBlockTypeCommand:
 
         reminder.refresh_from_db()
         assert reminder.status == Reminder.STATUS_SKIPPED
+        # sent_at must also be set: the block-level "pending reminder" UI
+        # filters on sent_at IS NULL, not on status.
+        assert reminder.sent_at is not None
+
+    def test_skipped_reminder_disappears_from_block_serialization(self):
+        block = self._make_block(content="TODO ship it", block_type="todo")
+        future = timezone.now() + timedelta(hours=1)
+        Reminder.objects.create(block=block, fire_at=future)
+        # Sanity check: before completion the reminder shows on the block.
+        assert block.to_dict()["pending_reminder_date"] is not None
+
+        result = self._run(block, "done")
+
+        assert result.to_dict()["pending_reminder_date"] is None
+        assert result.to_dict()["pending_reminder_time"] is None
 
     def test_skips_pending_reminders_when_entering_wontdo(self):
         block = self._make_block(content="TODO ship it", block_type="todo")
@@ -127,6 +142,7 @@ class TestSetBlockTypeCommand:
 
         reminder.refresh_from_db()
         assert reminder.status == Reminder.STATUS_SKIPPED
+        assert reminder.sent_at is not None
 
     def test_does_not_resurrect_skipped_reminders_when_leaving_done(self):
         block = self._make_block(

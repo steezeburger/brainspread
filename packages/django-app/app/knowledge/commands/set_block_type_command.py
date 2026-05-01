@@ -48,14 +48,18 @@ class SetBlockTypeCommand(AbstractBaseCommand):
         block.save()
 
         # Once a block enters a terminal state, pending reminders are noise.
-        # Stay-skipped on un-complete: user can reschedule manually.
+        # Stay-skipped on un-complete: user can reschedule manually. We set
+        # sent_at alongside status because the block-level "pending reminder"
+        # lookup (see Block._pending_reminder_local) keys off sent_at IS NULL.
         entering_terminal = (
             new_type in COMPLETED_TYPES and old_type not in COMPLETED_TYPES
         )
         if entering_terminal:
+            now = timezone.now()
             Reminder.objects.filter(block=block, status=Reminder.STATUS_PENDING).update(
                 status=Reminder.STATUS_SKIPPED,
-                modified_at=timezone.now(),
+                sent_at=now,
+                modified_at=now,
             )
 
         touch_form = TouchPageForm(data={"user": user.id, "page": str(block.page.uuid)})
