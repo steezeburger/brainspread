@@ -39,6 +39,10 @@ class SendMessageForm(BaseForm):
     # NullBooleanField so we can distinguish "omitted" (legacy clients that
     # never send this flag expect web search on) from an explicit false.
     enable_web_search = forms.NullBooleanField(required=False)
+    # Opt-in JSON-schema structured output. When set, the assistant text is
+    # constrained to JSON validating the supplied schema. Each provider has
+    # its own wire shape; services translate from the unified dict below.
+    response_format = forms.JSONField(required=False)
 
     def clean_user(self) -> User:
         user = self.cleaned_data.get("user")
@@ -102,6 +106,43 @@ class SendMessageForm(BaseForm):
     def clean_enable_web_search(self) -> bool:
         value = self.cleaned_data.get("enable_web_search")
         return True if value is None else bool(value)
+
+    def clean_response_format(self) -> Optional[Dict]:
+        """Validate and normalize a structured-output request.
+
+        The unified shape is:
+            {
+              "type": "json_schema",       # required
+              "schema": {...JSON Schema},  # required, non-empty object
+              "name": "string",            # optional, defaults applied
+              "strict": bool               # optional (OpenAI-only)
+            }
+        Each service translates this to its native parameter on the wire.
+        """
+        value = self.cleaned_data.get("response_format")
+        if value in (None, "", {}, []):
+            return None
+        if not isinstance(value, dict):
+            raise ValidationError("response_format must be an object")
+        fmt_type = value.get("type")
+        if fmt_type != "json_schema":
+            raise ValidationError("response_format.type must be 'json_schema'")
+        schema = value.get("schema")
+        if not isinstance(schema, dict) or not schema:
+            raise ValidationError(
+                "response_format.schema must be a non-empty JSON Schema object"
+            )
+        name = value.get("name")
+        if name is not None and not isinstance(name, str):
+            raise ValidationError("response_format.name must be a string")
+        normalized: Dict = {
+            "type": fmt_type,
+            "schema": schema,
+            "name": name or "structured_response",
+        }
+        if "strict" in value:
+            normalized["strict"] = bool(value.get("strict"))
+        return normalized
 
     def clean_context_blocks(self) -> List[Dict]:
         context_blocks = self.cleaned_data.get("context_blocks")

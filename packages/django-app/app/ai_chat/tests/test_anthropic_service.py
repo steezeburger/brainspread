@@ -122,6 +122,90 @@ class TestAnthropicServiceThinking:
             service.send_message([{"role": "user"}])
 
 
+class TestAnthropicResponseFormat:
+    @patch("anthropic.Anthropic")
+    def test_passes_json_schema_via_output_config_format(self, mock_anthropic_cls):
+        # Anthropic's structured-output knob lives at output_config.format —
+        # when the caller asks for json_schema, the schema must arrive in
+        # that nested shape, alongside any pre-existing effort knob.
+        mock_client = Mock()
+        mock_client.messages.create.return_value = _build_response(text='{"a":1}')
+        mock_anthropic_cls.return_value = mock_client
+
+        service = AnthropicService(api_key="k", model="claude-opus-4-7")
+        schema = {"type": "object", "properties": {"a": {"type": "integer"}}}
+        service.send_message(
+            [{"role": "user", "content": "go"}],
+            response_format={
+                "type": "json_schema",
+                "name": "ignored_by_anthropic",
+                "schema": schema,
+            },
+        )
+
+        kwargs = mock_client.messages.create.call_args.kwargs
+        # output_config keeps effort AND gains the json_schema format
+        assert kwargs["output_config"]["effort"] == "high"
+        assert kwargs["output_config"]["format"] == {
+            "type": "json_schema",
+            "schema": schema,
+        }
+
+    @patch("anthropic.Anthropic")
+    def test_omits_format_when_no_response_format(self, mock_anthropic_cls):
+        mock_client = Mock()
+        mock_client.messages.create.return_value = _build_response()
+        mock_anthropic_cls.return_value = mock_client
+
+        service = AnthropicService(api_key="k", model="claude-opus-4-7")
+        service.send_message([{"role": "user", "content": "hi"}])
+
+        kwargs = mock_client.messages.create.call_args.kwargs
+        # Effort still set, but no `format` key — keeps the request shape
+        # identical to pre-feature behaviour.
+        assert kwargs["output_config"] == {"effort": "high"}
+
+    @patch("anthropic.Anthropic")
+    def test_skips_output_config_on_unsupported_model_without_format(
+        self, mock_anthropic_cls
+    ):
+        # Older models don't accept output_config.effort. With no
+        # response_format requested either, the kwarg should be omitted
+        # entirely so the API doesn't 400.
+        mock_client = Mock()
+        mock_client.messages.create.return_value = _build_response()
+        mock_anthropic_cls.return_value = mock_client
+
+        service = AnthropicService(api_key="k", model="claude-3-5-sonnet-legacy")
+        service.send_message([{"role": "user", "content": "hi"}])
+
+        kwargs = mock_client.messages.create.call_args.kwargs
+        assert "output_config" not in kwargs
+
+    @patch("anthropic.Anthropic")
+    def test_format_only_when_model_lacks_effort(self, mock_anthropic_cls):
+        # If the model doesn't support effort but the caller asked for
+        # a json_schema, output_config should still go out — just
+        # without the effort knob.
+        mock_client = Mock()
+        mock_client.messages.create.return_value = _build_response(text="{}")
+        mock_anthropic_cls.return_value = mock_client
+
+        service = AnthropicService(api_key="k", model="claude-haiku-4-5")
+        schema = {"type": "object"}
+        service.send_message(
+            [{"role": "user", "content": "x"}],
+            response_format={"type": "json_schema", "schema": schema},
+        )
+
+        kwargs = mock_client.messages.create.call_args.kwargs
+        assert "effort" not in kwargs.get("output_config", {})
+        assert kwargs["output_config"]["format"] == {
+            "type": "json_schema",
+            "schema": schema,
+        }
+
+
 class TestSerializeBlock:
     """`_serialize_block` must round-trip every block type Anthropic emits
     so the next messages.create call accepts the replayed assistant turn.

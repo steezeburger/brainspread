@@ -35,6 +35,7 @@ class GoogleService(BaseAIService):
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
         tool_executor: Optional[ToolExecutor] = None,
+        response_format: Optional[Dict[str, Any]] = None,
     ) -> AIServiceResult:
         try:
             self.validate_messages(messages)
@@ -51,11 +52,15 @@ class GoogleService(BaseAIService):
                 tool_config = self._convert_tools_to_google_format(tools)
 
             formatted_messages = self._build_google_payload(working_messages)
+            generation_config = self._build_generation_config(response_format)
+            extra_kwargs: Dict[str, Any] = {}
+            if generation_config is not None:
+                extra_kwargs["generation_config"] = generation_config
 
             if tool_config:
                 try:
                     response = self.client.generate_content(
-                        formatted_messages, tools=tool_config
+                        formatted_messages, tools=tool_config, **extra_kwargs
                     )
                 except google_exceptions.GoogleAPIError as e:
                     if (
@@ -65,16 +70,22 @@ class GoogleService(BaseAIService):
                         logger.warning(
                             f"Google Search Grounding not supported, falling back to regular generation: {e}"
                         )
-                        response = self.client.generate_content(formatted_messages)
+                        response = self.client.generate_content(
+                            formatted_messages, **extra_kwargs
+                        )
                     else:
                         raise e
                 except Exception as e:
                     logger.warning(
                         f"Google Search tool failed, falling back to regular generation: {e}"
                     )
-                    response = self.client.generate_content(formatted_messages)
+                    response = self.client.generate_content(
+                        formatted_messages, **extra_kwargs
+                    )
             else:
-                response = self.client.generate_content(formatted_messages)
+                response = self.client.generate_content(
+                    formatted_messages, **extra_kwargs
+                )
 
             if not response.text:
                 raise GoogleServiceError("Empty response from Google AI")
@@ -97,6 +108,7 @@ class GoogleService(BaseAIService):
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
         tool_executor: Optional[ToolExecutor] = None,
+        response_format: Optional[Dict[str, Any]] = None,
     ) -> Iterator[Dict[str, Any]]:
         try:
             self.validate_messages(messages)
@@ -112,16 +124,24 @@ class GoogleService(BaseAIService):
             # multiple round-trips, so fall back in either case.
             if tools or tool_executor is not None:
                 yield from super().stream_message(
-                    messages, tools, system=system, tool_executor=tool_executor
+                    messages,
+                    tools,
+                    system=system,
+                    tool_executor=tool_executor,
+                    response_format=response_format,
                 )
                 return
 
             formatted_messages = self._build_google_payload(working_messages)
+            generation_config = self._build_generation_config(response_format)
+            extra_kwargs: Dict[str, Any] = {"stream": True}
+            if generation_config is not None:
+                extra_kwargs["generation_config"] = generation_config
 
             content_parts: List[str] = []
             last_chunk: Any = None
 
-            stream = self.client.generate_content(formatted_messages, stream=True)
+            stream = self.client.generate_content(formatted_messages, **extra_kwargs)
             for chunk in stream:
                 last_chunk = chunk
                 text = getattr(chunk, "text", None)
@@ -189,6 +209,24 @@ class GoogleService(BaseAIService):
             for img in msg.get("images") or []:
                 parts.append({"mime_type": img["mime_type"], "data": img["data"]})
         return parts
+
+    @staticmethod
+    def _build_generation_config(
+        response_format: Optional[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """Translate the unified structured-output spec into Gemini's
+        `generation_config`.
+
+        Gemini constrains output to JSON when both `response_mime_type` and
+        `response_schema` are set. Returns None when no structured output was
+        requested so the existing free-text behavior is unchanged.
+        """
+        if not response_format or response_format.get("type") != "json_schema":
+            return None
+        return {
+            "response_mime_type": "application/json",
+            "response_schema": response_format["schema"],
+        }
 
     def _convert_tools_to_google_format(
         self, tools: List[Dict[str, Any]]
