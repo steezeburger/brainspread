@@ -6,6 +6,11 @@ we run the Django query, and return the result as a tool_result.
 Tools are split into `NOTES_READ_TOOLS` (safe, always-on when the user grants
 the notes-tools scope) and `NOTES_WRITE_TOOLS` (guarded — every call must be
 approved by the user via the PendingToolApproval flow before execution).
+
+Scheduling/movement/completion tools live alongside the notes tools so they
+flow through the same PendingToolApproval gate; they wrap the existing
+ScheduleBlockCommand / SetBlockTypeCommand / MoveBlockToDailyCommand. See
+issue #82.
 """
 
 from typing import Any, Dict, List
@@ -70,6 +75,97 @@ NOTES_READ_TOOLS: List[Dict[str, Any]] = [
                 },
             },
             "required": ["block_uuid"],
+        },
+    },
+    {
+        "name": "get_current_time",
+        "description": (
+            "Return the current date + time in the user's timezone. Call"
+            " this before scheduling a block / reminder when the user says"
+            " something time-relative ('in 5 minutes', 'this afternoon')"
+            " and you don't already know the exact local time. Returns"
+            " ISO-8601 'now', plus separate date / time / weekday / timezone"
+            " fields for convenience."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "list_overdue_blocks",
+        "description": (
+            "List the user's overdue scheduled blocks: blocks whose"
+            " scheduled_for is before today (in the user's timezone) and"
+            " whose block_type is still todo / doing / later. Same predicate"
+            " that drives the daily-page overdue section. Returns block"
+            " uuid, content, page title, scheduled_for, block_type."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum rows to return (default 25, max 100).",
+                    "minimum": 1,
+                    "maximum": 100,
+                },
+            },
+        },
+    },
+    {
+        "name": "list_pending_reminders",
+        "description": (
+            "List reminders that haven't fired yet, oldest first. Each row"
+            " includes the reminder fire_at timestamp (UTC), channel, and"
+            " the parent block's uuid + content + page title."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum rows to return (default 25, max 100).",
+                    "minimum": 1,
+                    "maximum": 100,
+                },
+            },
+        },
+    },
+    {
+        "name": "list_scheduled_blocks",
+        "description": (
+            "List blocks with a scheduled_for date in the given inclusive"
+            " range. Defaults: start_date = today (user tz), end_date ="
+            " start_date + 30 days. Useful for 'what's coming up this week'"
+            " questions. Dates accept ISO YYYY-MM-DD or 'today' / 'tomorrow'"
+            " / '+Nd' offsets."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "start_date": {
+                    "type": "string",
+                    "description": (
+                        "Inclusive lower bound. ISO YYYY-MM-DD, or 'today',"
+                        " 'tomorrow', 'yesterday', '+Nd' / '-Nd'. Default:"
+                        " today in the user's timezone."
+                    ),
+                },
+                "end_date": {
+                    "type": "string",
+                    "description": (
+                        "Inclusive upper bound. Same format as start_date."
+                        " Default: start_date + 30 days."
+                    ),
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum rows to return (default 50, max 200).",
+                    "minimum": 1,
+                    "maximum": 200,
+                },
+            },
         },
     },
 ]
@@ -236,6 +332,133 @@ NOTES_WRITE_TOOLS: List[Dict[str, Any]] = [
                 },
             },
             "required": ["block_uuids", "target_page_uuid"],
+        },
+    },
+    {
+        "name": "schedule_block",
+        "description": (
+            "Set a block's due date (scheduled_for), optionally creating a"
+            " reminder. The block surfaces on the daily page for that date"
+            " and shows up in the overdue section after it passes. Re-"
+            "calling on the same block replaces any pending reminder; sent"
+            " reminders stay as history. Pass an absolute ISO date or one of"
+            " 'today' / 'tomorrow' / 'yesterday' / '+Nd' / '-Nd'. Reminder"
+            " time is HH:MM 24-hour in the user's timezone. Use"
+            " clear_schedule to unschedule a block. Every call pauses for"
+            " explicit user approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuid": {
+                    "type": "string",
+                    "description": "UUID of the block to schedule.",
+                },
+                "scheduled_for": {
+                    "type": "string",
+                    "description": (
+                        "Due date. ISO YYYY-MM-DD, or 'today' / 'tomorrow'"
+                        " / 'yesterday' / '+Nd' / '-Nd'."
+                    ),
+                },
+                "reminder_date": {
+                    "type": "string",
+                    "description": (
+                        "Optional date for the reminder ping. Same format as"
+                        " scheduled_for. Defaults to scheduled_for (i.e."
+                        " 'remind me the day of'). Only used if"
+                        " reminder_time is also set."
+                    ),
+                },
+                "reminder_time": {
+                    "type": "string",
+                    "description": (
+                        "Optional HH:MM 24-hour wall-clock time in the"
+                        " user's timezone, OR a relative offset from now:"
+                        " '+Nm' / '+Nh' (e.g. '+3m', '+2h'). Required to"
+                        " actually create a reminder; without it the block"
+                        " is scheduled but no ping fires. Relative offsets"
+                        " override reminder_date if the offset crosses"
+                        " midnight."
+                    ),
+                },
+            },
+            "required": ["block_uuid", "scheduled_for"],
+        },
+    },
+    {
+        "name": "clear_schedule",
+        "description": (
+            "Remove a block's due date and delete its pending reminder."
+            " Sent reminders stay as history. Every call pauses for"
+            " explicit user approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuid": {
+                    "type": "string",
+                    "description": "UUID of the block to unschedule.",
+                },
+            },
+            "required": ["block_uuid"],
+        },
+    },
+    {
+        "name": "set_block_type",
+        "description": (
+            "Change a block's type (todo / doing / done / later / wontdo /"
+            " bullet / heading / quote / code). Maintains completed_at on"
+            " transitions into / out of done|wontdo and swaps the leading"
+            " content prefix (TODO -> DONE etc). Use this to mark a todo"
+            " as done from chat. Every call pauses for explicit user"
+            " approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuid": {
+                    "type": "string",
+                    "description": "UUID of the block to update.",
+                },
+                "block_type": {
+                    "type": "string",
+                    "description": (
+                        "New type. Allowed: bullet, todo, doing, done,"
+                        " later, wontdo, heading, quote, code, divider."
+                    ),
+                },
+            },
+            "required": ["block_uuid", "block_type"],
+        },
+    },
+    {
+        "name": "move_block_to_daily",
+        "description": (
+            "Move a block (and its descendants) to a daily page. Defaults to"
+            " today's daily in the user's timezone — useful for 'move that"
+            " to today' / 'shove this onto tomorrow's daily' intents. The"
+            " daily page is auto-created if it doesn't exist. The block"
+            " becomes a root-level block on the target. Every call pauses"
+            " for explicit user approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuid": {
+                    "type": "string",
+                    "description": "UUID of the block to move.",
+                },
+                "target_date": {
+                    "type": "string",
+                    "description": (
+                        "Optional target date. ISO YYYY-MM-DD or 'today' /"
+                        " 'tomorrow' / 'yesterday' / '+Nd' / '-Nd'. Default:"
+                        " today in the user's timezone."
+                    ),
+                },
+            },
+            "required": ["block_uuid"],
         },
     },
 ]

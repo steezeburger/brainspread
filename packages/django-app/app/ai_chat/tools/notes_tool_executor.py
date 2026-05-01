@@ -3,21 +3,35 @@
 Keeps the `get_tool_result` surface small and JSON-serialisable so the
 provider service can feed it straight back as a `tool_result` block.
 
-Write tools (create_block / edit_block / move_blocks) never run without
+Write tools (create_block / edit_block / move_blocks / schedule_block /
+clear_schedule / set_block_type / move_block_to_daily) never run without
 explicit user approval — the service pauses and the execution happens
 out-of-band during resume. See ai_chat.commands.resume_approval_command.
 """
 
 import logging
-from typing import Any, Dict, List
+import re
+from datetime import date, time, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
+import pytz
+from django.utils import timezone
+
+from core.helpers import today_for_user
 from core.models import User
 from knowledge.commands.create_block_command import CreateBlockCommand
 from knowledge.commands.create_page_command import CreatePageCommand
+from knowledge.commands.move_block_to_daily_command import MoveBlockToDailyCommand
+from knowledge.commands.schedule_block_command import ScheduleBlockCommand
+from knowledge.commands.set_block_type_command import SetBlockTypeCommand
 from knowledge.commands.update_block_command import UpdateBlockCommand
 from knowledge.forms.create_block_form import CreateBlockForm
 from knowledge.forms.create_page_form import CreatePageForm
+from knowledge.forms.move_block_to_daily_form import MoveBlockToDailyForm
+from knowledge.forms.schedule_block_form import ScheduleBlockForm
+from knowledge.forms.set_block_type_form import SetBlockTypeForm
 from knowledge.forms.update_block_form import UpdateBlockForm
+from knowledge.models import Reminder
 from knowledge.repositories.block_repository import BlockRepository
 from knowledge.repositories.page_repository import PageRepository
 
@@ -30,6 +44,11 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SEARCH_LIMIT = 10
 MAX_SEARCH_LIMIT = 25
+DEFAULT_LIST_LIMIT = 25
+MAX_LIST_LIMIT = 100
+DEFAULT_SCHEDULE_RANGE_LIMIT = 50
+MAX_SCHEDULE_RANGE_LIMIT = 200
+SCHEDULE_RANGE_DEFAULT_DAYS = 30
 
 
 class NotesToolExecutor:
@@ -71,6 +90,14 @@ class NotesToolExecutor:
                 return self._get_page_by_title(args)
             if name == "get_block_by_id":
                 return self._get_block_by_id(args)
+            if name == "get_current_time":
+                return self._get_current_time(args)
+            if name == "list_overdue_blocks":
+                return self._list_overdue_blocks(args)
+            if name == "list_pending_reminders":
+                return self._list_pending_reminders(args)
+            if name == "list_scheduled_blocks":
+                return self._list_scheduled_blocks(args)
             if name == "create_page":
                 return self._create_page(args)
             if name == "create_block":
@@ -81,6 +108,14 @@ class NotesToolExecutor:
                 return self._move_blocks(args)
             if name == "reorder_blocks":
                 return self._reorder_blocks(args)
+            if name == "schedule_block":
+                return self._schedule_block(args)
+            if name == "clear_schedule":
+                return self._clear_schedule(args)
+            if name == "set_block_type":
+                return self._set_block_type(args)
+            if name == "move_block_to_daily":
+                return self._move_block_to_daily(args)
             return {"error": f"Unknown tool: {name}"}
         except Exception as e:
             logger.exception("Notes tool %s failed", name)
@@ -175,6 +210,22 @@ class NotesToolExecutor:
                 }
                 for child in children
             ],
+        }
+
+    def _get_current_time(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        tz_name = self.user.timezone or "UTC"
+        try:
+            tz = pytz.timezone(tz_name)
+        except pytz.UnknownTimeZoneError:
+            tz = pytz.UTC
+            tz_name = "UTC"
+        now_local = timezone.now().astimezone(tz)
+        return {
+            "now": now_local.isoformat(),
+            "date": now_local.date().isoformat(),
+            "time": now_local.strftime("%H:%M"),
+            "weekday": now_local.strftime("%A"),
+            "timezone": tz_name,
         }
 
     def _create_page(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -427,6 +478,343 @@ class NotesToolExecutor:
             "target_page_uuid": str(target_page.uuid),
             "affected_page_uuids": sorted(affected),
         }
+
+    def _list_overdue_blocks(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        limit = _coerce_limit(
+            args.get("limit"), default=DEFAULT_LIST_LIMIT, max_value=MAX_LIST_LIMIT
+        )
+        today = today_for_user(self.user)
+        blocks = list(BlockRepository.get_overdue_blocks(self.user, today)[:limit])
+        return {
+            "today": today.isoformat(),
+            "count": len(blocks),
+            "results": [_summarize_block(b) for b in blocks],
+        }
+
+    def _list_pending_reminders(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        limit = _coerce_limit(
+            args.get("limit"), default=DEFAULT_LIST_LIMIT, max_value=MAX_LIST_LIMIT
+        )
+        reminders = list(
+            Reminder.objects.filter(
+                block__user=self.user,
+                sent_at__isnull=True,
+                status=Reminder.STATUS_PENDING,
+            )
+            .select_related("block", "block__page")
+            .order_by("fire_at")[:limit]
+        )
+        results = []
+        for reminder in reminders:
+            entry = reminder.to_dict()
+            block = reminder.block
+            entry["block_content"] = block.content
+            entry["block_type"] = block.block_type
+            entry["page_title"] = block.page.title if block.page else None
+            entry["page_uuid"] = str(block.page.uuid) if block.page else None
+            results.append(entry)
+        return {"count": len(results), "results": results}
+
+    def _list_scheduled_blocks(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        today = today_for_user(self.user)
+        try:
+            start_date = _parse_relative_date(args.get("start_date"), today) or today
+        except ValueError as e:
+            return {"error": f"start_date: {e}"}
+        try:
+            end_date = _parse_relative_date(args.get("end_date"), today)
+        except ValueError as e:
+            return {"error": f"end_date: {e}"}
+        if end_date is None:
+            end_date = start_date + timedelta(days=SCHEDULE_RANGE_DEFAULT_DAYS)
+        if end_date < start_date:
+            return {"error": "end_date must be on or after start_date"}
+
+        limit = _coerce_limit(
+            args.get("limit"),
+            default=DEFAULT_SCHEDULE_RANGE_LIMIT,
+            max_value=MAX_SCHEDULE_RANGE_LIMIT,
+        )
+        blocks = list(
+            BlockRepository.get_queryset()
+            .filter(
+                user=self.user,
+                scheduled_for__gte=start_date,
+                scheduled_for__lte=end_date,
+            )
+            .select_related("page")
+            .prefetch_related("reminders")
+            .order_by("scheduled_for", "order")[:limit]
+        )
+        return {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "count": len(blocks),
+            "results": [_summarize_block(b) for b in blocks],
+        }
+
+    def _schedule_block(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        block_uuid = (args.get("block_uuid") or "").strip()
+        if not block_uuid:
+            return {"error": "block_uuid is required"}
+        block = BlockRepository.get_by_uuid(block_uuid, user=self.user)
+        if not block:
+            return {"error": f"No block found with uuid {block_uuid}"}
+
+        today = today_for_user(self.user)
+        try:
+            scheduled_for = _parse_relative_date(args.get("scheduled_for"), today)
+        except ValueError as e:
+            return {"error": f"scheduled_for: {e}"}
+        if scheduled_for is None:
+            return {
+                "error": (
+                    "scheduled_for is required (use clear_schedule to unschedule)"
+                )
+            }
+
+        try:
+            reminder_date = _parse_relative_date(args.get("reminder_date"), today)
+        except ValueError as e:
+            return {"error": f"reminder_date: {e}"}
+
+        # Resolve reminder_time. A relative offset ("+3m", "+2h") wins
+        # over reminder_date — if the offset crosses midnight the date
+        # rolls forward with it.
+        try:
+            resolved_date, resolved_time = _resolve_reminder_time(
+                args.get("reminder_time"), self.user
+            )
+        except ValueError as e:
+            return {"error": f"reminder_time: {e}"}
+        if resolved_date is not None:
+            reminder_date = resolved_date
+
+        form_data: Dict[str, Any] = {
+            "user": self.user.id,
+            "block": block.uuid,
+            "scheduled_for": scheduled_for.isoformat(),
+        }
+        if reminder_date is not None:
+            form_data["reminder_date"] = reminder_date.isoformat()
+        if resolved_time:
+            form_data["reminder_time"] = resolved_time
+
+        form = ScheduleBlockForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        updated = ScheduleBlockCommand(form).execute()
+        return {
+            "scheduled": True,
+            "block": updated.to_dict(include_page_context=True),
+            "affected_page_uuids": ([str(updated.page.uuid)] if updated.page else []),
+        }
+
+    def _clear_schedule(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        block_uuid = (args.get("block_uuid") or "").strip()
+        if not block_uuid:
+            return {"error": "block_uuid is required"}
+        block = BlockRepository.get_by_uuid(block_uuid, user=self.user)
+        if not block:
+            return {"error": f"No block found with uuid {block_uuid}"}
+
+        # ScheduleBlockForm treats a missing scheduled_for as "clear" (the
+        # field is required=False; cleaned_data["scheduled_for"] is None).
+        form = ScheduleBlockForm(
+            {
+                "user": self.user.id,
+                "block": block.uuid,
+            }
+        )
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        updated = ScheduleBlockCommand(form).execute()
+        return {
+            "cleared": True,
+            "block": updated.to_dict(include_page_context=True),
+            "affected_page_uuids": ([str(updated.page.uuid)] if updated.page else []),
+        }
+
+    def _set_block_type(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        block_uuid = (args.get("block_uuid") or "").strip()
+        block_type = (args.get("block_type") or "").strip()
+        if not block_uuid:
+            return {"error": "block_uuid is required"}
+        if not block_type:
+            return {"error": "block_type is required"}
+        block = BlockRepository.get_by_uuid(block_uuid, user=self.user)
+        if not block:
+            return {"error": f"No block found with uuid {block_uuid}"}
+
+        form = SetBlockTypeForm(
+            {
+                "user": self.user.id,
+                "block": block.uuid,
+                "block_type": block_type,
+            }
+        )
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        updated = SetBlockTypeCommand(form).execute()
+        return {
+            "updated": True,
+            "block": updated.to_dict(include_page_context=True),
+            "affected_page_uuids": ([str(updated.page.uuid)] if updated.page else []),
+        }
+
+    def _move_block_to_daily(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        block_uuid = (args.get("block_uuid") or "").strip()
+        if not block_uuid:
+            return {"error": "block_uuid is required"}
+        block = BlockRepository.get_by_uuid(block_uuid, user=self.user)
+        if not block:
+            return {"error": f"No block found with uuid {block_uuid}"}
+
+        today = today_for_user(self.user)
+        try:
+            target_date = _parse_relative_date(args.get("target_date"), today)
+        except ValueError as e:
+            return {"error": f"target_date: {e}"}
+
+        # Capture source page so the chat surface can refresh both ends
+        # after the move (the command itself doesn't return the source).
+        source_page_uuid = str(block.page.uuid) if block.page else None
+
+        form_data: Dict[str, Any] = {
+            "user": self.user.id,
+            "block": block.uuid,
+        }
+        if target_date is not None:
+            form_data["target_date"] = target_date.isoformat()
+
+        form = MoveBlockToDailyForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        result = MoveBlockToDailyCommand(form).execute()
+
+        target_page_uuid = result["target_page"]["uuid"]
+        affected = {target_page_uuid}
+        if source_page_uuid:
+            affected.add(source_page_uuid)
+        return {
+            "moved": result["moved"],
+            "message": result["message"],
+            "block": result["block"],
+            "target_page": result["target_page"],
+            "affected_page_uuids": sorted(affected),
+        }
+
+
+_RELATIVE_OFFSET_RE = re.compile(r"^([+-])(\d+)([dw])$")
+_RELATIVE_TIME_OFFSET_RE = re.compile(r"^([+-])(\d+)([mh])$")
+
+
+def _resolve_reminder_time(
+    value: Any, user: User
+) -> Tuple[Optional[date], Optional[str]]:
+    """Resolve a `reminder_time` arg into (date_override, 'HH:MM' or None).
+
+    - Empty / None    -> (None, None) — caller should leave reminder unset.
+    - 'HH:MM'         -> (None, 'HH:MM') — let the form parse it; the
+                          caller's reminder_date / scheduled_for fallback
+                          decides which day it fires on.
+    - '+Nm' / '+Nh'   -> (target_date, 'HH:MM') in the user's tz, computed
+                          from now() + offset. The date is returned so the
+                          caller can roll reminder_date forward when the
+                          offset crosses midnight.
+    """
+    if value is None:
+        return (None, None)
+    text = str(value).strip().lower()
+    if not text:
+        return (None, None)
+
+    match = _RELATIVE_TIME_OFFSET_RE.match(text)
+    if match:
+        sign, num, unit = match.groups()
+        amount = int(num) * (1 if sign == "+" else -1)
+        delta = timedelta(minutes=amount) if unit == "m" else timedelta(hours=amount)
+        try:
+            tz = pytz.timezone(user.timezone or "UTC")
+        except pytz.UnknownTimeZoneError:
+            tz = pytz.UTC
+        target = timezone.now().astimezone(tz) + delta
+        return (target.date(), target.strftime("%H:%M"))
+
+    # Wall-clock — accept HH:MM or HH:MM:SS so we error early on garbage.
+    # We return the original string; the form's TimeField parses it.
+    try:
+        time.fromisoformat(text)
+    except ValueError as e:
+        raise ValueError(
+            f"expected HH:MM or '+Nm' / '+Nh' offset, got '{value}'"
+        ) from e
+    return (None, text)
+
+
+def _parse_relative_date(value: Any, today: date) -> Optional[date]:
+    """Parse a date input that accepts ISO YYYY-MM-DD or simple relative
+    tokens ('today', 'tomorrow', 'yesterday', '+Nd', '-Nd', '+Nw', '-Nw').
+
+    Returns None when the input is empty / missing. Raises ValueError on
+    unrecognised formats so the caller can surface a helpful error.
+    """
+    if value is None:
+        return None
+    if isinstance(value, date):
+        return value
+    text = str(value).strip().lower()
+    if not text:
+        return None
+    if text == "today":
+        return today
+    if text == "tomorrow":
+        return today + timedelta(days=1)
+    if text == "yesterday":
+        return today - timedelta(days=1)
+    match = _RELATIVE_OFFSET_RE.match(text)
+    if match:
+        sign, num, unit = match.groups()
+        amount = int(num) * (1 if sign == "+" else -1)
+        days = amount if unit == "d" else amount * 7
+        return today + timedelta(days=days)
+    try:
+        return date.fromisoformat(text)
+    except ValueError as e:
+        raise ValueError(
+            f"expected ISO YYYY-MM-DD or 'today'/'tomorrow'/'+Nd', got '{value}'"
+        ) from e
+
+
+def _coerce_limit(value: Any, *, default: int, max_value: int) -> int:
+    if value is None:
+        return default
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(n, max_value))
+
+
+def _summarize_block(block) -> Dict[str, Any]:
+    """Compact block summary for list_* tools — small enough to keep many
+    in a tool result, rich enough for the chat surface to render."""
+    return {
+        "block_uuid": str(block.uuid),
+        "content": block.content,
+        "block_type": block.block_type,
+        "scheduled_for": (
+            block.scheduled_for.isoformat() if block.scheduled_for else None
+        ),
+        "completed_at": (
+            block.completed_at.isoformat() if block.completed_at else None
+        ),
+        "page_uuid": str(block.page.uuid) if block.page else None,
+        "page_title": block.page.title if block.page else None,
+        "page_slug": block.page.slug if block.page else None,
+        "pending_reminder_date": block._pending_reminder_local_date(),
+        "pending_reminder_time": block._pending_reminder_local_time(),
+    }
 
 
 def _first_form_error(form) -> str:

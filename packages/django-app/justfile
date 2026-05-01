@@ -250,6 +250,9 @@ staging-down:
 staging-migrate:
   docker compose run --rm -w /code/app web python manage.py migrate
 
+staging-populate-ai-models:
+  docker compose run --rm -w /code/app web python manage.py populate_ai_providers_and_models
+
 staging-create-superuser:
   docker compose run --rm \
     -e DJANGO_SUPERUSER_EMAIL \
