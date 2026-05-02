@@ -31,14 +31,17 @@ window.BlockChatPopover = {
       aiSettings: null,
       selectedModel: null,
       showModelSelector: false,
-      // All tools default OFF so the popover is read-only by default —
-      // the assistant narrates an answer, doesn't touch your notes
-      // unless you opt in. Flipping these from the tools menu sticks
-      // (localStorage) so a session of writes doesn't require re-toggling
-      // each turn.
+      // Write tools default ON so the assistant has the *ability* to
+      // create blocks; auto-approve defaults OFF so every write still
+      // pauses for explicit user confirmation. The backend already
+      // surfaces the source block's uuid + page_uuid via
+      // _format_message_with_context, so the assistant can target the
+      // right parent without us injecting any directive — the user just
+      // phrases the ask ("save as nested block" / "summarize but don't
+      // save").
       enableNotesWriteTools: this.loadPref(
         "blockChatPopover.enableNotesWriteTools",
-        false
+        true
       ),
       autoApproveNotesWrites: this.loadPref(
         "blockChatPopover.autoApproveNotesWrites",
@@ -49,11 +52,6 @@ window.BlockChatPopover = {
         false
       ),
       enableWebSearch: this.loadPref("blockChatPopover.enableWebSearch", false),
-      // Auto-append a "save as nested blocks" directive to the user
-      // message. Default off — only useful alongside write tools, and
-      // the user can phrase the ask themselves more precisely (e.g.
-      // "two children: one for protein, one for carbs").
-      nestUnderBlock: this.loadPref("blockChatPopover.nestUnderBlock", false),
       showToolsMenu: false,
       pendingApprovals: {},
     };
@@ -168,10 +166,6 @@ window.BlockChatPopover = {
       this.enableWebSearch = !this.enableWebSearch;
       this.savePref("blockChatPopover.enableWebSearch", this.enableWebSearch);
     },
-    toggleNestUnderBlock() {
-      this.nestUnderBlock = !this.nestUnderBlock;
-      this.savePref("blockChatPopover.nestUnderBlock", this.nestUnderBlock);
-    },
     toggleToolsMenu() {
       this.showToolsMenu = !this.showToolsMenu;
     },
@@ -244,19 +238,6 @@ window.BlockChatPopover = {
         asset: this.block.asset || null,
       };
     },
-    composeUserMessage() {
-      const base = (this.message || "").trim();
-      if (!this.nestUnderBlock || !this.block?.uuid) return base;
-      // Append (don't prepend) the nesting hint — the user's intent
-      // reads first, the directive is a tail-note. Including the uuid
-      // explicitly removes any ambiguity when there are sibling blocks
-      // also referenced via search tools.
-      const directive =
-        `\n\nWhen you write your answer, use the create_block tool to` +
-        ` save the result as one or more nested blocks under the` +
-        ` referenced block (parent_uuid=${this.block.uuid}).`;
-      return base ? base + directive : directive.trimStart();
-    },
     async sendMessage() {
       if (!this.block) return;
       if (!this.message.trim()) return;
@@ -270,7 +251,7 @@ window.BlockChatPopover = {
         return;
       }
       const ctxBlock = this.buildContextBlock();
-      const composed = this.composeUserMessage();
+      const trimmed = this.message.trim();
 
       // The backend reads image bytes from message attachments (driven
       // by asset_uuids), not from context_blocks[].asset. Without this,
@@ -287,7 +268,7 @@ window.BlockChatPopover = {
       };
       this.messages.push(userMsg);
       const payload = {
-        message: composed,
+        message: trimmed,
         model: this.selectedModel,
         session_id: this.currentSessionId,
         context_blocks: ctxBlock ? [ctxBlock] : [],
@@ -858,17 +839,6 @@ window.BlockChatPopover = {
                 <span>
                   <span class="block-chat-popover-tools-name">web search</span>
                   <span class="block-chat-popover-tools-hint">let the assistant query the web.</span>
-                </span>
-              </label>
-              <label class="block-chat-popover-tools-item">
-                <input
-                  type="checkbox"
-                  :checked="nestUnderBlock"
-                  @change="toggleNestUnderBlock"
-                />
-                <span>
-                  <span class="block-chat-popover-tools-name">nest result under block</span>
-                  <span class="block-chat-popover-tools-hint">append a directive telling the assistant to save its answer as nested blocks.</span>
                 </span>
               </label>
             </div>
