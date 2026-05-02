@@ -558,12 +558,8 @@ body {
   cursor: not-allowed;
 }
 
-.tools-btn.auto-approve-warning {
-  border-color: #b00020;
-  color: #b00020;
-}
-
 .tools-btn-warning-glyph {
+  color: #ff9500;
   margin-right: 0.25rem;
 }
 
@@ -6585,7 +6581,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 }
 
 .block-chat-popover-warn-glyph {
-  color: #c0392b;
+  color: #ff9500;
   margin-right: 0.15rem;
 }
 
