@@ -6584,11 +6584,6 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   border-color: var(--accent-primary, var(--border-primary));
 }
 
-.block-chat-popover-tools-btn.warn {
-  border-color: #c0392b;
-  color: #c0392b;
-}
-
 .block-chat-popover-warn-glyph {
   color: #c0392b;
   margin-right: 0.15rem;

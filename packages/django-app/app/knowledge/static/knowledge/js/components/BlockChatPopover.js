@@ -768,7 +768,7 @@ window.BlockChatPopover = {
             <button
               type="button"
               class="block-chat-popover-tools-btn"
-              :class="{ active: hasActiveTools, warn: autoApproveActive }"
+              :class="{ active: hasActiveTools }"
               @click="toggleToolsMenu"
               :title="autoApproveActive ? 'tools — AUTO-APPROVE WRITES is on; the assistant can edit your notes without confirmation' : 'tools'"
             >
