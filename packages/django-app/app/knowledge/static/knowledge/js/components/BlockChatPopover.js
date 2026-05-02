@@ -256,6 +256,14 @@ window.BlockChatPopover = {
       const ctxBlock = this.buildContextBlock();
       const composed = this.composeUserMessage();
 
+      // The backend reads image bytes from message attachments (driven
+      // by asset_uuids), not from context_blocks[].asset. Without this,
+      // the model only sees the filename marker and starts guessing.
+      const contextImageUuids =
+        ctxBlock?.asset?.file_type === "image" && ctxBlock.asset.uuid
+          ? [ctxBlock.asset.uuid]
+          : [];
+
       const userMsg = {
         role: "user",
         content: this.message,
@@ -271,6 +279,7 @@ window.BlockChatPopover = {
         enable_notes_write_tools: this.enableNotesWriteTools,
         auto_approve_notes_writes: this.autoApproveActive,
         enable_web_search: this.enableWebSearch,
+        asset_uuids: contextImageUuids,
       };
       this.message = "";
       this.loading = true;
