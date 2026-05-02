@@ -1,6 +1,6 @@
 // Block AI Chat Popover — open a fresh AI chat focused on the current block.
 //
-// Triggered by Cmd/Ctrl+Shift+L on a focused block (or via the block ⋮ menu).
+// Triggered by Cmd/Ctrl+Shift+, on a focused block (or via the block ⋮ menu).
 // The block is preloaded as chat context (text + image asset, if any), the
 // user types a one-shot prompt, and the assistant streams back a response
 // directly into the popover. Notes write tools are enabled by default with

@@ -1542,13 +1542,15 @@ const Page = {
         event.preventDefault();
         this.scheduleBlock(block);
       }
-      // Cmd/Ctrl+Shift+L opens the AI chat popover scoped to the focused
-      // block. L for "LLM"; Chrome doesn't claim this combo. Fires only
-      // when a block is in scope so it's a no-op on empty pages.
+      // Cmd/Ctrl+Shift+, opens the AI chat popover scoped to the focused
+      // block. Chrome's Cmd+, is "preferences" but Cmd+Shift+, isn't
+      // claimed; Cmd+Shift+L collides with several password managers'
+      // global lock. Fires only when a block is in scope so it's a
+      // no-op on empty pages.
       if (
         (event.metaKey || event.ctrlKey) &&
         event.shiftKey &&
-        (event.key === "l" || event.key === "L")
+        event.key === ","
       ) {
         const block = this.findFocusedOrLastEditingBlock();
         if (!block) return;
