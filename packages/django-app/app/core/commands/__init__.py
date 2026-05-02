@@ -1,3 +1,4 @@
+from core.commands.get_current_time_command import GetCurrentTimeCommand
 from core.commands.login_command import LoginCommand
 from core.commands.logout_command import LogoutCommand
 from core.commands.register_command import RegisterCommand

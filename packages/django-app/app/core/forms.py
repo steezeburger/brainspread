@@ -104,3 +104,9 @@ class UpdateDiscordUserIdForm(BaseForm):
                 "Mode then right-click your name → Copy User ID."
             )
         return value
+
+
+class GetCurrentTimeForm(BaseForm):
+    """Inputs for the assistant's get_current_time tool."""
+
+    user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
