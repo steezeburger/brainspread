@@ -188,6 +188,10 @@ window.HelpModal = {
                   <td>schedule (set due date / reminder)</td>
                 </tr>
                 <tr>
+                  <td><kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>L</kbd> / <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>L</kbd></td>
+                  <td>open ai chat for this block (writes nested results)</td>
+                </tr>
+                <tr>
                   <td><kbd>Esc</kbd></td>
                   <td>exit editing (keeps focus on block for tabbing)</td>
                 </tr>

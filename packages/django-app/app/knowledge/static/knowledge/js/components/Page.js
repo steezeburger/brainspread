@@ -4,6 +4,7 @@ const Page = {
     BlockComponent: window.BlockComponent || {},
     Whiteboard: window.Whiteboard || {},
     ScheduleBlockPopover: window.ScheduleBlockPopover || {},
+    BlockChatPopover: window.BlockChatPopover || {},
   },
   props: {
     chatContextBlocks: {
@@ -35,6 +36,8 @@ const Page = {
       schedulePopoverInitialDate: "",
       schedulePopoverInitialReminderDate: "",
       schedulePopoverInitialTime: "",
+      blockChatPopoverOpen: false,
+      blockChatPopoverBlock: null,
       loading: false,
       error: null,
       // Page title editing
@@ -1539,6 +1542,19 @@ const Page = {
         event.preventDefault();
         this.scheduleBlock(block);
       }
+      // Cmd/Ctrl+Shift+L opens the AI chat popover scoped to the focused
+      // block. L for "LLM"; Chrome doesn't claim this combo. Fires only
+      // when a block is in scope so it's a no-op on empty pages.
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.shiftKey &&
+        (event.key === "l" || event.key === "L")
+      ) {
+        const block = this.findFocusedOrLastEditingBlock();
+        if (!block) return;
+        event.preventDefault();
+        this.openBlockChatPopover(block);
+      }
     },
 
     findFocusedOrLastEditingBlock() {
@@ -1733,6 +1749,29 @@ const Page = {
     onSchedulePopoverCancel() {
       this.schedulePopoverOpen = false;
       this.schedulePopoverBlock = null;
+    },
+
+    openBlockChatPopover(block) {
+      // Snapshot the block (uuid + content + asset + page_uuid) so the
+      // popover doesn't keep a live reference into the page tree —
+      // background reloads after a write tool fires would otherwise
+      // mutate the same object the popover renders.
+      if (!block) return;
+      this.blockChatPopoverBlock = {
+        uuid: block.uuid,
+        content: block.content || "",
+        block_type: block.block_type || "bullet",
+        page_uuid: block.page_uuid || this.page?.uuid || null,
+        parent_uuid: block.parent?.uuid || null,
+        asset: block.asset || null,
+        created_at: block.created_at || null,
+      };
+      this.blockChatPopoverOpen = true;
+    },
+
+    closeBlockChatPopover() {
+      this.blockChatPopoverOpen = false;
+      this.blockChatPopoverBlock = null;
     },
 
     async _submitSchedule(block, scheduledFor, reminderDate, reminderTime) {
@@ -3138,6 +3177,7 @@ const Page = {
                 :onBlockDrop="onBlockDrop"
                 :onBlockAttachPick="onBlockAttachPick"
                 :scheduleBlock="scheduleBlock"
+                :openBlockChatPopover="openBlockChatPopover"
               />
             </div>
           </div>
@@ -3177,6 +3217,7 @@ const Page = {
               :onBlockDrop="onBlockDrop"
               :onBlockAttachPick="onBlockAttachPick"
               :scheduleBlock="scheduleBlock"
+              :openBlockChatPopover="openBlockChatPopover"
               :onBlockSelectClick="handleBlockSelectClick"
               :selectedBlockCount="selectedBlockCount"
               :bulkDeleteSelected="bulkDeleteSelected"
@@ -3225,6 +3266,7 @@ const Page = {
                 :onBlockDrop="onBlockDrop"
                 :onBlockAttachPick="onBlockAttachPick"
                 :scheduleBlock="scheduleBlock"
+                :openBlockChatPopover="openBlockChatPopover"
               />
             </div>
           </div>
@@ -3240,6 +3282,13 @@ const Page = {
         :initial-time="schedulePopoverInitialTime"
         @save="onSchedulePopoverSave"
         @cancel="onSchedulePopoverCancel"
+      />
+
+      <!-- AI chat popover for the focused block (issue #91) -->
+      <BlockChatPopover
+        :is-open="blockChatPopoverOpen"
+        :block="blockChatPopoverBlock"
+        @close="closeBlockChatPopover"
       />
 
       <!-- Share modal (issue #90) -->

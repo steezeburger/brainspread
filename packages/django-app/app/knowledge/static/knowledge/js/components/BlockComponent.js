@@ -99,6 +99,10 @@ const BlockComponent = {
       type: Function,
       default: () => () => {},
     },
+    openBlockChatPopover: {
+      type: Function,
+      default: () => () => {},
+    },
     onBlockSelectClick: {
       type: Function,
       default: () => () => false,
@@ -1256,6 +1260,9 @@ const BlockComponent = {
         case "unschedule":
           this.scheduleBlock(this.block, { clear: true });
           break;
+        case "openBlockChat":
+          this.openBlockChatPopover(this.block);
+          break;
         case "attachFile":
           this.triggerAttachFilePicker();
           break;
@@ -1840,6 +1847,10 @@ const BlockComponent = {
           <span>clear schedule</span>
         </button>
         <div class="context-menu-separator"></div>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('openBlockChat')">
+          <span class="context-menu-icon">✦</span>
+          <span>ai chat for this block...</span>
+        </button>
         <button class="context-menu-item" role="menuitem" tabindex="-1" v-if="!blockInContext" @click="handleContextMenuAction('addToContext')">
           <span class="context-menu-icon">+</span>
           <span>add to ai context</span>
@@ -1894,6 +1905,7 @@ const BlockComponent = {
           :onBlockDrop="onBlockDrop"
           :onBlockAttachPick="onBlockAttachPick"
           :scheduleBlock="scheduleBlock"
+          :openBlockChatPopover="openBlockChatPopover"
           :onBlockSelectClick="onBlockSelectClick"
           :selectedBlockCount="selectedBlockCount"
           :bulkDeleteSelected="bulkDeleteSelected"
