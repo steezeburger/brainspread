@@ -31,27 +31,29 @@ window.BlockChatPopover = {
       aiSettings: null,
       selectedModel: null,
       showModelSelector: false,
-      // Default tools ON — the popover's whole point is to land results
-      // back under the source block. Without write tools the assistant
-      // can only narrate, which defeats the purpose. Persisted so a user
-      // who turned them off doesn't have to re-disable each time.
+      // All tools default OFF so the popover is read-only by default —
+      // the assistant narrates an answer, doesn't touch your notes
+      // unless you opt in. Flipping these from the tools menu sticks
+      // (localStorage) so a session of writes doesn't require re-toggling
+      // each turn.
       enableNotesWriteTools: this.loadPref(
         "blockChatPopover.enableNotesWriteTools",
-        true
+        false
       ),
       autoApproveNotesWrites: this.loadPref(
         "blockChatPopover.autoApproveNotesWrites",
-        true
+        false
       ),
       enableNotesTools: this.loadPref(
         "blockChatPopover.enableNotesTools",
         false
       ),
       enableWebSearch: this.loadPref("blockChatPopover.enableWebSearch", false),
-      // Auto-instruct the assistant to nest its output under the source
-      // block. When off, the assistant is just told the source uuid and
-      // can decide what to do (or do nothing useful at all).
-      nestUnderBlock: this.loadPref("blockChatPopover.nestUnderBlock", true),
+      // Auto-append a "save as nested blocks" directive to the user
+      // message. Default off — only useful alongside write tools, and
+      // the user can phrase the ask themselves more precisely (e.g.
+      // "two children: one for protein, one for carbs").
+      nestUnderBlock: this.loadPref("blockChatPopover.nestUnderBlock", false),
       showToolsMenu: false,
       pendingApprovals: {},
     };
