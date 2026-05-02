@@ -1317,6 +1317,14 @@ const Page = {
     },
 
     handleWindowFocus() {
+      // Only restore the last block when focus has truly been lost (body).
+      // If the user is interacting with the chat panel, a modal input,
+      // the sidebar, etc, leave that focus alone — the page shouldn't
+      // yank the cursor back.
+      const active = document.activeElement;
+      if (active && active !== document.body) {
+        return;
+      }
       if (this.lastEditingBlockUuid) {
         const block = this.getAllBlocks().find(
           (b) => b.uuid === this.lastEditingBlockUuid
