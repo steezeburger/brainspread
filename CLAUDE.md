@@ -52,6 +52,12 @@ Navigate to `packages/django-app/` for most development tasks.
   - Views should only handle HTTP concerns and delegate to Commands
   - Managers should only contain data querying logic, no business rules
   - Command `__init__` methods should only take forms. All necessary data should be passed through forms.
+- **Never use Django signals** (`pre_save`, `post_save`, `pre_delete`,
+  `post_delete`, `m2m_changed`, etc.). Side effects belong in Commands
+  where they're explicit and testable. Signals fire implicitly from any
+  save anywhere — including bulk operations, fixtures, and migrations —
+  which makes them a frequent source of surprise behavior. If you need
+  cross-cutting behavior on a model change, route it through a Command.
 - **Tests**: All commands should be tested. Use factoryboy for model factories.
 - **Repository Pattern**: Use `BaseRepository` for data access
 - **Model Mixins**: UUID, timestamps, soft delete functionality
@@ -87,3 +93,10 @@ Navigate to `packages/django-app/` for most development tasks.
 ### Always load information from extra files in .ai/
 - .ai/DEBUGGING.md contains debugging tips and tricks
 - .ai/PROJECT_SETUP.md is a guide for setting up the project
+
+### Pull requests
+- When a PR resolves a GitHub issue, the PR description MUST include a
+  `Closes #<issue>` (or `Fixes #<issue>` / `Resolves #<issue>`) line so
+  GitHub auto-links the PR to the issue and closes the issue on merge.
+  This applies even when the issue number was only mentioned in the
+  branch name or commit message — put it in the PR body too.
