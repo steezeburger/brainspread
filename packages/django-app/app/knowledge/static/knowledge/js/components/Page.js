@@ -52,6 +52,13 @@ const Page = {
       isNavigating: false,
       isIndentingOrOutdenting: false,
       lastEditingBlockUuid: null,
+      // True only between a real window blur and the matching focus.
+      // Mobile browsers fire spurious "focus" on the window when the
+      // soft keyboard dismisses (e.g. tapping a bullet to toggle
+      // status), and without this guard the focus handler would
+      // re-enter editing on `lastEditingBlockUuid` — yanking scroll
+      // back to that (often unrelated) block.
+      windowWasBlurred: false,
       // Block selection (Cmd+A escalation)
       selectionAnchorUuid: null,
       selectionLevel: 0,
@@ -134,7 +141,11 @@ const Page = {
   async mounted() {
     // Add document click handler for closing menus
     document.addEventListener("click", this.handleDocumentClick);
-    // Restore focus when window/tab regains focus
+    // Restore focus when window/tab regains focus. The matching blur
+    // listener gates handleWindowFocus so it only restores editing
+    // after a real desktop tab/window switch, not after a mobile
+    // keyboard dismiss (which fires "focus" without a preceding blur).
+    window.addEventListener("blur", this.handleWindowBlur);
     window.addEventListener("focus", this.handleWindowFocus);
     // Global keydown for Escape to close page menus
     document.addEventListener("keydown", this.handlePageGlobalKeydown);
@@ -180,6 +191,7 @@ const Page = {
   beforeUnmount() {
     // Clean up event listeners
     document.removeEventListener("click", this.handleDocumentClick);
+    window.removeEventListener("blur", this.handleWindowBlur);
     window.removeEventListener("focus", this.handleWindowFocus);
     document.removeEventListener("keydown", this.handlePageGlobalKeydown);
     document.removeEventListener("keydown", this.handleSelectionKeydown);
@@ -1319,7 +1331,19 @@ const Page = {
         .replace(/>/g, "&gt;");
     },
 
+    handleWindowBlur() {
+      this.windowWasBlurred = true;
+    },
+
     handleWindowFocus() {
+      // Only restore editing after a real window blur. iOS Safari
+      // fires "focus" on the window when the soft keyboard dismisses
+      // (e.g. tap on a bullet outside the active textarea); restoring
+      // editing in that case yanks the page back to the block we were
+      // just on, jittering away from the one the user actually
+      // toggled.
+      if (!this.windowWasBlurred) return;
+      this.windowWasBlurred = false;
       if (this.lastEditingBlockUuid) {
         const block = this.getAllBlocks().find(
           (b) => b.uuid === this.lastEditingBlockUuid
