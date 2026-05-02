@@ -250,6 +250,27 @@ const Page = {
       return blockUuid ? `${base}#block-${blockUuid}` : base;
     },
 
+    // Read `#block-<uuid>` from the current URL and scroll the
+    // matching block into view, if any. Looks up the block via the
+    // existing `data-block-uuid` attribute the BlockComponent already
+    // renders, so this works for direct, referenced, AND overdue
+    // blocks without extra plumbing. Skips silently when the
+    // fragment is missing or the block didn't render (e.g. the link
+    // is stale because the block was deleted or moved). Tracks the
+    // last fragment we scrolled to so silent reloads (AI chat,
+    // schedule edits) don't keep re-scrolling on every refresh.
+    scrollToHashBlock() {
+      const hash = window.location.hash || "";
+      const match = hash.match(/^#block-([0-9a-fA-F-]+)$/);
+      if (!match) return;
+      if (this._lastScrolledHash === hash) return;
+      const uuid = match[1];
+      const el = document.querySelector(`[data-block-uuid="${uuid}"]`);
+      if (!el) return;
+      this._lastScrolledHash = hash;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    },
+
     handleNotesModified(event) {
       // AI chat edited blocks / pages. Reload silently if the affected set
       // includes this page. Debounce so bursts of tool calls (common with
@@ -323,6 +344,14 @@ const Page = {
           this.newTitle = this.page.title || "";
           this.initializeDateSelector();
         }
+
+        // If the URL carries a `#block-<uuid>` fragment (e.g. the
+        // user followed a Discord reminder or an overdue link), wait
+        // for the freshly-loaded blocks to render and then scroll
+        // that block into view. Done after every loadPage, not just
+        // mount, so silent reloads from the AI chat don't clobber
+        // the deep-link target either.
+        this.$nextTick(() => this.scrollToHashBlock());
       } catch (error) {
         console.error("failed to load page:", error);
         this.error = "failed to load page. does it exist?";
