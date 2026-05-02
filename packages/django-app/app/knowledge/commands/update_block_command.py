@@ -106,10 +106,14 @@ class UpdateBlockCommand(AbstractBaseCommand):
         self, content: str, current_block_type: str
     ) -> str:
         """Auto-detect block type from content patterns"""
-        # Only auto-detect for bullet, todo, doing, and done types
-        # Don't override other explicit types like heading, code, etc.
-        # Don't auto-detect for later and wontdo - these are explicit states
-        if current_block_type not in ["bullet", "todo", "doing", "done"]:
+        # Auto-detect promotes bullet/todo/doing toward a more specific
+        # state when their content carries a recognizable prefix. We do NOT
+        # auto-detect for done/later/wontdo — those are explicit terminal
+        # states the user opted into via the bullet, and a content save
+        # (e.g. an unrelated edit, mobile autocorrect mangling the "DONE"
+        # prefix, or simply the user removing the prefix while typing)
+        # shouldn't silently downgrade them back to a plain bullet.
+        if current_block_type not in ["bullet", "todo", "doing"]:
             return current_block_type
 
         # Only auto-detect if we have content
@@ -139,8 +143,10 @@ class UpdateBlockCommand(AbstractBaseCommand):
         elif content_lower.startswith("wontdo"):
             return "wontdo"
 
-        # If none of the patterns match, return bullet for todo-family types
-        if current_block_type in ["todo", "doing", "done"]:
+        # No pattern matched: only downgrade todo/doing back to bullet.
+        # bullet stays bullet; done/later/wontdo were already filtered out
+        # at the top of the method.
+        if current_block_type in ["todo", "doing"]:
             return "bullet"
         return current_block_type
 

@@ -183,6 +183,75 @@ class TestUpdateBlockCommand(TestCase):
 
         self.assertEqual(updated_block.block_type, "bullet")
 
+    def test_should_keep_done_when_content_loses_prefix(self):
+        """A done block stays done when its content is saved without a
+        recognizable prefix.
+
+        Mobile autocorrect mangling the "DONE" prefix (or the user
+        deleting it while editing) should NOT silently downgrade the
+        block to a plain bullet — done is an explicit terminal state
+        the user opted into via the bullet checkbox.
+        """
+        block = BlockFactory(
+            page=self.page,
+            user=self.user,
+            content="DONE write the report",
+            block_type="done",
+        )
+
+        form_data = {
+            "user": self.user.id,
+            "block": str(block.uuid),
+            "content": "write the report",
+        }
+        form = UpdateBlockForm(form_data)
+        form.is_valid()
+        updated_block = UpdateBlockCommand(form).execute()
+
+        self.assertEqual(updated_block.block_type, "done")
+
+    def test_should_keep_later_when_content_loses_prefix(self):
+        """A later block stays later when its content is saved without
+        a recognizable prefix — same rationale as done."""
+        block = BlockFactory(
+            page=self.page,
+            user=self.user,
+            content="LATER read the article",
+            block_type="later",
+        )
+
+        form_data = {
+            "user": self.user.id,
+            "block": str(block.uuid),
+            "content": "read the article",
+        }
+        form = UpdateBlockForm(form_data)
+        form.is_valid()
+        updated_block = UpdateBlockCommand(form).execute()
+
+        self.assertEqual(updated_block.block_type, "later")
+
+    def test_should_keep_wontdo_when_content_loses_prefix(self):
+        """A wontdo block stays wontdo when its content is saved without
+        a recognizable prefix — same rationale as done."""
+        block = BlockFactory(
+            page=self.page,
+            user=self.user,
+            content="WONTDO refactor everything",
+            block_type="wontdo",
+        )
+
+        form_data = {
+            "user": self.user.id,
+            "block": str(block.uuid),
+            "content": "refactor everything",
+        }
+        form = UpdateBlockForm(form_data)
+        form.is_valid()
+        updated_block = UpdateBlockCommand(form).execute()
+
+        self.assertEqual(updated_block.block_type, "wontdo")
+
     def test_should_not_auto_detect_when_content_not_updated(self):
         """Test that auto-detection only happens when content is updated"""
         # Create a bullet block
