@@ -282,8 +282,12 @@ class TestSendDueRemindersCommand(TestCase):
         ):
             self._run()
 
+        # Link points at the page AND carries a `#block-<uuid>` fragment
+        # so the editor scrolls straight to the originating block on
+        # load.
         self.assertIn(
-            "https://app.example.com/knowledge/page/backlog/", captured["content"]
+            f"https://app.example.com/knowledge/page/backlog/#block-{block.uuid}",
+            captured["content"],
         )
 
     def test_omits_page_link_when_site_url_is_placeholder(self):

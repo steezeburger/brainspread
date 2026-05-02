@@ -156,12 +156,15 @@ def _format_content(
 def _page_link(block, site_url: str) -> str:
     """Build an absolute URL to the page that contains the block.
 
-    Skips when SITE_URL isn't a real http(s) URL (the default
-    placeholder is just "0.0.0.0", which would produce broken links).
+    Includes a `#block-<uuid>` fragment so the editor can scroll
+    straight to the originating block on load — see
+    `scrollToHashBlock` in Page.js. Skips when SITE_URL isn't a
+    real http(s) URL (the default placeholder is just "0.0.0.0",
+    which would produce broken links).
     """
     if not site_url or not site_url.startswith(("http://", "https://")):
         return ""
     if not block.page_id or not block.page.slug:
         return ""
     base = site_url.rstrip("/")
-    return f"{base}/knowledge/page/{block.page.slug}/"
+    return f"{base}/knowledge/page/{block.page.slug}/#block-{block.uuid}"
