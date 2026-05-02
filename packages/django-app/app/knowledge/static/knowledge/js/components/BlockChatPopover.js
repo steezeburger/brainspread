@@ -111,6 +111,20 @@ window.BlockChatPopover = {
       },
       immediate: true,
     },
+    // Pin the latest bubble to the bottom when a new message lands.
+    "messages.length"() {
+      this.scrollToBottom();
+    },
+    // Streaming deltas append to the same message object — watch deeply
+    // so the view stays glued to the bottom while text/tool events
+    // accumulate. Combined with the length watcher above, this covers
+    // both "new bubble" and "current bubble grew" cases.
+    messages: {
+      handler() {
+        this.scrollToBottom();
+      },
+      deep: true,
+    },
   },
   methods: {
     loadPref(key, defaultValue) {
@@ -536,6 +550,17 @@ window.BlockChatPopover = {
       window.marked.setOptions({ breaks: true, gfm: true });
       const html = window.marked.parse(content);
       return window.DOMPurify.sanitize(html);
+    },
+    scrollToBottom() {
+      // Wait for the DOM to render the latest streaming delta before
+      // measuring scrollHeight — otherwise we pin to the height
+      // *before* the new content appended.
+      this.$nextTick(() => {
+        const container = this.$el?.querySelector?.(
+          ".block-chat-popover-messages"
+        );
+        if (container) container.scrollTop = container.scrollHeight;
+      });
     },
     summarizeToolInput(input) {
       if (!input || typeof input !== "object") return "";
