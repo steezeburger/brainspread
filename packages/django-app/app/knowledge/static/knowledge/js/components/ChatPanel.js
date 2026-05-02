@@ -1794,7 +1794,7 @@ const ChatPanel = {
               <button
                 class="tools-btn"
                 @click="toggleToolsMenu"
-                :class="{ active: hasActiveTools, 'auto-approve-warning': autoApproveActive }"
+                :class="{ active: hasActiveTools }"
                 :title="autoApproveActive ? 'Tools — AUTO-APPROVE WRITES is on; the assistant can edit your notes without confirmation' : (hasActiveTools ? 'Tools (some active)' : 'Tools')"
               >
                 <span v-if="autoApproveActive" class="tools-btn-warning-glyph">⚠</span>
