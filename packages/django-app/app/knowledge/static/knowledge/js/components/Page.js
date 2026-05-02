@@ -240,6 +240,16 @@ const Page = {
       return null;
     },
 
+    // Build a real anchor href for jumping to another page (and
+    // optionally a specific block on that page). Block-level deep
+    // links use a `#block-<uuid>` fragment which the target page
+    // scrolls to after load — see `scrollToHashBlock`.
+    pageBlockHref(slug, blockUuid) {
+      if (!slug) return "#";
+      const base = `/knowledge/page/${encodeURIComponent(slug)}/`;
+      return blockUuid ? `${base}#block-${blockUuid}` : base;
+    },
+
     handleNotesModified(event) {
       // AI chat edited blocks / pages. Reload silently if the affected set
       // includes this page. Debounce so bursts of tool calls (common with
@@ -3177,7 +3187,7 @@ const Page = {
             <div v-for="block in overdueBlocks" :key="block.uuid" class="referenced-block-wrapper overdue-block-wrapper" :class="{ 'in-context': isBlockInContext(block.uuid) }" :data-block-uuid="block.uuid">
               <div class="block-meta">
                 <span v-if="block.scheduled_for" class="overdue-due-date">due {{ formatDate(block.scheduled_for) }}</span>
-                <span class="page-title clickable" @click="goToPage(block.page_slug)">{{ block.page_type === 'daily' ? formatDate(block.page_title) : block.page_title }}</span>
+                <a class="page-title clickable" :href="pageBlockHref(block.page_slug, block.uuid)">{{ block.page_type === 'daily' ? formatDate(block.page_title) : block.page_title }}</a>
               </div>
               <BlockComponent
                 :block="block"
