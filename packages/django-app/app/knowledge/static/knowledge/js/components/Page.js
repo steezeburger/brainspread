@@ -1527,30 +1527,30 @@ const Page = {
         }
         return;
       }
-      // Cmd/Ctrl+Shift+; opens the schedule popover for the currently
-      // focused block. (Cmd+Shift+D is Chrome's "bookmark all tabs" — the
-      // semicolon has no obvious mnemonic but doesn't fight any browser.)
-      // Falls back to the last-edited block if focus has already left the
-      // textarea.
+      // Cmd/Ctrl+Shift+S opens the schedule popover for the currently
+      // focused block. (S for "schedule"; Chrome doesn't claim it. Note:
+      // Firefox has a built-in screenshot tool on this combo, so on
+      // Firefox the browser may still intercept first.) Falls back to
+      // the last-edited block if focus has already left the textarea.
       if (
         (event.metaKey || event.ctrlKey) &&
         event.shiftKey &&
-        event.key === ";"
+        (event.key === "s" || event.key === "S")
       ) {
         const block = this.findFocusedOrLastEditingBlock();
         if (!block) return;
         event.preventDefault();
         this.scheduleBlock(block);
       }
-      // Cmd/Ctrl+Shift+, opens the AI chat popover scoped to the focused
-      // block. Chrome's Cmd+, is "preferences" but Cmd+Shift+, isn't
-      // claimed; Cmd+Shift+L collides with several password managers'
-      // global lock. Fires only when a block is in scope so it's a
-      // no-op on empty pages.
+      // Cmd/Ctrl+Shift+; opens the AI chat popover scoped to the focused
+      // block. Picked semicolon because it's unclaimed across Chrome /
+      // password managers / macOS system shortcuts; Cmd+Shift+L collides
+      // with 1Password's global lock. Fires only when a block is in
+      // scope so it's a no-op on empty pages.
       if (
         (event.metaKey || event.ctrlKey) &&
         event.shiftKey &&
-        event.key === ","
+        event.key === ";"
       ) {
         const block = this.findFocusedOrLastEditingBlock();
         if (!block) return;

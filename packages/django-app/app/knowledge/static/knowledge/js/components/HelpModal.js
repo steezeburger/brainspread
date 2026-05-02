@@ -184,11 +184,11 @@ window.HelpModal = {
                   <td>open block actions menu</td>
                 </tr>
                 <tr>
-                  <td><kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>;</kbd> / <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>;</kbd></td>
+                  <td><kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> / <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd></td>
                   <td>schedule (set due date / reminder)</td>
                 </tr>
                 <tr>
-                  <td><kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>,</kbd> / <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>,</kbd></td>
+                  <td><kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>;</kbd> / <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>;</kbd></td>
                   <td>open ai chat for this block (writes nested results)</td>
                 </tr>
                 <tr>
