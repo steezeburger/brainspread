@@ -731,6 +731,27 @@ const BlockComponent = {
             this.block.block_type
           )
         ) {
+          // iOS keeps a focused textarea in view by snap-scrolling to
+          // it whenever it thinks the input might leave the viewport.
+          // Our preventDefault above suppresses the synthetic click
+          // that would normally blur the textarea, so without this
+          // the page yanks back to whatever block was being edited
+          // every time the user toggles a bullet on a different
+          // block. Explicitly blur it instead — `lastEditingBlockUuid`
+          // still points at the editing block, so resuming is a tap
+          // on its content away. Skip the blur when the user is
+          // toggling the bullet of the SAME block they're editing
+          // (e.g. marking the current TODO done while typing it),
+          // since the keyboard staying up is the desired behavior
+          // there.
+          const active = document.activeElement;
+          if (active && active.tagName === "TEXTAREA") {
+            const wrapper = active.closest("[data-block-uuid]");
+            const editingUuid = wrapper?.dataset?.blockUuid;
+            if (editingUuid && editingUuid !== this.block.uuid) {
+              active.blur();
+            }
+          }
           this.toggleBlockTodo(this.block);
         }
       }
