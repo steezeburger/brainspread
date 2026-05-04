@@ -250,6 +250,50 @@ const Page = {
       return blockUuid ? `${base}#block-${blockUuid}` : base;
     },
 
+    // Copy an absolute deep link to the block to the user's
+    // clipboard. Uses `block.page_slug` when present (referenced /
+    // overdue blocks set it via `include_page_context=True`) and
+    // falls back to the current page's slug for direct blocks.
+    // Mirrors the share-link clipboard fallback so non-secure
+    // contexts (private network IPs, http://) still work.
+    async copyBlockLink(block) {
+      const slug = block.page_slug || this.page?.slug;
+      if (!slug) {
+        this.$parent?.addToast?.("could not build block link", "error");
+        return;
+      }
+      const url = `${window.location.origin}${this.pageBlockHref(slug, block.uuid)}`;
+
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(url);
+          this.$parent?.addToast?.("block link copied", "success");
+          return;
+        }
+      } catch (error) {
+        console.warn("clipboard API failed, falling back:", error);
+      }
+
+      // execCommand fallback: stage the URL in a hidden textarea,
+      // select it, and copy. Cleaner than asking the user to copy by
+      // hand on http:// staging deploys.
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = url;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        if (!ok) throw new Error("execCommand returned false");
+        this.$parent?.addToast?.("block link copied", "success");
+      } catch (error) {
+        console.error("failed to copy block link:", error);
+        this.$parent?.addToast?.("could not copy block link", "error");
+      }
+    },
+
     // Read `#block-<uuid>` from the current URL and scroll the
     // matching block into view, if any. Looks up the block via the
     // existing `data-block-uuid` attribute the BlockComponent already
@@ -3255,6 +3299,7 @@ const Page = {
                 :onBlockDrop="onBlockDrop"
                 :onBlockAttachPick="onBlockAttachPick"
                 :scheduleBlock="scheduleBlock"
+                :copyBlockLink="copyBlockLink"
                 :openBlockChatPopover="openBlockChatPopover"
               />
             </div>
@@ -3295,6 +3340,7 @@ const Page = {
               :onBlockDrop="onBlockDrop"
               :onBlockAttachPick="onBlockAttachPick"
               :scheduleBlock="scheduleBlock"
+              :copyBlockLink="copyBlockLink"
               :openBlockChatPopover="openBlockChatPopover"
               :onBlockSelectClick="handleBlockSelectClick"
               :selectedBlockCount="selectedBlockCount"
@@ -3344,6 +3390,7 @@ const Page = {
                 :onBlockDrop="onBlockDrop"
                 :onBlockAttachPick="onBlockAttachPick"
                 :scheduleBlock="scheduleBlock"
+                :copyBlockLink="copyBlockLink"
                 :openBlockChatPopover="openBlockChatPopover"
               />
             </div>

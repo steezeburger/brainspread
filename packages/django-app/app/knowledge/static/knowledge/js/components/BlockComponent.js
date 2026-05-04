@@ -99,6 +99,10 @@ const BlockComponent = {
       type: Function,
       default: () => () => {},
     },
+    copyBlockLink: {
+      type: Function,
+      default: () => () => {},
+    },
     openBlockChatPopover: {
       type: Function,
       default: () => () => {},
@@ -1263,6 +1267,9 @@ const BlockComponent = {
         case "openBlockChat":
           this.openBlockChatPopover(this.block);
           break;
+        case "copyLink":
+          this.copyBlockLink(this.block);
+          break;
         case "attachFile":
           this.triggerAttachFilePicker();
           break;
@@ -1845,6 +1852,11 @@ const BlockComponent = {
         <button class="context-menu-item" role="menuitem" tabindex="-1" v-if="block.scheduled_for" @click="handleContextMenuAction('unschedule')">
           <span class="context-menu-icon">✕</span>
           <span>clear schedule</span>
+        </button>
+        <div class="context-menu-separator"></div>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('copyLink')">
+          <span class="context-menu-icon">↗</span>
+          <span>copy link to block</span>
         </button>
         <div class="context-menu-separator"></div>
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('openBlockChat')">
