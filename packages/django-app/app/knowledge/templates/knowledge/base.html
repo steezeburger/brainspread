@@ -27,12 +27,6 @@
     <!-- Prism CSS Theme -->
     <link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
 
-    <!-- Server-rendered runtime flags. Must come before any script
-         that branches on them (e.g. app.js's theme list filter). -->
-    <script>
-      window.IS_STAGING_THEME_AVAILABLE = {% if IS_STAGING_THEME_AVAILABLE %}true{% else %}false{% endif %};
-    </script>
-
     <!-- API Service -->
     <script src="{% static 'knowledge/js/services/api.js' %}?v={{ STATIC_VERSION }}"></script>
     <script src="{% static 'knowledge/js/services/mermaid.js' %}?v={{ STATIC_VERSION }}"></script>

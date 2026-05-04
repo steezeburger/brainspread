@@ -4,7 +4,6 @@ from django.contrib.auth import authenticate
 from django.core.exceptions import ValidationError
 
 from common.forms.base_form import BaseForm
-from core.helpers import is_staging_theme_available
 from core.repositories.user_repository import UserRepository
 
 
@@ -52,34 +51,22 @@ class UpdateTimezoneForm(BaseForm):
 
 
 class UpdateThemeForm(BaseForm):
-    BASE_THEME_CHOICES = [
+    THEME_CHOICES = [
         ("dark", "Dark"),
         ("light", "Light"),
         ("solarized_dark", "Solarized Dark"),
         ("purple", "Purple"),
         ("earthy", "Earthy"),
         ("forest", "Forest"),
+        ("staging", "Staging"),
     ]
-    STAGING_THEME_CHOICE = ("staging", "Staging")
 
     user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
-    theme = forms.ChoiceField(choices=BASE_THEME_CHOICES, required=True)
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        # Allow the staging theme as a valid submission only on
-        # non-prod deploys. The choice is decided per-request so a
-        # process restart isn't needed if ENVIRONMENT changes between
-        # tests, but in practice the env is fixed for the lifetime of
-        # the deploy.
-        if is_staging_theme_available():
-            self.fields["theme"].choices = self.BASE_THEME_CHOICES + [
-                self.STAGING_THEME_CHOICE
-            ]
+    theme = forms.ChoiceField(choices=THEME_CHOICES, required=True)
 
     def clean_theme(self) -> str:
         theme = self.cleaned_data.get("theme")
-        allowed = {choice[0] for choice in self.fields["theme"].choices}
+        allowed = {choice[0] for choice in self.THEME_CHOICES}
         if theme not in allowed:
             raise ValidationError("Invalid theme choice")
         return theme

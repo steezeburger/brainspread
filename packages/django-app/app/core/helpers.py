@@ -1,5 +1,4 @@
 import functools
-import os
 import random
 import secrets
 import string
@@ -7,30 +6,6 @@ from datetime import date
 
 import pytz
 from django.utils import timezone
-
-_PROD_ENVIRONMENTS = {"prod", "production"}
-
-
-def is_production_env() -> bool:
-    """Whether the running deploy is configured as production.
-
-    Treats `ENVIRONMENT` env var values in {"prod", "production"} as
-    production. Anything else (staging, local dev with the var unset)
-    is considered non-prod. Mirrors the convention already used by
-    send_due_reminders_command.
-    """
-    return os.environ.get("ENVIRONMENT", "").strip().lower() in _PROD_ENVIRONMENTS
-
-
-def is_staging_theme_available() -> bool:
-    """Single source of truth for gating the garish staging theme.
-
-    The theme exists in the user model's choices on every env (so the
-    DB schema and admin stay consistent), but the user-facing settings
-    UI and the theme-update API gate it on this check so it can't be
-    selected on production.
-    """
-    return not is_production_env()
 
 
 def today_for_user(user) -> date:

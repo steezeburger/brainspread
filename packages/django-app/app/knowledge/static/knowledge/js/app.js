@@ -1,30 +1,17 @@
 const { createApp } = Vue;
 
-const ALL_THEMES = [
+const AVAILABLE_THEMES = [
   { id: "dark", label: "dark" },
   { id: "light", label: "light" },
   { id: "solarized_dark", label: "solarized dark" },
   { id: "purple", label: "purple" },
   { id: "earthy", label: "earthy" },
   { id: "forest", label: "forest" },
-  // Garish staging-only theme. Filtered out on prod via the
-  // server-rendered window.IS_STAGING_THEME_AVAILABLE flag — keep this
-  // entry in the array unconditionally so a missing flag doesn't
-  // accidentally hide it on staging.
-  { id: "staging", label: "staging", stagingOnly: true },
+  { id: "staging", label: "staging" },
 ];
 
-function getAvailableThemes() {
-  const stagingAllowed = window.IS_STAGING_THEME_AVAILABLE === true;
-  return ALL_THEMES.filter((t) => !t.stagingOnly || stagingAllowed);
-}
-
-// Kept as a const for callsites that just want the visible list at
-// load time (prod vs staging is fixed for the lifetime of the page).
-const AVAILABLE_THEMES = getAvailableThemes();
-
-// Expose to other components (e.g. SettingsModal) that load before
-// app.js evaluates but render after.
+// Exposed so SettingsModal (which loads before app.js evaluates but
+// renders after) can use the same list as the spotlight theme picker.
 window.AVAILABLE_THEMES = AVAILABLE_THEMES;
 
 // Global Vue app for knowledge base
@@ -306,15 +293,7 @@ const KnowledgeApp = createApp({
     },
 
     applyTheme() {
-      const requested = this.user?.theme || "dark";
-      // If a user lands on prod with theme="staging" (e.g. their
-      // record was migrated from staging), don't render the garish
-      // palette there — fall back to dark. The dropdown gates the
-      // selection too, so they couldn't pick it again from here
-      // anyway.
-      const theme = AVAILABLE_THEMES.some((t) => t.id === requested)
-        ? requested
-        : "dark";
+      const theme = this.user?.theme || "dark";
       document.documentElement.setAttribute("data-theme", theme);
       // Mermaid diagrams pick their palette at render time, so a theme
       // swap only takes effect on already-rendered SVGs if we reset and

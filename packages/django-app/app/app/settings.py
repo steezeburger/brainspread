@@ -92,7 +92,6 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "common.context_processors.static_version",
-                "common.context_processors.staging_theme_flag",
             ],
         },
     },

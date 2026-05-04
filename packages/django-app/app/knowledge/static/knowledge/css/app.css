@@ -145,10 +145,10 @@
   --card-bg: #d2f079;
 }
 
-/* Staging theme — intentionally garish so it's impossible to forget
-   you're poking at a non-prod environment. Not exposed in the
-   settings UI on production (see context_processors.is_staging_theme_available
-   and UpdateThemeForm.clean_theme). */
+/* Staging theme — intentionally garish, originally added so the
+   staging deploy was unmistakable. Now also available everywhere
+   because, well, it's a vibe. seed_staging_data still pins the
+   seeded staging superuser to it. */
 :root[data-theme="staging"] {
   --bg-primary: #ff1493;
   --text-primary: #d4ff00;
