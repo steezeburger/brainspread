@@ -52,6 +52,13 @@ const Page = {
       isNavigating: false,
       isIndentingOrOutdenting: false,
       lastEditingBlockUuid: null,
+      // True only between a real window blur and the matching focus.
+      // Mobile browsers fire spurious "focus" on the window when the
+      // soft keyboard dismisses (e.g. tapping a bullet to toggle
+      // status), and without this guard the focus handler would
+      // re-enter editing on `lastEditingBlockUuid` — yanking scroll
+      // back to that (often unrelated) block.
+      windowWasBlurred: false,
       // Block selection (Cmd+A escalation)
       selectionAnchorUuid: null,
       selectionLevel: 0,
@@ -134,7 +141,11 @@ const Page = {
   async mounted() {
     // Add document click handler for closing menus
     document.addEventListener("click", this.handleDocumentClick);
-    // Restore focus when window/tab regains focus
+    // Restore focus when window/tab regains focus. The matching blur
+    // listener gates handleWindowFocus so it only restores editing
+    // after a real desktop tab/window switch, not after a mobile
+    // keyboard dismiss (which fires "focus" without a preceding blur).
+    window.addEventListener("blur", this.handleWindowBlur);
     window.addEventListener("focus", this.handleWindowFocus);
     // Global keydown for Escape to close page menus
     document.addEventListener("keydown", this.handlePageGlobalKeydown);
@@ -180,6 +191,7 @@ const Page = {
   beforeUnmount() {
     // Clean up event listeners
     document.removeEventListener("click", this.handleDocumentClick);
+    window.removeEventListener("blur", this.handleWindowBlur);
     window.removeEventListener("focus", this.handleWindowFocus);
     document.removeEventListener("keydown", this.handlePageGlobalKeydown);
     document.removeEventListener("keydown", this.handleSelectionKeydown);
@@ -226,6 +238,81 @@ const Page = {
         return slug;
       }
       return null;
+    },
+
+    // Build a real anchor href for jumping to another page (and
+    // optionally a specific block on that page). Block-level deep
+    // links use a `#block-<uuid>` fragment which the target page
+    // scrolls to after load — see `scrollToHashBlock`.
+    pageBlockHref(slug, blockUuid) {
+      if (!slug) return "#";
+      const base = `/knowledge/page/${encodeURIComponent(slug)}/`;
+      return blockUuid ? `${base}#block-${blockUuid}` : base;
+    },
+
+    // Copy an absolute deep link to the block to the user's
+    // clipboard. Uses `block.page_slug` when present (referenced /
+    // overdue blocks set it via `include_page_context=True`) and
+    // falls back to the current page's slug for direct blocks.
+    // Mirrors the share-link clipboard fallback so non-secure
+    // contexts (private network IPs, http://) still work.
+    async copyBlockLink(block) {
+      const slug = block.page_slug || this.page?.slug;
+      if (!slug) {
+        this.$parent?.addToast?.("could not build block link", "error");
+        return;
+      }
+      const url = `${window.location.origin}${this.pageBlockHref(slug, block.uuid)}`;
+
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(url);
+          this.$parent?.addToast?.("block link copied", "success");
+          return;
+        }
+      } catch (error) {
+        console.warn("clipboard API failed, falling back:", error);
+      }
+
+      // execCommand fallback: stage the URL in a hidden textarea,
+      // select it, and copy. Cleaner than asking the user to copy by
+      // hand on http:// staging deploys.
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = url;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        if (!ok) throw new Error("execCommand returned false");
+        this.$parent?.addToast?.("block link copied", "success");
+      } catch (error) {
+        console.error("failed to copy block link:", error);
+        this.$parent?.addToast?.("could not copy block link", "error");
+      }
+    },
+
+    // Read `#block-<uuid>` from the current URL and scroll the
+    // matching block into view, if any. Looks up the block via the
+    // existing `data-block-uuid` attribute the BlockComponent already
+    // renders, so this works for direct, referenced, AND overdue
+    // blocks without extra plumbing. Skips silently when the
+    // fragment is missing or the block didn't render (e.g. the link
+    // is stale because the block was deleted or moved). Tracks the
+    // last fragment we scrolled to so silent reloads (AI chat,
+    // schedule edits) don't keep re-scrolling on every refresh.
+    scrollToHashBlock() {
+      const hash = window.location.hash || "";
+      const match = hash.match(/^#block-([0-9a-fA-F-]+)$/);
+      if (!match) return;
+      if (this._lastScrolledHash === hash) return;
+      const uuid = match[1];
+      const el = document.querySelector(`[data-block-uuid="${uuid}"]`);
+      if (!el) return;
+      this._lastScrolledHash = hash;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
     },
 
     handleNotesModified(event) {
@@ -301,6 +388,14 @@ const Page = {
           this.newTitle = this.page.title || "";
           this.initializeDateSelector();
         }
+
+        // If the URL carries a `#block-<uuid>` fragment (e.g. the
+        // user followed a Discord reminder or an overdue link), wait
+        // for the freshly-loaded blocks to render and then scroll
+        // that block into view. Done after every loadPage, not just
+        // mount, so silent reloads from the AI chat don't clobber
+        // the deep-link target either.
+        this.$nextTick(() => this.scrollToHashBlock());
       } catch (error) {
         console.error("failed to load page:", error);
         this.error = "failed to load page. does it exist?";
@@ -483,17 +578,30 @@ const Page = {
     },
 
     async deleteBlock(block) {
+      // Mark the block as being deleted BEFORE we open the confirm
+      // dialog. On mobile especially, the native confirm() dismisses
+      // the soft keyboard, which blurs the active textarea — and the
+      // blur handler fires stopEditing → updateBlock against this
+      // exact block. Without the guard set first, that update race
+      // can land after the delete has gone through, in which case
+      // the backend 400s ("block not found") and the editor flashes
+      // "failed to update block" even though the user just deleted
+      // the block on purpose.
+      this.deletingBlocks.add(block.uuid);
+
       const confirmed = confirm(
         `are you sure you want to delete this block? this will also delete any child blocks and cannot be undone.`
       );
 
-      if (!confirmed) return;
-
-      // Mark the block as being deleted before we hit the API so any
-      // blur-triggered stopEditing -> updateBlock that races with the
-      // delete becomes a no-op. The blur can fire when the confirm()
-      // dialog steals focus, or when loadPage() rerenders the tree.
-      this.deletingBlocks.add(block.uuid);
+      if (!confirmed) {
+        // Drop the guard on the same delayed timer the success path
+        // uses, so any blur-triggered stopEditing already in flight
+        // still sees it.
+        setTimeout(() => {
+          this.deletingBlocks.delete(block.uuid);
+        }, 100);
+        return;
+      }
 
       try {
         const result = await window.apiService.deleteBlock(block.uuid);
@@ -1319,7 +1427,19 @@ const Page = {
         .replace(/>/g, "&gt;");
     },
 
+    handleWindowBlur() {
+      this.windowWasBlurred = true;
+    },
+
     handleWindowFocus() {
+      // Only restore editing after a real window blur. iOS Safari
+      // fires "focus" on the window when the soft keyboard dismisses
+      // (e.g. tap on a bullet outside the active textarea); restoring
+      // editing in that case yanks the page back to the block we were
+      // just on, jittering away from the one the user actually
+      // toggled.
+      if (!this.windowWasBlurred) return;
+      this.windowWasBlurred = false;
       if (this.lastEditingBlockUuid) {
         const block = this.getAllBlocks().find(
           (b) => b.uuid === this.lastEditingBlockUuid
@@ -3153,7 +3273,7 @@ const Page = {
             <div v-for="block in overdueBlocks" :key="block.uuid" class="referenced-block-wrapper overdue-block-wrapper" :class="{ 'in-context': isBlockInContext(block.uuid) }" :data-block-uuid="block.uuid">
               <div class="block-meta">
                 <span v-if="block.scheduled_for" class="overdue-due-date">due {{ formatDate(block.scheduled_for) }}</span>
-                <span class="page-title clickable" @click="goToPage(block.page_slug)">{{ block.page_type === 'daily' ? formatDate(block.page_title) : block.page_title }}</span>
+                <a class="page-title clickable" :href="pageBlockHref(block.page_slug, block.uuid)">{{ block.page_type === 'daily' ? formatDate(block.page_title) : block.page_title }}</a>
               </div>
               <BlockComponent
                 :block="block"
@@ -3175,10 +3295,12 @@ const Page = {
                 :createBlockBefore="createBlockBefore"
                 :moveBlockUp="moveBlockUp"
                 :moveBlockDown="moveBlockDown"
+                :moveBlockToToday="moveBlockToToday"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"
                 :onBlockAttachPick="onBlockAttachPick"
                 :scheduleBlock="scheduleBlock"
+                :copyBlockLink="copyBlockLink"
                 :openBlockChatPopover="openBlockChatPopover"
               />
             </div>
@@ -3219,6 +3341,7 @@ const Page = {
               :onBlockDrop="onBlockDrop"
               :onBlockAttachPick="onBlockAttachPick"
               :scheduleBlock="scheduleBlock"
+              :copyBlockLink="copyBlockLink"
               :openBlockChatPopover="openBlockChatPopover"
               :onBlockSelectClick="handleBlockSelectClick"
               :selectedBlockCount="selectedBlockCount"
@@ -3264,10 +3387,12 @@ const Page = {
                 :createBlockBefore="createBlockBefore"
                 :moveBlockUp="moveBlockUp"
                 :moveBlockDown="moveBlockDown"
+                :moveBlockToToday="moveBlockToToday"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"
                 :onBlockAttachPick="onBlockAttachPick"
                 :scheduleBlock="scheduleBlock"
+                :copyBlockLink="copyBlockLink"
                 :openBlockChatPopover="openBlockChatPopover"
               />
             </div>

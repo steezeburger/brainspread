@@ -145,6 +145,33 @@
   --card-bg: #d2f079;
 }
 
+/* Staging theme — intentionally garish, originally added so the
+   staging deploy was unmistakable. Now also available everywhere
+   because, well, it's a vibe. seed_staging_data still pins the
+   seeded staging superuser to it. */
+:root[data-theme="staging"] {
+  --bg-primary: #ff1493;
+  --text-primary: #d4ff00;
+  --text-secondary: #00ffff;
+  --text-muted: #ffae00;
+  --text-disabled: #ff8acb;
+  --border-primary: #00ffff;
+  --border-secondary: #ffae00;
+  --hover-bg: #c00d72;
+  --hover-bg-light: #e01184;
+  --accent-bg: #ffae00;
+  --selected-bg: #00ffff;
+  --error-color: #ff0000;
+  --error-hover: #ff4d4d;
+  --tag-bg: #d4ff00;
+  --tag-text: #ff1493;
+  --tag-hover: #00ffff;
+  --completed-text: #00ff00;
+  --context-color: #ffae00;
+  --sidebar-bg: #c00d72;
+  --card-bg: #ff1493;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1165,6 +1192,12 @@ kbd {
     left: 1rem;
     right: 1rem;
     max-width: none;
+    /* Clear the desktop `width: 100%` — when left, right, AND width
+       are all set on a position:fixed element the explicit width
+       wins and `right` gets ignored, so the container ends up 100vw
+       wide anchored at left:1rem and spills 1rem past the viewport's
+       right edge. `width: auto` lets left+right define the size. */
+    width: auto;
   }
 
   .toast {
@@ -4566,6 +4599,15 @@ a.sidebar-item:visited {
   opacity: 1;
 }
 
+/* Touch devices have no hover, so the empty ☆ would otherwise be
+   permanently invisible on mobile. Match the .block-menu pattern and
+   keep it visible at all times. */
+@media (hover: none) and (pointer: coarse) {
+  .page-favorite-toggle {
+    opacity: 1;
+  }
+}
+
 .page-title-text {
   font-size: 2rem;
   font-weight: bold;
@@ -4664,6 +4706,14 @@ a.sidebar-item:visited {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.75rem;
+    /* Clear the fixed 45×45 leftnav-rail-toggle that sits at top:0
+       left:0 on mobile — without this padding the favorite ★ (first
+       child of .page-header-flex-left) renders underneath the toggle
+       and the user can't read or tap the favorite state. Daily-note
+       headers center their content on mobile so they don't need this
+       — only the regular page / whiteboard layouts that flex-start
+       from the left edge do. */
+    padding-left: calc(45px + 0.5rem);
   }
 
   .page-title-text {

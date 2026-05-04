@@ -260,7 +260,9 @@ staging-create-superuser:
     -w /code/app web python manage.py createsuperuser --noinput || true
 
 staging-seed:
-  docker compose run --rm -w /code/app web python manage.py seed_staging_data
+  docker compose run --rm \
+    -e ANTHROPIC_API_KEY \
+    -w /code/app web python manage.py seed_staging_data
 
 staging-logs LINES="100":
   docker compose logs --tail {{LINES}} -f

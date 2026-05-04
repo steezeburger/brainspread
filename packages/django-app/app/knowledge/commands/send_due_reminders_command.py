@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import TypedDict
+from typing import List, Tuple, TypedDict
 
 from django.conf import settings
 from django.db import transaction
@@ -39,6 +39,13 @@ class SendDueRemindersCommand(AbstractBaseCommand):
 
         now = self.form.cleaned_data.get("now") or timezone.now()
         environment = os.environ.get("ENVIRONMENT", "")
+        # Per-PR staging deploys plumb these through the workflow so
+        # reminders carry a clickable "PR #N" in the embed author —
+        # handy when multiple per-PR staging envs all ping the same
+        # Discord channel and you need to know which PR each ping
+        # came from. Both empty in production / local.
+        pr_number = os.environ.get("STAGING_PR_NUMBER", "")
+        pr_url = os.environ.get("STAGING_PR_URL", "")
 
         considered = 0
         sent = 0
@@ -50,9 +57,11 @@ class SendDueRemindersCommand(AbstractBaseCommand):
             # arrived and hasn't been delivered yet. Previously-failed rows
             # keep `sent_at IS NULL`, so they retry on each tick until they
             # succeed (or the block gets marked completed, which skips them).
+            # Pull `block__page` along too — the embed footer reads
+            # `block.page.title` and we don't want to N+1 across the loop.
             due = (
                 Reminder.objects.select_for_update(skip_locked=True)
-                .select_related("block", "block__user")
+                .select_related("block", "block__user", "block__page")
                 .filter(
                     fire_at__lte=now,
                     sent_at__isnull=True,
@@ -71,17 +80,19 @@ class SendDueRemindersCommand(AbstractBaseCommand):
                     skipped += 1
                     continue
 
-                content = _format_content(
+                content, embeds = _build_payload(
                     reminder,
                     block,
-                    block.user.discord_user_id,
-                    environment,
-                    settings.SITE_URL,
+                    discord_user_id=block.user.discord_user_id,
+                    environment=environment,
+                    site_url=settings.SITE_URL,
+                    pr_number=pr_number,
+                    pr_url=pr_url,
                 )
                 url = block.user.discord_webhook_url
                 # Look up post_webhook at call time (not via `self.deliver`)
                 # so tests can patch the module-level symbol.
-                result = post_webhook(url, content)
+                result = post_webhook(url, content, embeds=embeds)
 
                 if result.ok:
                     reminder.status = Reminder.STATUS_SENT
@@ -117,51 +128,124 @@ class SendDueRemindersCommand(AbstractBaseCommand):
 
 _PROD_ENVIRONMENTS = {"prod", "production"}
 
+# Color stripe on the embed's left edge — a quick visual cue for which
+# deploy a ping came from. Decimal RGB ints (Discord doesn't accept hex
+# strings).
+_COLOR_PROD = 0x6366F1  # indigo
+_COLOR_STAGING = 0xF59E0B  # amber
+_COLOR_DEFAULT = 0x6B7280  # gray (local / unknown)
 
-def _format_content(
+
+def _build_payload(
     reminder: Reminder,
     block,
+    *,
     discord_user_id: str = "",
     environment: str = "",
     site_url: str = "",
-) -> str:
-    """Render the Discord message body for a reminder.
+    pr_number: str = "",
+    pr_url: str = "",
+) -> Tuple[str, List[dict]]:
+    """Return `(content, [embed])` for the Discord webhook payload.
 
-    When `discord_user_id` is set, prepends a `<@ID>` mention so the user
-    gets a desktop/push notification instead of just a silent channel post.
-    When `environment` is set to anything other than prod/production, an
-    `[<env>] ` label is prepended so non-prod pings are distinguishable.
-    When `site_url` is a real http(s) URL, appends a link to the page
-    that contains the block so the user can jump straight to it.
+    `content` carries only the `<@ID>` mention so Discord delivers the
+    push/desktop notification (mentions inside embeds don't trigger
+    notifications). The embed holds the actual reminder layout — same
+    skeleton regardless of title length, due date, or env/PR context,
+    so messages line up consistently in the channel:
+
+        [author: "<env> · PR #<n>"]   ← clickable to PR (when set)
+        <block content first line>    ← bold title, NOT a link
+        [Open block →](<page-url>)    ← description, the actionable link
+        [Due: YYYY-MM-DD]             ← inline field (only when scheduled)
+        on <page title>               ← footer, page context
+        <relative time>               ← timestamp, rendered by Discord
     """
     title = (block.content or "").strip().splitlines()[0] if block.content else ""
     if len(title) > 240:
         title = title[:237] + "..."
-    due = ""
-    if block.scheduled_for:
-        due = f" (due {block.scheduled_for.isoformat()})"
-    body = f"Reminder: {title}{due}" if title else f"Reminder{due}"
-    if discord_user_id:
-        body = f"<@{discord_user_id}> {body}"
-    env = (environment or "").strip().lower()
-    if env and env not in _PROD_ENVIRONMENTS:
-        body = f"[{env}] {body}"
+    if not title:
+        # Embeds can't have an empty title; fall back to a stable label
+        # so the embed renders cleanly for blocks that are images or
+        # otherwise content-less.
+        title = "Reminder"
+
+    embed: dict = {
+        "title": title,
+        "color": _color_for_env(environment),
+    }
+
+    # Discord renders this as a localized relative time (e.g. "today at
+    # 3:14 PM") at the bottom-right of the embed.
+    if reminder.fire_at:
+        embed["timestamp"] = reminder.fire_at.isoformat()
 
     page_link = _page_link(block, site_url)
     if page_link:
-        body = f"{body}\n{page_link}"
-    return body
+        embed["description"] = f"[Open block →]({page_link})"
+
+    if block.scheduled_for:
+        embed["fields"] = [
+            {
+                "name": "Due",
+                "value": block.scheduled_for.isoformat(),
+                "inline": True,
+            }
+        ]
+
+    author = _author_block(environment, pr_number, pr_url)
+    if author:
+        embed["author"] = author
+
+    if block.page_id and block.page.title:
+        embed["footer"] = {"text": f"on {block.page.title}"}
+
+    content = f"<@{discord_user_id}>" if discord_user_id else ""
+    return content, [embed]
+
+
+def _color_for_env(environment: str) -> int:
+    env = (environment or "").strip().lower()
+    if env in _PROD_ENVIRONMENTS:
+        return _COLOR_PROD
+    if env == "staging":
+        return _COLOR_STAGING
+    return _COLOR_DEFAULT
+
+
+def _author_block(environment: str, pr_number: str, pr_url: str) -> dict:
+    """Build the embed `author` dict with env tag + PR token.
+
+    Empty in production (the env label "prod" adds no signal) and when
+    there's neither env nor PR info to surface. The PR URL only attaches
+    when it's a real http(s) URL, otherwise the author renders as plain
+    non-clickable text.
+    """
+    env = (environment or "").strip()
+    show_env = bool(env) and env.lower() not in _PROD_ENVIRONMENTS
+    env_label = env if show_env else ""
+    pr_label = f"PR #{pr_number}" if pr_number else ""
+    bits = [b for b in (env_label, pr_label) if b]
+    if not bits:
+        return {}
+    author: dict = {"name": " · ".join(bits)}
+    if pr_url and pr_url.startswith(("http://", "https://")):
+        author["url"] = pr_url
+    return author
 
 
 def _page_link(block, site_url: str) -> str:
     """Build an absolute URL to the page that contains the block.
 
-    Skips when SITE_URL isn't a real http(s) URL (the default
-    placeholder is just "0.0.0.0", which would produce broken links).
+    Includes a `#block-<uuid>` fragment so the editor can scroll
+    straight to the originating block on load — see
+    `scrollToHashBlock` in Page.js. Skips when SITE_URL isn't a
+    real http(s) URL (the default placeholder is just "0.0.0.0",
+    which would produce broken links).
     """
     if not site_url or not site_url.startswith(("http://", "https://")):
         return ""
     if not block.page_id or not block.page.slug:
         return ""
     base = site_url.rstrip("/")
-    return f"{base}/knowledge/page/{block.page.slug}/"
+    return f"{base}/knowledge/page/{block.page.slug}/#block-{block.uuid}"

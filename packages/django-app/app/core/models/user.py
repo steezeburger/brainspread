@@ -46,6 +46,11 @@ class User(
         ("purple", "Purple"),
         ("earthy", "Earthy"),
         ("forest", "Forest"),
+        # Garish staging-only theme. Always present in choices so admin
+        # and the DB stay consistent across envs; the user-facing
+        # picker and the theme-update form gate it on environment so
+        # nobody can pick it on prod.
+        ("staging", "Staging"),
     ]
 
     theme = models.CharField(
