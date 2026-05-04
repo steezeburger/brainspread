@@ -113,7 +113,7 @@ jobs:
 
             | | |
             |---|---|
-            | **URL** | http://${{ vars.DO_STAGING_HOST }}:${{ steps.vars.outputs.port }}/knowledge/ |
+            | **Port** | `${{ steps.vars.outputs.port }}` |
             | **Branch** | `${{ github.head_ref }}` |
             | **Commit** | `${{ github.sha }}` |
             | **Status** | Deployed |
