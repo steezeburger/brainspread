@@ -145,6 +145,33 @@
   --card-bg: #d2f079;
 }
 
+/* Staging theme — intentionally garish so it's impossible to forget
+   you're poking at a non-prod environment. Not exposed in the
+   settings UI on production (see context_processors.is_staging_theme_available
+   and UpdateThemeForm.clean_theme). */
+:root[data-theme="staging"] {
+  --bg-primary: #ff1493;
+  --text-primary: #d4ff00;
+  --text-secondary: #00ffff;
+  --text-muted: #ffae00;
+  --text-disabled: #ff8acb;
+  --border-primary: #00ffff;
+  --border-secondary: #ffae00;
+  --hover-bg: #c00d72;
+  --hover-bg-light: #e01184;
+  --accent-bg: #ffae00;
+  --selected-bg: #00ffff;
+  --error-color: #ff0000;
+  --error-hover: #ff4d4d;
+  --tag-bg: #d4ff00;
+  --tag-text: #ff1493;
+  --tag-hover: #00ffff;
+  --completed-text: #00ff00;
+  --context-color: #ffae00;
+  --sidebar-bg: #c00d72;
+  --card-bg: #ff1493;
+}
+
 * {
   box-sizing: border-box;
 }

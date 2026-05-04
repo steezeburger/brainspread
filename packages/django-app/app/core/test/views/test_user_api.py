@@ -1,3 +1,5 @@
+from unittest import mock
+
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.authtoken.models import Token
@@ -218,6 +220,31 @@ class UserAPITestCase(TestCase):
         response = self.client.post("/api/auth/update-theme/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    @mock.patch.dict("os.environ", {"ENVIRONMENT": "production"})
+    def test_update_theme_rejects_staging_on_prod(self):
+        """The garish staging theme is hidden from prod users."""
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
+        data = {"theme": "staging"}
+        response = self.client.post("/api/auth/update-theme/", data, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data["success"])
+        self.assertIn("theme", response.data["errors"])
+
+    @mock.patch.dict("os.environ", {"ENVIRONMENT": "staging"})
+    def test_update_theme_accepts_staging_on_staging(self):
+        """Non-prod environments can opt into the staging theme."""
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
+        data = {"theme": "staging"}
+        response = self.client.post("/api/auth/update-theme/", data, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["success"])
+        self.assertEqual(response.data["data"]["user"]["theme"], "staging")
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.theme, "staging")
 
     def test_update_discord_user_id_success(self):
         """Updating the Discord user ID persists and returns it."""

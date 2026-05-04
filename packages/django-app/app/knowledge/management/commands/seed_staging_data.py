@@ -82,6 +82,15 @@ class Command(BaseCommand):
             user.discord_user_id = discord_user_id
             update_fields.append("discord_user_id")
 
+        # Pin the seeded user to the garish staging theme so the
+        # environment is visually unmistakable. The theme is hidden
+        # from the picker on prod (see core.helpers.is_staging_theme_available),
+        # but on staging deploys this seed runs every time so the
+        # default sticks.
+        if user.theme != "staging":
+            user.theme = "staging"
+            update_fields.append("theme")
+
         if update_fields:
             user.save(update_fields=update_fields)
             self.stdout.write(

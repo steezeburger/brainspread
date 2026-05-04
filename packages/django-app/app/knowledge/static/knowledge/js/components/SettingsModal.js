@@ -118,6 +118,14 @@ window.SettingsModal = {
     }
   },
 
+  computed: {
+    themes() {
+      // Sourced from app.js so prod / staging stay in sync with the
+      // theme-cycling shortcuts and the spotlight theme list.
+      return window.AVAILABLE_THEMES || [];
+    },
+  },
+
   methods: {
     selectTheme(theme) {
       this.selectedTheme = theme;
@@ -480,12 +488,11 @@ window.SettingsModal = {
                 class="theme-select"
                 @change="selectTheme($event.target.value)"
               >
-                <option value="dark">dark</option>
-                <option value="light">light</option>
-                <option value="solarized_dark">solarized dark</option>
-                <option value="purple">purple</option>
-                <option value="earthy">earthy</option>
-                <option value="forest">forest</option>
+                <option
+                  v-for="t in themes"
+                  :key="t.id"
+                  :value="t.id"
+                >{{ t.label }}</option>
               </select>
             </div>
           </div>
