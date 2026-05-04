@@ -4599,6 +4599,15 @@ a.sidebar-item:visited {
   opacity: 1;
 }
 
+/* Touch devices have no hover, so the empty ☆ would otherwise be
+   permanently invisible on mobile. Match the .block-menu pattern and
+   keep it visible at all times. */
+@media (hover: none) and (pointer: coarse) {
+  .page-favorite-toggle {
+    opacity: 1;
+  }
+}
+
 .page-title-text {
   font-size: 2rem;
   font-weight: bold;
