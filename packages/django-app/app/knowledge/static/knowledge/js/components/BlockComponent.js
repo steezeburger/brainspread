@@ -1815,10 +1815,6 @@ const BlockComponent = {
           <span class="context-menu-icon">↓</span>
           <span>move down</span>
         </button>
-        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('moveToToday')">
-          <span class="context-menu-icon">⇨</span>
-          <span>move to today's daily</span>
-        </button>
         <div class="context-menu-separator"></div>
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('newBlockBefore')">
           <span class="context-menu-icon">+</span>
@@ -1827,6 +1823,14 @@ const BlockComponent = {
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('newBlockAfter')">
           <span class="context-menu-icon">+</span>
           <span>new block after</span>
+        </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('moveToToday')">
+          <span class="context-menu-icon">⇨</span>
+          <span>move to today's daily</span>
+        </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('copyLink')">
+          <span class="context-menu-icon">↗</span>
+          <span>copy link to block</span>
         </button>
         <div class="context-menu-separator"></div>
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('attachFile')">
@@ -1852,11 +1856,6 @@ const BlockComponent = {
         <button class="context-menu-item" role="menuitem" tabindex="-1" v-if="block.scheduled_for" @click="handleContextMenuAction('unschedule')">
           <span class="context-menu-icon">✕</span>
           <span>clear schedule</span>
-        </button>
-        <div class="context-menu-separator"></div>
-        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('copyLink')">
-          <span class="context-menu-icon">↗</span>
-          <span>copy link to block</span>
         </button>
         <div class="context-menu-separator"></div>
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('openBlockChat')">
