@@ -99,6 +99,14 @@ const BlockComponent = {
       type: Function,
       default: () => () => {},
     },
+    copyBlockLink: {
+      type: Function,
+      default: () => () => {},
+    },
+    openBlockChatPopover: {
+      type: Function,
+      default: () => () => {},
+    },
     onBlockSelectClick: {
       type: Function,
       default: () => () => false,
@@ -723,6 +731,27 @@ const BlockComponent = {
             this.block.block_type
           )
         ) {
+          // iOS keeps a focused textarea in view by snap-scrolling to
+          // it whenever it thinks the input might leave the viewport.
+          // Our preventDefault above suppresses the synthetic click
+          // that would normally blur the textarea, so without this
+          // the page yanks back to whatever block was being edited
+          // every time the user toggles a bullet on a different
+          // block. Explicitly blur it instead — `lastEditingBlockUuid`
+          // still points at the editing block, so resuming is a tap
+          // on its content away. Skip the blur when the user is
+          // toggling the bullet of the SAME block they're editing
+          // (e.g. marking the current TODO done while typing it),
+          // since the keyboard staying up is the desired behavior
+          // there.
+          const active = document.activeElement;
+          if (active && active.tagName === "TEXTAREA") {
+            const wrapper = active.closest("[data-block-uuid]");
+            const editingUuid = wrapper?.dataset?.blockUuid;
+            if (editingUuid && editingUuid !== this.block.uuid) {
+              active.blur();
+            }
+          }
           this.toggleBlockTodo(this.block);
         }
       }
@@ -1255,6 +1284,12 @@ const BlockComponent = {
           break;
         case "unschedule":
           this.scheduleBlock(this.block, { clear: true });
+          break;
+        case "openBlockChat":
+          this.openBlockChatPopover(this.block);
+          break;
+        case "copyLink":
+          this.copyBlockLink(this.block);
           break;
         case "attachFile":
           this.triggerAttachFilePicker();
@@ -1801,10 +1836,6 @@ const BlockComponent = {
           <span class="context-menu-icon">↓</span>
           <span>move down</span>
         </button>
-        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('moveToToday')">
-          <span class="context-menu-icon">⇨</span>
-          <span>move to today's daily</span>
-        </button>
         <div class="context-menu-separator"></div>
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('newBlockBefore')">
           <span class="context-menu-icon">+</span>
@@ -1813,6 +1844,14 @@ const BlockComponent = {
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('newBlockAfter')">
           <span class="context-menu-icon">+</span>
           <span>new block after</span>
+        </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('moveToToday')">
+          <span class="context-menu-icon">⇨</span>
+          <span>move to today's daily</span>
+        </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('copyLink')">
+          <span class="context-menu-icon">↗</span>
+          <span>copy link to block</span>
         </button>
         <div class="context-menu-separator"></div>
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('attachFile')">
@@ -1840,6 +1879,10 @@ const BlockComponent = {
           <span>clear schedule</span>
         </button>
         <div class="context-menu-separator"></div>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('openBlockChat')">
+          <span class="context-menu-icon">✦</span>
+          <span>ai chat for this block...</span>
+        </button>
         <button class="context-menu-item" role="menuitem" tabindex="-1" v-if="!blockInContext" @click="handleContextMenuAction('addToContext')">
           <span class="context-menu-icon">+</span>
           <span>add to ai context</span>
@@ -1894,6 +1937,7 @@ const BlockComponent = {
           :onBlockDrop="onBlockDrop"
           :onBlockAttachPick="onBlockAttachPick"
           :scheduleBlock="scheduleBlock"
+          :openBlockChatPopover="openBlockChatPopover"
           :onBlockSelectClick="onBlockSelectClick"
           :selectedBlockCount="selectedBlockCount"
           :bulkDeleteSelected="bulkDeleteSelected"

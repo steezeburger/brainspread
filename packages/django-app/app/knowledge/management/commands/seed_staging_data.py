@@ -1,13 +1,19 @@
+import os
+
 import pytz
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
+from ai_chat.models import AIModel, AIProvider, UserAISettings, UserProviderConfig
 from core.helpers import today_for_user
 from knowledge.models import Block, Page
 
 User = get_user_model()
+
+ANTHROPIC_PROVIDER_NAME = "Anthropic"
+DEFAULT_ANTHROPIC_MODEL_NAME = "claude-haiku-4-5"
 
 
 class Command(BaseCommand):
@@ -53,9 +59,45 @@ class Command(BaseCommand):
             )
             return
 
+        # Apply timezone + Discord credentials onto the seeded
+        # superuser in a single save. The Discord values come from
+        # the staging deploy workflow (sourced from the
+        # STAGING_DISCORD_* CI secrets), so reminders fire to the
+        # right webhook with no manual touchup. Empty env vars are
+        # treated as "leave blank" — a fresh deploy without secrets
+        # set just leaves the user without Discord delivery
+        # configured.
+        update_fields: list[str] = []
         if user.timezone != tz_name:
             user.timezone = tz_name
-            user.save(update_fields=["timezone"])
+            update_fields.append("timezone")
+
+        webhook_url = os.environ.get("STAGING_DISCORD_WEBHOOK_URL", "")
+        if user.discord_webhook_url != webhook_url:
+            user.discord_webhook_url = webhook_url
+            update_fields.append("discord_webhook_url")
+
+        discord_user_id = os.environ.get("STAGING_DISCORD_USER_ID", "")
+        if user.discord_user_id != discord_user_id:
+            user.discord_user_id = discord_user_id
+            update_fields.append("discord_user_id")
+
+        # Pin the seeded user to the garish staging theme so the
+        # environment is visually unmistakable. The theme is hidden
+        # from the picker on prod (see core.helpers.is_staging_theme_available),
+        # but on staging deploys this seed runs every time so the
+        # default sticks.
+        if user.theme != "staging":
+            user.theme = "staging"
+            update_fields.append("theme")
+
+        if update_fields:
+            user.save(update_fields=update_fields)
+            self.stdout.write(
+                f"Updated superuser fields: {', '.join(sorted(update_fields))}"
+            )
+
+        self._configure_anthropic_provider(user)
 
         today = today_for_user(user)
         date_str = today.strftime("%Y-%m-%d")
@@ -79,6 +121,26 @@ class Command(BaseCommand):
                 return
 
             def block(content, order, parent=None, block_type="bullet"):
+                # Real user blocks always carry a state-prefix in their
+                # content (e.g. "TODO …", "DONE …") because
+                # SetBlockTypeCommand prepends one when the user toggles
+                # the bullet checkbox. Bypassing that here — writing the
+                # row with `block_type="todo"` but a prefix-less content
+                # — produces blocks no real user can create, and any
+                # blur-save that runs through the editor's auto-detect
+                # will then helpfully "fix" them by downgrading them to
+                # bullet. Mirror the real prefix here so seeded blocks
+                # behave like organic ones.
+                state_prefixes = {
+                    "todo": "TODO",
+                    "doing": "DOING",
+                    "done": "DONE",
+                    "later": "LATER",
+                    "wontdo": "WONTDO",
+                }
+                prefix = state_prefixes.get(block_type)
+                if prefix and not content.lstrip().upper().startswith(prefix):
+                    content = f"{prefix} {content}"
                 return Block.objects.create(
                     user=user,
                     page=page,
@@ -163,4 +225,64 @@ class Command(BaseCommand):
             self.style.SUCCESS(
                 f"{action} daily note {date_str} with sample blocks for {user.email}"
             )
+        )
+
+    def _configure_anthropic_provider(self, user) -> None:
+        # Wires the seeded superuser to the Anthropic provider so the
+        # chat panel works on staging without a manual settings round-
+        # trip. The api_key comes from the ANTHROPIC_API_KEY CI secret;
+        # if it isn't set we still create the config (with an empty
+        # key) so the UI shows the provider — calls will fail until a
+        # key is supplied, which matches the local-dev experience.
+        try:
+            anthropic = AIProvider.objects.get(name=ANTHROPIC_PROVIDER_NAME)
+        except AIProvider.DoesNotExist:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"Provider {ANTHROPIC_PROVIDER_NAME!r} not found; "
+                    "skipping user provider config."
+                )
+            )
+            return
+
+        anthropic_models = list(AIModel.objects.filter(provider=anthropic))
+        if not anthropic_models:
+            self.stdout.write(
+                self.style.WARNING(
+                    "No Anthropic models found; skipping user provider config."
+                )
+            )
+            return
+
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        config, _ = UserProviderConfig.objects.update_or_create(
+            user=user,
+            provider=anthropic,
+            defaults={"api_key": api_key, "is_enabled": True},
+        )
+        config.enabled_models.set(anthropic_models)
+        self.stdout.write(
+            f"Configured Anthropic provider with {len(anthropic_models)} "
+            f"model(s) for {user.email}"
+            + ("" if api_key else " (no ANTHROPIC_API_KEY set)")
+        )
+
+        try:
+            default_model = AIModel.objects.get(
+                name=DEFAULT_ANTHROPIC_MODEL_NAME, provider=anthropic
+            )
+        except AIModel.DoesNotExist:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"Default model {DEFAULT_ANTHROPIC_MODEL_NAME!r} not found; "
+                    "skipping preferred-model assignment."
+                )
+            )
+            return
+
+        UserAISettings.objects.update_or_create(
+            user=user, defaults={"preferred_model": default_model}
+        )
+        self.stdout.write(
+            f"Set preferred model to {default_model.display_name} for {user.email}"
         )

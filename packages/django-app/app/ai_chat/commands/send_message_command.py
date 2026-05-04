@@ -85,6 +85,7 @@ class SendMessageCommand(AbstractBaseCommand):
                 "auto_approve_notes_writes"
             )
             enable_web_search = self.form.cleaned_data.get("enable_web_search", True)
+            response_format = self.form.cleaned_data.get("response_format")
             tools, tool_executor = SendMessageCommand._build_tools(
                 provider_name,
                 user,
@@ -99,6 +100,7 @@ class SendMessageCommand(AbstractBaseCommand):
                 tools,
                 system=BRAINSPREAD_SYSTEM_PROMPT,
                 tool_executor=tool_executor,
+                response_format=response_format,
             )
 
             ai_model = AIModelRepository.get_by_name(model)

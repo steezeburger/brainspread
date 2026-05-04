@@ -7,7 +7,12 @@ const AVAILABLE_THEMES = [
   { id: "purple", label: "purple" },
   { id: "earthy", label: "earthy" },
   { id: "forest", label: "forest" },
+  { id: "staging", label: "staging" },
 ];
+
+// Exposed so SettingsModal (which loads before app.js evaluates but
+// renders after) can use the same list as the spotlight theme picker.
+window.AVAILABLE_THEMES = AVAILABLE_THEMES;
 
 // Global Vue app for knowledge base
 const KnowledgeApp = createApp({

@@ -145,6 +145,33 @@
   --card-bg: #d2f079;
 }
 
+/* Staging theme — intentionally garish, originally added so the
+   staging deploy was unmistakable. Now also available everywhere
+   because, well, it's a vibe. seed_staging_data still pins the
+   seeded staging superuser to it. */
+:root[data-theme="staging"] {
+  --bg-primary: #ff1493;
+  --text-primary: #d4ff00;
+  --text-secondary: #00ffff;
+  --text-muted: #ffae00;
+  --text-disabled: #ff8acb;
+  --border-primary: #00ffff;
+  --border-secondary: #ffae00;
+  --hover-bg: #c00d72;
+  --hover-bg-light: #e01184;
+  --accent-bg: #ffae00;
+  --selected-bg: #00ffff;
+  --error-color: #ff0000;
+  --error-hover: #ff4d4d;
+  --tag-bg: #d4ff00;
+  --tag-text: #ff1493;
+  --tag-hover: #00ffff;
+  --completed-text: #00ff00;
+  --context-color: #ffae00;
+  --sidebar-bg: #c00d72;
+  --card-bg: #ff1493;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -558,12 +585,8 @@ body {
   cursor: not-allowed;
 }
 
-.tools-btn.auto-approve-warning {
-  border-color: #b00020;
-  color: #b00020;
-}
-
 .tools-btn-warning-glyph {
+  color: #ff9500;
   margin-right: 0.25rem;
 }
 
@@ -1169,6 +1192,12 @@ kbd {
     left: 1rem;
     right: 1rem;
     max-width: none;
+    /* Clear the desktop `width: 100%` — when left, right, AND width
+       are all set on a position:fixed element the explicit width
+       wins and `right` gets ignored, so the container ends up 100vw
+       wide anchored at left:1rem and spills 1rem past the viewport's
+       right edge. `width: auto` lets left+right define the size. */
+    width: auto;
   }
 
   .toast {
@@ -4570,6 +4599,15 @@ a.sidebar-item:visited {
   opacity: 1;
 }
 
+/* Touch devices have no hover, so the empty ☆ would otherwise be
+   permanently invisible on mobile. Match the .block-menu pattern and
+   keep it visible at all times. */
+@media (hover: none) and (pointer: coarse) {
+  .page-favorite-toggle {
+    opacity: 1;
+  }
+}
+
 .page-title-text {
   font-size: 2rem;
   font-weight: bold;
@@ -4668,6 +4706,14 @@ a.sidebar-item:visited {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.75rem;
+    /* Clear the fixed 45×45 leftnav-rail-toggle that sits at top:0
+       left:0 on mobile — without this padding the favorite ★ (first
+       child of .page-header-flex-left) renders underneath the toggle
+       and the user can't read or tap the favorite state. Daily-note
+       headers center their content on mobile so they don't need this
+       — only the regular page / whiteboard layouts that flex-start
+       from the left edge do. */
+    padding-left: calc(45px + 0.5rem);
   }
 
   .page-title-text {
@@ -6266,4 +6312,439 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   gap: 8px;
   padding: 12px 18px;
   border-top: 1px solid var(--border-secondary);
+}
+
+/* ── Block AI Chat Popover (issue #91) ──
+ * A focused, single-shot ai chat anchored to the currently-edited block.
+ * Cmd/Ctrl+Shift+L (or block ⋮ menu → "ai chat for this block") opens it.
+ * Smaller and more constrained than the persistent ChatPanel sidebar:
+ * one block in context, no history, optimized for "ask one thing about
+ * this block and let the assistant write the answer back as nested
+ * blocks". */
+.block-chat-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  padding: 1rem;
+}
+
+.block-chat-popover {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  width: min(640px, 100%);
+  max-height: min(80vh, 720px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+}
+
+.block-chat-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.block-chat-popover-title {
+  margin: 0;
+  font-size: 1rem;
+  text-transform: lowercase;
+  color: var(--text-primary);
+}
+
+.block-chat-popover-close {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+}
+
+.block-chat-popover-close:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.block-chat-popover-source {
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-secondary);
+}
+
+.block-chat-popover-source-label {
+  font-size: 0.7rem;
+  text-transform: lowercase;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.block-chat-popover-source-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.block-chat-popover-source-thumb {
+  max-width: 96px;
+  max-height: 96px;
+  width: auto;
+  height: auto;
+  object-fit: cover;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.block-chat-popover-source-text {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  flex: 1;
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+.block-chat-popover-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border-top: 1px solid var(--border-secondary);
+  border-bottom: 1px solid var(--border-secondary);
+  padding: 0.5rem 0;
+  min-height: 0;
+}
+
+.block-chat-popover-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.block-chat-popover-msg.user .block-chat-popover-content {
+  background: var(--bg-secondary);
+  border-radius: 3px;
+  padding: 0.4rem 0.6rem;
+  align-self: flex-end;
+  max-width: 85%;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.block-chat-popover-msg.assistant .block-chat-popover-content {
+  color: var(--text-primary);
+}
+
+.block-chat-popover-msg.assistant .block-chat-popover-content :first-child {
+  margin-top: 0;
+}
+
+.block-chat-popover-msg.assistant .block-chat-popover-content :last-child {
+  margin-bottom: 0;
+}
+
+.block-chat-popover-tools {
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  padding: 0.4rem 0.5rem;
+  background: var(--bg-secondary);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.block-chat-popover-tools-label {
+  text-transform: lowercase;
+  margin-bottom: 0.25rem;
+  color: var(--text-muted);
+}
+
+.block-chat-popover-tool-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15rem 0;
+  flex-wrap: wrap;
+}
+
+.block-chat-popover-tool-name {
+  font-family: var(--font-monospace, monospace);
+  color: var(--text-primary);
+}
+
+.block-chat-popover-tool-args {
+  font-family: var(--font-monospace, monospace);
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.block-chat-popover-tool-status {
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.block-chat-popover-tool-status.ok {
+  color: var(--text-secondary);
+}
+
+.block-chat-popover-tool-status.err {
+  color: #c0392b;
+}
+
+.block-chat-popover-typing {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0.25rem 0;
+}
+
+.block-chat-popover-typing span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: var(--text-secondary);
+  animation: typing 1.4s infinite ease-in-out;
+}
+
+.block-chat-popover-typing span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.block-chat-popover-typing span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+.block-chat-popover-approval {
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.block-chat-popover-approval-head {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.block-chat-popover-approval-row {
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  padding: 0.4rem 0.5rem;
+  background: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.block-chat-popover-approval-summary {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+}
+
+.block-chat-popover-approval-name {
+  font-family: var(--font-monospace, monospace);
+  color: var(--text-primary);
+}
+
+.block-chat-popover-approval-args {
+  font-family: var(--font-monospace, monospace);
+  color: var(--text-muted);
+}
+
+.block-chat-popover-approval-body {
+  font-size: 0.75rem;
+  font-family: var(--font-monospace, monospace);
+  background: var(--bg-secondary);
+  padding: 0.4rem 0.5rem;
+  border-radius: 3px;
+  overflow-x: auto;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.block-chat-popover-approval-choices {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+}
+
+.block-chat-popover-approval-error {
+  color: #c0392b;
+  font-size: 0.8rem;
+}
+
+.block-chat-popover-approval-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.block-chat-popover-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.block-chat-popover-model {
+  position: relative;
+}
+
+.block-chat-popover-model-btn,
+.block-chat-popover-tools-btn {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.block-chat-popover-model-btn:hover,
+.block-chat-popover-tools-btn:hover {
+  border-color: var(--border-primary);
+}
+
+.block-chat-popover-tools-btn.active {
+  border-color: var(--accent-primary, var(--border-primary));
+}
+
+.block-chat-popover-warn-glyph {
+  color: #ff9500;
+  margin-right: 0.15rem;
+}
+
+.block-chat-popover-arrow {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+}
+
+.block-chat-popover-model-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  z-index: 1110;
+  min-width: 14rem;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.block-chat-popover-model-option {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+.block-chat-popover-model-option:hover,
+.block-chat-popover-model-option.active {
+  background: var(--bg-secondary);
+}
+
+.block-chat-popover-model-option.disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.block-chat-popover-tools-wrap {
+  position: relative;
+}
+
+.block-chat-popover-tools-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  z-index: 1110;
+  min-width: 18rem;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.block-chat-popover-tools-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.25rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+.block-chat-popover-tools-item.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.block-chat-popover-tools-item input[type="checkbox"] {
+  margin-top: 2px;
+}
+
+.block-chat-popover-tools-item .block-chat-popover-tools-name {
+  display: block;
+  font-weight: 500;
+}
+
+.block-chat-popover-tools-item .block-chat-popover-tools-hint {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  margin-top: 0.1rem;
+}
+
+.block-chat-popover-input textarea {
+  width: 100%;
+  min-height: 4rem;
+  max-height: 12rem;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  padding: 0.5rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+}
+
+.block-chat-popover-input textarea:focus {
+  outline: none;
+  border-color: var(--border-primary);
+}
+
+.block-chat-popover-input textarea:disabled {
+  opacity: 0.6;
+}
+
+.block-chat-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }

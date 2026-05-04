@@ -59,6 +59,51 @@ class TestOpenAIServiceUsage:
         }
 
     @patch("ai_chat.services.openai_service.OpenAI")
+    def test_passes_response_format_json_schema(self, mock_openai_cls):
+        # OpenAI's chat.completions takes
+        # `response_format={"type": "json_schema", "json_schema": {name, schema, strict?}}`.
+        # The unified shape from the form maps onto that wire format.
+        mock_client = Mock()
+        mock_client.chat.completions.create.return_value = _build_chat_response(
+            text='{"x": 1}'
+        )
+        mock_openai_cls.return_value = mock_client
+
+        service = OpenAIService(api_key="k", model="gpt-4o")
+        schema = {"type": "object", "properties": {"x": {"type": "integer"}}}
+        service.send_message(
+            [{"role": "user", "content": "extract"}],
+            response_format={
+                "type": "json_schema",
+                "name": "extract_x",
+                "schema": schema,
+                "strict": True,
+            },
+        )
+
+        kwargs = mock_client.chat.completions.create.call_args.kwargs
+        assert kwargs["response_format"] == {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "extract_x",
+                "schema": schema,
+                "strict": True,
+            },
+        }
+
+    @patch("ai_chat.services.openai_service.OpenAI")
+    def test_omits_response_format_when_not_requested(self, mock_openai_cls):
+        mock_client = Mock()
+        mock_client.chat.completions.create.return_value = _build_chat_response()
+        mock_openai_cls.return_value = mock_client
+
+        service = OpenAIService(api_key="k", model="gpt-4o")
+        service.send_message([{"role": "user", "content": "hi"}])
+
+        kwargs = mock_client.chat.completions.create.call_args.kwargs
+        assert "response_format" not in kwargs
+
+    @patch("ai_chat.services.openai_service.OpenAI")
     def test_does_not_duplicate_system_prompt(self, mock_openai_cls):
         mock_client = Mock()
         mock_client.chat.completions.create.return_value = _build_chat_response()
