@@ -534,17 +534,30 @@ const Page = {
     },
 
     async deleteBlock(block) {
+      // Mark the block as being deleted BEFORE we open the confirm
+      // dialog. On mobile especially, the native confirm() dismisses
+      // the soft keyboard, which blurs the active textarea — and the
+      // blur handler fires stopEditing → updateBlock against this
+      // exact block. Without the guard set first, that update race
+      // can land after the delete has gone through, in which case
+      // the backend 400s ("block not found") and the editor flashes
+      // "failed to update block" even though the user just deleted
+      // the block on purpose.
+      this.deletingBlocks.add(block.uuid);
+
       const confirmed = confirm(
         `are you sure you want to delete this block? this will also delete any child blocks and cannot be undone.`
       );
 
-      if (!confirmed) return;
-
-      // Mark the block as being deleted before we hit the API so any
-      // blur-triggered stopEditing -> updateBlock that races with the
-      // delete becomes a no-op. The blur can fire when the confirm()
-      // dialog steals focus, or when loadPage() rerenders the tree.
-      this.deletingBlocks.add(block.uuid);
+      if (!confirmed) {
+        // Drop the guard on the same delayed timer the success path
+        // uses, so any blur-triggered stopEditing already in flight
+        // still sees it.
+        setTimeout(() => {
+          this.deletingBlocks.delete(block.uuid);
+        }, 100);
+        return;
+      }
 
       try {
         const result = await window.apiService.deleteBlock(block.uuid);
