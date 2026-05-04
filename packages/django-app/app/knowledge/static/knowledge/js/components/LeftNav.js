@@ -91,6 +91,15 @@ window.LeftNav = {
     // current page so the Favorites list refreshes without a reload.
     this.handleFavoritesChanged = () => this.loadFavorites();
     document.addEventListener("favorites:changed", this.handleFavoritesChanged);
+    // Close the nav when the user clicks anywhere outside it. Mobile
+    // already does this via the backdrop element; this handler covers
+    // desktop where the backdrop is hidden by CSS.
+    this.handleOutsideClick = (event) => {
+      if (!this.isOpen) return;
+      if (this.$el && this.$el.contains(event.target)) return;
+      this.toggleSidebar();
+    };
+    document.addEventListener("click", this.handleOutsideClick);
   },
 
   beforeUnmount() {
@@ -100,6 +109,9 @@ window.LeftNav = {
         "favorites:changed",
         this.handleFavoritesChanged
       );
+    }
+    if (this.handleOutsideClick) {
+      document.removeEventListener("click", this.handleOutsideClick);
     }
   },
 
