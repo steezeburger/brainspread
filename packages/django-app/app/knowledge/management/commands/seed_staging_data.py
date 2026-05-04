@@ -1,3 +1,5 @@
+import os
+
 import pytz
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
@@ -53,9 +55,34 @@ class Command(BaseCommand):
             )
             return
 
+        # Apply timezone + Discord credentials onto the seeded
+        # superuser in a single save. The Discord values come from
+        # the staging deploy workflow (sourced from the
+        # STAGING_DISCORD_* CI secrets), so reminders fire to the
+        # right webhook with no manual touchup. Empty env vars are
+        # treated as "leave blank" — a fresh deploy without secrets
+        # set just leaves the user without Discord delivery
+        # configured.
+        update_fields: list[str] = []
         if user.timezone != tz_name:
             user.timezone = tz_name
-            user.save(update_fields=["timezone"])
+            update_fields.append("timezone")
+
+        webhook_url = os.environ.get("STAGING_DISCORD_WEBHOOK_URL", "")
+        if user.discord_webhook_url != webhook_url:
+            user.discord_webhook_url = webhook_url
+            update_fields.append("discord_webhook_url")
+
+        discord_user_id = os.environ.get("STAGING_DISCORD_USER_ID", "")
+        if user.discord_user_id != discord_user_id:
+            user.discord_user_id = discord_user_id
+            update_fields.append("discord_user_id")
+
+        if update_fields:
+            user.save(update_fields=update_fields)
+            self.stdout.write(
+                f"Updated superuser fields: {', '.join(sorted(update_fields))}"
+            )
 
         today = today_for_user(user)
         date_str = today.strftime("%Y-%m-%d")

@@ -27,11 +27,13 @@ jobs:
           DO_STAGING_HOST: ${{ vars.DO_STAGING_HOST }}
           DJANGO_SUPERUSER_EMAIL: ${{ secrets.SUPERUSER_EMAIL }}
           DJANGO_SUPERUSER_PASSWORD: ${{ secrets.SUPERUSER_PASSWORD }}
+          STAGING_DISCORD_WEBHOOK_URL: ${{ secrets.STAGING_DISCORD_WEBHOOK_URL }}
+          STAGING_DISCORD_USER_ID: ${{ secrets.STAGING_DISCORD_USER_ID }}
         with:
           host: ${{ secrets.DO_SSH_HOST }}
           username: ${{ secrets.DO_SSH_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
-          envs: GITHUB_TOKEN,PR_NUM,PR_BRANCH,PORT,STAGING_BASE_DIR,DO_STAGING_HOST,DJANGO_SUPERUSER_EMAIL,DJANGO_SUPERUSER_PASSWORD
+          envs: GITHUB_TOKEN,PR_NUM,PR_BRANCH,PORT,STAGING_BASE_DIR,DO_STAGING_HOST,DJANGO_SUPERUSER_EMAIL,DJANGO_SUPERUSER_PASSWORD,STAGING_DISCORD_WEBHOOK_URL,STAGING_DISCORD_USER_ID
           script: |
             set -euo pipefail
 
@@ -73,6 +75,8 @@ jobs:
             REMINDERS_ENABLED=true
             ENVIRONMENT=staging
             SITE_URL=http://${DO_STAGING_HOST}:${PORT}
+            STAGING_DISCORD_WEBHOOK_URL=${STAGING_DISCORD_WEBHOOK_URL}
+            STAGING_DISCORD_USER_ID=${STAGING_DISCORD_USER_ID}
             EOF
             fi
 
