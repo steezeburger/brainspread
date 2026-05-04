@@ -79,6 +79,26 @@ class Command(BaseCommand):
                 return
 
             def block(content, order, parent=None, block_type="bullet"):
+                # Real user blocks always carry a state-prefix in their
+                # content (e.g. "TODO …", "DONE …") because
+                # SetBlockTypeCommand prepends one when the user toggles
+                # the bullet checkbox. Bypassing that here — writing the
+                # row with `block_type="todo"` but a prefix-less content
+                # — produces blocks no real user can create, and any
+                # blur-save that runs through the editor's auto-detect
+                # will then helpfully "fix" them by downgrading them to
+                # bullet. Mirror the real prefix here so seeded blocks
+                # behave like organic ones.
+                state_prefixes = {
+                    "todo": "TODO",
+                    "doing": "DOING",
+                    "done": "DONE",
+                    "later": "LATER",
+                    "wontdo": "WONTDO",
+                }
+                prefix = state_prefixes.get(block_type)
+                if prefix and not content.lstrip().upper().startswith(prefix):
+                    content = f"{prefix} {content}"
                 return Block.objects.create(
                     user=user,
                     page=page,
