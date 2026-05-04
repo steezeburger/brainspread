@@ -1165,6 +1165,12 @@ kbd {
     left: 1rem;
     right: 1rem;
     max-width: none;
+    /* Clear the desktop `width: 100%` — when left, right, AND width
+       are all set on a position:fixed element the explicit width
+       wins and `right` gets ignored, so the container ends up 100vw
+       wide anchored at left:1rem and spills 1rem past the viewport's
+       right edge. `width: auto` lets left+right define the size. */
+    width: auto;
   }
 
   .toast {
