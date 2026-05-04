@@ -1890,6 +1890,18 @@ kbd {
     gap: 0.5rem;
   }
 
+  /* Pull the favorite star out of flow on mobile so it doesn't shift
+     the date input off-center inside the centered pair. The star sits
+     just to the left of the date input, .title-left's width equals the
+     date input alone, and the pair stays visually centered. */
+  .daily-note-title .title-left .page-favorite-toggle {
+    position: absolute;
+    right: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    margin-right: 0.25rem;
+  }
+
   .child-block {
     margin-left: 1rem;
     padding-left: 0.5rem;
