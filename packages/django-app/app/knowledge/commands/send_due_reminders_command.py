@@ -127,30 +127,61 @@ def _format_content(
 ) -> str:
     """Render the Discord message body for a reminder.
 
-    When `discord_user_id` is set, prepends a `<@ID>` mention so the user
-    gets a desktop/push notification instead of just a silent channel post.
-    When `environment` is set to anything other than prod/production, an
-    `[<env>] ` label is prepended so non-prod pings are distinguishable.
-    When `site_url` is a real http(s) URL, appends a link to the page
-    that contains the block so the user can jump straight to it.
+    Layout:
+
+        [<env>] <@ID> Reminder: due <YYYY-MM-DD> — [<title>](<url>)
+
+    The leading bits are conditional: `<@ID>` only when a discord user id
+    is set, the env label only outside prod/production, the "due …" only
+    when the block is scheduled, and the title-as-markdown-link only
+    when SITE_URL is real http(s) (we still need a clickable target to
+    bother with the markdown wrapper). The due date sits before the
+    title so reminders all start with the same fixed-width prefix
+    regardless of title length, and the title itself is the link text
+    so the URL doesn't get tacked onto a separate line.
     """
     title = (block.content or "").strip().splitlines()[0] if block.content else ""
     if len(title) > 240:
         title = title[:237] + "..."
-    due = ""
+
+    page_link = _page_link(block, site_url)
+
+    # Title-as-link when we have both; otherwise fall back through the
+    # cases. `<url>` (angle-bracket form) suppresses Discord's auto
+    # preview embed when we have no title to wrap around the URL.
+    if title and page_link:
+        body_tail = f"[{_escape_link_text(title)}]({page_link})"
+    elif title:
+        body_tail = title
+    elif page_link:
+        body_tail = f"<{page_link}>"
+    else:
+        body_tail = ""
+
     if block.scheduled_for:
-        due = f" (due {block.scheduled_for.isoformat()})"
-    body = f"Reminder: {title}{due}" if title else f"Reminder{due}"
+        prefix = f"Reminder: due {block.scheduled_for.isoformat()}"
+        body = f"{prefix} — {body_tail}" if body_tail else prefix
+    else:
+        body = f"Reminder: {body_tail}" if body_tail else "Reminder"
+
     if discord_user_id:
         body = f"<@{discord_user_id}> {body}"
     env = (environment or "").strip().lower()
     if env and env not in _PROD_ENVIRONMENTS:
         body = f"[{env}] {body}"
-
-    page_link = _page_link(block, site_url)
-    if page_link:
-        body = f"{body}\n{page_link}"
     return body
+
+
+def _escape_link_text(text: str) -> str:
+    """Escape characters that would break Markdown link text.
+
+    Discord's parser uses `]` to terminate the link text and `\\` as
+    the escape char, so back-slash both. Other markdown chars
+    (asterisks, underscores, etc.) we leave alone — the title was
+    authored as plain block content and rendering its incidental
+    inline formatting is fine.
+    """
+    return text.replace("\\", "\\\\").replace("]", "\\]")
 
 
 def _page_link(block, site_url: str) -> str:

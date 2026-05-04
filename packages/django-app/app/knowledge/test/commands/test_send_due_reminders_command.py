@@ -260,7 +260,10 @@ class TestSendDueRemindersCommand(TestCase):
         self.assertEqual(reminder.status, Reminder.STATUS_FAILED)
         self.assertIn("no webhook", reminder.last_error.lower())
 
-    def test_appends_page_link_when_site_url_set(self):
+    def test_renders_title_as_markdown_link_when_site_url_set(self):
+        # Title is the link text and the URL with #block-<uuid> fragment is
+        # the href, so the rendered Discord message shows a single
+        # clickable line instead of body + URL on a separate row.
         page = PageFactory(user=self.user, title="Backlog", slug="backlog")
         block = BlockFactory(user=self.user, page=page, content="TODO ship")
         Reminder.objects.create(
@@ -282,12 +285,54 @@ class TestSendDueRemindersCommand(TestCase):
         ):
             self._run()
 
-        # Link points at the page AND carries a `#block-<uuid>` fragment
-        # so the editor scrolls straight to the originating block on
-        # load.
-        self.assertIn(
-            f"https://app.example.com/knowledge/page/backlog/#block-{block.uuid}",
-            captured["content"],
+        expected = (
+            f"[TODO ship](https://app.example.com/knowledge/page/backlog/"
+            f"#block-{block.uuid})"
+        )
+        self.assertIn(expected, captured["content"])
+        # No bare URL on its own line — the URL only appears inside the
+        # markdown-link parens above.
+        self.assertNotIn("\n", captured["content"])
+
+    def test_due_date_precedes_title_in_message(self):
+        # The due-date sits between "Reminder:" and the title (joined by
+        # an em-dash) so all reminders start with the same fixed-width
+        # prefix regardless of title length.
+        page = PageFactory(user=self.user, title="Backlog", slug="backlog")
+        scheduled = timezone.now().date() - timedelta(days=1)
+        block = BlockFactory(
+            user=self.user,
+            page=page,
+            content="TODO ship",
+            scheduled_for=scheduled,
+        )
+        Reminder.objects.create(
+            block=block,
+            fire_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        captured: dict = {}
+
+        def _capture(url: str, content: str, **_kwargs):
+            captured["content"] = content
+            return DiscordDeliveryResult(True, "")
+
+        with (
+            self.settings(SITE_URL="https://app.example.com"),
+            patch(
+                "knowledge.commands.send_due_reminders_command.post_webhook", _capture
+            ),
+        ):
+            self._run()
+
+        due_token = f"due {scheduled.isoformat()}"
+        content = captured["content"]
+        self.assertIn(due_token, content)
+        self.assertIn("TODO ship", content)
+        self.assertLess(
+            content.index(due_token),
+            content.index("TODO ship"),
+            "due date should appear before the block title",
         )
 
     def test_omits_page_link_when_site_url_is_placeholder(self):
