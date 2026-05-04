@@ -3138,13 +3138,6 @@ const Page = {
             <!-- Daily Note Header -->
             <div v-if="isDaily" class="daily-note-title current-note page-header-flex">
               <div class="title-left">
-                <input
-                  type="date"
-                  v-model="selectedDate"
-                  @change="onDateChange"
-                  class="date-picker"
-                  title="Navigate to date"
-                />
                 <button
                   type="button"
                   class="page-favorite-toggle"
@@ -3153,6 +3146,13 @@ const Page = {
                   :title="isFavorited ? 'Remove from favorites' : 'Add to favorites'"
                   :aria-pressed="isFavorited"
                 >{{ isFavorited ? '★' : '☆' }}</button>
+                <input
+                  type="date"
+                  v-model="selectedDate"
+                  @change="onDateChange"
+                  class="date-picker"
+                  title="Navigate to date"
+                />
               </div>
               <div class="header-controls">
                 <div class="context-menu-container">
