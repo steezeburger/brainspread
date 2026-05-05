@@ -60,6 +60,7 @@ urlpatterns = [
     path("api/pages/delete/", views.delete_page, name="delete_page"),
     path("api/pages/list/", views.get_pages, name="list_pages"),
     path("api/pages/search/", views.search_pages, name="search_pages"),
+    path("api/blocks/search/", views.search_blocks, name="search_blocks"),
     path("api/page/", views.get_page_with_blocks, name="get_page_with_blocks"),
     path("api/historical/", views.get_historical_data, name="get_historical_data"),
     path("api/graph/", views.get_graph_data, name="get_graph_data"),

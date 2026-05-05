@@ -27,6 +27,7 @@ from knowledge.commands import (
     MoveUndoneTodosCommand,
     ReorderBlocksCommand,
     ScheduleBlockCommand,
+    SearchNotesCommand,
     SearchPagesCommand,
     SetPageFavoritedCommand,
     SharePageCommand,
@@ -58,6 +59,7 @@ from knowledge.forms import (
     MoveUndoneTodosForm,
     ReorderBlocksForm,
     ScheduleBlockForm,
+    SearchNotesForm,
     SearchPagesForm,
     SetPageFavoritedForm,
     SharePageForm,
@@ -1229,6 +1231,38 @@ def search_pages(request):
             "errors": {"non_field_errors": [str(e)]},
         }
         return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def search_blocks(request):
+    """Substring search over block content for the spotlight palette.
+
+    Reuses SearchNotesCommand (same logic the assistant's search_notes
+    tool uses) so block search stays consistent across surfaces.
+    """
+    try:
+        data = request.query_params.copy()
+        data["user"] = request.user.id
+        form = SearchNotesForm(data)
+
+        if form.is_valid():
+            result = SearchNotesCommand(form).execute()
+            return Response({"success": True, "data": result, "errors": None})
+
+        return Response(
+            {"success": False, "data": None, "errors": form.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        return Response(
+            {
+                "success": False,
+                "data": None,
+                "errors": {"non_field_errors": [str(e)]},
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 @api_view(["POST"])

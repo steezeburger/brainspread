@@ -184,6 +184,10 @@ const Page = {
       "brainspread:request-archive",
       this.handleRequestArchive
     );
+    // When a same-page deep link fires (e.g. spotlight block result on
+    // the current page), the URL hash changes without a reload. Listen
+    // so we still scroll the matching block into view.
+    window.addEventListener("hashchange", this.scrollToHashBlock);
     // Load page data
     await this.loadPage();
   },
@@ -212,6 +216,7 @@ const Page = {
       "resume-block-editing",
       this.handleResumeBlockEditing
     );
+    window.removeEventListener("hashchange", this.scrollToHashBlock);
     window.removeEventListener(
       "brainspread:notes-modified",
       this.handleNotesModified

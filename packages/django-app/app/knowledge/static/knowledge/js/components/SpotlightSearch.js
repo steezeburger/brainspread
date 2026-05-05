@@ -150,13 +150,21 @@ window.SpotlightSearch = {
           <div v-else-if="results.length > 0" class="spotlight-results">
             <div
               v-for="(result, index) in results"
-              :key="result.type === 'command' ? result.commandId : result.slug"
+              :key="result.type === 'command' ? result.commandId : (result.type === 'block' ? result.blockUuid : result.slug)"
               class="spotlight-result"
               :class="{ 'selected': index === selectedIndex, 'spotlight-command': result.type === 'command' }"
               @click.stop="handleResultClick(index)"
             >
               <div class="spotlight-result-icon spotlight-command-icon" v-if="result.type === 'command'">
                 {{ result.icon }}
+              </div>
+              <div class="spotlight-result-icon" v-else-if="result.type === 'block'">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <circle cx="3" cy="4.5" r="1" fill="currentColor"/>
+                  <circle cx="3" cy="8" r="1" fill="currentColor"/>
+                  <circle cx="3" cy="11.5" r="1" fill="currentColor"/>
+                  <path d="M6 4.5h8M6 8h8M6 11.5h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
               </div>
               <div class="spotlight-result-icon" v-else-if="result.pageType === 'whiteboard'">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -175,8 +183,10 @@ window.SpotlightSearch = {
                 <div class="spotlight-result-snippet" v-if="result.type === 'command'">{{ result.description }}</div>
                 <div class="spotlight-result-snippet" v-else-if="result.snippet" v-html="highlightQuery(result.snippet, query)"></div>
                 <div class="spotlight-result-path" v-if="result.type === 'page'">{{ result.url }}</div>
+                <div class="spotlight-result-path" v-else-if="result.type === 'block' && result.pageTitle">in {{ result.pageTitle }}</div>
               </div>
               <div class="spotlight-result-type" v-if="result.type === 'command'">command</div>
+              <div class="spotlight-result-type" v-else-if="result.type === 'block'">block</div>
               <div class="spotlight-result-type" v-else-if="result.pageType && result.pageType !== 'page'">{{ result.pageType }}</div>
             </div>
           </div>
