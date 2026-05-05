@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import List, Tuple, TypedDict
+from typing import Dict, List, Tuple, TypedDict
 
 from django.conf import settings
 from django.db import transaction
@@ -8,8 +8,12 @@ from django.utils import timezone
 
 from common.commands.abstract_base_command import AbstractBaseCommand
 from knowledge.forms.send_due_reminders_form import SendDueRemindersForm
-from knowledge.models import Reminder
+from knowledge.models import Reminder, ReminderAction
 from knowledge.services.discord_webhook import post_webhook
+from knowledge.services.reminder_actions import (
+    build_action_url,
+    create_action_tokens,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +84,12 @@ class SendDueRemindersCommand(AbstractBaseCommand):
                     skipped += 1
                     continue
 
+                # Mint the per-action tokens before posting so the
+                # links in the message resolve. Failing to mint tokens
+                # shouldn't block the reminder itself — fall back to a
+                # link-less embed so the user still gets pinged.
+                action_urls = _action_urls_for(reminder, settings.SITE_URL, now)
+
                 content, embeds = _build_payload(
                     reminder,
                     block,
@@ -88,6 +98,7 @@ class SendDueRemindersCommand(AbstractBaseCommand):
                     site_url=settings.SITE_URL,
                     pr_number=pr_number,
                     pr_url=pr_url,
+                    action_urls=action_urls,
                 )
                 url = block.user.discord_webhook_url
                 # Look up post_webhook at call time (not via `self.deliver`)
@@ -136,6 +147,31 @@ _COLOR_STAGING = 0xF59E0B  # amber
 _COLOR_DEFAULT = 0x6B7280  # gray (local / unknown)
 
 
+def _action_urls_for(reminder: Reminder, site_url: str, now) -> Dict[str, str]:
+    """Mint reminder-action tokens and return their absolute URLs.
+
+    Returns `{action: url}`. Skips when SITE_URL isn't a real http(s)
+    URL — without a working absolute base, the embed links would 404 so
+    the reminder is better off without them. Errors are swallowed so a
+    DB hiccup creating tokens doesn't block delivery; we log + carry
+    on. Worst case the user gets a notification with no quick-actions.
+    """
+    if not site_url or not site_url.startswith(("http://", "https://")):
+        return {}
+    try:
+        rows = create_action_tokens(reminder, now=now)
+    except Exception as e:
+        logger.warning(
+            "failed to mint reminder action tokens for %s: %s",
+            reminder.uuid,
+            e,
+        )
+        return {}
+    return {
+        action: build_action_url(site_url, row.token) for action, row in rows.items()
+    }
+
+
 def _build_payload(
     reminder: Reminder,
     block,
@@ -145,6 +181,7 @@ def _build_payload(
     site_url: str = "",
     pr_number: str = "",
     pr_url: str = "",
+    action_urls: Dict[str, str] | None = None,
 ) -> Tuple[str, List[dict]]:
     """Return `(content, [embed])` for the Discord webhook payload.
 
@@ -180,9 +217,19 @@ def _build_payload(
     if reminder.fire_at:
         embed["timestamp"] = reminder.fire_at.isoformat()
 
+    description_lines: List[str] = []
     page_link = _page_link(block, site_url)
     if page_link:
-        embed["description"] = f"[Open block →]({page_link})"
+        description_lines.append(f"[Open block →]({page_link})")
+
+    action_line = _action_links_line(action_urls or {})
+    if action_line:
+        description_lines.append(action_line)
+
+    if description_lines:
+        # Two newlines so Discord renders each link group on its own
+        # line without collapsing the second into a continuation.
+        embed["description"] = "\n\n".join(description_lines)
 
     if block.scheduled_for:
         embed["fields"] = [
@@ -232,6 +279,28 @@ def _author_block(environment: str, pr_number: str, pr_url: str) -> dict:
     if pr_url and pr_url.startswith(("http://", "https://")):
         author["url"] = pr_url
     return author
+
+
+_ACTION_LABELS = [
+    (ReminderAction.ACTION_COMPLETE, "Mark done"),
+    (ReminderAction.ACTION_SNOOZE_1H, "Snooze 1h"),
+    (ReminderAction.ACTION_SNOOZE_1D, "Snooze 1d"),
+]
+
+
+def _action_links_line(action_urls: Dict[str, str]) -> str:
+    """Render the inline action-link row, e.g.
+    `[Mark done](u1) · [Snooze 1h](u2) · [Snooze 1d](u3)`.
+
+    Returns "" when no urls are supplied — the embed is then rendered
+    without a quick-action row, same as before this feature.
+    """
+    parts: List[str] = []
+    for action, label in _ACTION_LABELS:
+        url = action_urls.get(action)
+        if url:
+            parts.append(f"[{label}]({url})")
+    return " · ".join(parts)
 
 
 def _page_link(block, site_url: str) -> str:

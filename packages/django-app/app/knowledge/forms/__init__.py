@@ -6,6 +6,7 @@ from .bulk_schedule_form import BulkScheduleForm
 from .bulk_set_block_type_form import BulkSetBlockTypeForm
 from .bulk_snooze_form import BulkSnoozeForm
 from .cancel_reminder_form import CancelReminderForm
+from .consume_reminder_action_form import ConsumeReminderActionForm
 from .create_block_form import CreateBlockForm
 from .create_blocks_bulk_form import CreateBlocksBulkForm
 from .create_page_form import CreatePageForm

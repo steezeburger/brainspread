@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Block, Page, Reminder
+from .models import Block, Page, Reminder, ReminderAction
 
 
 @admin.register(Page)
@@ -157,3 +157,20 @@ class ReminderAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+
+@admin.register(ReminderAction)
+class ReminderActionAdmin(admin.ModelAdmin):
+    list_display = (
+        "short_uuid",
+        "reminder",
+        "action",
+        "used_at",
+        "expires_at",
+        "created_at",
+    )
+    list_filter = ("action", "created_at")
+    search_fields = ("token", "reminder__block__user__email")
+    readonly_fields = ("id", "uuid", "token", "created_at", "modified_at")
+    raw_id_fields = ("reminder",)
+    ordering = ("-created_at",)

@@ -20,6 +20,14 @@ urlpatterns = [
         views.public_asset,
         name="public_asset",
     ),
+    # Reminder action callback (no auth) — followed from a Discord
+    # notification's "Mark done" / "Snooze" links. The token is the
+    # only credential needed; see ConsumeReminderActionCommand.
+    path(
+        "r/<str:token>/",
+        views.reminder_action,
+        name="reminder_action",
+    ),
     # Block-centric API endpoints
     path("api/blocks/", views.create_block, name="create_block"),
     path("api/blocks/update/", views.update_block, name="update_block"),
