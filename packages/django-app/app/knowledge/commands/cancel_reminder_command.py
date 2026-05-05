@@ -21,9 +21,7 @@ class CancelReminderCommand(AbstractBaseCommand):
 
         block: Block = self.form.cleaned_data["block"]
 
-        pending: Reminder | None = block.reminders.filter(
-            sent_at__isnull=True, status=Reminder.STATUS_PENDING
-        ).first()
+        pending: Reminder | None = block.get_pending_reminder()
         if pending is None:
             return {"error": "block has no pending reminder to cancel"}
 

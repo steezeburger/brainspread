@@ -405,6 +405,193 @@ class CreateBlocksBulkTests(TestCase):
         self.assertIn("error", result)
 
 
+class BulkClearScheduleTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory(email="bulk-clear@example.com", timezone="UTC")
+        cls.page = PageFactory(user=cls.user, title="Inbox")
+        cls.b_with_reminder = BlockFactory(
+            user=cls.user,
+            page=cls.page,
+            block_type="todo",
+            scheduled_for=date(2025, 6, 1),
+        )
+        cls.b_date_only = BlockFactory(
+            user=cls.user,
+            page=cls.page,
+            block_type="todo",
+            scheduled_for=date(2025, 6, 5),
+        )
+        cls.b_unscheduled = BlockFactory(
+            user=cls.user, page=cls.page, block_type="todo"
+        )
+
+    def setUp(self):
+        # Reminder per-test so a prior test cancelling doesn't carry over.
+        self.reminder = Reminder.objects.create(
+            block=self.b_with_reminder,
+            fire_at=_utc(datetime(2025, 6, 1, 9, 0)),
+            channel=Reminder.CHANNEL_DISCORD_WEBHOOK,
+        )
+
+    def test_clears_dates_and_pending_reminders(self):
+        ex = _writable(self.user)
+        result = ex.execute(
+            "bulk_clear_schedule",
+            {
+                "block_uuids": [
+                    str(self.b_with_reminder.uuid),
+                    str(self.b_date_only.uuid),
+                ]
+            },
+        )
+
+        self.assertEqual(result["cleared_count"], 2)
+        self.b_with_reminder.refresh_from_db()
+        self.b_date_only.refresh_from_db()
+        self.assertIsNone(self.b_with_reminder.scheduled_for)
+        self.assertIsNone(self.b_date_only.scheduled_for)
+        # ScheduleBlockCommand deletes pending reminders on a clear.
+        self.assertFalse(
+            self.b_with_reminder.reminders.filter(sent_at__isnull=True).exists()
+        )
+
+    def test_skips_blocks_with_nothing_to_clear(self):
+        ex = _writable(self.user)
+        result = ex.execute(
+            "bulk_clear_schedule",
+            {"block_uuids": [str(self.b_unscheduled.uuid)]},
+        )
+        self.assertEqual(result["cleared_count"], 0)
+        self.assertEqual(len(result["skipped"]), 1)
+        self.assertEqual(result["skipped"][0]["reason"], "nothing to clear")
+
+
+class BulkCancelRemindersTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory(email="bulk-cancel@example.com", timezone="UTC")
+        cls.page = PageFactory(user=cls.user, title="Inbox")
+        cls.b1 = BlockFactory(
+            user=cls.user,
+            page=cls.page,
+            block_type="todo",
+            scheduled_for=date(2025, 6, 1),
+        )
+        cls.b2 = BlockFactory(
+            user=cls.user,
+            page=cls.page,
+            block_type="todo",
+            scheduled_for=date(2025, 6, 1),
+        )
+        cls.b_no_reminder = BlockFactory(
+            user=cls.user,
+            page=cls.page,
+            block_type="todo",
+            scheduled_for=date(2025, 6, 1),
+        )
+
+    def setUp(self):
+        self.r1 = Reminder.objects.create(
+            block=self.b1,
+            fire_at=_utc(datetime(2025, 6, 1, 9, 0)),
+            channel=Reminder.CHANNEL_DISCORD_WEBHOOK,
+        )
+        self.r2 = Reminder.objects.create(
+            block=self.b2,
+            fire_at=_utc(datetime(2025, 6, 1, 10, 0)),
+            channel=Reminder.CHANNEL_DISCORD_WEBHOOK,
+        )
+
+    def test_cancels_pending_reminders_and_keeps_dates(self):
+        ex = _writable(self.user)
+        result = ex.execute(
+            "bulk_cancel_reminders",
+            {
+                "block_uuids": [
+                    str(self.b1.uuid),
+                    str(self.b2.uuid),
+                    str(self.b_no_reminder.uuid),
+                ]
+            },
+        )
+
+        self.assertEqual(result["cancelled_count"], 2)
+        self.assertEqual(result["no_reminder"], [str(self.b_no_reminder.uuid)])
+        self.r1.refresh_from_db()
+        self.r2.refresh_from_db()
+        self.assertEqual(self.r1.status, Reminder.STATUS_CANCELLED)
+        self.assertEqual(self.r2.status, Reminder.STATUS_CANCELLED)
+        # Dates untouched.
+        self.b1.refresh_from_db()
+        self.assertEqual(self.b1.scheduled_for, date(2025, 6, 1))
+
+
+class BulkSnoozeTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory(email="bulk-snooze@example.com", timezone="UTC")
+        cls.page = PageFactory(user=cls.user, title="Inbox")
+        cls.b1 = BlockFactory(
+            user=cls.user,
+            page=cls.page,
+            block_type="todo",
+            scheduled_for=date(2025, 6, 1),
+        )
+        cls.b2 = BlockFactory(
+            user=cls.user,
+            page=cls.page,
+            block_type="todo",
+            scheduled_for=date(2025, 6, 5),
+        )
+        cls.b_floating = BlockFactory(user=cls.user, page=cls.page, block_type="todo")
+
+    def setUp(self):
+        self.r1 = Reminder.objects.create(
+            block=self.b1,
+            fire_at=_utc(datetime(2025, 6, 1, 9, 0)),
+            channel=Reminder.CHANNEL_DISCORD_WEBHOOK,
+        )
+
+    def test_shifts_dates_and_reminder_per_block(self):
+        ex = _writable(self.user)
+        result = ex.execute(
+            "bulk_snooze",
+            {
+                "block_uuids": [str(self.b1.uuid), str(self.b2.uuid)],
+                "days": 2,
+                "hours": 3,
+            },
+        )
+
+        self.assertEqual(result["snoozed_count"], 2)
+        self.b1.refresh_from_db()
+        self.b2.refresh_from_db()
+        self.r1.refresh_from_db()
+        # Dates shifted by 2 days.
+        self.assertEqual(self.b1.scheduled_for, date(2025, 6, 3))
+        self.assertEqual(self.b2.scheduled_for, date(2025, 6, 7))
+        # Reminder shifted by 2 days + 3 hours.
+        self.assertEqual(self.r1.fire_at, _utc(datetime(2025, 6, 3, 12, 0)))
+
+    def test_reports_blocks_with_nothing_to_snooze(self):
+        ex = _writable(self.user)
+        result = ex.execute(
+            "bulk_snooze",
+            {"block_uuids": [str(self.b_floating.uuid)], "days": 1},
+        )
+        self.assertEqual(result["snoozed_count"], 0)
+        self.assertEqual(result["nothing_to_snooze"], [str(self.b_floating.uuid)])
+
+    def test_rejects_zero_delta(self):
+        ex = _writable(self.user)
+        result = ex.execute(
+            "bulk_snooze",
+            {"block_uuids": [str(self.b1.uuid)], "days": 0, "hours": 0},
+        )
+        self.assertIn("error", result)
+
+
 class GetCurrentPageTests(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -454,6 +641,9 @@ class NewToolRegistrationTests(TestCase):
             "untag_blocks",
             "bulk_reschedule",
             "create_blocks_bulk",
+            "bulk_clear_schedule",
+            "bulk_cancel_reminders",
+            "bulk_snooze",
         ):
             self.assertTrue(ex.is_known(name), name)
             self.assertTrue(ex.requires_approval(name), name)
@@ -470,6 +660,9 @@ class NewToolRegistrationTests(TestCase):
         for name in (
             "snooze_block",
             "cancel_reminder",
+            "bulk_clear_schedule",
+            "bulk_cancel_reminders",
+            "bulk_snooze",
             "bulk_set_block_type",
             "tag_blocks",
             "untag_blocks",

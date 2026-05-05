@@ -27,9 +27,7 @@ class SnoozeBlockCommand(AbstractBaseCommand):
         days: int = self.form.cleaned_data["days"]
         hours: int = self.form.cleaned_data["hours"]
 
-        pending: Reminder | None = block.reminders.filter(
-            sent_at__isnull=True, status=Reminder.STATUS_PENDING
-        ).first()
+        pending: Reminder | None = block.get_pending_reminder()
 
         if block.scheduled_for is None and pending is None:
             return {"error": "block has no schedule to snooze"}

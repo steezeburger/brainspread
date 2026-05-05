@@ -23,8 +23,13 @@ from django.utils import timezone
 from core.commands.get_current_time_command import GetCurrentTimeCommand
 from core.forms import GetCurrentTimeForm
 from core.models import User
+from knowledge.commands.bulk_cancel_reminders_command import (
+    BulkCancelRemindersCommand,
+)
+from knowledge.commands.bulk_clear_schedule_command import BulkClearScheduleCommand
 from knowledge.commands.bulk_reschedule_command import BulkRescheduleCommand
 from knowledge.commands.bulk_set_block_type_command import BulkSetBlockTypeCommand
+from knowledge.commands.bulk_snooze_command import BulkSnoozeCommand
 from knowledge.commands.cancel_reminder_command import CancelReminderCommand
 from knowledge.commands.create_block_command import CreateBlockCommand
 from knowledge.commands.create_blocks_bulk_command import CreateBlocksBulkCommand
@@ -50,8 +55,11 @@ from knowledge.commands.set_block_type_command import SetBlockTypeCommand
 from knowledge.commands.snooze_block_command import SnoozeBlockCommand
 from knowledge.commands.tag_blocks_command import TagBlocksCommand, UntagBlocksCommand
 from knowledge.commands.update_block_command import UpdateBlockCommand
+from knowledge.forms.bulk_cancel_reminders_form import BulkCancelRemindersForm
+from knowledge.forms.bulk_clear_schedule_form import BulkClearScheduleForm
 from knowledge.forms.bulk_reschedule_form import BulkRescheduleForm
 from knowledge.forms.bulk_set_block_type_form import BulkSetBlockTypeForm
+from knowledge.forms.bulk_snooze_form import BulkSnoozeForm
 from knowledge.forms.cancel_reminder_form import CancelReminderForm
 from knowledge.forms.create_block_form import CreateBlockForm
 from knowledge.forms.create_blocks_bulk_form import CreateBlocksBulkForm
@@ -179,6 +187,12 @@ class NotesToolExecutor:
                 return self._bulk_reschedule(args)
             if name == "create_blocks_bulk":
                 return self._create_blocks_bulk(args)
+            if name == "bulk_clear_schedule":
+                return self._bulk_clear_schedule(args)
+            if name == "bulk_cancel_reminders":
+                return self._bulk_cancel_reminders(args)
+            if name == "bulk_snooze":
+                return self._bulk_snooze(args)
             return {"error": f"Unknown tool: {name}"}
         except Exception as e:
             logger.exception("Notes tool %s failed", name)
@@ -848,6 +862,42 @@ class NotesToolExecutor:
         if not form.is_valid():
             return {"error": _first_form_error(form)}
         return CreateBlocksBulkCommand(form).execute()
+
+    def _bulk_clear_schedule(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form = BulkClearScheduleForm(
+            {
+                "user": self.user.id,
+                "block_uuids": args.get("block_uuids") or [],
+            }
+        )
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return BulkClearScheduleCommand(form).execute()
+
+    def _bulk_cancel_reminders(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form = BulkCancelRemindersForm(
+            {
+                "user": self.user.id,
+                "block_uuids": args.get("block_uuids") or [],
+            }
+        )
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return BulkCancelRemindersCommand(form).execute()
+
+    def _bulk_snooze(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form_data: Dict[str, Any] = {
+            "user": self.user.id,
+            "block_uuids": args.get("block_uuids") or [],
+        }
+        if args.get("days") is not None:
+            form_data["days"] = args["days"]
+        if args.get("hours") is not None:
+            form_data["hours"] = args["hours"]
+        form = BulkSnoozeForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return BulkSnoozeCommand(form).execute()
 
 
 _RELATIVE_OFFSET_RE = re.compile(r"^([+-])(\d+)([dw])$")

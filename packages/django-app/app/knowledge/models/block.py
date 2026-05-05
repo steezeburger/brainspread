@@ -298,6 +298,17 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
     def _pending_reminder_local_date(self) -> Optional[str]:
         return self._pending_reminder_local()[0]
 
+    def get_pending_reminder(self):
+        """Return this block's pending reminder, if any.
+
+        At most one pending reminder exists per block at any time —
+        ScheduleBlockCommand replaces the previous one on save. Used by
+        snooze / cancel / pending-time-display flows that all need the
+        single live reminder for a block. Filters by sent_at IS NULL,
+        matching `_pending_reminder_local` — once a reminder fires (or
+        is cancelled / skipped) sent_at gets set."""
+        return self.reminders.filter(sent_at__isnull=True).first()
+
     def as_summary(self) -> "BlockSummaryData":
         """Compact summary for list-shaped tool results (overdue list,
         scheduled list, etc). Smaller than to_dict() — drops media,

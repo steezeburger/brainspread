@@ -816,6 +816,94 @@ NOTES_WRITE_TOOLS: List[Dict[str, Any]] = [
             "required": ["blocks"],
         },
     },
+    {
+        "name": "bulk_clear_schedule",
+        "description": (
+            "Drop scheduled_for AND any pending reminder on many blocks"
+            " at once. Same effect as calling clear_schedule on each"
+            " block, but one approval covers the whole batch. Blocks"
+            " that don't currently have a schedule or reminder are"
+            " reported in `skipped` (not failures). Every call pauses"
+            " for explicit user approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "UUIDs of the blocks to unschedule.",
+                },
+            },
+            "required": ["block_uuids"],
+        },
+    },
+    {
+        "name": "bulk_cancel_reminders",
+        "description": (
+            "Cancel pending reminders on many blocks at once (e.g."
+            " 'cancel all reminders on this page'). Each block has at"
+            " most one pending reminder; blocks with none are reported"
+            " in `no_reminder` (not failures). Schedules are untouched"
+            " — to also drop scheduled_for use bulk_clear_schedule."
+            " Every call pauses for explicit user approval before"
+            " execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "UUIDs of the blocks whose pending reminders" " to cancel."
+                    ),
+                },
+            },
+            "required": ["block_uuids"],
+        },
+    },
+    {
+        "name": "bulk_snooze",
+        "description": (
+            "Push N blocks' schedules and pending reminders forward by"
+            " the same delta (e.g. 'snooze all reminders on this page"
+            " by 2 hours' / 'push these three to tomorrow'). Date side"
+            " shifts only by `days`; reminder time shifts by the full"
+            " days+hours delta. At least one of `days` / `hours` must"
+            " be non-zero. Blocks with nothing to snooze (no schedule"
+            " AND no pending reminder) are reported in"
+            " `nothing_to_snooze`. Every call pauses for explicit user"
+            " approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "UUIDs of the blocks to snooze.",
+                },
+                "days": {
+                    "type": "integer",
+                    "description": "Days to push forward (negative pulls back).",
+                    "minimum": -365,
+                    "maximum": 365,
+                },
+                "hours": {
+                    "type": "integer",
+                    "description": (
+                        "Hours to push reminder fire_at forward."
+                        " Ignored for date-only schedules. Negative"
+                        " pulls back."
+                    ),
+                    "minimum": -72,
+                    "maximum": 72,
+                },
+            },
+            "required": ["block_uuids"],
+        },
+    },
 ]
 
 # Back-compat alias — the read-only set used to be called NOTES_TOOLS.
