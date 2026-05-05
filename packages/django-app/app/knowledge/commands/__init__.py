@@ -2,7 +2,7 @@ from .bulk_cancel_reminders_command import BulkCancelRemindersCommand
 from .bulk_clear_schedule_command import BulkClearScheduleCommand
 from .bulk_delete_blocks_command import BulkDeleteBlocksCommand
 from .bulk_move_blocks_command import BulkMoveBlocksCommand
-from .bulk_reschedule_command import BulkRescheduleCommand
+from .bulk_schedule_command import BulkScheduleCommand
 from .bulk_set_block_type_command import BulkSetBlockTypeCommand
 from .bulk_snooze_command import BulkSnoozeCommand
 from .cancel_reminder_command import CancelReminderCommand

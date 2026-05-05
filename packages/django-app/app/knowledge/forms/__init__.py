@@ -2,7 +2,7 @@ from .bulk_cancel_reminders_form import BulkCancelRemindersForm
 from .bulk_clear_schedule_form import BulkClearScheduleForm
 from .bulk_delete_blocks_form import BulkDeleteBlocksForm
 from .bulk_move_blocks_form import BulkMoveBlocksForm
-from .bulk_reschedule_form import BulkRescheduleForm
+from .bulk_schedule_form import BulkScheduleForm
 from .bulk_set_block_type_form import BulkSetBlockTypeForm
 from .bulk_snooze_form import BulkSnoozeForm
 from .cancel_reminder_form import CancelReminderForm

@@ -3,7 +3,7 @@ current-page-and-bulk branch:
 
 - snooze_block, cancel_reminder
 - bulk_set_block_type, tag_blocks, untag_blocks
-- bulk_reschedule, create_blocks_bulk
+- bulk_schedule, create_blocks_bulk
 - get_current_page (read, but new and routes through
   NotesToolExecutor.current_page_uuid)
 """
@@ -284,7 +284,7 @@ class TagBlocksTests(TestCase):
         )
 
 
-class BulkRescheduleTests(TestCase):
+class BulkScheduleTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.user = UserFactory(email="bulk-resched@example.com", timezone="UTC")
@@ -310,7 +310,7 @@ class BulkRescheduleTests(TestCase):
         )
         ex = _writable(self.user)
         result = ex.execute(
-            "bulk_reschedule",
+            "bulk_schedule",
             {
                 "block_uuids": [str(self.b1.uuid), str(self.b2.uuid)],
                 "new_date": "2025-06-10",
@@ -330,10 +330,61 @@ class BulkRescheduleTests(TestCase):
     def test_accepts_relative_date_token(self):
         ex = _writable(self.user)
         result = ex.execute(
-            "bulk_reschedule",
+            "bulk_schedule",
             {"block_uuids": [str(self.b1.uuid)], "new_date": "+7d"},
         )
         self.assertEqual(result["updated_count"], 1)
+        self.assertFalse(result["reminder_set"])
+
+    def test_reminder_time_creates_reminders_on_each_block(self):
+        # b1 has no prior reminder; b2 has one — both should end up
+        # with a single 09:00 reminder on 2025-06-10.
+        Reminder.objects.create(
+            block=self.b2,
+            fire_at=_utc(datetime(2025, 6, 5, 14, 0)),
+            channel=Reminder.CHANNEL_DISCORD_WEBHOOK,
+        )
+
+        ex = _writable(self.user)
+        result = ex.execute(
+            "bulk_schedule",
+            {
+                "block_uuids": [str(self.b1.uuid), str(self.b2.uuid)],
+                "new_date": "2025-06-10",
+                "reminder_time": "09:00",
+            },
+        )
+
+        self.assertEqual(result["updated_count"], 2)
+        self.assertTrue(result["reminder_set"])
+        self.assertEqual(result["reminder_time"], "09:00")
+        self.assertEqual(result["reminder_date"], "2025-06-10")
+
+        # Each block should have exactly one pending reminder at 09:00 UTC.
+        for block in (self.b1, self.b2):
+            block.refresh_from_db()
+            self.assertEqual(block.scheduled_for, date(2025, 6, 10))
+            pendings = list(block.reminders.filter(sent_at__isnull=True))
+            self.assertEqual(len(pendings), 1)
+            self.assertEqual(pendings[0].fire_at, _utc(datetime(2025, 6, 10, 9, 0)))
+
+    def test_reminder_date_overrides_default(self):
+        ex = _writable(self.user)
+        result = ex.execute(
+            "bulk_schedule",
+            {
+                "block_uuids": [str(self.b1.uuid)],
+                "new_date": "2025-06-10",
+                "reminder_date": "2025-06-09",  # remind day before
+                "reminder_time": "17:30",
+            },
+        )
+
+        self.assertEqual(result["updated_count"], 1)
+        self.b1.refresh_from_db()
+        self.assertEqual(self.b1.scheduled_for, date(2025, 6, 10))
+        reminder = self.b1.reminders.get(sent_at__isnull=True)
+        self.assertEqual(reminder.fire_at, _utc(datetime(2025, 6, 9, 17, 30)))
 
 
 class CreateBlocksBulkTests(TestCase):
@@ -639,7 +690,7 @@ class NewToolRegistrationTests(TestCase):
             "bulk_set_block_type",
             "tag_blocks",
             "untag_blocks",
-            "bulk_reschedule",
+            "bulk_schedule",
             "create_blocks_bulk",
             "bulk_clear_schedule",
             "bulk_cancel_reminders",
@@ -666,7 +717,7 @@ class NewToolRegistrationTests(TestCase):
             "bulk_set_block_type",
             "tag_blocks",
             "untag_blocks",
-            "bulk_reschedule",
+            "bulk_schedule",
             "create_blocks_bulk",
             "get_current_page",
         ):

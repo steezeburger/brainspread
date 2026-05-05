@@ -27,7 +27,7 @@ from knowledge.commands.bulk_cancel_reminders_command import (
     BulkCancelRemindersCommand,
 )
 from knowledge.commands.bulk_clear_schedule_command import BulkClearScheduleCommand
-from knowledge.commands.bulk_reschedule_command import BulkRescheduleCommand
+from knowledge.commands.bulk_schedule_command import BulkScheduleCommand
 from knowledge.commands.bulk_set_block_type_command import BulkSetBlockTypeCommand
 from knowledge.commands.bulk_snooze_command import BulkSnoozeCommand
 from knowledge.commands.cancel_reminder_command import CancelReminderCommand
@@ -57,7 +57,7 @@ from knowledge.commands.tag_blocks_command import TagBlocksCommand, UntagBlocksC
 from knowledge.commands.update_block_command import UpdateBlockCommand
 from knowledge.forms.bulk_cancel_reminders_form import BulkCancelRemindersForm
 from knowledge.forms.bulk_clear_schedule_form import BulkClearScheduleForm
-from knowledge.forms.bulk_reschedule_form import BulkRescheduleForm
+from knowledge.forms.bulk_schedule_form import BulkScheduleForm
 from knowledge.forms.bulk_set_block_type_form import BulkSetBlockTypeForm
 from knowledge.forms.bulk_snooze_form import BulkSnoozeForm
 from knowledge.forms.cancel_reminder_form import CancelReminderForm
@@ -183,8 +183,8 @@ class NotesToolExecutor:
                 return self._tag_blocks(args)
             if name == "untag_blocks":
                 return self._untag_blocks(args)
-            if name == "bulk_reschedule":
-                return self._bulk_reschedule(args)
+            if name == "bulk_schedule":
+                return self._bulk_schedule(args)
             if name == "create_blocks_bulk":
                 return self._create_blocks_bulk(args)
             if name == "bulk_clear_schedule":
@@ -827,7 +827,7 @@ class NotesToolExecutor:
             return {"error": _first_form_error(form)}
         return UntagBlocksCommand(form).execute()
 
-    def _bulk_reschedule(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    def _bulk_schedule(self, args: Dict[str, Any]) -> Dict[str, Any]:
         today = self.user.today()
         try:
             new_date = _parse_relative_date(args.get("new_date"), today)
@@ -836,16 +836,38 @@ class NotesToolExecutor:
         if new_date is None:
             return {"error": "new_date is required"}
 
-        form = BulkRescheduleForm(
-            {
-                "user": self.user.id,
-                "block_uuids": args.get("block_uuids") or [],
-                "new_date": new_date.isoformat(),
-            }
-        )
+        try:
+            reminder_date = _parse_relative_date(args.get("reminder_date"), today)
+        except ValueError as e:
+            return {"error": f"reminder_date: {e}"}
+
+        # `+Nm` / `+Nh` offsets resolve relative to NOW, so they're
+        # computed once for the whole batch — not per-block. The
+        # offset can also override reminder_date when it crosses
+        # midnight (matches single schedule_block).
+        try:
+            resolved_date, resolved_time = _resolve_reminder_time(
+                args.get("reminder_time"), self.user
+            )
+        except ValueError as e:
+            return {"error": f"reminder_time: {e}"}
+        if resolved_date is not None:
+            reminder_date = resolved_date
+
+        form_data: Dict[str, Any] = {
+            "user": self.user.id,
+            "block_uuids": args.get("block_uuids") or [],
+            "new_date": new_date.isoformat(),
+        }
+        if reminder_date is not None:
+            form_data["reminder_date"] = reminder_date.isoformat()
+        if resolved_time:
+            form_data["reminder_time"] = resolved_time
+
+        form = BulkScheduleForm(form_data)
         if not form.is_valid():
             return {"error": _first_form_error(form)}
-        return BulkRescheduleCommand(form).execute()
+        return BulkScheduleCommand(form).execute()
 
     def _create_blocks_bulk(self, args: Dict[str, Any]) -> Dict[str, Any]:
         form_data: Dict[str, Any] = {

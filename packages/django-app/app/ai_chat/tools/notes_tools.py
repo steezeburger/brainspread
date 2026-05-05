@@ -741,12 +741,19 @@ NOTES_WRITE_TOOLS: List[Dict[str, Any]] = [
         },
     },
     {
-        "name": "bulk_reschedule",
+        "name": "bulk_schedule",
         "description": (
-            "Move many scheduled blocks to the same new date. Pending"
-            " reminders shift by each block's per-block delta so the"
-            " reminder time-of-day is preserved. Date accepts ISO"
-            " YYYY-MM-DD or 'today' / 'tomorrow' / '+Nd'. Every call"
+            "Set the same scheduled_for on many blocks, optionally"
+            " creating / replacing a pending reminder on each. Two"
+            " modes: (a) `reminder_time` omitted — dates move; existing"
+            " pending reminders shift by each block's per-block delta"
+            " so reminder time-of-day is preserved, and previously-"
+            "unscheduled blocks just get the new date with no reminder."
+            " (b) `reminder_time` supplied — every block gets the same"
+            " reminder, replacing any prior pending reminder. Date /"
+            " reminder_date accept ISO YYYY-MM-DD or 'today' /"
+            " 'tomorrow' / '+Nd'. reminder_time accepts HH:MM (24h,"
+            " user's tz) or '+Nm' / '+Nh' offsets from now. Every call"
             " pauses for explicit user approval before execution."
         ),
         "input_schema": {
@@ -755,13 +762,34 @@ NOTES_WRITE_TOOLS: List[Dict[str, Any]] = [
                 "block_uuids": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "UUIDs of the blocks to reschedule.",
+                    "description": "UUIDs of the blocks to schedule.",
                 },
                 "new_date": {
                     "type": "string",
                     "description": (
                         "Target date. ISO YYYY-MM-DD, or 'today' /"
                         " 'tomorrow' / 'yesterday' / '+Nd' / '-Nd'."
+                    ),
+                },
+                "reminder_date": {
+                    "type": "string",
+                    "description": (
+                        "Optional date the reminder fires on. Same"
+                        " format as new_date. Defaults to new_date when"
+                        " reminder_time is set but reminder_date isn't."
+                        " Only meaningful when reminder_time is set."
+                    ),
+                },
+                "reminder_time": {
+                    "type": "string",
+                    "description": (
+                        "Optional reminder time-of-day. HH:MM (24h, in"
+                        " the user's timezone), or a relative offset"
+                        " from now ('+Nm' / '+Nh') — relative offsets"
+                        " override reminder_date if they cross"
+                        " midnight. Required to actually create a"
+                        " reminder; without it the block is scheduled"
+                        " but no reminder fires."
                     ),
                 },
             },
