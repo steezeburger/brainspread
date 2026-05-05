@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Iterator, List
+from typing import Any, Dict, Iterator, List, Optional
 
 from ai_chat.services.ai_service_factory import AIServiceFactory, AIServiceFactoryError
 from ai_chat.services.base_ai_service import AIServiceError, AIUsage
@@ -51,6 +51,7 @@ class StreamSendMessageCommand(AbstractBaseCommand):
         enable_notes_write_tools: bool,
         auto_approve_notes_writes: bool,
         enable_web_search: bool,
+        current_page_uuid: Optional[str] = None,
     ) -> PendingToolApproval:
         try:
             return PendingToolApproval.objects.create(
@@ -72,6 +73,7 @@ class StreamSendMessageCommand(AbstractBaseCommand):
                 enable_notes_write_tools=enable_notes_write_tools,
                 auto_approve_notes_writes=auto_approve_notes_writes,
                 enable_web_search=enable_web_search,
+                current_page_uuid=current_page_uuid or "",
             )
         except Exception as e:
             raise PendingApprovalPersistError(str(e)) from e
@@ -120,6 +122,9 @@ class StreamSendMessageCommand(AbstractBaseCommand):
             )
             enable_web_search = self.form.cleaned_data.get("enable_web_search", True)
             response_format = self.form.cleaned_data.get("response_format")
+            current_page_uuid = (
+                self.form.cleaned_data.get("current_page_uuid") or ""
+            ).strip() or None
             tools, tool_executor = SendMessageCommand._build_tools(
                 provider_name,
                 user,
@@ -127,6 +132,7 @@ class StreamSendMessageCommand(AbstractBaseCommand):
                 enable_web_search,
                 enable_notes_write_tools=enable_notes_write_tools,
                 auto_approve_notes_writes=auto_approve_notes_writes,
+                current_page_uuid=current_page_uuid,
             )
 
             yield {
@@ -193,6 +199,7 @@ class StreamSendMessageCommand(AbstractBaseCommand):
                     enable_notes_write_tools=bool(enable_notes_write_tools),
                     auto_approve_notes_writes=bool(auto_approve_notes_writes),
                     enable_web_search=bool(enable_web_search),
+                    current_page_uuid=current_page_uuid,
                 )
                 yield {
                     "type": "approval_required",

@@ -86,12 +86,16 @@ class SendMessageCommand(AbstractBaseCommand):
             )
             enable_web_search = self.form.cleaned_data.get("enable_web_search", True)
             response_format = self.form.cleaned_data.get("response_format")
+            current_page_uuid = (
+                self.form.cleaned_data.get("current_page_uuid") or ""
+            ).strip() or None
             tools, tool_executor = SendMessageCommand._build_tools(
                 provider_name,
                 user,
                 enable_notes_tools,
                 enable_web_search,
                 enable_notes_write_tools=enable_notes_write_tools,
+                current_page_uuid=current_page_uuid,
                 auto_approve_notes_writes=auto_approve_notes_writes,
             )
 
@@ -342,6 +346,7 @@ class SendMessageCommand(AbstractBaseCommand):
         enable_web_search: bool = True,
         enable_notes_write_tools: bool = False,
         auto_approve_notes_writes: bool = False,
+        current_page_uuid: Optional[str] = None,
     ):
         """Combine provider-native web search with optional notes tools.
 
@@ -368,6 +373,7 @@ class SendMessageCommand(AbstractBaseCommand):
                     auto_approve_writes=(
                         enable_notes_write_tools and auto_approve_notes_writes
                     ),
+                    current_page_uuid=current_page_uuid,
                 )
             elif provider_name == "openai":
                 # OpenAI's Responses API is only invoked when tools are present;

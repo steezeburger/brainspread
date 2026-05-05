@@ -225,6 +225,21 @@ NOTES_READ_TOOLS: List[Dict[str, Any]] = [
         },
     },
     {
+        "name": "get_current_page",
+        "description": (
+            "Return the page the user is currently viewing in the UI"
+            " (if any), with its title, uuid, and root blocks. Useful"
+            " when the user says 'this page' or 'add this to the"
+            " current page' — call this first to resolve which page"
+            " they mean. Returns an error when the user isn't on a"
+            " page (e.g. on a list view)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
         "name": "find_stale_todos",
         "description": (
             "List the user's open TODO blocks that are older than"
@@ -581,6 +596,221 @@ NOTES_WRITE_TOOLS: List[Dict[str, Any]] = [
                 },
             },
             "required": ["block_uuid"],
+        },
+    },
+    {
+        "name": "snooze_block",
+        "description": (
+            "Push a single block's schedule (and any pending reminder)"
+            " forward by `days` and/or `hours`. The date moves only by"
+            " whole days; the reminder time-of-day shifts by the full"
+            " days+hours delta. At least one of `days` / `hours` must"
+            " be non-zero. Refuses if the block has nothing to snooze"
+            " (no scheduled_for AND no pending reminder). Every call"
+            " pauses for explicit user approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuid": {
+                    "type": "string",
+                    "description": "UUID of the block to snooze.",
+                },
+                "days": {
+                    "type": "integer",
+                    "description": "Days to push forward (negative pulls back).",
+                    "minimum": -365,
+                    "maximum": 365,
+                },
+                "hours": {
+                    "type": "integer",
+                    "description": (
+                        "Hours to push the reminder fire_at forward."
+                        " Ignored for the date-only schedule. Negative"
+                        " pulls back."
+                    ),
+                    "minimum": -72,
+                    "maximum": 72,
+                },
+            },
+            "required": ["block_uuid"],
+        },
+    },
+    {
+        "name": "cancel_reminder",
+        "description": (
+            "Cancel a pending reminder without clearing the block's"
+            " due date. Refuses to touch reminders that have already"
+            " fired (sent / failed / skipped / cancelled). Use"
+            " list_pending_reminders first if you need the uuid."
+            " Every call pauses for explicit user approval before"
+            " execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "reminder_uuid": {
+                    "type": "string",
+                    "description": "UUID of the reminder to cancel.",
+                },
+            },
+            "required": ["reminder_uuid"],
+        },
+    },
+    {
+        "name": "bulk_set_block_type",
+        "description": (
+            "Change the type of many blocks at once (e.g. flip a batch"
+            " of stale TODOs to wontdo). Each block's content prefix"
+            " (TODO -> DONE, etc) and completed_at are maintained"
+            " consistently with set_block_type. Failures (missing"
+            " blocks) are reported per-uuid; successes still apply."
+            " Every call pauses for explicit user approval before"
+            " execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "UUIDs of the blocks to update.",
+                },
+                "new_type": {
+                    "type": "string",
+                    "description": (
+                        "Target block_type. Allowed: bullet, todo, doing,"
+                        " done, later, wontdo, heading, quote, code, divider."
+                    ),
+                },
+            },
+            "required": ["block_uuids", "new_type"],
+        },
+    },
+    {
+        "name": "tag_blocks",
+        "description": (
+            "Add page tags to many blocks at once (M2M Block.pages)."
+            " Idempotent. Both the blocks and the pages must belong to"
+            " the user; missing items are reported and skipped. Every"
+            " call pauses for explicit user approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "UUIDs of the blocks to tag.",
+                },
+                "page_uuids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "UUIDs of the pages to tag onto each block.",
+                },
+            },
+            "required": ["block_uuids", "page_uuids"],
+        },
+    },
+    {
+        "name": "untag_blocks",
+        "description": (
+            "Remove page tags from many blocks at once (M2M"
+            " Block.pages). Idempotent — removing a tag that wasn't"
+            " set is a no-op. Every call pauses for explicit user"
+            " approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "UUIDs of the blocks to untag.",
+                },
+                "page_uuids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "UUIDs of the pages to remove from each block.",
+                },
+            },
+            "required": ["block_uuids", "page_uuids"],
+        },
+    },
+    {
+        "name": "bulk_reschedule",
+        "description": (
+            "Move many scheduled blocks to the same new date. Pending"
+            " reminders shift by each block's per-block delta so the"
+            " reminder time-of-day is preserved. Date accepts ISO"
+            " YYYY-MM-DD or 'today' / 'tomorrow' / '+Nd'. Every call"
+            " pauses for explicit user approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "UUIDs of the blocks to reschedule.",
+                },
+                "new_date": {
+                    "type": "string",
+                    "description": (
+                        "Target date. ISO YYYY-MM-DD, or 'today' /"
+                        " 'tomorrow' / 'yesterday' / '+Nd' / '-Nd'."
+                    ),
+                },
+            },
+            "required": ["block_uuids", "new_date"],
+        },
+    },
+    {
+        "name": "create_blocks_bulk",
+        "description": (
+            "Create many blocks in one approval. Provide either"
+            " `parent_uuid` (children of that block) or `page_uuid`"
+            " (root-level blocks on that page). Each entry needs"
+            " `content`; `block_type` defaults to 'bullet'. Use this"
+            " when the user says something like 'add these 5 TODOs to"
+            " the project page' — saves them from approving each one."
+            " Every call pauses for explicit user approval before"
+            " execution. Capped at 50 blocks per call."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "page_uuid": {
+                    "type": "string",
+                    "description": (
+                        "UUID of the target page (creates root-level"
+                        " blocks). One of page_uuid or parent_uuid is"
+                        " required."
+                    ),
+                },
+                "parent_uuid": {
+                    "type": "string",
+                    "description": (
+                        "UUID of the target parent block (creates"
+                        " nested children). One of page_uuid or"
+                        " parent_uuid is required."
+                    ),
+                },
+                "blocks": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "content": {"type": "string"},
+                            "block_type": {"type": "string"},
+                            "order": {"type": "integer"},
+                        },
+                        "required": ["content"],
+                    },
+                    "description": "List of block specs.",
+                },
+            },
+            "required": ["blocks"],
         },
     },
 ]

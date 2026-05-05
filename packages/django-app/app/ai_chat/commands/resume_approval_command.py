@@ -101,6 +101,7 @@ class ResumeApprovalCommand(AbstractBaseCommand):
             user,
             allow_writes=approval.enable_notes_write_tools,
             auto_approve_writes=effective_auto_approve,
+            current_page_uuid=approval.current_page_uuid or None,
         )
 
         tool_results, executed_events = self._execute_paused_tools(
@@ -122,6 +123,7 @@ class ResumeApprovalCommand(AbstractBaseCommand):
             approval.enable_web_search,
             enable_notes_write_tools=approval.enable_notes_write_tools,
             auto_approve_notes_writes=effective_auto_approve,
+            current_page_uuid=approval.current_page_uuid or None,
         )
 
         yield {
@@ -226,6 +228,7 @@ class ResumeApprovalCommand(AbstractBaseCommand):
                     enable_notes_write_tools=approval.enable_notes_write_tools,
                     auto_approve_notes_writes=effective_auto_approve,
                     enable_web_search=approval.enable_web_search,
+                    current_page_uuid=approval.current_page_uuid,
                 )
             except Exception as e:  # pragma: no cover - defensive
                 raise PendingApprovalPersistError(str(e)) from e

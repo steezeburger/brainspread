@@ -1,12 +1,17 @@
 from .bulk_delete_blocks_command import BulkDeleteBlocksCommand
 from .bulk_move_blocks_command import BulkMoveBlocksCommand
+from .bulk_reschedule_command import BulkRescheduleCommand
+from .bulk_set_block_type_command import BulkSetBlockTypeCommand
+from .cancel_reminder_command import CancelReminderCommand
 from .create_block_command import CreateBlockCommand
+from .create_blocks_bulk_command import CreateBlocksBulkCommand
 from .create_page_command import CreatePageCommand
 from .delete_block_command import DeleteBlockCommand
 from .delete_page_command import DeletePageCommand
 from .find_stale_todos_command import FindStaleTodosCommand
 from .get_block_by_id_command import GetBlockByIdCommand
 from .get_completion_stats_command import GetCompletionStatsCommand
+from .get_current_page_command import GetCurrentPageCommand
 from .get_daily_pages_in_range_command import GetDailyPagesInRangeCommand
 from .get_favorited_pages_command import GetFavoritedPagesCommand
 from .get_graph_data_command import GetGraphDataCommand
@@ -29,7 +34,9 @@ from .send_due_reminders_command import SendDueRemindersCommand
 from .set_block_type_command import SetBlockTypeCommand
 from .set_page_favorited_command import SetPageFavoritedCommand
 from .share_page_command import SharePageCommand
+from .snooze_block_command import SnoozeBlockCommand
 from .sync_block_tags_command import SyncBlockTagsCommand
+from .tag_blocks_command import TagBlocksCommand, UntagBlocksCommand
 from .toggle_block_todo_command import ToggleBlockTodoCommand
 from .touch_page_command import TouchPageCommand
 from .update_block_command import UpdateBlockCommand
