@@ -283,3 +283,17 @@ class ResumeApprovalForm(BaseForm):
 
         cleaned_data["approval"] = approval
         return cleaned_data
+
+
+class GetChatHistorySummaryForm(BaseForm):
+    """Inputs for the assistant's get_chat_history_summary tool.
+
+    Caller-controlled paging only. The 'exclude current session'
+    semantics are handled by the executor, which knows the active
+    session id from the request — when no current session is in
+    context (a brand-new request), no exclusion happens.
+    """
+
+    user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
+    limit = forms.IntegerField(min_value=1, max_value=50, required=False, initial=10)
+    exclude_session_id = forms.CharField(required=False, max_length=64)

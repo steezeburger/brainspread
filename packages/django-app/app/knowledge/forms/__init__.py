@@ -12,6 +12,7 @@ from .create_page_form import CreatePageForm
 from .delete_block_form import DeleteBlockForm
 from .delete_page_form import DeletePageForm
 from .find_stale_todos_form import FindStaleTodosForm
+from .get_backlinks_form import GetBacklinksForm
 from .get_block_by_id_form import GetBlockByIdForm
 from .get_completion_stats_form import GetCompletionStatsForm
 from .get_current_page_form import GetCurrentPageForm
@@ -21,8 +22,10 @@ from .get_graph_data_form import GetGraphDataForm
 from .get_historical_data_form import GetHistoricalDataForm
 from .get_page_by_title_form import GetPageByTitleForm
 from .get_page_with_blocks_form import GetPageWithBlocksForm
+from .get_recent_activity_form import GetRecentActivityForm
 from .get_streaks_form import GetStreaksForm
 from .get_tag_content_form import GetTagContentForm
+from .get_tag_graph_form import GetTagGraphForm
 from .get_user_pages_form import GetUserPagesForm
 from .list_overdue_blocks_form import ListOverdueBlocksForm
 from .list_pending_reminders_form import ListPendingRemindersForm

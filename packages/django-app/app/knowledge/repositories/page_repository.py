@@ -151,6 +151,14 @@ class PageRepository(BaseRepository):
         )
 
     @classmethod
+    def get_recently_modified(cls, user, limit: int) -> QuerySet:
+        """Most-recently-modified pages, no content filter — used by
+        the assistant's get_recent_activity tool. Distinct from
+        get_recent_pages, which excludes empty pages and is geared at
+        the dashboard's 'recent activity' feed."""
+        return cls.get_queryset().filter(user=user).order_by("-modified_at")[:limit]
+
+    @classmethod
     def get_recent_pages(cls, user, limit=7) -> QuerySet:
         """Get the most recently modified pages that have meaningful content.
 

@@ -111,3 +111,11 @@ class GetCurrentTimeForm(BaseForm):
     """Inputs for the assistant's get_current_time tool."""
 
     user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
+
+
+class GetUserPreferencesForm(BaseForm):
+    """Inputs for the assistant's get_user_preferences tool. Reads only
+    user-facing prefs — secrets (api keys, full webhook URLs) are
+    deliberately excluded by the command."""
+
+    user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())

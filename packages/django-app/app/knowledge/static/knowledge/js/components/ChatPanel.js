@@ -588,6 +588,13 @@ const ChatPanel = {
       this.messages = [];
       this.currentSessionId = null;
       this.saveLastSessionId(null);
+      // Focus the input so the user can start typing immediately —
+      // hitting "+" implies they want to type, not click around. Wait
+      // a tick for any pending re-render (e.g. message list collapse)
+      // to settle before grabbing focus.
+      this.$nextTick(() => {
+        this.$refs.messageInput?.focus();
+      });
     },
     setupResizeListener() {
       this.resizeHandler = this.handleMouseMove.bind(this);
