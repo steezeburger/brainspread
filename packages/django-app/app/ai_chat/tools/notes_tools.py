@@ -225,6 +225,21 @@ NOTES_READ_TOOLS: List[Dict[str, Any]] = [
         },
     },
     {
+        "name": "get_current_page",
+        "description": (
+            "Return the page the user is currently viewing in the UI"
+            " (if any), with its title, uuid, and root blocks. Useful"
+            " when the user says 'this page' or 'add this to the"
+            " current page' — call this first to resolve which page"
+            " they mean. Returns an error when the user isn't on a"
+            " page (e.g. on a list view)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
         "name": "find_stale_todos",
         "description": (
             "List the user's open TODO blocks that are older than"
@@ -581,6 +596,340 @@ NOTES_WRITE_TOOLS: List[Dict[str, Any]] = [
                 },
             },
             "required": ["block_uuid"],
+        },
+    },
+    {
+        "name": "snooze_block",
+        "description": (
+            "Push a single block's schedule (and any pending reminder)"
+            " forward by `days` and/or `hours`. The date moves only by"
+            " whole days; the reminder time-of-day shifts by the full"
+            " days+hours delta. At least one of `days` / `hours` must"
+            " be non-zero. Refuses if the block has nothing to snooze"
+            " (no scheduled_for AND no pending reminder). Every call"
+            " pauses for explicit user approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuid": {
+                    "type": "string",
+                    "description": "UUID of the block to snooze.",
+                },
+                "days": {
+                    "type": "integer",
+                    "description": "Days to push forward (negative pulls back).",
+                    "minimum": -365,
+                    "maximum": 365,
+                },
+                "hours": {
+                    "type": "integer",
+                    "description": (
+                        "Hours to push the reminder fire_at forward."
+                        " Ignored for the date-only schedule. Negative"
+                        " pulls back."
+                    ),
+                    "minimum": -72,
+                    "maximum": 72,
+                },
+            },
+            "required": ["block_uuid"],
+        },
+    },
+    {
+        "name": "cancel_reminder",
+        "description": (
+            "Cancel the pending reminder on a block without clearing"
+            " the block's due date. Identified by block_uuid (matches"
+            " clear_schedule's API and avoids guessing a separate"
+            " reminder uuid). Returns an error when the block has no"
+            " pending reminder. Use clear_schedule instead if you also"
+            " want to drop the due date. Every call pauses for"
+            " explicit user approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuid": {
+                    "type": "string",
+                    "description": (
+                        "UUID of the block whose pending reminder to" " cancel."
+                    ),
+                },
+            },
+            "required": ["block_uuid"],
+        },
+    },
+    {
+        "name": "bulk_set_block_type",
+        "description": (
+            "Change the type of many blocks at once (e.g. flip a batch"
+            " of stale TODOs to wontdo). Each block's content prefix"
+            " (TODO -> DONE, etc) and completed_at are maintained"
+            " consistently with set_block_type. Failures (missing"
+            " blocks) are reported per-uuid; successes still apply."
+            " Every call pauses for explicit user approval before"
+            " execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "UUIDs of the blocks to update.",
+                },
+                "new_type": {
+                    "type": "string",
+                    "description": (
+                        "Target block_type. Allowed: bullet, todo, doing,"
+                        " done, later, wontdo, heading, quote, code, divider."
+                    ),
+                },
+            },
+            "required": ["block_uuids", "new_type"],
+        },
+    },
+    {
+        "name": "tag_blocks",
+        "description": (
+            "Add page tags to many blocks at once (M2M Block.pages)."
+            " Idempotent. Both the blocks and the pages must belong to"
+            " the user; missing items are reported and skipped. Every"
+            " call pauses for explicit user approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "UUIDs of the blocks to tag.",
+                },
+                "page_uuids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "UUIDs of the pages to tag onto each block.",
+                },
+            },
+            "required": ["block_uuids", "page_uuids"],
+        },
+    },
+    {
+        "name": "untag_blocks",
+        "description": (
+            "Remove page tags from many blocks at once (M2M"
+            " Block.pages). Idempotent — removing a tag that wasn't"
+            " set is a no-op. Every call pauses for explicit user"
+            " approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "UUIDs of the blocks to untag.",
+                },
+                "page_uuids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "UUIDs of the pages to remove from each block.",
+                },
+            },
+            "required": ["block_uuids", "page_uuids"],
+        },
+    },
+    {
+        "name": "bulk_schedule",
+        "description": (
+            "Set the same scheduled_for on many blocks, optionally"
+            " creating / replacing a pending reminder on each. Two"
+            " modes: (a) `reminder_time` omitted — dates move; existing"
+            " pending reminders shift by each block's per-block delta"
+            " so reminder time-of-day is preserved, and previously-"
+            "unscheduled blocks just get the new date with no reminder."
+            " (b) `reminder_time` supplied — every block gets the same"
+            " reminder, replacing any prior pending reminder. Date /"
+            " reminder_date accept ISO YYYY-MM-DD or 'today' /"
+            " 'tomorrow' / '+Nd'. reminder_time accepts HH:MM (24h,"
+            " user's tz) or '+Nm' / '+Nh' offsets from now. Every call"
+            " pauses for explicit user approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "UUIDs of the blocks to schedule.",
+                },
+                "new_date": {
+                    "type": "string",
+                    "description": (
+                        "Target date. ISO YYYY-MM-DD, or 'today' /"
+                        " 'tomorrow' / 'yesterday' / '+Nd' / '-Nd'."
+                    ),
+                },
+                "reminder_date": {
+                    "type": "string",
+                    "description": (
+                        "Optional date the reminder fires on. Same"
+                        " format as new_date. Defaults to new_date when"
+                        " reminder_time is set but reminder_date isn't."
+                        " Only meaningful when reminder_time is set."
+                    ),
+                },
+                "reminder_time": {
+                    "type": "string",
+                    "description": (
+                        "Optional reminder time-of-day. HH:MM (24h, in"
+                        " the user's timezone), or a relative offset"
+                        " from now ('+Nm' / '+Nh') — relative offsets"
+                        " override reminder_date if they cross"
+                        " midnight. Required to actually create a"
+                        " reminder; without it the block is scheduled"
+                        " but no reminder fires."
+                    ),
+                },
+            },
+            "required": ["block_uuids", "new_date"],
+        },
+    },
+    {
+        "name": "create_blocks_bulk",
+        "description": (
+            "Create many blocks in one approval. Provide either"
+            " `parent_uuid` (children of that block) or `page_uuid`"
+            " (root-level blocks on that page). Each entry needs"
+            " `content`; `block_type` defaults to 'bullet'. Use this"
+            " when the user says something like 'add these 5 TODOs to"
+            " the project page' — saves them from approving each one."
+            " Every call pauses for explicit user approval before"
+            " execution. Capped at 50 blocks per call."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "page_uuid": {
+                    "type": "string",
+                    "description": (
+                        "UUID of the target page (creates root-level"
+                        " blocks). One of page_uuid or parent_uuid is"
+                        " required."
+                    ),
+                },
+                "parent_uuid": {
+                    "type": "string",
+                    "description": (
+                        "UUID of the target parent block (creates"
+                        " nested children). One of page_uuid or"
+                        " parent_uuid is required."
+                    ),
+                },
+                "blocks": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "content": {"type": "string"},
+                            "block_type": {"type": "string"},
+                            "order": {"type": "integer"},
+                        },
+                        "required": ["content"],
+                    },
+                    "description": "List of block specs.",
+                },
+            },
+            "required": ["blocks"],
+        },
+    },
+    {
+        "name": "bulk_clear_schedule",
+        "description": (
+            "Drop scheduled_for AND any pending reminder on many blocks"
+            " at once. Same effect as calling clear_schedule on each"
+            " block, but one approval covers the whole batch. Blocks"
+            " that don't currently have a schedule or reminder are"
+            " reported in `skipped` (not failures). Every call pauses"
+            " for explicit user approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "UUIDs of the blocks to unschedule.",
+                },
+            },
+            "required": ["block_uuids"],
+        },
+    },
+    {
+        "name": "bulk_cancel_reminders",
+        "description": (
+            "Cancel pending reminders on many blocks at once (e.g."
+            " 'cancel all reminders on this page'). Each block has at"
+            " most one pending reminder; blocks with none are reported"
+            " in `no_reminder` (not failures). Schedules are untouched"
+            " — to also drop scheduled_for use bulk_clear_schedule."
+            " Every call pauses for explicit user approval before"
+            " execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "UUIDs of the blocks whose pending reminders" " to cancel."
+                    ),
+                },
+            },
+            "required": ["block_uuids"],
+        },
+    },
+    {
+        "name": "bulk_snooze",
+        "description": (
+            "Push N blocks' schedules and pending reminders forward by"
+            " the same delta (e.g. 'snooze all reminders on this page"
+            " by 2 hours' / 'push these three to tomorrow'). Date side"
+            " shifts only by `days`; reminder time shifts by the full"
+            " days+hours delta. At least one of `days` / `hours` must"
+            " be non-zero. Blocks with nothing to snooze (no schedule"
+            " AND no pending reminder) are reported in"
+            " `nothing_to_snooze`. Every call pauses for explicit user"
+            " approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "block_uuids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "UUIDs of the blocks to snooze.",
+                },
+                "days": {
+                    "type": "integer",
+                    "description": "Days to push forward (negative pulls back).",
+                    "minimum": -365,
+                    "maximum": 365,
+                },
+                "hours": {
+                    "type": "integer",
+                    "description": (
+                        "Hours to push reminder fire_at forward."
+                        " Ignored for date-only schedules. Negative"
+                        " pulls back."
+                    ),
+                    "minimum": -72,
+                    "maximum": 72,
+                },
+            },
+            "required": ["block_uuids"],
         },
     },
 ]

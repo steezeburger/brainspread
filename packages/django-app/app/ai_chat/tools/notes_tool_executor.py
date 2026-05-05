@@ -23,11 +23,21 @@ from django.utils import timezone
 from core.commands.get_current_time_command import GetCurrentTimeCommand
 from core.forms import GetCurrentTimeForm
 from core.models import User
+from knowledge.commands.bulk_cancel_reminders_command import (
+    BulkCancelRemindersCommand,
+)
+from knowledge.commands.bulk_clear_schedule_command import BulkClearScheduleCommand
+from knowledge.commands.bulk_schedule_command import BulkScheduleCommand
+from knowledge.commands.bulk_set_block_type_command import BulkSetBlockTypeCommand
+from knowledge.commands.bulk_snooze_command import BulkSnoozeCommand
+from knowledge.commands.cancel_reminder_command import CancelReminderCommand
 from knowledge.commands.create_block_command import CreateBlockCommand
+from knowledge.commands.create_blocks_bulk_command import CreateBlocksBulkCommand
 from knowledge.commands.create_page_command import CreatePageCommand
 from knowledge.commands.find_stale_todos_command import FindStaleTodosCommand
 from knowledge.commands.get_block_by_id_command import GetBlockByIdCommand
 from knowledge.commands.get_completion_stats_command import GetCompletionStatsCommand
+from knowledge.commands.get_current_page_command import GetCurrentPageCommand
 from knowledge.commands.get_daily_pages_in_range_command import (
     GetDailyPagesInRangeCommand,
 )
@@ -42,12 +52,22 @@ from knowledge.commands.move_block_to_daily_command import MoveBlockToDailyComma
 from knowledge.commands.schedule_block_command import ScheduleBlockCommand
 from knowledge.commands.search_notes_command import SearchNotesCommand
 from knowledge.commands.set_block_type_command import SetBlockTypeCommand
+from knowledge.commands.snooze_block_command import SnoozeBlockCommand
+from knowledge.commands.tag_blocks_command import TagBlocksCommand, UntagBlocksCommand
 from knowledge.commands.update_block_command import UpdateBlockCommand
+from knowledge.forms.bulk_cancel_reminders_form import BulkCancelRemindersForm
+from knowledge.forms.bulk_clear_schedule_form import BulkClearScheduleForm
+from knowledge.forms.bulk_schedule_form import BulkScheduleForm
+from knowledge.forms.bulk_set_block_type_form import BulkSetBlockTypeForm
+from knowledge.forms.bulk_snooze_form import BulkSnoozeForm
+from knowledge.forms.cancel_reminder_form import CancelReminderForm
 from knowledge.forms.create_block_form import CreateBlockForm
+from knowledge.forms.create_blocks_bulk_form import CreateBlocksBulkForm
 from knowledge.forms.create_page_form import CreatePageForm
 from knowledge.forms.find_stale_todos_form import FindStaleTodosForm
 from knowledge.forms.get_block_by_id_form import GetBlockByIdForm
 from knowledge.forms.get_completion_stats_form import GetCompletionStatsForm
+from knowledge.forms.get_current_page_form import GetCurrentPageForm
 from knowledge.forms.get_daily_pages_in_range_form import GetDailyPagesInRangeForm
 from knowledge.forms.get_page_by_title_form import GetPageByTitleForm
 from knowledge.forms.get_streaks_form import GetStreaksForm
@@ -58,6 +78,8 @@ from knowledge.forms.move_block_to_daily_form import MoveBlockToDailyForm
 from knowledge.forms.schedule_block_form import ScheduleBlockForm
 from knowledge.forms.search_notes_form import SearchNotesForm
 from knowledge.forms.set_block_type_form import SetBlockTypeForm
+from knowledge.forms.snooze_block_form import SnoozeBlockForm
+from knowledge.forms.tag_blocks_form import TagBlocksForm, UntagBlocksForm
 from knowledge.forms.update_block_form import UpdateBlockForm
 from knowledge.repositories.block_repository import BlockRepository
 from knowledge.repositories.page_repository import PageRepository
@@ -84,10 +106,16 @@ class NotesToolExecutor:
         user: User,
         allow_writes: bool = False,
         auto_approve_writes: bool = False,
+        current_page_uuid: Optional[str] = None,
     ) -> None:
         self.user = user
         self.allow_writes = allow_writes
         self.auto_approve_writes = auto_approve_writes
+        # Set by send_message_command from the chat request payload —
+        # the page the user has open in the UI when they send a
+        # message. Used by the get_current_page tool. None when the
+        # user is on a non-page surface (graph view, etc).
+        self.current_page_uuid = current_page_uuid
 
     def is_known(self, name: str) -> bool:
         if name in NOTES_READ_TOOL_NAMES:
@@ -125,6 +153,8 @@ class NotesToolExecutor:
                 return self._get_streaks(args)
             if name == "find_stale_todos":
                 return self._find_stale_todos(args)
+            if name == "get_current_page":
+                return self._get_current_page(args)
             if name == "create_page":
                 return self._create_page(args)
             if name == "create_block":
@@ -143,6 +173,26 @@ class NotesToolExecutor:
                 return self._set_block_type(args)
             if name == "move_block_to_daily":
                 return self._move_block_to_daily(args)
+            if name == "snooze_block":
+                return self._snooze_block(args)
+            if name == "cancel_reminder":
+                return self._cancel_reminder(args)
+            if name == "bulk_set_block_type":
+                return self._bulk_set_block_type(args)
+            if name == "tag_blocks":
+                return self._tag_blocks(args)
+            if name == "untag_blocks":
+                return self._untag_blocks(args)
+            if name == "bulk_schedule":
+                return self._bulk_schedule(args)
+            if name == "create_blocks_bulk":
+                return self._create_blocks_bulk(args)
+            if name == "bulk_clear_schedule":
+                return self._bulk_clear_schedule(args)
+            if name == "bulk_cancel_reminders":
+                return self._bulk_cancel_reminders(args)
+            if name == "bulk_snooze":
+                return self._bulk_snooze(args)
             return {"error": f"Unknown tool: {name}"}
         except Exception as e:
             logger.exception("Notes tool %s failed", name)
@@ -296,6 +346,21 @@ class NotesToolExecutor:
         if not form.is_valid():
             return {"error": _first_form_error(form)}
         return FindStaleTodosCommand(form).execute()
+
+    def _get_current_page(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.current_page_uuid:
+            return {
+                "error": (
+                    "no current page — the user is not on a page right"
+                    " now (or the chat surface didn't pass one)"
+                )
+            }
+        form = GetCurrentPageForm(
+            {"user": self.user.id, "page": self.current_page_uuid}
+        )
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return GetCurrentPageCommand(form).execute()
 
     # ---- Write tools ----
 
@@ -700,6 +765,161 @@ class NotesToolExecutor:
             "target_page": result["target_page"],
             "affected_page_uuids": sorted(affected),
         }
+
+    def _snooze_block(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form_data: Dict[str, Any] = {
+            "user": self.user.id,
+            "block": (args.get("block_uuid") or "").strip(),
+        }
+        if args.get("days") is not None:
+            form_data["days"] = args["days"]
+        if args.get("hours") is not None:
+            form_data["hours"] = args["hours"]
+        form = SnoozeBlockForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return SnoozeBlockCommand(form).execute()
+
+    def _cancel_reminder(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form = CancelReminderForm(
+            {
+                "user": self.user.id,
+                "block": (args.get("block_uuid") or "").strip(),
+            }
+        )
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return CancelReminderCommand(form).execute()
+
+    def _bulk_set_block_type(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form = BulkSetBlockTypeForm(
+            {
+                "user": self.user.id,
+                "block_uuids": args.get("block_uuids") or [],
+                "new_type": (args.get("new_type") or "").strip(),
+            }
+        )
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return BulkSetBlockTypeCommand(form).execute()
+
+    def _tag_blocks(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form = TagBlocksForm(
+            {
+                "user": self.user.id,
+                "block_uuids": args.get("block_uuids") or [],
+                "page_uuids": args.get("page_uuids") or [],
+            }
+        )
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return TagBlocksCommand(form).execute()
+
+    def _untag_blocks(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form = UntagBlocksForm(
+            {
+                "user": self.user.id,
+                "block_uuids": args.get("block_uuids") or [],
+                "page_uuids": args.get("page_uuids") or [],
+            }
+        )
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return UntagBlocksCommand(form).execute()
+
+    def _bulk_schedule(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        today = self.user.today()
+        try:
+            new_date = _parse_relative_date(args.get("new_date"), today)
+        except ValueError as e:
+            return {"error": f"new_date: {e}"}
+        if new_date is None:
+            return {"error": "new_date is required"}
+
+        try:
+            reminder_date = _parse_relative_date(args.get("reminder_date"), today)
+        except ValueError as e:
+            return {"error": f"reminder_date: {e}"}
+
+        # `+Nm` / `+Nh` offsets resolve relative to NOW, so they're
+        # computed once for the whole batch — not per-block. The
+        # offset can also override reminder_date when it crosses
+        # midnight (matches single schedule_block).
+        try:
+            resolved_date, resolved_time = _resolve_reminder_time(
+                args.get("reminder_time"), self.user
+            )
+        except ValueError as e:
+            return {"error": f"reminder_time: {e}"}
+        if resolved_date is not None:
+            reminder_date = resolved_date
+
+        form_data: Dict[str, Any] = {
+            "user": self.user.id,
+            "block_uuids": args.get("block_uuids") or [],
+            "new_date": new_date.isoformat(),
+        }
+        if reminder_date is not None:
+            form_data["reminder_date"] = reminder_date.isoformat()
+        if resolved_time:
+            form_data["reminder_time"] = resolved_time
+
+        form = BulkScheduleForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return BulkScheduleCommand(form).execute()
+
+    def _create_blocks_bulk(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form_data: Dict[str, Any] = {
+            "user": self.user.id,
+            "blocks": args.get("blocks") or [],
+        }
+        page_uuid = (args.get("page_uuid") or "").strip()
+        parent_uuid = (args.get("parent_uuid") or "").strip()
+        if page_uuid:
+            form_data["page"] = page_uuid
+        if parent_uuid:
+            form_data["parent"] = parent_uuid
+        form = CreateBlocksBulkForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return CreateBlocksBulkCommand(form).execute()
+
+    def _bulk_clear_schedule(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form = BulkClearScheduleForm(
+            {
+                "user": self.user.id,
+                "block_uuids": args.get("block_uuids") or [],
+            }
+        )
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return BulkClearScheduleCommand(form).execute()
+
+    def _bulk_cancel_reminders(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form = BulkCancelRemindersForm(
+            {
+                "user": self.user.id,
+                "block_uuids": args.get("block_uuids") or [],
+            }
+        )
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return BulkCancelRemindersCommand(form).execute()
+
+    def _bulk_snooze(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form_data: Dict[str, Any] = {
+            "user": self.user.id,
+            "block_uuids": args.get("block_uuids") or [],
+        }
+        if args.get("days") is not None:
+            form_data["days"] = args["days"]
+        if args.get("hours") is not None:
+            form_data["hours"] = args["hours"]
+        form = BulkSnoozeForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return BulkSnoozeCommand(form).execute()
 
 
 _RELATIVE_OFFSET_RE = re.compile(r"^([+-])(\d+)([dw])$")

@@ -43,6 +43,11 @@ class SendMessageForm(BaseForm):
     # constrained to JSON validating the supplied schema. Each provider has
     # its own wire shape; services translate from the unified dict below.
     response_format = forms.JSONField(required=False)
+    # UUID of the page the user has open in the UI when they send the
+    # message. Surfaced to the assistant via the get_current_page tool
+    # so phrases like "add this to the current page" can resolve. None
+    # when the user is on a non-page surface (graph view, etc).
+    current_page_uuid = forms.CharField(required=False, max_length=64)
 
     def clean_user(self) -> User:
         user = self.cleaned_data.get("user")

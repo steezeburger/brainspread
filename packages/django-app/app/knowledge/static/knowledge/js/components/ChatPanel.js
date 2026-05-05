@@ -16,6 +16,13 @@ const ChatPanel = {
       type: Function,
       default: () => () => false,
     },
+    // UUID of the page the user is currently viewing. Sent with each
+    // chat request so the assistant's get_current_page tool can resolve
+    // "this page" / "the current page" without the user pinning blocks.
+    currentPageUuid: {
+      type: String,
+      default: null,
+    },
   },
   emits: [
     "open-settings",
@@ -464,6 +471,7 @@ const ChatPanel = {
         auto_approve_notes_writes: this.autoApproveActive,
         enable_web_search: this.enableWebSearch,
         asset_uuids: dedupedAssets.map((a) => a.uuid),
+        current_page_uuid: this.currentPageUuid || null,
       };
       this.message = "";
       this.pendingAttachments = [];

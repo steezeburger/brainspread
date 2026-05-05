@@ -46,6 +46,7 @@ const KnowledgeApp = createApp({
       spotlightSelectedIndex: 0, // Selected result index for keyboard navigation
       spotlightSearchTimeout: null, // Debounce timeout for search
       currentPagePageType: null, // page_type of the currently-loaded page
+      currentPageUuid: null, // uuid of the currently-loaded page (for chat context)
     };
   },
 
@@ -387,6 +388,7 @@ const KnowledgeApp = createApp({
 
     onPageLoaded(page) {
       this.currentPagePageType = page?.page_type || null;
+      this.currentPageUuid = page?.uuid || null;
     },
 
     async createNewPage(prefilledTitle = null, pageType = "page") {
@@ -1010,6 +1012,7 @@ const KnowledgeApp = createApp({
                             :chat-context-blocks="chatContextBlocks"
                             :visible-blocks="visibleBlocks"
                             :is-block-in-context="isBlockInContext"
+                            :current-page-uuid="currentPageUuid"
                             @open-settings="onChatPanelOpenSettings"
                             @add-context-block="onBlockAddToContext"
                             @remove-context-block="onBlockRemoveFromContext"

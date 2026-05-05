@@ -57,6 +57,11 @@ class PendingToolApproval(UUIDModelMixin, CRUDTimestampsMixin):
     enable_notes_write_tools = models.BooleanField(default=False)
     auto_approve_notes_writes = models.BooleanField(default=False)
     enable_web_search = models.BooleanField(default=True)
+    # The page the user had open when the paused turn started. Stored
+    # so resume rebuilds the same get_current_page context — without
+    # it, a tool the model invokes after approval would see "no current
+    # page" even though the user is still on the same page.
+    current_page_uuid = models.CharField(max_length=64, blank=True, default="")
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING
     )
