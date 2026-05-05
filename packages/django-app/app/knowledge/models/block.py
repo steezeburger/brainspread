@@ -298,6 +298,29 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
     def _pending_reminder_local_date(self) -> Optional[str]:
         return self._pending_reminder_local()[0]
 
+    def as_summary(self) -> "BlockSummaryData":
+        """Compact summary for list-shaped tool results (overdue list,
+        scheduled list, etc). Smaller than to_dict() — drops media,
+        properties, tags, and parent — but rich enough that the chat
+        surface can render the row without a follow-up fetch.
+        """
+        return {
+            "block_uuid": str(self.uuid),
+            "content": self.content,
+            "block_type": self.block_type,
+            "scheduled_for": (
+                self.scheduled_for.isoformat() if self.scheduled_for else None
+            ),
+            "completed_at": (
+                self.completed_at.isoformat() if self.completed_at else None
+            ),
+            "page_uuid": str(self.page.uuid) if self.page else None,
+            "page_title": self.page.title if self.page else None,
+            "page_slug": self.page.slug if self.page else None,
+            "pending_reminder_date": self._pending_reminder_local_date(),
+            "pending_reminder_time": self._pending_reminder_local_time(),
+        }
+
     def to_dict_with_children(self, include_page_context: bool = False) -> "BlockData":
         """Convert block to dict with nested children"""
         block_data = self.to_dict(include_page_context=include_page_context)
@@ -308,6 +331,25 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             )
         block_data["children"] = children
         return block_data
+
+
+class BlockSummaryData(TypedDict):
+    """Compact subset of BlockData returned by Block.as_summary().
+
+    Used by chat tool_result lists where many blocks ride in a single
+    payload — the model doesn't need media / properties / parent ref to
+    decide what to do next."""
+
+    block_uuid: str
+    content: str
+    block_type: str
+    scheduled_for: Optional[str]
+    completed_at: Optional[str]
+    page_uuid: Optional[str]
+    page_title: Optional[str]
+    page_slug: Optional[str]
+    pending_reminder_date: Optional[str]
+    pending_reminder_time: Optional[str]
 
 
 # API response type for Block data

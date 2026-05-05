@@ -74,9 +74,28 @@ class PageRepository(BaseRepository):
         return page, created
 
     @classmethod
+    def get_by_title(cls, user, title: str) -> Optional[Page]:
+        """Get a page by case-insensitive exact-match title."""
+        return cls.get_queryset().filter(user=user, title__iexact=title).first()
+
+    @classmethod
     def search_by_title(cls, user, query: str) -> QuerySet:
         """Search pages by title"""
         return cls.get_queryset().filter(user=user, title__icontains=query)
+
+    @classmethod
+    def get_dailies_in_range(cls, user, start_date: date, end_date: date) -> QuerySet:
+        """Daily-note pages with a date in the inclusive [start, end] range."""
+        return (
+            cls.get_queryset()
+            .filter(
+                user=user,
+                page_type="daily",
+                date__gte=start_date,
+                date__lte=end_date,
+            )
+            .order_by("date")
+        )
 
     @classmethod
     def get_published_pages(cls, user) -> QuerySet:

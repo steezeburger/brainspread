@@ -184,6 +184,10 @@ const Page = {
       "brainspread:request-archive",
       this.handleRequestArchive
     );
+    // When a same-page deep link fires (e.g. spotlight block result on
+    // the current page), the URL hash changes without a reload. Listen
+    // so we still scroll the matching block into view.
+    window.addEventListener("hashchange", this.scrollToHashBlock);
     // Load page data
     await this.loadPage();
   },
@@ -212,6 +216,7 @@ const Page = {
       "resume-block-editing",
       this.handleResumeBlockEditing
     );
+    window.removeEventListener("hashchange", this.scrollToHashBlock);
     window.removeEventListener(
       "brainspread:notes-modified",
       this.handleNotesModified
@@ -1440,6 +1445,14 @@ const Page = {
       // toggled.
       if (!this.windowWasBlurred) return;
       this.windowWasBlurred = false;
+      // Only restore the last block when focus has truly been lost
+      // (body). If the user is interacting with the chat panel, a modal
+      // input, the sidebar, etc, leave that focus alone — the page
+      // shouldn't yank the cursor back.
+      const active = document.activeElement;
+      if (active && active !== document.body) {
+        return;
+      }
       if (this.lastEditingBlockUuid) {
         const block = this.getAllBlocks().find(
           (b) => b.uuid === this.lastEditingBlockUuid
@@ -3130,13 +3143,6 @@ const Page = {
             <!-- Daily Note Header -->
             <div v-if="isDaily" class="daily-note-title current-note page-header-flex">
               <div class="title-left">
-                <input
-                  type="date"
-                  v-model="selectedDate"
-                  @change="onDateChange"
-                  class="date-picker"
-                  title="Navigate to date"
-                />
                 <button
                   type="button"
                   class="page-favorite-toggle"
@@ -3145,6 +3151,13 @@ const Page = {
                   :title="isFavorited ? 'Remove from favorites' : 'Add to favorites'"
                   :aria-pressed="isFavorited"
                 >{{ isFavorited ? '★' : '☆' }}</button>
+                <input
+                  type="date"
+                  v-model="selectedDate"
+                  @change="onDateChange"
+                  class="date-picker"
+                  title="Navigate to date"
+                />
               </div>
               <div class="header-controls">
                 <div class="context-menu-container">

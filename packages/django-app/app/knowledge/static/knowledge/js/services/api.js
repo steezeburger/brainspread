@@ -167,6 +167,12 @@ class ApiService {
     );
   }
 
+  async searchBlocks(query, limit = 10) {
+    return await this.request(
+      `/knowledge/api/blocks/search/?query=${encodeURIComponent(query)}&limit=${limit}`
+    );
+  }
+
   // New block-centric methods
   async getPageWithBlocks(pageUuid = null, date = null, slug = null) {
     let params = "";

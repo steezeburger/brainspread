@@ -91,6 +91,17 @@ window.LeftNav = {
     // current page so the Favorites list refreshes without a reload.
     this.handleFavoritesChanged = () => this.loadFavorites();
     document.addEventListener("favorites:changed", this.handleFavoritesChanged);
+    // Close the nav when the user clicks outside it. Mobile already
+    // handles this via the backdrop overlay; this covers desktop. The
+    // listener is attached/detached by the isOpen watcher so the click
+    // that opens the nav doesn't immediately close it.
+    this.handleOutsideClick = (event) => {
+      if (this.$el && this.$el.contains(event.target)) return;
+      this.toggleSidebar();
+    };
+    if (this.isOpen) {
+      this.attachOutsideClickHandler();
+    }
   },
 
   beforeUnmount() {
@@ -101,9 +112,18 @@ window.LeftNav = {
         this.handleFavoritesChanged
       );
     }
+    this.detachOutsideClickHandler();
   },
 
-  watch: {},
+  watch: {
+    isOpen(value) {
+      if (value) {
+        this.attachOutsideClickHandler();
+      } else {
+        this.detachOutsideClickHandler();
+      }
+    },
+  },
 
   methods: {
     async loadHistoricalData() {
@@ -146,6 +166,20 @@ window.LeftNav = {
         // localStorage can throw in private mode; the toggle still
         // works for the current session, just won't persist.
       }
+    },
+
+    attachOutsideClickHandler() {
+      // Defer so the click that just opened the nav (the rail toggle
+      // click) finishes bubbling before we start listening — otherwise
+      // that same click would close the nav we just opened.
+      setTimeout(() => {
+        if (!this.isOpen) return;
+        document.addEventListener("click", this.handleOutsideClick);
+      }, 0);
+    },
+
+    detachOutsideClickHandler() {
+      document.removeEventListener("click", this.handleOutsideClick);
     },
 
     toggleRecent() {

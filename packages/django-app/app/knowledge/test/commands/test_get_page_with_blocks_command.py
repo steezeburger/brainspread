@@ -12,7 +12,7 @@ from ..helpers import BlockFactory, PageFactory, UserFactory
 
 
 def _utc_noon(d: date) -> datetime:
-    """Aware UTC datetime at noon, used to drive core.helpers.timezone.now()
+    """Aware UTC datetime at noon, used to drive core.models.user.timezone.now()
     so today_for_user(user) resolves to the target date."""
     return datetime(d.year, d.month, d.day, 12, 0, tzinfo=pytz.UTC)
 
@@ -30,7 +30,7 @@ class TestGetPageWithBlocksOverdue(TestCase):
         self.assertTrue(form.is_valid(), form.errors)
         return GetPageWithBlocksCommand(form).execute()
 
-    @patch("core.helpers.timezone")
+    @patch("core.models.user.timezone")
     def test_overdue_surfaces_on_todays_daily_page(self, mock_timezone):
         today = date(2026, 4, 24)
         mock_timezone.now.return_value = _utc_noon(today)
@@ -57,7 +57,7 @@ class TestGetPageWithBlocksOverdue(TestCase):
         self.assertEqual(str(overdue_blocks[0].uuid), str(overdue.uuid))
         self.assertEqual(len(direct_blocks), 0)
 
-    @patch("core.helpers.timezone")
+    @patch("core.models.user.timezone")
     def test_overdue_empty_on_past_daily_page(self, mock_timezone):
         today = date(2026, 4, 24)
         mock_timezone.now.return_value = _utc_noon(today)
@@ -84,7 +84,7 @@ class TestGetPageWithBlocksOverdue(TestCase):
         _, _, _, overdue_blocks = self._run(date=two_days_ago)
         self.assertEqual(overdue_blocks, [])
 
-    @patch("core.helpers.timezone")
+    @patch("core.models.user.timezone")
     def test_overdue_empty_on_non_daily_page(self, mock_timezone):
         mock_timezone.now.return_value = _utc_noon(date(2026, 4, 24))
 
@@ -113,7 +113,7 @@ class TestGetPageWithBlocksOverdue(TestCase):
         _, _, _, overdue_blocks = self._run(slug=regular_page.slug)
         self.assertEqual(overdue_blocks, [])
 
-    @patch("core.helpers.timezone")
+    @patch("core.models.user.timezone")
     def test_overdue_excludes_completed_and_done_block_types(self, mock_timezone):
         today = date(2026, 4, 24)
         mock_timezone.now.return_value = _utc_noon(today)
@@ -163,7 +163,7 @@ class TestGetPageWithBlocksOverdue(TestCase):
         _, _, _, overdue_blocks = self._run(date=today)
         self.assertEqual([str(b.uuid) for b in overdue_blocks], [str(included.uuid)])
 
-    @patch("core.helpers.timezone")
+    @patch("core.models.user.timezone")
     def test_overdue_scoped_to_current_user(self, mock_timezone):
         today = date(2026, 4, 24)
         mock_timezone.now.return_value = _utc_noon(today)

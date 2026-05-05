@@ -3,7 +3,6 @@ from typing import List, Tuple
 from django.core.exceptions import ValidationError
 
 from common.commands.abstract_base_command import AbstractBaseCommand
-from core.helpers import today_for_user
 from knowledge.models import Block, Page
 from knowledge.repositories import BlockRepository, PageRepository
 
@@ -31,7 +30,7 @@ class GetPageWithBlocksCommand(AbstractBaseCommand):
         date = self.form.cleaned_data.get("date")
         slug = self.form.cleaned_data.get("slug")
 
-        today = today_for_user(user)
+        today = user.today()
 
         if slug:
             # Get regular page by slug

@@ -3,7 +3,6 @@ from typing import List, TypedDict
 from django.db import transaction
 
 from common.commands.abstract_base_command import AbstractBaseCommand
-from core.helpers import today_for_user
 
 from ..forms.bulk_move_blocks_form import BulkMoveBlocksForm
 from ..forms.move_block_to_daily_form import MoveBlockToDailyForm
@@ -32,7 +31,7 @@ class BulkMoveBlocksCommand(AbstractBaseCommand):
 
         user = self.form.cleaned_data["user"]
         uuids: List[str] = self.form.cleaned_data["blocks"]
-        target_date = self.form.cleaned_data.get("target_date") or today_for_user(user)
+        target_date = self.form.cleaned_data.get("target_date") or user.today()
 
         target_page, _ = PageRepository.get_or_create_daily_note(user, target_date)
 

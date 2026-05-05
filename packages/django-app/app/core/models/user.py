@@ -1,7 +1,10 @@
+from datetime import date, tzinfo
 from typing import TypedDict
 
+import pytz
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from common.models.crud_timestamps_mixin import CRUDTimestampsMixin
@@ -97,6 +100,31 @@ class User(
 
     def __str__(self):
         return self.email
+
+    def tz(self) -> tzinfo:
+        """Resolved pytz timezone for this user, falling back to UTC.
+
+        Pair with `today()` when you need both the date and the tz
+        object — e.g. to bracket a UTC datetime range against user-local
+        day boundaries, or to drive `TruncDate(field, tzinfo=...)`
+        queries.
+        """
+        try:
+            if self.timezone:
+                return pytz.timezone(self.timezone)
+        except pytz.UnknownTimeZoneError:
+            pass
+        return pytz.UTC
+
+    def today(self) -> date:
+        """Today's date in the user's timezone.
+
+        Always use this instead of `date.today()` / `datetime.now().date()`
+        when computing a "today" the user will see — the server clock
+        is UTC and would otherwise flip a day early for users west of
+        UTC.
+        """
+        return timezone.now().astimezone(self.tz()).date()
 
     def to_user_data(self) -> "UserData":
         """Convert User instance to UserData TypedDict"""

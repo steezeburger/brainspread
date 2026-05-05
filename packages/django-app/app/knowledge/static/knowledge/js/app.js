@@ -736,18 +736,50 @@ const KnowledgeApp = createApp({
       this.spotlightSelectedIndex = 0;
 
       try {
-        const result = await window.apiService.searchPages(query, 10);
-        if (result.success) {
-          const pages = result.data.pages.map((page) => ({
+        // Run both queries in parallel — pages first in the result list
+        // because users typically search by page name; block hits act as
+        // a deeper "find in content" fallback. Failures fall back to
+        // whichever side returned successfully so a slow / failing call
+        // doesn't blank the palette.
+        const [pageResult, blockResult] = await Promise.all([
+          window.apiService.searchPages(query, 10).catch(() => null),
+          window.apiService.searchBlocks(query, 10).catch(() => null),
+        ]);
+
+        const pages = (pageResult?.success ? pageResult.data.pages : []).map(
+          (page) => ({
             type: "page",
             pageType: page.page_type,
             title: page.title,
             slug: page.slug,
             snippet: "",
             url: `/knowledge/page/${page.slug}/`,
-          }));
-          this.spotlightResults = [...commands, ...pages];
-        }
+          })
+        );
+
+        const blocks = (
+          blockResult?.success ? blockResult.data.results : []
+        ).map((block) => ({
+          type: "block",
+          blockUuid: block.block_uuid,
+          blockType: block.block_type,
+          title: this.generateSnippet(block.content, query),
+          pageTitle: block.page_title,
+          slug: block.page_slug,
+          snippet: "",
+          url: block.page_slug
+            ? `/knowledge/page/${block.page_slug}/#block-${block.block_uuid}`
+            : null,
+        }));
+
+        // Drop block hits that point at pages already shown — clicking
+        // the page row is enough; surfacing the same page twice is noise.
+        const pageSlugs = new Set(pages.map((p) => p.slug));
+        const dedupedBlocks = blocks.filter(
+          (b) => b.slug && !pageSlugs.has(b.slug)
+        );
+
+        this.spotlightResults = [...commands, ...pages, ...dedupedBlocks];
       } catch (error) {
         console.error("Search error:", error);
         this.spotlightResults = commands;

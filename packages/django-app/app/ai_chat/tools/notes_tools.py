@@ -133,6 +133,128 @@ NOTES_READ_TOOLS: List[Dict[str, Any]] = [
         },
     },
     {
+        "name": "get_daily_pages_in_range",
+        "description": (
+            "Fetch the user's daily pages between two dates (inclusive),"
+            " each with its root blocks. Use this to write weekly / monthly"
+            " reviews or summarize what happened across a span of days."
+            " The range is capped at 60 days to keep the result small."
+            " Dates accept ISO YYYY-MM-DD or 'today' / 'tomorrow' /"
+            " 'yesterday' / '+Nd' / '-Nd'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "start_date": {
+                    "type": "string",
+                    "description": (
+                        "Inclusive lower bound. ISO YYYY-MM-DD, or 'today',"
+                        " 'tomorrow', 'yesterday', '+Nd' / '-Nd'."
+                    ),
+                },
+                "end_date": {
+                    "type": "string",
+                    "description": (
+                        "Inclusive upper bound. Same format as start_date."
+                    ),
+                },
+            },
+            "required": ["start_date", "end_date"],
+        },
+    },
+    {
+        "name": "get_completion_stats",
+        "description": (
+            "Counts of the user's blocks by block_type over a date range,"
+            " plus a per-day breakdown of completions. done / wontdo are"
+            " counted by completed_at within the range; todo / doing /"
+            " later are counted by created_at within the range. Useful for"
+            " 'how productive was I this week?' style questions. Range is"
+            " capped at 366 days. Dates accept ISO YYYY-MM-DD or relative"
+            " tokens ('today' / 'yesterday' / '+Nd' / '-Nd')."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "start_date": {
+                    "type": "string",
+                    "description": (
+                        "Inclusive lower bound. ISO YYYY-MM-DD, or 'today',"
+                        " 'tomorrow', 'yesterday', '+Nd' / '-Nd'."
+                    ),
+                },
+                "end_date": {
+                    "type": "string",
+                    "description": (
+                        "Inclusive upper bound. Same format as start_date."
+                    ),
+                },
+            },
+            "required": ["start_date", "end_date"],
+        },
+    },
+    {
+        "name": "get_streaks",
+        "description": (
+            "Return the user's current and longest consecutive-day streak"
+            " for an activity. 'journal' = at least one block authored on"
+            " that date's daily page; 'completion' = at least one block"
+            " transitioned to done / wontdo on that date. Days are computed"
+            " in the user's timezone. Looks back up to 366 days."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "description": (
+                        "Activity to measure. Either 'journal' or 'completion'."
+                    ),
+                    "enum": ["journal", "completion"],
+                },
+                "as_of": {
+                    "type": "string",
+                    "description": (
+                        "Optional reference date for the current streak."
+                        " ISO YYYY-MM-DD or relative ('today', '-1d', etc)."
+                        " Defaults to today in the user's timezone."
+                    ),
+                },
+            },
+            "required": ["kind"],
+        },
+    },
+    {
+        "name": "find_stale_todos",
+        "description": (
+            "List the user's open TODO blocks that are older than"
+            " `older_than_days` days and have no scheduled_for date set."
+            " Useful for surfacing forgotten work that has slipped through"
+            " the cracks. Returns block uuid, content preview, page title,"
+            " and how many days old the block is."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "older_than_days": {
+                    "type": "integer",
+                    "description": (
+                        "Minimum age in days, measured from block created_at"
+                        " in the user's timezone. Default 14, max 365."
+                    ),
+                    "minimum": 1,
+                    "maximum": 365,
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum rows to return (default 50, max 200).",
+                    "minimum": 1,
+                    "maximum": 200,
+                },
+            },
+        },
+    },
+    {
         "name": "list_scheduled_blocks",
         "description": (
             "List blocks with a scheduled_for date in the given inclusive"

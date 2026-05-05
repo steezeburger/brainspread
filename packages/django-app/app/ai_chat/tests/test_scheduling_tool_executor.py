@@ -169,10 +169,9 @@ class ScheduleBlockToolTestCase(TestCase):
         self.block.refresh_from_db()
         # Tomorrow in user's timezone — assert it's exactly one day after
         # today_for_user, which is what the tool uses.
-        from core.helpers import today_for_user
 
         self.assertEqual(
-            self.block.scheduled_for, today_for_user(self.user) + timedelta(days=1)
+            self.block.scheduled_for, self.user.today() + timedelta(days=1)
         )
 
     def test_rejects_other_users_block(self):
@@ -285,7 +284,6 @@ class MoveBlockToDailyToolTestCase(TestCase):
         self.assertEqual(block.page.date, date(2026, 6, 15))
 
     def test_default_target_is_today(self):
-        from core.helpers import today_for_user
 
         block = BlockFactory(user=self.user, page=self.page, content="urgent")
         ex = NotesToolExecutor(self.user, allow_writes=True)
@@ -294,7 +292,7 @@ class MoveBlockToDailyToolTestCase(TestCase):
 
         self.assertTrue(result.get("moved"))
         block.refresh_from_db()
-        self.assertEqual(block.page.date, today_for_user(self.user))
+        self.assertEqual(block.page.date, self.user.today())
 
 
 class ListReadToolsTestCase(TestCase):
@@ -306,9 +304,8 @@ class ListReadToolsTestCase(TestCase):
         cls.other_page = PageFactory(user=cls.other_user, title="Other", slug="other")
 
     def test_list_overdue_blocks_filters_by_user_and_today(self):
-        from core.helpers import today_for_user
 
-        today = today_for_user(self.user)
+        today = self.user.today()
         BlockFactory(
             user=self.user,
             page=self.page,
@@ -366,9 +363,8 @@ class ListReadToolsTestCase(TestCase):
         self.assertEqual(entry["page_title"], "Project")
 
     def test_list_scheduled_blocks_returns_range(self):
-        from core.helpers import today_for_user
 
-        today = today_for_user(self.user)
+        today = self.user.today()
         in_range = BlockFactory(
             user=self.user,
             page=self.page,

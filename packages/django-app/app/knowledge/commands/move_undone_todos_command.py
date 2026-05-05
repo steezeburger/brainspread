@@ -1,7 +1,6 @@
 from typing import List, Optional, TypedDict
 
 from common.commands.abstract_base_command import AbstractBaseCommand
-from core.helpers import today_for_user
 
 from ..forms.move_undone_todos_form import MoveUndoneTodosForm
 from ..forms.touch_page_form import TouchPageForm
@@ -22,7 +21,7 @@ class MoveUndoneTodosCommand(AbstractBaseCommand):
         super().execute()  # This validates the form
 
         user = self.form.cleaned_data["user"]
-        target_date = self.form.cleaned_data.get("target_date") or today_for_user(user)
+        target_date = self.form.cleaned_data.get("target_date") or user.today()
 
         # Get or create target date's daily note page
         target_page, created = PageRepository.get_or_create_daily_note(

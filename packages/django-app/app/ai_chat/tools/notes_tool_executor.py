@@ -1,7 +1,10 @@
 """Execute assistant-requested notes tool calls.
 
-Keeps the `get_tool_result` surface small and JSON-serialisable so the
-provider service can feed it straight back as a `tool_result` block.
+Thin dispatcher: each tool call resolves to a Form + Command pair. The
+executor's job is just argument-shape translation (LLM-shaped args ->
+form data, including parsing relative date tokens like 'tomorrow' /
+'+7d') plus the per-call approval gate for write tools. All business
+logic lives in the commands themselves.
 
 Write tools (create_block / edit_block / move_blocks / schedule_block /
 clear_schedule / set_block_type / move_block_to_daily) never run without
@@ -17,21 +20,45 @@ from typing import Any, Dict, List, Optional, Tuple
 import pytz
 from django.utils import timezone
 
-from core.helpers import today_for_user
+from core.commands.get_current_time_command import GetCurrentTimeCommand
+from core.forms import GetCurrentTimeForm
 from core.models import User
 from knowledge.commands.create_block_command import CreateBlockCommand
 from knowledge.commands.create_page_command import CreatePageCommand
+from knowledge.commands.find_stale_todos_command import FindStaleTodosCommand
+from knowledge.commands.get_block_by_id_command import GetBlockByIdCommand
+from knowledge.commands.get_completion_stats_command import GetCompletionStatsCommand
+from knowledge.commands.get_daily_pages_in_range_command import (
+    GetDailyPagesInRangeCommand,
+)
+from knowledge.commands.get_page_by_title_command import GetPageByTitleCommand
+from knowledge.commands.get_streaks_command import GetStreaksCommand
+from knowledge.commands.list_overdue_blocks_command import ListOverdueBlocksCommand
+from knowledge.commands.list_pending_reminders_command import (
+    ListPendingRemindersCommand,
+)
+from knowledge.commands.list_scheduled_blocks_command import ListScheduledBlocksCommand
 from knowledge.commands.move_block_to_daily_command import MoveBlockToDailyCommand
 from knowledge.commands.schedule_block_command import ScheduleBlockCommand
+from knowledge.commands.search_notes_command import SearchNotesCommand
 from knowledge.commands.set_block_type_command import SetBlockTypeCommand
 from knowledge.commands.update_block_command import UpdateBlockCommand
 from knowledge.forms.create_block_form import CreateBlockForm
 from knowledge.forms.create_page_form import CreatePageForm
+from knowledge.forms.find_stale_todos_form import FindStaleTodosForm
+from knowledge.forms.get_block_by_id_form import GetBlockByIdForm
+from knowledge.forms.get_completion_stats_form import GetCompletionStatsForm
+from knowledge.forms.get_daily_pages_in_range_form import GetDailyPagesInRangeForm
+from knowledge.forms.get_page_by_title_form import GetPageByTitleForm
+from knowledge.forms.get_streaks_form import GetStreaksForm
+from knowledge.forms.list_overdue_blocks_form import ListOverdueBlocksForm
+from knowledge.forms.list_pending_reminders_form import ListPendingRemindersForm
+from knowledge.forms.list_scheduled_blocks_form import ListScheduledBlocksForm
 from knowledge.forms.move_block_to_daily_form import MoveBlockToDailyForm
 from knowledge.forms.schedule_block_form import ScheduleBlockForm
+from knowledge.forms.search_notes_form import SearchNotesForm
 from knowledge.forms.set_block_type_form import SetBlockTypeForm
 from knowledge.forms.update_block_form import UpdateBlockForm
-from knowledge.models import Reminder
 from knowledge.repositories.block_repository import BlockRepository
 from knowledge.repositories.page_repository import PageRepository
 
@@ -41,14 +68,6 @@ from .notes_tools import (
 )
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_SEARCH_LIMIT = 10
-MAX_SEARCH_LIMIT = 25
-DEFAULT_LIST_LIMIT = 25
-MAX_LIST_LIMIT = 100
-DEFAULT_SCHEDULE_RANGE_LIMIT = 50
-MAX_SCHEDULE_RANGE_LIMIT = 200
-SCHEDULE_RANGE_DEFAULT_DAYS = 30
 
 
 class NotesToolExecutor:
@@ -98,6 +117,14 @@ class NotesToolExecutor:
                 return self._list_pending_reminders(args)
             if name == "list_scheduled_blocks":
                 return self._list_scheduled_blocks(args)
+            if name == "get_daily_pages_in_range":
+                return self._get_daily_pages_in_range(args)
+            if name == "get_completion_stats":
+                return self._get_completion_stats(args)
+            if name == "get_streaks":
+                return self._get_streaks(args)
+            if name == "find_stale_todos":
+                return self._find_stale_todos(args)
             if name == "create_page":
                 return self._create_page(args)
             if name == "create_block":
@@ -121,112 +148,156 @@ class NotesToolExecutor:
             logger.exception("Notes tool %s failed", name)
             return {"error": f"Tool {name} failed: {e}"}
 
+    # ---- Read tools (thin form -> command wrappers) ----
+
     def _search_notes(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        query = (args.get("query") or "").strip()
-        if not query:
-            return {"error": "query is required"}
-
-        raw_limit = args.get("limit") or DEFAULT_SEARCH_LIMIT
-        try:
-            limit = int(raw_limit)
-        except (TypeError, ValueError):
-            limit = DEFAULT_SEARCH_LIMIT
-        limit = max(1, min(limit, MAX_SEARCH_LIMIT))
-
-        blocks = (
-            BlockRepository.search_by_content(self.user, query)
-            .select_related("page")
-            .order_by("-modified_at")[:limit]
-        )
-        results: List[Dict[str, Any]] = []
-        for block in blocks:
-            results.append(
-                {
-                    "block_uuid": str(block.uuid),
-                    "page_title": block.page.title if block.page else None,
-                    "page_slug": block.page.slug if block.page else None,
-                    "block_type": block.block_type,
-                    "content": block.content,
-                }
-            )
-        return {"query": query, "count": len(results), "results": results}
+        form_data: Dict[str, Any] = {
+            "user": self.user.id,
+            "query": (args.get("query") or "").strip(),
+        }
+        if args.get("limit") is not None:
+            form_data["limit"] = args["limit"]
+        form = SearchNotesForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return SearchNotesCommand(form).execute()
 
     def _get_page_by_title(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        title = (args.get("title") or "").strip()
-        if not title:
-            return {"error": "title is required"}
-
-        page = (
-            PageRepository.get_queryset()
-            .filter(user=self.user, title__iexact=title)
-            .first()
+        form = GetPageByTitleForm(
+            {
+                "user": self.user.id,
+                "title": (args.get("title") or "").strip(),
+            }
         )
-        if not page:
-            return {"error": f"No page found with title '{title}'"}
-
-        root_blocks = BlockRepository.get_root_blocks(page)
-        return {
-            "page": {
-                "uuid": str(page.uuid),
-                "title": page.title,
-                "slug": page.slug,
-                "page_type": page.page_type,
-            },
-            "blocks": [
-                {
-                    "block_uuid": str(block.uuid),
-                    "block_type": block.block_type,
-                    "content": block.content,
-                    "order": block.order,
-                }
-                for block in root_blocks
-            ],
-        }
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return GetPageByTitleCommand(form).execute()
 
     def _get_block_by_id(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        block_uuid = (args.get("block_uuid") or "").strip()
-        if not block_uuid:
-            return {"error": "block_uuid is required"}
-
-        block = BlockRepository.get_by_uuid(block_uuid, user=self.user)
-        if not block:
-            return {"error": f"No block found with uuid {block_uuid}"}
-
-        children = BlockRepository.get_child_blocks(block)
-        return {
-            "block": {
-                "block_uuid": str(block.uuid),
-                "block_type": block.block_type,
-                "content": block.content,
-                "page_title": block.page.title if block.page else None,
-                "page_slug": block.page.slug if block.page else None,
-            },
-            "children": [
-                {
-                    "block_uuid": str(child.uuid),
-                    "block_type": child.block_type,
-                    "content": child.content,
-                    "order": child.order,
-                }
-                for child in children
-            ],
-        }
+        form = GetBlockByIdForm(
+            {
+                "user": self.user.id,
+                "block_uuid": (args.get("block_uuid") or "").strip(),
+            }
+        )
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return GetBlockByIdCommand(form).execute()
 
     def _get_current_time(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        tz_name = self.user.timezone or "UTC"
+        form = GetCurrentTimeForm({"user": self.user.id})
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return GetCurrentTimeCommand(form).execute()
+
+    def _list_overdue_blocks(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form_data: Dict[str, Any] = {"user": self.user.id}
+        if args.get("limit") is not None:
+            form_data["limit"] = args["limit"]
+        form = ListOverdueBlocksForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return ListOverdueBlocksCommand(form).execute()
+
+    def _list_pending_reminders(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form_data: Dict[str, Any] = {"user": self.user.id}
+        if args.get("limit") is not None:
+            form_data["limit"] = args["limit"]
+        form = ListPendingRemindersForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return ListPendingRemindersCommand(form).execute()
+
+    def _list_scheduled_blocks(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        today = self.user.today()
         try:
-            tz = pytz.timezone(tz_name)
-        except pytz.UnknownTimeZoneError:
-            tz = pytz.UTC
-            tz_name = "UTC"
-        now_local = timezone.now().astimezone(tz)
-        return {
-            "now": now_local.isoformat(),
-            "date": now_local.date().isoformat(),
-            "time": now_local.strftime("%H:%M"),
-            "weekday": now_local.strftime("%A"),
-            "timezone": tz_name,
+            start_date = _parse_relative_date(args.get("start_date"), today)
+            end_date = _parse_relative_date(args.get("end_date"), today)
+        except ValueError as e:
+            return {"error": str(e)}
+
+        form_data: Dict[str, Any] = {"user": self.user.id}
+        if start_date is not None:
+            form_data["start_date"] = start_date.isoformat()
+        if end_date is not None:
+            form_data["end_date"] = end_date.isoformat()
+        if args.get("limit") is not None:
+            form_data["limit"] = args["limit"]
+
+        form = ListScheduledBlocksForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return ListScheduledBlocksCommand(form).execute()
+
+    def _get_daily_pages_in_range(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        today = self.user.today()
+        try:
+            start_date = _parse_relative_date(args.get("start_date"), today)
+            end_date = _parse_relative_date(args.get("end_date"), today)
+        except ValueError as e:
+            return {"error": str(e)}
+
+        form_data: Dict[str, Any] = {"user": self.user.id}
+        if start_date is not None:
+            form_data["start_date"] = start_date.isoformat()
+        if end_date is not None:
+            form_data["end_date"] = end_date.isoformat()
+
+        form = GetDailyPagesInRangeForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return GetDailyPagesInRangeCommand(form).execute()
+
+    def _get_completion_stats(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        today = self.user.today()
+        try:
+            start_date = _parse_relative_date(args.get("start_date"), today)
+            end_date = _parse_relative_date(args.get("end_date"), today)
+        except ValueError as e:
+            return {"error": str(e)}
+
+        form_data: Dict[str, Any] = {"user": self.user.id}
+        if start_date is not None:
+            form_data["start_date"] = start_date.isoformat()
+        if end_date is not None:
+            form_data["end_date"] = end_date.isoformat()
+
+        form = GetCompletionStatsForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return GetCompletionStatsCommand(form).execute()
+
+    def _get_streaks(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        today = self.user.today()
+        try:
+            as_of = _parse_relative_date(args.get("as_of"), today)
+        except ValueError as e:
+            return {"error": str(e)}
+
+        form_data: Dict[str, Any] = {
+            "user": self.user.id,
+            "kind": (args.get("kind") or "").strip().lower(),
         }
+        if as_of is not None:
+            form_data["as_of"] = as_of.isoformat()
+
+        form = GetStreaksForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return GetStreaksCommand(form).execute()
+
+    def _find_stale_todos(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form_data: Dict[str, Any] = {"user": self.user.id}
+        if args.get("older_than_days") is not None:
+            form_data["older_than_days"] = args["older_than_days"]
+        if args.get("limit") is not None:
+            form_data["limit"] = args["limit"]
+        form = FindStaleTodosForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return FindStaleTodosCommand(form).execute()
+
+    # ---- Write tools ----
 
     def _create_page(self, args: Dict[str, Any]) -> Dict[str, Any]:
         title = (args.get("title") or "").strip()
@@ -479,80 +550,6 @@ class NotesToolExecutor:
             "affected_page_uuids": sorted(affected),
         }
 
-    def _list_overdue_blocks(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        limit = _coerce_limit(
-            args.get("limit"), default=DEFAULT_LIST_LIMIT, max_value=MAX_LIST_LIMIT
-        )
-        today = today_for_user(self.user)
-        blocks = list(BlockRepository.get_overdue_blocks(self.user, today)[:limit])
-        return {
-            "today": today.isoformat(),
-            "count": len(blocks),
-            "results": [_summarize_block(b) for b in blocks],
-        }
-
-    def _list_pending_reminders(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        limit = _coerce_limit(
-            args.get("limit"), default=DEFAULT_LIST_LIMIT, max_value=MAX_LIST_LIMIT
-        )
-        reminders = list(
-            Reminder.objects.filter(
-                block__user=self.user,
-                sent_at__isnull=True,
-                status=Reminder.STATUS_PENDING,
-            )
-            .select_related("block", "block__page")
-            .order_by("fire_at")[:limit]
-        )
-        results = []
-        for reminder in reminders:
-            entry = reminder.to_dict()
-            block = reminder.block
-            entry["block_content"] = block.content
-            entry["block_type"] = block.block_type
-            entry["page_title"] = block.page.title if block.page else None
-            entry["page_uuid"] = str(block.page.uuid) if block.page else None
-            results.append(entry)
-        return {"count": len(results), "results": results}
-
-    def _list_scheduled_blocks(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        today = today_for_user(self.user)
-        try:
-            start_date = _parse_relative_date(args.get("start_date"), today) or today
-        except ValueError as e:
-            return {"error": f"start_date: {e}"}
-        try:
-            end_date = _parse_relative_date(args.get("end_date"), today)
-        except ValueError as e:
-            return {"error": f"end_date: {e}"}
-        if end_date is None:
-            end_date = start_date + timedelta(days=SCHEDULE_RANGE_DEFAULT_DAYS)
-        if end_date < start_date:
-            return {"error": "end_date must be on or after start_date"}
-
-        limit = _coerce_limit(
-            args.get("limit"),
-            default=DEFAULT_SCHEDULE_RANGE_LIMIT,
-            max_value=MAX_SCHEDULE_RANGE_LIMIT,
-        )
-        blocks = list(
-            BlockRepository.get_queryset()
-            .filter(
-                user=self.user,
-                scheduled_for__gte=start_date,
-                scheduled_for__lte=end_date,
-            )
-            .select_related("page")
-            .prefetch_related("reminders")
-            .order_by("scheduled_for", "order")[:limit]
-        )
-        return {
-            "start_date": start_date.isoformat(),
-            "end_date": end_date.isoformat(),
-            "count": len(blocks),
-            "results": [_summarize_block(b) for b in blocks],
-        }
-
     def _schedule_block(self, args: Dict[str, Any]) -> Dict[str, Any]:
         block_uuid = (args.get("block_uuid") or "").strip()
         if not block_uuid:
@@ -561,7 +558,7 @@ class NotesToolExecutor:
         if not block:
             return {"error": f"No block found with uuid {block_uuid}"}
 
-        today = today_for_user(self.user)
+        today = self.user.today()
         try:
             scheduled_for = _parse_relative_date(args.get("scheduled_for"), today)
         except ValueError as e:
@@ -670,7 +667,7 @@ class NotesToolExecutor:
         if not block:
             return {"error": f"No block found with uuid {block_uuid}"}
 
-        today = today_for_user(self.user)
+        today = self.user.today()
         try:
             target_date = _parse_relative_date(args.get("target_date"), today)
         except ValueError as e:
@@ -784,37 +781,6 @@ def _parse_relative_date(value: Any, today: date) -> Optional[date]:
         raise ValueError(
             f"expected ISO YYYY-MM-DD or 'today'/'tomorrow'/'+Nd', got '{value}'"
         ) from e
-
-
-def _coerce_limit(value: Any, *, default: int, max_value: int) -> int:
-    if value is None:
-        return default
-    try:
-        n = int(value)
-    except (TypeError, ValueError):
-        return default
-    return max(1, min(n, max_value))
-
-
-def _summarize_block(block) -> Dict[str, Any]:
-    """Compact block summary for list_* tools — small enough to keep many
-    in a tool result, rich enough for the chat surface to render."""
-    return {
-        "block_uuid": str(block.uuid),
-        "content": block.content,
-        "block_type": block.block_type,
-        "scheduled_for": (
-            block.scheduled_for.isoformat() if block.scheduled_for else None
-        ),
-        "completed_at": (
-            block.completed_at.isoformat() if block.completed_at else None
-        ),
-        "page_uuid": str(block.page.uuid) if block.page else None,
-        "page_title": block.page.title if block.page else None,
-        "page_slug": block.page.slug if block.page else None,
-        "pending_reminder_date": block._pending_reminder_local_date(),
-        "pending_reminder_time": block._pending_reminder_local_time(),
-    }
 
 
 def _first_form_error(form) -> str:
