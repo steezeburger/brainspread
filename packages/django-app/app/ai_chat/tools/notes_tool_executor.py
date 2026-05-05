@@ -770,7 +770,7 @@ class NotesToolExecutor:
         form = CancelReminderForm(
             {
                 "user": self.user.id,
-                "reminder": (args.get("reminder_uuid") or "").strip(),
+                "block": (args.get("block_uuid") or "").strip(),
             }
         )
         if not form.is_valid():

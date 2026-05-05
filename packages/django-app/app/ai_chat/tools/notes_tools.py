@@ -639,22 +639,25 @@ NOTES_WRITE_TOOLS: List[Dict[str, Any]] = [
     {
         "name": "cancel_reminder",
         "description": (
-            "Cancel a pending reminder without clearing the block's"
-            " due date. Refuses to touch reminders that have already"
-            " fired (sent / failed / skipped / cancelled). Use"
-            " list_pending_reminders first if you need the uuid."
-            " Every call pauses for explicit user approval before"
-            " execution."
+            "Cancel the pending reminder on a block without clearing"
+            " the block's due date. Identified by block_uuid (matches"
+            " clear_schedule's API and avoids guessing a separate"
+            " reminder uuid). Returns an error when the block has no"
+            " pending reminder. Use clear_schedule instead if you also"
+            " want to drop the due date. Every call pauses for"
+            " explicit user approval before execution."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "reminder_uuid": {
+                "block_uuid": {
                     "type": "string",
-                    "description": "UUID of the reminder to cancel.",
+                    "description": (
+                        "UUID of the block whose pending reminder to" " cancel."
+                    ),
                 },
             },
-            "required": ["reminder_uuid"],
+            "required": ["block_uuid"],
         },
     },
     {

@@ -4,25 +4,25 @@ from django.core.exceptions import ValidationError
 from common.forms import BaseForm, UUIDModelChoiceField
 from core.repositories import UserRepository
 
-from ..repositories import ReminderRepository
+from ..repositories import BlockRepository
 
 
 class CancelReminderForm(BaseForm):
     """Inputs for the assistant's cancel_reminder tool.
 
-    Cancels a pending reminder without clearing the block's
-    scheduled_for. Refuses to cancel reminders that have already fired
-    (sent / failed / etc).
+    Identified by `block` (the block whose pending reminder should be
+    killed), not by the reminder's own uuid — there's at most one
+    pending reminder per block (see ScheduleBlockCommand replace-on-
+    save semantics) and the block uuid is the natural identifier the
+    assistant already knows. Mirrors clear_schedule's API.
     """
 
     user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
-    reminder = UUIDModelChoiceField(
-        queryset=ReminderRepository.get_queryset(), required=True
-    )
+    block = UUIDModelChoiceField(queryset=BlockRepository.get_queryset(), required=True)
 
-    def clean_reminder(self):
-        reminder = self.cleaned_data.get("reminder")
+    def clean_block(self):
+        block = self.cleaned_data.get("block")
         user = self.cleaned_data.get("user")
-        if reminder and user and reminder.block.user_id != user.id:
-            raise ValidationError("Reminder not found")
-        return reminder
+        if block and user and block.user_id != user.id:
+            raise ValidationError("Block not found")
+        return block

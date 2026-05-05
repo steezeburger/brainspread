@@ -3,13 +3,14 @@ from typing import Any, Dict
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.cancel_reminder_form import CancelReminderForm
-from ..models import Reminder
+from ..models import Block, Reminder
 
 
 class CancelReminderCommand(AbstractBaseCommand):
-    """Cancel a pending reminder without clearing the block's
-    scheduled_for. Refuses to touch reminders that have already fired
-    (sent / failed / skipped / cancelled).
+    """Cancel the block's pending reminder without clearing the
+    block's scheduled_for. Refuses (returns an error result) when
+    the block has no pending reminder — there's nothing to cancel.
+    Sent / failed / skipped reminders aren't touched.
     """
 
     def __init__(self, form: CancelReminderForm) -> None:
@@ -18,23 +19,19 @@ class CancelReminderCommand(AbstractBaseCommand):
     def execute(self) -> Dict[str, Any]:
         super().execute()
 
-        reminder: Reminder = self.form.cleaned_data["reminder"]
+        block: Block = self.form.cleaned_data["block"]
 
-        if reminder.status != Reminder.STATUS_PENDING:
-            return {
-                "error": (
-                    f"reminder is not pending (status: {reminder.status});"
-                    " nothing to cancel"
-                )
-            }
+        pending: Reminder | None = block.reminders.filter(
+            sent_at__isnull=True, status=Reminder.STATUS_PENDING
+        ).first()
+        if pending is None:
+            return {"error": "block has no pending reminder to cancel"}
 
-        reminder.cancel()
+        pending.cancel()
         return {
             "cancelled": True,
-            "reminder_uuid": str(reminder.uuid),
-            "status": reminder.status,
-            "block_uuid": str(reminder.block.uuid),
-            "affected_page_uuids": (
-                [str(reminder.block.page.uuid)] if reminder.block.page else []
-            ),
+            "reminder_uuid": str(pending.uuid),
+            "status": pending.status,
+            "block_uuid": str(block.uuid),
+            "affected_page_uuids": ([str(block.page.uuid)] if block.page else []),
         }

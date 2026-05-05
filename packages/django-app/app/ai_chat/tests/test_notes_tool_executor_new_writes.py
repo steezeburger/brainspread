@@ -125,9 +125,7 @@ class CancelReminderTests(TestCase):
 
     def test_cancels_pending_reminder_and_keeps_schedule(self):
         ex = _writable(self.user)
-        result = ex.execute(
-            "cancel_reminder", {"reminder_uuid": str(self.reminder.uuid)}
-        )
+        result = ex.execute("cancel_reminder", {"block_uuid": str(self.block.uuid)})
 
         self.assertTrue(result.get("cancelled"))
         self.assertEqual(result["status"], Reminder.STATUS_CANCELLED)
@@ -138,16 +136,25 @@ class CancelReminderTests(TestCase):
         self.block.refresh_from_db()
         self.assertEqual(self.block.scheduled_for, date(2025, 6, 1))
 
-    def test_refuses_already_sent_reminder(self):
+    def test_returns_error_when_block_has_no_pending_reminder(self):
+        # Cancel once to clear the only pending reminder, then try again.
+        ex = _writable(self.user)
+        ex.execute("cancel_reminder", {"block_uuid": str(self.block.uuid)})
+        result = ex.execute("cancel_reminder", {"block_uuid": str(self.block.uuid)})
+        self.assertIn("error", result)
+
+    def test_does_not_touch_already_sent_reminders(self):
+        # Mark the only pending reminder as sent.
         self.reminder.status = Reminder.STATUS_SENT
         self.reminder.sent_at = timezone.now()
         self.reminder.save(update_fields=["status", "sent_at"])
 
         ex = _writable(self.user)
-        result = ex.execute(
-            "cancel_reminder", {"reminder_uuid": str(self.reminder.uuid)}
-        )
+        result = ex.execute("cancel_reminder", {"block_uuid": str(self.block.uuid)})
+        # No pending reminder exists for this block now.
         self.assertIn("error", result)
+        self.reminder.refresh_from_db()
+        self.assertEqual(self.reminder.status, Reminder.STATUS_SENT)
 
     def test_user_isolation(self):
         other_block = BlockFactory(
@@ -162,9 +169,7 @@ class CancelReminderTests(TestCase):
         )
 
         ex = _writable(self.user)
-        result = ex.execute(
-            "cancel_reminder", {"reminder_uuid": str(other_reminder.uuid)}
-        )
+        result = ex.execute("cancel_reminder", {"block_uuid": str(other_block.uuid)})
         self.assertIn("error", result)
         other_reminder.refresh_from_db()
         self.assertEqual(other_reminder.status, Reminder.STATUS_PENDING)
