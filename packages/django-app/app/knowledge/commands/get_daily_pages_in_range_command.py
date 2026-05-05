@@ -3,7 +3,9 @@ from typing import Any, Dict, List
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.get_daily_pages_in_range_form import GetDailyPagesInRangeForm
-from ..models import Block, Page
+from ..models import Block
+from ..repositories.block_repository import BlockRepository
+from ..repositories.page_repository import PageRepository
 
 MAX_RANGE_DAYS = 60
 
@@ -32,14 +34,7 @@ class GetDailyPagesInRangeCommand(AbstractBaseCommand):
                 "error": f"range too large ({span_days} days); max {MAX_RANGE_DAYS}"
             }
 
-        pages = list(
-            Page.objects.filter(
-                user=user,
-                page_type="daily",
-                date__gte=start_date,
-                date__lte=end_date,
-            ).order_by("date")
-        )
+        pages = list(PageRepository.get_dailies_in_range(user, start_date, end_date))
         if not pages:
             return {
                 "start_date": start_date.isoformat(),
@@ -49,11 +44,7 @@ class GetDailyPagesInRangeCommand(AbstractBaseCommand):
             }
 
         page_ids = [p.id for p in pages]
-        root_blocks = list(
-            Block.objects.filter(page_id__in=page_ids, parent__isnull=True).order_by(
-                "page_id", "order"
-            )
-        )
+        root_blocks = BlockRepository.get_root_blocks_for_pages(page_ids)
         blocks_by_page: Dict[int, List[Block]] = {}
         for block in root_blocks:
             blocks_by_page.setdefault(block.page_id, []).append(block)

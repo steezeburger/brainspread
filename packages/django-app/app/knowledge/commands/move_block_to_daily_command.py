@@ -4,7 +4,6 @@ from django.db import transaction
 from django.db.models import Max
 
 from common.commands.abstract_base_command import AbstractBaseCommand
-from core.helpers import today_for_user
 
 from ..forms.move_block_to_daily_form import MoveBlockToDailyForm
 from ..forms.touch_page_form import TouchPageForm
@@ -25,7 +24,7 @@ class MoveBlockToDailyCommand(AbstractBaseCommand):
 
         user = self.form.cleaned_data["user"]
         block = self.form.cleaned_data["block"]
-        target_date = self.form.cleaned_data.get("target_date") or today_for_user(user)
+        target_date = self.form.cleaned_data.get("target_date") or user.today()
 
         target_page, _ = PageRepository.get_or_create_daily_note(user, target_date)
 

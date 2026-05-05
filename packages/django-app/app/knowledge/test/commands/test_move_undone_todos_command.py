@@ -14,7 +14,7 @@ from ..helpers import BlockFactory, PageFactory, UserFactory
 def _utc_noon(d: date) -> datetime:
     """Helper: aware UTC datetime at noon on the given date.
 
-    Used to feed core.helpers.timezone.now() while mocking, so that
+    Used to feed core.models.user.timezone.now() while mocking, so that
     today_for_user(user) resolves to the target date for tests.
     """
     return datetime(d.year, d.month, d.day, 12, 0, tzinfo=pytz.UTC)
@@ -25,7 +25,7 @@ class TestMoveUndoneTodosCommand(TestCase):
     def setUpTestData(cls):
         cls.user = UserFactory()
 
-    @patch("core.helpers.timezone")
+    @patch("core.models.user.timezone")
     def test_should_move_undone_todos_to_bottom_of_target_page(self, mock_timezone):
         """Test that moved undone TODOs are placed at the bottom of the target page"""
         # Mock today's date to be 2025-06-30
@@ -124,7 +124,7 @@ class TestMoveUndoneTodosCommand(TestCase):
             all_blocks[3], todo2
         )  # Fourth block should be second moved TODO
 
-    @patch("core.helpers.timezone")
+    @patch("core.models.user.timezone")
     def test_should_not_move_completed_todos(self, mock_timezone):
         """Test that completed (DONE) TODOs are not moved"""
         # Mock today's date to be 2025-06-30
@@ -177,7 +177,7 @@ class TestMoveUndoneTodosCommand(TestCase):
         # Undone todo should be moved to today's page
         self.assertNotEqual(undone_todo.page, yesterday_page)
 
-    @patch("core.helpers.timezone")
+    @patch("core.models.user.timezone")
     def test_should_return_no_todos_message_when_none_found(self, mock_timezone):
         """Test that appropriate message is returned when no undone TODOs are found"""
         # Mock today's date to be 2025-06-30
@@ -214,7 +214,7 @@ class TestMoveUndoneTodosCommand(TestCase):
         self.assertEqual(result["moved_count"], 0)
         self.assertEqual(result["message"], "No undone TODOs found to move")
 
-    @patch("core.helpers.timezone")
+    @patch("core.models.user.timezone")
     def test_should_preserve_relative_order_of_moved_todos(self, mock_timezone):
         """Test that moved TODOs maintain their relative order from source pages"""
         # Mock today's date to be 2025-06-30
@@ -294,7 +294,7 @@ class TestMoveUndoneTodosCommand(TestCase):
         for i, expected_block in enumerate(expected_order):
             self.assertEqual(moved_blocks[i], expected_block)
 
-    @patch("core.helpers.timezone")
+    @patch("core.models.user.timezone")
     def test_should_not_disrupt_nested_blocks_when_moving_todos(self, mock_timezone):
         """Test that moving TODOs doesn't affect nested block structure on target page"""
         # Mock today's date to be 2025-06-30
@@ -408,7 +408,7 @@ class TestMoveUndoneTodosCommand(TestCase):
             len(all_orders), len(set(all_orders))
         )  # All orders should be unique
 
-    @patch("core.helpers.timezone")
+    @patch("core.models.user.timezone")
     def test_should_move_undone_todos_to_specified_target_date(self, mock_timezone):
         """Test that undone TODOs can be moved to a specific target date"""
         # Mock today's date to be 2025-06-30
@@ -460,7 +460,7 @@ class TestMoveUndoneTodosCommand(TestCase):
         self.assertEqual(todo1.page.date, target_date)
         self.assertEqual(todo2.page.date, target_date)
 
-    @patch("core.helpers.timezone")
+    @patch("core.models.user.timezone")
     def test_should_default_to_current_date_when_no_target_date_provided(
         self, mock_timezone
     ):
@@ -527,7 +527,7 @@ class TestMoveUndoneTodosCommand(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("user", form.errors)
 
-    @patch("core.helpers.timezone")
+    @patch("core.models.user.timezone")
     def test_should_skip_dated_blocks_during_rollover(self, mock_timezone):
         """Dated blocks (scheduled_for set) stay on their original page —
         they surface via the overdue query instead."""

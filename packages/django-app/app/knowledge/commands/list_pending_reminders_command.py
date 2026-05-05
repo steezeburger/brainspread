@@ -3,7 +3,7 @@ from typing import Any, Dict
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.list_pending_reminders_form import ListPendingRemindersForm
-from ..models import Reminder
+from ..repositories.reminder_repository import ReminderRepository
 
 
 class ListPendingRemindersCommand(AbstractBaseCommand):
@@ -18,15 +18,7 @@ class ListPendingRemindersCommand(AbstractBaseCommand):
         user = self.form.cleaned_data["user"]
         limit = self.form.cleaned_data.get("limit") or 25
 
-        reminders = list(
-            Reminder.objects.filter(
-                block__user=user,
-                sent_at__isnull=True,
-                status=Reminder.STATUS_PENDING,
-            )
-            .select_related("block", "block__page")
-            .order_by("fire_at")[:limit]
-        )
+        reminders = ReminderRepository.get_pending_for_user(user, limit)
         results = []
         for reminder in reminders:
             entry = reminder.to_dict()

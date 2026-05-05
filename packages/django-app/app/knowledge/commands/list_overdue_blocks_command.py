@@ -1,11 +1,9 @@
 from typing import Any, Dict
 
 from common.commands.abstract_base_command import AbstractBaseCommand
-from core.helpers import today_for_user
 
 from ..forms.list_overdue_blocks_form import ListOverdueBlocksForm
 from ..repositories.block_repository import BlockRepository
-from ._tool_helpers import summarize_block
 
 
 class ListOverdueBlocksCommand(AbstractBaseCommand):
@@ -23,10 +21,10 @@ class ListOverdueBlocksCommand(AbstractBaseCommand):
         user = self.form.cleaned_data["user"]
         limit = self.form.cleaned_data.get("limit") or 25
 
-        today = today_for_user(user)
+        today = user.today()
         blocks = list(BlockRepository.get_overdue_blocks(user, today)[:limit])
         return {
             "today": today.isoformat(),
             "count": len(blocks),
-            "results": [summarize_block(b) for b in blocks],
+            "results": [b.as_summary() for b in blocks],
         }

@@ -7,7 +7,6 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from ai_chat.models import AIModel, AIProvider, UserAISettings, UserProviderConfig
-from core.helpers import today_for_user
 from knowledge.models import Block, Page
 
 User = get_user_model()
@@ -99,7 +98,7 @@ class Command(BaseCommand):
 
         self._configure_anthropic_provider(user)
 
-        today = today_for_user(user)
+        today = user.today()
         date_str = today.strftime("%Y-%m-%d")
 
         with transaction.atomic():

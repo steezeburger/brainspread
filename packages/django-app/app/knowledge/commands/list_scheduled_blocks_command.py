@@ -2,11 +2,9 @@ from datetime import timedelta
 from typing import Any, Dict
 
 from common.commands.abstract_base_command import AbstractBaseCommand
-from core.helpers import today_for_user
 
 from ..forms.list_scheduled_blocks_form import ListScheduledBlocksForm
 from ..repositories.block_repository import BlockRepository
-from ._tool_helpers import summarize_block
 
 DEFAULT_RANGE_DAYS = 30
 
@@ -24,7 +22,7 @@ class ListScheduledBlocksCommand(AbstractBaseCommand):
         super().execute()
 
         user = self.form.cleaned_data["user"]
-        today = today_for_user(user)
+        today = user.today()
 
         start_date = self.form.cleaned_data.get("start_date") or today
         end_date = self.form.cleaned_data.get("end_date")
@@ -35,20 +33,12 @@ class ListScheduledBlocksCommand(AbstractBaseCommand):
 
         limit = self.form.cleaned_data.get("limit") or 50
 
-        blocks = list(
-            BlockRepository.get_queryset()
-            .filter(
-                user=user,
-                scheduled_for__gte=start_date,
-                scheduled_for__lte=end_date,
-            )
-            .select_related("page")
-            .prefetch_related("reminders")
-            .order_by("scheduled_for", "order")[:limit]
+        blocks = BlockRepository.get_scheduled_in_range(
+            user, start_date, end_date, limit
         )
         return {
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat(),
             "count": len(blocks),
-            "results": [summarize_block(b) for b in blocks],
+            "results": [b.as_summary() for b in blocks],
         }

@@ -22,7 +22,6 @@ from django.utils import timezone
 
 from core.commands.get_current_time_command import GetCurrentTimeCommand
 from core.forms import GetCurrentTimeForm
-from core.helpers import today_for_user
 from core.models import User
 from knowledge.commands.create_block_command import CreateBlockCommand
 from knowledge.commands.create_page_command import CreatePageCommand
@@ -210,7 +209,7 @@ class NotesToolExecutor:
         return ListPendingRemindersCommand(form).execute()
 
     def _list_scheduled_blocks(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        today = today_for_user(self.user)
+        today = self.user.today()
         try:
             start_date = _parse_relative_date(args.get("start_date"), today)
             end_date = _parse_relative_date(args.get("end_date"), today)
@@ -231,7 +230,7 @@ class NotesToolExecutor:
         return ListScheduledBlocksCommand(form).execute()
 
     def _get_daily_pages_in_range(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        today = today_for_user(self.user)
+        today = self.user.today()
         try:
             start_date = _parse_relative_date(args.get("start_date"), today)
             end_date = _parse_relative_date(args.get("end_date"), today)
@@ -250,7 +249,7 @@ class NotesToolExecutor:
         return GetDailyPagesInRangeCommand(form).execute()
 
     def _get_completion_stats(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        today = today_for_user(self.user)
+        today = self.user.today()
         try:
             start_date = _parse_relative_date(args.get("start_date"), today)
             end_date = _parse_relative_date(args.get("end_date"), today)
@@ -269,7 +268,7 @@ class NotesToolExecutor:
         return GetCompletionStatsCommand(form).execute()
 
     def _get_streaks(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        today = today_for_user(self.user)
+        today = self.user.today()
         try:
             as_of = _parse_relative_date(args.get("as_of"), today)
         except ValueError as e:
@@ -559,7 +558,7 @@ class NotesToolExecutor:
         if not block:
             return {"error": f"No block found with uuid {block_uuid}"}
 
-        today = today_for_user(self.user)
+        today = self.user.today()
         try:
             scheduled_for = _parse_relative_date(args.get("scheduled_for"), today)
         except ValueError as e:
@@ -668,7 +667,7 @@ class NotesToolExecutor:
         if not block:
             return {"error": f"No block found with uuid {block_uuid}"}
 
-        today = today_for_user(self.user)
+        today = self.user.today()
         try:
             target_date = _parse_relative_date(args.get("target_date"), today)
         except ValueError as e:

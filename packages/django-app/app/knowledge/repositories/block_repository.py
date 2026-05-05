@@ -1,10 +1,11 @@
-from typing import Any, Dict, List, Optional
+from datetime import date, datetime
+from typing import Any, Dict, Iterable, List, Optional
 
 from django.db import transaction
-from django.db.models import Max, QuerySet
+from django.db.models import Count, Max, QuerySet
+from django.db.models.functions import TruncDate
 
 from common.repositories.base_repository import BaseRepository
-from core.helpers import today_for_user
 
 from ..models import Block, Page
 
@@ -200,7 +201,7 @@ class BlockRepository(BaseRepository):
         "Today" is resolved against the user's timezone via the shared
         today_for_user helper (added on main).
         """
-        today = today_for_user(user)
+        today = user.today()
         return (
             cls.get_queryset()
             .filter(
@@ -235,6 +236,163 @@ class BlockRepository(BaseRepository):
             .select_related("page", "user")
             .prefetch_related("reminders")
             .order_by("scheduled_for", "order")
+        )
+
+    @classmethod
+    def get_scheduled_in_range(
+        cls,
+        user,
+        start_date: date,
+        end_date: date,
+        limit: int,
+    ) -> List[Block]:
+        """Blocks with scheduled_for in the inclusive range, ordered for
+        a calendar / upcoming-list view."""
+        return list(
+            cls.get_queryset()
+            .filter(
+                user=user,
+                scheduled_for__gte=start_date,
+                scheduled_for__lte=end_date,
+            )
+            .select_related("page")
+            .prefetch_related("reminders")
+            .order_by("scheduled_for", "order")[:limit]
+        )
+
+    @classmethod
+    def get_root_blocks_for_pages(cls, page_ids: Iterable[int]) -> List[Block]:
+        """Root blocks (no parent) across multiple pages, ordered by page
+        then order. Used to fetch a span of daily notes' top-level
+        bullets in one query."""
+        return list(
+            cls.get_queryset()
+            .filter(page_id__in=list(page_ids), parent__isnull=True)
+            .order_by("page_id", "order")
+        )
+
+    @classmethod
+    def get_completion_counts(
+        cls, user, start_dt: datetime, end_dt: datetime
+    ) -> Dict[str, int]:
+        """Count of blocks per block_type whose completed_at falls in
+        [start_dt, end_dt). Returns {block_type: count}."""
+        rows = (
+            cls.get_queryset()
+            .filter(user=user, completed_at__gte=start_dt, completed_at__lt=end_dt)
+            .values_list("block_type")
+            .annotate(c=Count("id"))
+        )
+        return {row[0]: int(row[1]) for row in rows}
+
+    @classmethod
+    def get_open_counts(
+        cls,
+        user,
+        block_types: Iterable[str],
+        start_dt: datetime,
+        end_dt: datetime,
+    ) -> Dict[str, int]:
+        """Count of blocks per block_type that were created in the window
+        (typically used for open/in-progress states like todo/doing/later)."""
+        rows = (
+            cls.get_queryset()
+            .filter(
+                user=user,
+                block_type__in=list(block_types),
+                created_at__gte=start_dt,
+                created_at__lt=end_dt,
+            )
+            .values_list("block_type")
+            .annotate(c=Count("id"))
+        )
+        return {row[0]: int(row[1]) for row in rows}
+
+    @classmethod
+    def get_done_counts_by_local_day(
+        cls, user, start_dt: datetime, end_dt: datetime, tz
+    ) -> Dict[date, int]:
+        """Per-local-day count of blocks transitioned to `done` in the
+        UTC window [start_dt, end_dt). Buckets by the user's tz so
+        boundaries match what the user sees in the UI."""
+        rows = (
+            cls.get_queryset()
+            .filter(
+                user=user,
+                block_type="done",
+                completed_at__gte=start_dt,
+                completed_at__lt=end_dt,
+            )
+            .annotate(local_day=TruncDate("completed_at", tzinfo=tz))
+            .values("local_day")
+            .annotate(c=Count("id"))
+        )
+        return {row["local_day"]: int(row["c"]) for row in rows if row["local_day"]}
+
+    @classmethod
+    def get_journal_active_dates(
+        cls, user, start_date: date, end_date: date
+    ) -> List[date]:
+        """Distinct dates within [start, end] where the user's daily
+        page has at least one block (i.e. they journaled that day)."""
+        page_ids = list(
+            Page.objects.filter(
+                user=user,
+                page_type="daily",
+                date__gte=start_date,
+                date__lte=end_date,
+            ).values_list("id", flat=True)
+        )
+        if not page_ids:
+            return []
+        rows = (
+            cls.get_queryset()
+            .filter(page_id__in=page_ids)
+            .values_list("page__date", flat=True)
+            .distinct()
+        )
+        return [d for d in rows if d is not None]
+
+    @classmethod
+    def get_completion_active_dates(
+        cls,
+        user,
+        block_types: Iterable[str],
+        start_dt: datetime,
+        end_dt: datetime,
+        tz,
+    ) -> List[date]:
+        """Distinct user-local dates within the UTC window where the user
+        completed at least one block."""
+        rows = (
+            cls.get_queryset()
+            .filter(
+                user=user,
+                block_type__in=list(block_types),
+                completed_at__gte=start_dt,
+                completed_at__lt=end_dt,
+            )
+            .annotate(local_day=TruncDate("completed_at", tzinfo=tz))
+            .values_list("local_day", flat=True)
+            .distinct()
+        )
+        return [d for d in rows if d is not None]
+
+    @classmethod
+    def get_stale_todos(cls, user, cutoff_dt: datetime, limit: int) -> List[Block]:
+        """Open TODO blocks (block_type='todo'), unscheduled, not yet
+        completed, created before cutoff_dt. Oldest first."""
+        return list(
+            cls.get_queryset()
+            .filter(
+                user=user,
+                block_type="todo",
+                scheduled_for__isnull=True,
+                completed_at__isnull=True,
+                created_at__lt=cutoff_dt,
+            )
+            .select_related("page")
+            .order_by("created_at")[:limit]
         )
 
     @classmethod

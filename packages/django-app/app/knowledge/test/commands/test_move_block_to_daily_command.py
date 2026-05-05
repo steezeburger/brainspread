@@ -242,7 +242,7 @@ class TestMoveBlockToDailyCommand(TestCase):
         )
         self.assertEqual(len(orders), len(set(orders)))
 
-    @patch("core.helpers.timezone")
+    @patch("core.models.user.timezone")
     def test_should_use_user_timezone_when_resolving_today(self, mock_timezone):
         # Server clock is 2026-04-29 03:00 UTC. A user in America/Los_Angeles
         # (UTC-7) should still see this as 2026-04-28, so the daily that gets
@@ -264,7 +264,7 @@ class TestMoveBlockToDailyCommand(TestCase):
         block.refresh_from_db()
         self.assertEqual(block.page.date, date(2026, 4, 28))
 
-    @patch("core.helpers.timezone")
+    @patch("core.models.user.timezone")
     def test_should_default_to_utc_today_when_user_timezone_is_utc(self, mock_timezone):
         utc_now = datetime(2026, 4, 29, 3, 0, tzinfo=pytz.UTC)
         mock_timezone.now.return_value = utc_now

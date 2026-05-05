@@ -1,15 +1,13 @@
-from datetime import datetime, time, timedelta
-from typing import Any, Dict
+from datetime import date, datetime, time, timedelta
+from typing import Any, Dict, List
 
 import pytz
 from django.utils import timezone
 
 from common.commands.abstract_base_command import AbstractBaseCommand
-from core.helpers import today_for_user
 
 from ..forms.find_stale_todos_form import FindStaleTodosForm
-from ..models import Block
-from ._tool_helpers import user_tz
+from ..repositories.block_repository import BlockRepository
 
 
 class FindStaleTodosCommand(AbstractBaseCommand):
@@ -26,30 +24,21 @@ class FindStaleTodosCommand(AbstractBaseCommand):
         super().execute()
 
         user = self.form.cleaned_data["user"]
-        older_than = self.form.cleaned_data.get("older_than_days") or 14
-        limit = self.form.cleaned_data.get("limit") or 50
+        older_than: int = self.form.cleaned_data.get("older_than_days") or 14
+        limit: int = self.form.cleaned_data.get("limit") or 50
 
-        today = today_for_user(user)
-        cutoff_date = today - timedelta(days=older_than)
-        tz = user_tz(user)
-        cutoff_dt = tz.localize(datetime.combine(cutoff_date, time.min)).astimezone(
-            pytz.UTC
+        today: date = user.today()
+        cutoff_date: date = today - timedelta(days=older_than)
+        cutoff_dt: datetime = (
+            user.tz()
+            .localize(datetime.combine(cutoff_date, time.min))
+            .astimezone(pytz.UTC)
         )
 
-        blocks = list(
-            Block.objects.filter(
-                user=user,
-                block_type="todo",
-                scheduled_for__isnull=True,
-                completed_at__isnull=True,
-                created_at__lt=cutoff_dt,
-            )
-            .select_related("page")
-            .order_by("created_at")[:limit]
-        )
+        blocks = BlockRepository.get_stale_todos(user, cutoff_dt, limit)
 
         now_utc = timezone.now()
-        results = []
+        results: List[Dict[str, Any]] = []
         for block in blocks:
             age_days = (now_utc - block.created_at).days
             preview = block.content or ""

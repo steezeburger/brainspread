@@ -22,9 +22,7 @@ class GetPageByTitleCommand(AbstractBaseCommand):
         user = self.form.cleaned_data["user"]
         title = self.form.cleaned_data["title"].strip()
 
-        page = (
-            PageRepository.get_queryset().filter(user=user, title__iexact=title).first()
-        )
+        page = PageRepository.get_by_title(user, title)
         if not page:
             return {"error": f"No page found with title '{title}'"}
 
