@@ -20,8 +20,10 @@ from typing import Any, Dict, List, Optional, Tuple
 import pytz
 from django.utils import timezone
 
+from ai_chat.forms import GetChatHistorySummaryForm
 from core.commands.get_current_time_command import GetCurrentTimeCommand
-from core.forms import GetCurrentTimeForm
+from core.commands.get_user_preferences_command import GetUserPreferencesCommand
+from core.forms import GetCurrentTimeForm, GetUserPreferencesForm
 from core.models import User
 from knowledge.commands.bulk_cancel_reminders_command import (
     BulkCancelRemindersCommand,
@@ -35,6 +37,7 @@ from knowledge.commands.create_block_command import CreateBlockCommand
 from knowledge.commands.create_blocks_bulk_command import CreateBlocksBulkCommand
 from knowledge.commands.create_page_command import CreatePageCommand
 from knowledge.commands.find_stale_todos_command import FindStaleTodosCommand
+from knowledge.commands.get_backlinks_command import GetBacklinksCommand
 from knowledge.commands.get_block_by_id_command import GetBlockByIdCommand
 from knowledge.commands.get_completion_stats_command import GetCompletionStatsCommand
 from knowledge.commands.get_current_page_command import GetCurrentPageCommand
@@ -42,7 +45,9 @@ from knowledge.commands.get_daily_pages_in_range_command import (
     GetDailyPagesInRangeCommand,
 )
 from knowledge.commands.get_page_by_title_command import GetPageByTitleCommand
+from knowledge.commands.get_recent_activity_command import GetRecentActivityCommand
 from knowledge.commands.get_streaks_command import GetStreaksCommand
+from knowledge.commands.get_tag_graph_command import GetTagGraphCommand
 from knowledge.commands.list_overdue_blocks_command import ListOverdueBlocksCommand
 from knowledge.commands.list_pending_reminders_command import (
     ListPendingRemindersCommand,
@@ -65,12 +70,15 @@ from knowledge.forms.create_block_form import CreateBlockForm
 from knowledge.forms.create_blocks_bulk_form import CreateBlocksBulkForm
 from knowledge.forms.create_page_form import CreatePageForm
 from knowledge.forms.find_stale_todos_form import FindStaleTodosForm
+from knowledge.forms.get_backlinks_form import GetBacklinksForm
 from knowledge.forms.get_block_by_id_form import GetBlockByIdForm
 from knowledge.forms.get_completion_stats_form import GetCompletionStatsForm
 from knowledge.forms.get_current_page_form import GetCurrentPageForm
 from knowledge.forms.get_daily_pages_in_range_form import GetDailyPagesInRangeForm
 from knowledge.forms.get_page_by_title_form import GetPageByTitleForm
+from knowledge.forms.get_recent_activity_form import GetRecentActivityForm
 from knowledge.forms.get_streaks_form import GetStreaksForm
+from knowledge.forms.get_tag_graph_form import GetTagGraphForm
 from knowledge.forms.list_overdue_blocks_form import ListOverdueBlocksForm
 from knowledge.forms.list_pending_reminders_form import ListPendingRemindersForm
 from knowledge.forms.list_scheduled_blocks_form import ListScheduledBlocksForm
@@ -153,6 +161,16 @@ class NotesToolExecutor:
                 return self._get_streaks(args)
             if name == "find_stale_todos":
                 return self._find_stale_todos(args)
+            if name == "get_backlinks":
+                return self._get_backlinks(args)
+            if name == "get_tag_graph":
+                return self._get_tag_graph(args)
+            if name == "get_recent_activity":
+                return self._get_recent_activity(args)
+            if name == "get_chat_history_summary":
+                return self._get_chat_history_summary(args)
+            if name == "get_user_preferences":
+                return self._get_user_preferences(args)
             if name == "get_current_page":
                 return self._get_current_page(args)
             if name == "create_page":
@@ -346,6 +364,66 @@ class NotesToolExecutor:
         if not form.is_valid():
             return {"error": _first_form_error(form)}
         return FindStaleTodosCommand(form).execute()
+
+    def _get_backlinks(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form_data: Dict[str, Any] = {
+            "user": self.user.id,
+            "page": (args.get("page_uuid") or "").strip(),
+        }
+        if args.get("limit") is not None:
+            form_data["limit"] = args["limit"]
+        form = GetBacklinksForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return GetBacklinksCommand(form).execute()
+
+    def _get_tag_graph(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form_data: Dict[str, Any] = {"user": self.user.id}
+        if args.get("min_shared") is not None:
+            form_data["min_shared"] = args["min_shared"]
+        if args.get("limit") is not None:
+            form_data["limit"] = args["limit"]
+        form = GetTagGraphForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return GetTagGraphCommand(form).execute()
+
+    def _get_recent_activity(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form_data: Dict[str, Any] = {"user": self.user.id}
+        if args.get("kind") is not None:
+            form_data["kind"] = args["kind"]
+        if args.get("limit") is not None:
+            form_data["limit"] = args["limit"]
+        form = GetRecentActivityForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return GetRecentActivityCommand(form).execute()
+
+    def _get_chat_history_summary(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        # Lazy import — `ai_chat.commands.__init__` pulls in
+        # ResumeApprovalCommand which in turn imports
+        # NotesToolExecutor; resolving the command class at call time
+        # avoids that cycle.
+        from ai_chat.commands.get_chat_history_summary_command import (
+            GetChatHistorySummaryCommand,
+        )
+
+        form_data: Dict[str, Any] = {"user": self.user.id}
+        if args.get("limit") is not None:
+            form_data["limit"] = args["limit"]
+        # The executor doesn't track the active session uuid yet — when
+        # we wire that through later, populate `exclude_session_id`
+        # here so the active session drops out of the listing.
+        form = GetChatHistorySummaryForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return GetChatHistorySummaryCommand(form).execute()
+
+    def _get_user_preferences(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form = GetUserPreferencesForm({"user": self.user.id})
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return GetUserPreferencesCommand(form).execute()
 
     def _get_current_page(self, args: Dict[str, Any]) -> Dict[str, Any]:
         if not self.current_page_uuid:

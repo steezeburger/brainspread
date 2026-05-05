@@ -379,6 +379,30 @@ class BlockRepository(BaseRepository):
         return [d for d in rows if d is not None]
 
     @classmethod
+    def get_recent_blocks(cls, user, limit: int) -> List[Block]:
+        """Most-recently-modified blocks across all the user's pages.
+        Page-loaded for downstream serialization."""
+        return list(
+            cls.get_queryset()
+            .filter(user=user)
+            .select_related("page")
+            .order_by("-modified_at")[:limit]
+        )
+
+    @classmethod
+    def get_tag_pair_rows(cls, user, max_rows: int = 10000) -> List[Dict[str, Any]]:
+        """Raw (block_id, page_id) rows from the Block.pages M2M scoped
+        to the user, capped to keep pathological cases bounded. The
+        co-occurrence math (pairing pages that share a block) is done
+        in Python by the caller — see GetTagGraphCommand."""
+        through = Block.pages.through
+        return list(
+            through.objects.filter(block__user=user).values("block_id", "page_id")[
+                :max_rows
+            ]
+        )
+
+    @classmethod
     def get_stale_todos(cls, user, cutoff_dt: datetime, limit: int) -> List[Block]:
         """Open TODO blocks (block_type='todo'), unscheduled, not yet
         completed, created before cutoff_dt. Oldest first."""

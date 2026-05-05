@@ -225,6 +225,127 @@ NOTES_READ_TOOLS: List[Dict[str, Any]] = [
         },
     },
     {
+        "name": "get_backlinks",
+        "description": (
+            "Return blocks that reference a page — either via `[[Page"
+            " Title]]` content links or via the block-tag M2M (a block"
+            " 'tagged with' the page). Useful for 'what mentions X?'"
+            " questions. Identified by page_uuid; the response includes"
+            " each block's content preview, its parent page, and which"
+            " source(s) the link came from ('content_link' / 'tag')."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "page_uuid": {
+                    "type": "string",
+                    "description": "UUID of the page to find backlinks for.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum results to return (default 50, max 200).",
+                    "minimum": 1,
+                    "maximum": 200,
+                },
+            },
+            "required": ["page_uuid"],
+        },
+    },
+    {
+        "name": "get_tag_graph",
+        "description": (
+            "Co-occurrence map of pages that share tagged blocks (the"
+            " Block.pages M2M). Useful for surfacing emergent topic"
+            " clusters: 'show me which page pairs are most connected'."
+            " Returns ranked pairs ordered by shared_count desc."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "min_shared": {
+                    "type": "integer",
+                    "description": (
+                        "Only return pairs that share at least this"
+                        " many blocks (default 2)."
+                    ),
+                    "minimum": 1,
+                    "maximum": 100,
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum pairs (default 30, max 200).",
+                    "minimum": 1,
+                    "maximum": 200,
+                },
+            },
+        },
+    },
+    {
+        "name": "get_recent_activity",
+        "description": (
+            "Most-recently-edited blocks and/or pages across the user's"
+            " notes, ordered by modified_at desc. Useful for 'what was"
+            " I working on yesterday?' questions. `kind` selects what"
+            " to include (block / page / both)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "description": (
+                        "Item types to include. One of 'block', 'page',"
+                        " 'both' (default 'both')."
+                    ),
+                    "enum": ["block", "page", "both"],
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum items (default 20, max 100).",
+                    "minimum": 1,
+                    "maximum": 100,
+                },
+            },
+        },
+    },
+    {
+        "name": "get_chat_history_summary",
+        "description": (
+            "Summaries of the user's prior chat sessions (excluding the"
+            " current one), newest first. Each entry has a"
+            " session_uuid, started_at, message_count, and a short"
+            " summary derived from the first user message. Useful for"
+            " 'have we talked about this before?' questions."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum sessions (default 10, max 50).",
+                    "minimum": 1,
+                    "maximum": 50,
+                },
+            },
+        },
+    },
+    {
+        "name": "get_user_preferences",
+        "description": (
+            "Read the user's display / app-level preferences"
+            " (timezone, theme, time_format, preferred_model_label,"
+            " and booleans for whether discord webhook / user id are"
+            " configured). Secrets — api keys, webhook URLs — are"
+            " deliberately omitted. Useful when the user says 'pick"
+            " whichever model I usually use' or 'remind me using my"
+            " usual setup'."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
         "name": "get_current_page",
         "description": (
             "Return the page the user is currently viewing in the UI"

@@ -12,6 +12,7 @@ from .create_page_command import CreatePageCommand
 from .delete_block_command import DeleteBlockCommand
 from .delete_page_command import DeletePageCommand
 from .find_stale_todos_command import FindStaleTodosCommand
+from .get_backlinks_command import GetBacklinksCommand
 from .get_block_by_id_command import GetBlockByIdCommand
 from .get_completion_stats_command import GetCompletionStatsCommand
 from .get_current_page_command import GetCurrentPageCommand
@@ -21,8 +22,10 @@ from .get_graph_data_command import GetGraphDataCommand
 from .get_historical_data_command import GetHistoricalDataCommand
 from .get_page_by_title_command import GetPageByTitleCommand
 from .get_page_with_blocks_command import GetPageWithBlocksCommand
+from .get_recent_activity_command import GetRecentActivityCommand
 from .get_streaks_command import GetStreaksCommand
 from .get_tag_content_command import GetTagContentCommand
+from .get_tag_graph_command import GetTagGraphCommand
 from .get_user_pages_command import GetUserPagesCommand
 from .list_overdue_blocks_command import ListOverdueBlocksCommand
 from .list_pending_reminders_command import ListPendingRemindersCommand
