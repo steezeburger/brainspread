@@ -176,6 +176,19 @@
   box-sizing: border-box;
 }
 
+/* Zero the user-agent default border-radius on form controls. The
+   brutalist look across the app uses square corners; without this,
+   any new button or input that doesn't explicitly set border-radius
+   inherits Chrome / Safari's small default radius and looks rounded
+   next to its square neighbours. Individual rules can opt back in
+   to a small chip-style radius (e.g. 3px) when needed. */
+button,
+input,
+select,
+textarea {
+  border-radius: 0;
+}
+
 /* Hide login form during initial load to prevent flash */
 .journals-app.initial-load .auth-container {
   display: none;

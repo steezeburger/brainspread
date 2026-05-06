@@ -795,7 +795,7 @@ window.LeftNav = {
               @auxclick="onTodayClick"
               title="Go to today's daily note"
             >
-              <span class="leftnav-icon" aria-hidden="true">→</span>
+              <span class="leftnav-icon" aria-hidden="true">▤</span>
               <span class="leftnav-label">today</span>
             </a>
             <button
