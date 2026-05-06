@@ -79,6 +79,21 @@ class PageRepository(BaseRepository):
         return cls.get_queryset().filter(user=user, title__iexact=title).first()
 
     @classmethod
+    def get_by_title_or_slug(cls, user, query: str) -> Optional[Page]:
+        """Match by case-insensitive title or slug, title first.
+
+        Two cheap indexed lookups instead of one OR — keeps the
+        priority explicit (title beats slug on tie) without an annotated
+        CASE expression. The assistant often gets a slug form (e.g.
+        from `#food-log` in user input) while pages have human titles
+        like 'Food Log'; falling back to slug avoids a 'page not
+        found' for what's clearly the same thing.
+        """
+        return cls.get_by_title(user, query) or (
+            cls.get_queryset().filter(user=user, slug__iexact=query).first()
+        )
+
+    @classmethod
     def search_by_title(cls, user, query: str) -> QuerySet:
         """Search pages by title"""
         return cls.get_queryset().filter(user=user, title__icontains=query)

@@ -20,7 +20,7 @@ from .get_daily_pages_in_range_command import GetDailyPagesInRangeCommand
 from .get_favorited_pages_command import GetFavoritedPagesCommand
 from .get_graph_data_command import GetGraphDataCommand
 from .get_historical_data_command import GetHistoricalDataCommand
-from .get_page_by_title_command import GetPageByTitleCommand
+from .get_page_by_title_or_slug_command import GetPageByTitleOrSlugCommand
 from .get_page_with_blocks_command import GetPageWithBlocksCommand
 from .get_recent_activity_command import GetRecentActivityCommand
 from .get_streaks_command import GetStreaksCommand

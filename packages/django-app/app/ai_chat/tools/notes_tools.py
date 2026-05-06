@@ -44,20 +44,28 @@ NOTES_READ_TOOLS: List[Dict[str, Any]] = [
         },
     },
     {
-        "name": "get_page_by_title",
+        "name": "get_page_by_title_or_slug",
         "description": (
-            "Fetch a single page by its title (case-insensitive, exact match)"
-            " along with its root blocks. Prefer this when the user names a page."
+            "Fetch a single page by exact title (case-insensitive) OR"
+            " slug, returning it with its root blocks. Title is tried"
+            " first; slug is the fallback. Prefer this when the user"
+            " names a page — including when their reference comes from"
+            " a `#hashtag` style mention (the slug form). For free-"
+            "text discovery, use search_notes instead."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "title": {
+                "query": {
                     "type": "string",
-                    "description": "Page title to look up.",
+                    "description": (
+                        "Page title or slug to look up. Pass the raw"
+                        " string the user said — e.g. 'Food Log' or"
+                        " 'food-log'."
+                    ),
                 },
             },
-            "required": ["title"],
+            "required": ["query"],
         },
     },
     {
@@ -462,9 +470,17 @@ NOTES_WRITE_TOOLS: List[Dict[str, Any]] = [
     {
         "name": "create_block",
         "description": (
-            "Create a new block on a page. Use after confirming the target"
-            " page via get_page_by_title or search_notes. Every call pauses"
-            " for explicit user approval before execution."
+            "Create a new block on a page. Use after confirming the"
+            " target page via get_page_by_title_or_slug or"
+            " search_notes. Every call pauses for explicit user"
+            " approval before execution."
+            "\n\nTagging: if the user says 'tag with #slug' (or already"
+            " uses `#slug` syntax in their request), include the literal"
+            " `#slug` in `content`. The system parses tags from content"
+            " on save and creates the page-tag M2M automatically — you"
+            " do NOT need to look up the tagged page first. The tag is"
+            " harmless if no page with that slug exists; it'll bind"
+            " correctly the moment one does."
         ),
         "input_schema": {
             "type": "object",

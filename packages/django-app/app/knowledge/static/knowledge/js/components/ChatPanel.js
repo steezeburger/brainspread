@@ -62,6 +62,15 @@ const ChatPanel = {
       showToolsMenu: false,
       // { [assistantMsgIndex]: { approval_id, tool_uses, decisions: {tool_use_id: "approve"|"reject"}, submitting } }
       pendingApprovals: {},
+      // Hashtag autocomplete in the chat textarea (mirrors the
+      // BlockComponent implementation). tagQueryStart is the absolute
+      // textarea offset of the leading `#` so we can splice the
+      // selection back in on accept.
+      tagQueryStart: -1,
+      tagQuery: "",
+      tagSuggestions: [],
+      tagSelectedIndex: 0,
+      tagSearchToken: 0,
       // Pending image attachments for the next outgoing message. Each
       // entry is the AssetData envelope returned by /api/assets/. The
       // form caps at 5 server-side; the UI mirrors that here.
@@ -107,6 +116,9 @@ const ChatPanel = {
     },
   },
   computed: {
+    showTagSuggestions() {
+      return this.tagQueryStart >= 0 && this.tagSuggestions.length > 0;
+    },
     sessionStats() {
       let inputTokens = 0;
       let outputTokens = 0;
@@ -634,6 +646,36 @@ const ChatPanel = {
       this.saveWidth(); // Save width when resize is finished
     },
     handleKeydown(e) {
+      // Tag autocomplete keys take precedence when the popover is open.
+      if (this.showTagSuggestions) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          this.tagSelectedIndex =
+            (this.tagSelectedIndex + 1) % this.tagSuggestions.length;
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          this.tagSelectedIndex =
+            (this.tagSelectedIndex - 1 + this.tagSuggestions.length) %
+            this.tagSuggestions.length;
+          return;
+        }
+        if (e.key === "Enter" || e.key === "Tab") {
+          const choice = this.tagSuggestions[this.tagSelectedIndex];
+          if (choice) {
+            e.preventDefault();
+            this.insertTagSuggestion(choice);
+            return;
+          }
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          this.closeTagSuggestions();
+          return;
+        }
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         this.sendMessage();
@@ -647,6 +689,78 @@ const ChatPanel = {
         this.closePanel();
       }
       // Shift+Enter will naturally create a newline (default behavior)
+    },
+
+    onMessageInput(event) {
+      // The v-model already updates `message`; we just need the caret
+      // position for the autocomplete-context detection.
+      this.updateTagSuggestions(event.target.value, event.target.selectionEnd);
+    },
+
+    detectTagContext(value, caret) {
+      if (caret == null || caret < 0) return null;
+      const upToCaret = value.slice(0, caret);
+      // Match `#query` either at start of input or after whitespace.
+      // Empty query allowed so a bare `#` opens the popover.
+      const match = upToCaret.match(/(^|\s)#([a-zA-Z0-9_-]*)$/);
+      if (!match) return null;
+      const hashIndex = upToCaret.length - match[2].length - 1;
+      return { start: hashIndex, query: match[2] };
+    },
+
+    closeTagSuggestions() {
+      this.tagQueryStart = -1;
+      this.tagQuery = "";
+      this.tagSuggestions = [];
+      this.tagSelectedIndex = 0;
+    },
+
+    async updateTagSuggestions(value, caret) {
+      const ctx = this.detectTagContext(value, caret);
+      if (!ctx) {
+        this.closeTagSuggestions();
+        return;
+      }
+      this.tagQueryStart = ctx.start;
+      this.tagQuery = ctx.query;
+      const token = ++this.tagSearchToken;
+      try {
+        const result = await window.apiService.searchPages(ctx.query, 8);
+        if (token !== this.tagSearchToken) return;
+        if (this.tagQueryStart < 0) return;
+        const pages = (result && result.data && result.data.pages) || [];
+        this.tagSuggestions = pages;
+        if (this.tagSelectedIndex >= pages.length) {
+          this.tagSelectedIndex = 0;
+        }
+      } catch (error) {
+        console.error("tag search failed:", error);
+        if (token === this.tagSearchToken) this.tagSuggestions = [];
+      }
+    },
+
+    insertTagSuggestion(page) {
+      if (!page || this.tagQueryStart < 0) return;
+      const textarea = this.$refs.messageInput;
+      const value = this.message || "";
+      const caret = textarea ? textarea.selectionEnd : value.length;
+      const before = value.slice(0, this.tagQueryStart);
+      const after = value.slice(caret);
+      const inserted = `#${page.slug} `;
+      this.message = before + inserted + after;
+      this.closeTagSuggestions();
+      this.$nextTick(() => {
+        if (textarea) {
+          const pos = before.length + inserted.length;
+          textarea.focus();
+          textarea.setSelectionRange(pos, pos);
+        }
+      });
+    },
+
+    onMessageInputBlur() {
+      // Delay close so a click on a suggestion item still registers.
+      setTimeout(() => this.closeTagSuggestions(), 150);
     },
     scrollToBottom() {
       this.$nextTick(() => {
@@ -926,7 +1040,61 @@ const ChatPanel = {
       // Sanitize HTML to prevent XSS
       const cleanHtml = DOMPurify.sanitize(html);
 
-      return cleanHtml;
+      // Style #slug mentions as clickable chips (after sanitize so we
+      // don't fight DOMPurify, and via DOM walking so we never touch
+      // text inside <code> / <pre> or attribute values).
+      return this.linkifyHashtags(cleanHtml);
+    },
+
+    linkifyHashtags(html) {
+      if (!html || html.indexOf("#") === -1) return html;
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const re = /\B#[a-zA-Z0-9][\w-]*/g;
+      const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          // Skip text inside code / pre — `#include` etc shouldn't
+          // become a tag chip.
+          let p = node.parentNode;
+          while (p && p !== doc.body) {
+            const tag = p.tagName;
+            if (tag === "CODE" || tag === "PRE" || tag === "A") {
+              return NodeFilter.FILTER_REJECT;
+            }
+            p = p.parentNode;
+          }
+          return NodeFilter.FILTER_ACCEPT;
+        },
+      });
+      const targets = [];
+      let n;
+      while ((n = walker.nextNode())) targets.push(n);
+      for (const textNode of targets) {
+        const text = textNode.nodeValue;
+        if (!re.test(text)) continue;
+        re.lastIndex = 0;
+        const frag = doc.createDocumentFragment();
+        let lastIndex = 0;
+        let m;
+        while ((m = re.exec(text)) !== null) {
+          if (m.index > lastIndex) {
+            frag.appendChild(
+              doc.createTextNode(text.slice(lastIndex, m.index))
+            );
+          }
+          const slug = m[0].slice(1);
+          const a = doc.createElement("a");
+          a.className = "hashtag-mention";
+          a.textContent = m[0];
+          a.href = `/knowledge/page/${encodeURIComponent(slug)}/`;
+          frag.appendChild(a);
+          lastIndex = m.index + m[0].length;
+        }
+        if (lastIndex < text.length) {
+          frag.appendChild(doc.createTextNode(text.slice(lastIndex)));
+        }
+        textNode.parentNode.replaceChild(frag, textNode);
+      }
+      return doc.body.innerHTML;
     },
 
     highlightCode() {
@@ -1902,15 +2070,40 @@ const ChatPanel = {
               :title="pendingAttachments.length >= MAX_CHAT_ATTACHMENTS ? 'Attachment limit reached' : 'Attach image'"
               @click="triggerAttachmentPicker"
             >▤</button>
-            <textarea
-              ref="messageInput"
-              v-model="message"
-              placeholder="ask something..."
-              @keydown="handleKeydown"
-              @paste="onMessagePaste"
-              @drop="onMessageDrop"
-              @dragover="onMessageDragOver"
-            ></textarea>
+            <div class="message-input-textarea-wrap">
+              <textarea
+                ref="messageInput"
+                v-model="message"
+                placeholder="ask something..."
+                @keydown="handleKeydown"
+                @input="onMessageInput"
+                @blur="onMessageInputBlur"
+                @paste="onMessagePaste"
+                @drop="onMessageDrop"
+                @dragover="onMessageDragOver"
+              ></textarea>
+              <div
+                v-if="showTagSuggestions"
+                class="hashtag-autocomplete"
+                @mousedown.prevent
+                role="listbox"
+              >
+                <button
+                  v-for="(page, idx) in tagSuggestions"
+                  :key="page.uuid || page.slug"
+                  type="button"
+                  role="option"
+                  :aria-selected="idx === tagSelectedIndex"
+                  class="hashtag-autocomplete-item"
+                  :class="{ 'is-selected': idx === tagSelectedIndex }"
+                  @click="insertTagSuggestion(page)"
+                  @mouseenter="tagSelectedIndex = idx"
+                >
+                  <span class="hashtag-autocomplete-slug">#{{ page.slug }}</span>
+                  <span v-if="page.title && page.title !== page.slug" class="hashtag-autocomplete-title">{{ page.title }}</span>
+                </button>
+              </div>
+            </div>
             <button @click="sendMessage" :disabled="loading">
               {{ loading ? 'sending...' : 'send' }}
             </button>

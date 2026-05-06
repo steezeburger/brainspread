@@ -20,7 +20,7 @@ from .get_daily_pages_in_range_form import GetDailyPagesInRangeForm
 from .get_favorited_pages_form import GetFavoritedPagesForm
 from .get_graph_data_form import GetGraphDataForm
 from .get_historical_data_form import GetHistoricalDataForm
-from .get_page_by_title_form import GetPageByTitleForm
+from .get_page_by_title_or_slug_form import GetPageByTitleOrSlugForm
 from .get_page_with_blocks_form import GetPageWithBlocksForm
 from .get_recent_activity_form import GetRecentActivityForm
 from .get_streaks_form import GetStreaksForm

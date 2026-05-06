@@ -263,7 +263,7 @@ class SendMessageCommand(AbstractBaseCommand):
             can target it with notes tools. Both ids are needed because
             create_block requires `page_uuid` AND optionally
             `parent_uuid`; without the page id the AI ends up calling
-            search_notes / get_page_by_title to hunt for the page,
+            search_notes / get_page_by_title_or_slug to hunt for the page,
             which fails when the user attached the block visually
             without writing its title in the chat.
           - The text content (when present).
