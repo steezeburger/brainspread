@@ -91,15 +91,19 @@ window.LeftNav = {
     // current page so the Favorites list refreshes without a reload.
     this.handleFavoritesChanged = () => this.loadFavorites();
     document.addEventListener("favorites:changed", this.handleFavoritesChanged);
-    // Close the nav when the user clicks outside it. Mobile already
-    // handles this via the backdrop overlay; this covers desktop. The
-    // listener is attached/detached by the isOpen watcher so the click
-    // that opens the nav doesn't immediately close it.
+    // Close the nav when the user clicks outside it on mobile only.
+    // On desktop the rail and panel sit in their own real-estate column
+    // and never overlap content, so an outside click shouldn't dismiss
+    // them. Mobile still gets the drawer dismiss because the drawer
+    // overlays the whole page.
     this.handleOutsideClick = (event) => {
       if (this.$el && this.$el.contains(event.target)) return;
       this.toggleSidebar();
     };
-    if (this.isOpen) {
+    this.handleViewportResize = () => this.syncWidthVar();
+    window.addEventListener("resize", this.handleViewportResize);
+    this.syncWidthVar();
+    if (this.isOpen && this.isMobileViewport()) {
       this.attachOutsideClickHandler();
     }
   },
@@ -113,15 +117,19 @@ window.LeftNav = {
       );
     }
     this.detachOutsideClickHandler();
+    if (this.handleViewportResize) {
+      window.removeEventListener("resize", this.handleViewportResize);
+    }
+    document.documentElement.style.removeProperty("--leftnav-width");
   },
 
   watch: {
-    isOpen(value) {
-      if (value) {
-        this.attachOutsideClickHandler();
-      } else {
-        this.detachOutsideClickHandler();
-      }
+    isOpen() {
+      this.refreshOutsideClickHandler();
+      this.syncWidthVar();
+    },
+    width() {
+      this.syncWidthVar();
     },
   },
 
@@ -165,6 +173,41 @@ window.LeftNav = {
       } catch (_) {
         // localStorage can throw in private mode; the toggle still
         // works for the current session, just won't persist.
+      }
+    },
+
+    isMobileViewport() {
+      return typeof window !== "undefined" && window.innerWidth <= 768;
+    },
+
+    railWidth() {
+      // Keep this in sync with .leftnav-rail in app.css. The rail is
+      // hidden on mobile (the toggle becomes a floating button), so we
+      // report 0 there to avoid reserving phantom gutter.
+      if (this.isMobileViewport()) return 0;
+      return 48;
+    },
+
+    syncWidthVar() {
+      // The main content reserves padding-left equal to this variable so
+      // the sidebar never covers the page. On mobile the sidebar revives
+      // its drawer behavior and the CSS media query zeros the gutter,
+      // but we still report 0 here as a defensive belt-and-suspenders.
+      if (typeof document === "undefined") return;
+      let value = 0;
+      if (!this.isMobileViewport()) {
+        value = this.isOpen ? this.width : this.railWidth();
+      }
+      document.documentElement.style.setProperty(
+        "--leftnav-width",
+        value + "px"
+      );
+    },
+
+    refreshOutsideClickHandler() {
+      this.detachOutsideClickHandler();
+      if (this.isOpen && this.isMobileViewport()) {
+        this.attachOutsideClickHandler();
       }
     },
 

@@ -91,11 +91,18 @@ const ChatPanel = {
     this.loadLastChatSession();
     this.setupDocumentListener();
     this.setupClickOutsideListener();
+    this.handleViewportResize = () => this.syncChatWidthVar();
+    window.addEventListener("resize", this.handleViewportResize);
+    this.syncChatWidthVar();
   },
   beforeUnmount() {
     this.removeResizeListener();
     this.removeDocumentListener();
     this.removeClickOutsideListener();
+    if (this.handleViewportResize) {
+      window.removeEventListener("resize", this.handleViewportResize);
+    }
+    document.documentElement.style.removeProperty("--chat-panel-width");
   },
   watch: {
     // Only trigger the "pin last message to top" behavior when a new
@@ -113,6 +120,12 @@ const ChatPanel = {
         this.highlightCode();
       },
       deep: true,
+    },
+    isOpen() {
+      this.syncChatWidthVar();
+    },
+    width() {
+      this.syncChatWidthVar();
     },
   },
   computed: {
@@ -1644,8 +1657,15 @@ const ChatPanel = {
           this.showContextPicker = false;
         }
 
-        // Only close if panel is open and click is outside the panel
-        if (this.isOpen && !this.$el.contains(e.target)) {
+        // Only close on outside click when the panel actually overlays
+        // the page — i.e. on narrow viewports where it slides in over
+        // content. On desktop the panel sits in its own column and an
+        // accidental outside click shouldn't dismiss it.
+        if (
+          this.isOpen &&
+          this.isMobileViewport() &&
+          !this.$el.contains(e.target)
+        ) {
           // Check if click is within the history dropdown (teleported content)
           const historyDropdown = e.target.closest(".history-dropdown");
           if (historyDropdown) {
@@ -1662,6 +1682,26 @@ const ChatPanel = {
         }
       };
       document.addEventListener("click", this.clickOutsideHandler);
+    },
+
+    isMobileViewport() {
+      return typeof window !== "undefined" && window.innerWidth <= 768;
+    },
+
+    syncChatWidthVar() {
+      // The main content reserves padding-right equal to this variable
+      // so the chat panel never covers the page. Closed → 0 (no
+      // gutter). On mobile the panel becomes a sliding drawer and the
+      // CSS media query zeros the gutter regardless.
+      if (typeof document === "undefined") return;
+      let value = 0;
+      if (this.isOpen && !this.isMobileViewport()) {
+        value = this.width;
+      }
+      document.documentElement.style.setProperty(
+        "--chat-panel-width",
+        value + "px"
+      );
     },
 
     removeClickOutsideListener() {

@@ -228,12 +228,14 @@ body {
   flex: 1;
   padding: 2rem;
   width: 100%;
-  /* Cap the readable area and center it. The leftnav rail and chat
-   * panel are position: fixed against the viewport edges, so they
-   * don't push this container - they overlay the empty gutter that
-   * the centering margin creates on wide screens. */
-  max-width: 1200px;
-  margin: 0 auto;
+  /* Pinned sidebars are position: fixed against the viewport edges.
+     LeftNav and ChatPanel keep --leftnav-width / --chat-panel-width in
+     sync with their open state so the content area sits between them
+     instead of being covered. Below 768px the sidebars revert to
+     overlay drawers and the padding override later in this file
+     collapses these gutters. */
+  padding-left: calc(2rem + var(--leftnav-width, 0px));
+  padding-right: calc(2rem + var(--chat-panel-width, 0px));
 }
 
 /* Loading */
