@@ -42,14 +42,28 @@ class NotesToolExecutorTestCase(TestCase):
         self.assertEqual(result["results"][0]["page_title"], "Project Alpha")
         self.assertEqual(result["results"][0]["block_type"], "todo")
 
-    def test_get_page_by_title_returns_root_blocks(self):
+    def test_get_page_by_title_or_slug_returns_root_blocks(self):
         executor = NotesToolExecutor(self.user)
 
-        result = executor.execute("get_page_by_title", {"title": "project alpha"})
+        result = executor.execute(
+            "get_page_by_title_or_slug", {"query": "project alpha"}
+        )
 
         self.assertEqual(result["page"]["slug"], "project-alpha")
         self.assertEqual(len(result["blocks"]), 1)
         self.assertEqual(result["blocks"][0]["content"], "Follow up with design team")
+
+    def test_get_page_by_title_or_slug_falls_back_to_slug(self):
+        # Title lookup fails (the page's title is 'Project Alpha', not
+        # 'project-alpha'); the slug fallback should still resolve.
+        executor = NotesToolExecutor(self.user)
+
+        result = executor.execute(
+            "get_page_by_title_or_slug", {"query": "project-alpha"}
+        )
+
+        self.assertEqual(result["page"]["slug"], "project-alpha")
+        self.assertEqual(result["page"]["title"], "Project Alpha")
 
     def test_get_block_by_id_returns_children(self):
         executor = NotesToolExecutor(self.user)
@@ -73,6 +87,6 @@ class NotesToolExecutorTestCase(TestCase):
         executor = NotesToolExecutor(self.user)
 
         self.assertTrue(executor.is_known("search_notes"))
-        self.assertTrue(executor.is_known("get_page_by_title"))
+        self.assertTrue(executor.is_known("get_page_by_title_or_slug"))
         self.assertTrue(executor.is_known("get_block_by_id"))
         self.assertFalse(executor.is_known("write_block"))

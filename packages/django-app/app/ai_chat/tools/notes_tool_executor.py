@@ -44,7 +44,9 @@ from knowledge.commands.get_current_page_command import GetCurrentPageCommand
 from knowledge.commands.get_daily_pages_in_range_command import (
     GetDailyPagesInRangeCommand,
 )
-from knowledge.commands.get_page_by_title_command import GetPageByTitleCommand
+from knowledge.commands.get_page_by_title_or_slug_command import (
+    GetPageByTitleOrSlugCommand,
+)
 from knowledge.commands.get_recent_activity_command import GetRecentActivityCommand
 from knowledge.commands.get_streaks_command import GetStreaksCommand
 from knowledge.commands.get_tag_graph_command import GetTagGraphCommand
@@ -75,7 +77,7 @@ from knowledge.forms.get_block_by_id_form import GetBlockByIdForm
 from knowledge.forms.get_completion_stats_form import GetCompletionStatsForm
 from knowledge.forms.get_current_page_form import GetCurrentPageForm
 from knowledge.forms.get_daily_pages_in_range_form import GetDailyPagesInRangeForm
-from knowledge.forms.get_page_by_title_form import GetPageByTitleForm
+from knowledge.forms.get_page_by_title_or_slug_form import GetPageByTitleOrSlugForm
 from knowledge.forms.get_recent_activity_form import GetRecentActivityForm
 from knowledge.forms.get_streaks_form import GetStreaksForm
 from knowledge.forms.get_tag_graph_form import GetTagGraphForm
@@ -141,8 +143,8 @@ class NotesToolExecutor:
         try:
             if name == "search_notes":
                 return self._search_notes(args)
-            if name == "get_page_by_title":
-                return self._get_page_by_title(args)
+            if name == "get_page_by_title_or_slug":
+                return self._get_page_by_title_or_slug(args)
             if name == "get_block_by_id":
                 return self._get_block_by_id(args)
             if name == "get_current_time":
@@ -230,16 +232,16 @@ class NotesToolExecutor:
             return {"error": _first_form_error(form)}
         return SearchNotesCommand(form).execute()
 
-    def _get_page_by_title(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        form = GetPageByTitleForm(
+    def _get_page_by_title_or_slug(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form = GetPageByTitleOrSlugForm(
             {
                 "user": self.user.id,
-                "title": (args.get("title") or "").strip(),
+                "query": (args.get("query") or "").strip(),
             }
         )
         if not form.is_valid():
             return {"error": _first_form_error(form)}
-        return GetPageByTitleCommand(form).execute()
+        return GetPageByTitleOrSlugCommand(form).execute()
 
     def _get_block_by_id(self, args: Dict[str, Any]) -> Dict[str, Any]:
         form = GetBlockByIdForm(

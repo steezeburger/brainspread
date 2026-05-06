@@ -3652,6 +3652,21 @@ a.sidebar-item:visited {
 
 .message-input textarea {
   flex: 1;
+  width: 100%;
+}
+
+/* Wraps the textarea so the hashtag-autocomplete popover can be
+   positioned relative to it (instead of relative to .message-input,
+   which would also include the attach + send buttons). */
+.message-input-textarea-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+}
+
+.message-input-textarea-wrap .hashtag-autocomplete {
+  bottom: calc(100% + 4px);
+  left: 0;
 }
 
 .model-selector {
@@ -6759,4 +6774,72 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
+}
+
+/* #slug mentions in chat messages — clickable chips that navigate to
+   the page. Mirrors the inline-tag styling used in block content so
+   tags look the same wherever the user sees them. font-weight bumped
+   so the chip stays readable on themes where --tag-bg / --tag-text
+   contrast is low (staging theme, mostly). */
+.hashtag-mention {
+  display: inline-block;
+  padding: 0.05rem 0.3rem;
+  background: var(--tag-bg);
+  color: var(--tag-text);
+  border: 1px solid var(--tag-bg);
+  border-radius: 3px;
+  text-decoration: none;
+  font-size: 0.92em;
+  font-weight: 600;
+}
+
+.hashtag-mention:hover {
+  filter: brightness(1.1);
+  text-decoration: none;
+}
+
+/* Hashtag autocomplete popover anchored to the chat textarea. Reuses
+   --bg-primary (the same token the block-editor tag-suggestions
+   popover uses) so it has a real background on every theme. */
+.hashtag-autocomplete {
+  position: absolute;
+  z-index: 1100;
+  min-width: 12rem;
+  max-width: 18rem;
+  max-height: 14rem;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+  padding: 0.25rem 0;
+}
+
+.hashtag-autocomplete-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.4rem 0.65rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  text-align: left;
+  width: 100%;
+}
+
+.hashtag-autocomplete-item.is-selected,
+.hashtag-autocomplete-item:hover {
+  background: var(--hover-bg, var(--accent-bg));
+}
+
+.hashtag-autocomplete-slug {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85em;
+  color: var(--text-secondary);
+}
+
+.hashtag-autocomplete-title {
+  font-weight: 500;
 }
