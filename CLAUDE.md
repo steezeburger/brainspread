@@ -81,6 +81,32 @@ Navigate to `packages/django-app/` for most development tasks.
   borders. Use small, near-square radii (`border-radius: 3px` matches
   the existing chips like `.block-embed-tag-chip`). Reserve larger
   radii / pill shapes for cases where there's an explicit reason.
+- **Always set `border-radius` explicitly on new buttons / inputs /
+  modal-like surfaces.** Browsers ship a small default radius on
+  `<button>` and `<input>` elements via the user-agent stylesheet —
+  not setting one means new controls render with rounded corners
+  even though the rest of the app is square. The brutalist `.btn`
+  class already neutralizes this with `border-radius: 0`; if you
+  introduce a new control class that doesn't extend `.btn`, set
+  `border-radius: 0` (or `3px` for chip-like surfaces) yourself.
+- **Use the existing CSS theme variables** (`var(--bg-primary)`,
+  `var(--text-primary)`, `var(--border-primary)`, `var(--hover-bg)`,
+  `var(--tag-bg)`, etc.) rather than hard-coded colors. The themes
+  in `:root[data-theme=...]` swap these en masse; hard-coded colors
+  break theme switching silently.
+- **Match the existing brutalist button family** for new actions:
+  square corners, 3px solid border, 4px offset box-shadow, bold
+  uppercase-feel labels. `.btn` + `.btn-primary` / `.btn-danger` /
+  the planned `.btn-secondary` family is the canonical entry point.
+- **Stay on the existing typography stack** — `font-family: inherit`
+  on form controls so they pick up the body font instead of the
+  browser default monospace / sans.
+- **Build interactions for both desktop and mobile.** The left nav
+  reverts to a drawer with backdrop dismiss below 768px; the chat
+  panel keeps its sliding-overlay behavior there. New surfaces with
+  outside-click semantics should follow the same pattern: pinned on
+  desktop, dismiss-on-outside on mobile (gate via
+  `window.innerWidth <= 768` or a media query).
 
 ### Debugging
 - you can run `just tail-logs web 100` or `just tail-logs db 100`

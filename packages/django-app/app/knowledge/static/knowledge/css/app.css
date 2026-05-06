@@ -688,6 +688,7 @@ body {
 .app-modal {
   background: var(--bg-primary);
   border: 1px solid var(--border-primary);
+  border-radius: 0;
   padding: 1.25rem 1.5rem;
   max-width: 440px;
   width: 100%;
@@ -717,6 +718,7 @@ body {
   width: 100%;
   padding: 0.5rem 0.6rem;
   border: 1px solid var(--border-primary);
+  border-radius: 0;
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: inherit;
@@ -739,6 +741,7 @@ body {
   font-size: 0.9rem;
   font-weight: bold;
   border-width: 2px;
+  border-radius: 0;
 }
 
 .confirm-modal-content {
@@ -3494,6 +3497,7 @@ a.sidebar-item:visited {
   background: var(--bg-primary);
   color: var(--text-primary);
   border: 1px solid var(--border-secondary);
+  border-radius: 0;
   font-family: inherit;
   font-size: 0.85rem;
 }
@@ -3511,6 +3515,7 @@ a.sidebar-item:visited {
   background: transparent;
   color: var(--text-secondary);
   border: none;
+  border-radius: 0;
   font-size: 1rem;
   line-height: 1;
   cursor: pointer;
