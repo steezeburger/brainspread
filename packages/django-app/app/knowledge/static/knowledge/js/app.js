@@ -58,6 +58,7 @@ const KnowledgeApp = createApp({
     HelpModal: window.HelpModal,
     ChatPanel: window.ChatPanel,
     ToastNotifications: window.ToastNotifications,
+    AppModals: window.AppModals,
     SpotlightSearch: window.SpotlightSearch,
     GraphView: window.GraphView,
   },
@@ -215,16 +216,20 @@ const KnowledgeApp = createApp({
       }
     },
 
-    checkTimezoneChange() {
-      if (window.apiService.checkTimezoneChange()) {
-        const browserTimezone = window.apiService.getCurrentBrowserTimezone();
-        const currentUser = window.apiService.getCurrentUser();
+    async checkTimezoneChange() {
+      if (!window.apiService.checkTimezoneChange()) return;
+      const browserTimezone = window.apiService.getCurrentBrowserTimezone();
+      const currentUser = window.apiService.getCurrentUser();
 
-        const message = `Your device's timezone appears to have changed from ${currentUser.timezone} to ${browserTimezone}. Would you like to update your timezone preference?`;
+      const message = `Your device's timezone appears to have changed from ${currentUser.timezone} to ${browserTimezone}. Would you like to update your timezone preference?`;
 
-        if (confirm(message)) {
-          this.updateTimezone(browserTimezone);
-        }
+      const confirmed = await window.appModals.confirm({
+        title: "update timezone?",
+        message,
+        confirmLabel: "update",
+      });
+      if (confirmed) {
+        this.updateTimezone(browserTimezone);
       }
     },
 
@@ -238,7 +243,7 @@ const KnowledgeApp = createApp({
         }
       } catch (error) {
         console.error("Failed to update timezone:", error);
-        alert("Failed to update timezone. Please try again.");
+        this.addToast("failed to update timezone", "error");
       }
     },
 
@@ -404,14 +409,21 @@ const KnowledgeApp = createApp({
     },
 
     async createNewPage(prefilledTitle = null, pageType = "page") {
-      const title =
-        prefilledTitle ??
-        prompt(
-          pageType === "whiteboard"
-            ? "Enter whiteboard title:"
-            : "Enter page title:"
-        );
-      if (!title || !title.trim()) return;
+      let title = prefilledTitle;
+      if (title == null) {
+        title = await window.appModals.prompt({
+          title:
+            pageType === "whiteboard" ? "new whiteboard" : "new page",
+          message:
+            pageType === "whiteboard"
+              ? "enter whiteboard title:"
+              : "enter page title:",
+          placeholder: "title",
+          confirmLabel: "create",
+        });
+      }
+      if (title == null) return;
+      if (!title.trim()) return;
 
       try {
         // Generate a simple slug from the title
@@ -433,14 +445,15 @@ const KnowledgeApp = createApp({
           // Navigate to the new page
           window.location.href = `/knowledge/page/${slug}/`;
         } else {
-          alert(
-            "Failed to create page: " +
-              (result.errors?.title?.[0] || "Unknown error")
+          this.addToast(
+            "failed to create page: " +
+              (result.errors?.title?.[0] || "unknown error"),
+            "error"
           );
         }
       } catch (error) {
         console.error("Failed to create page:", error);
-        alert("Failed to create page. Please try again.");
+        this.addToast("failed to create page", "error");
       }
     },
 
@@ -1041,6 +1054,10 @@ const KnowledgeApp = createApp({
                 </div>
             </main>
         </div>
+
+        <!-- Global confirm/prompt/alert dialog host. Mount unconditionally
+             so it's available even before the user has logged in. -->
+        <AppModals />
 
         <!-- Settings Modal -->
         <SettingsModal
