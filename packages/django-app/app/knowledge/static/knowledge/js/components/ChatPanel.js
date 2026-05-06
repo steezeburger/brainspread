@@ -521,10 +521,7 @@ const ChatPanel = {
         for await (const event of window.apiService.streamAIMessage(payload)) {
           streamed = true;
           if (event.type === "session") {
-            if (event.session_id && !this.currentSessionId) {
-              this.currentSessionId = event.session_id;
-              this.saveLastSessionId(event.session_id);
-            }
+            this.adoptNewSessionId(event.session_id);
           } else if (event.type === "text") {
             this.messages[assistantIndex].content += event.delta || "";
           } else if (event.type === "thinking") {
@@ -556,10 +553,7 @@ const ChatPanel = {
             this.scrollLatestToolIntoView(assistantIndex);
             this.broadcastNotesModified(event.result);
           } else if (event.type === "approval_required") {
-            if (event.session_id && !this.currentSessionId) {
-              this.currentSessionId = event.session_id;
-              this.saveLastSessionId(event.session_id);
-            }
+            this.adoptNewSessionId(event.session_id);
             this.attachPendingApproval(assistantIndex, event);
           } else if (event.type === "done") {
             if (event.message) {
@@ -570,10 +564,7 @@ const ChatPanel = {
             } else {
               this.messages[assistantIndex].streaming = false;
             }
-            if (event.session_id && !this.currentSessionId) {
-              this.currentSessionId = event.session_id;
-              this.saveLastSessionId(event.session_id);
-            }
+            this.adoptNewSessionId(event.session_id);
             this.maybeNavigateToToolTarget(
               this.messages[assistantIndex].tool_events
             );
@@ -608,6 +599,18 @@ const ChatPanel = {
       } catch (error) {
         console.error("Failed to load session:", error);
       }
+    },
+    adoptNewSessionId(sessionId) {
+      // Adopt the session id the server just minted on the first message
+      // of a new chat. Notifying ChatHistory here means the dropdown
+      // picks up the new session without waiting for a page reload —
+      // covers the "+" button, block context-menu chats, and the
+      // approval-resume code path. No-op when we already had one (the
+      // server reports it on every event).
+      if (!sessionId || this.currentSessionId) return;
+      this.currentSessionId = sessionId;
+      this.saveLastSessionId(sessionId);
+      document.dispatchEvent(new CustomEvent("chat:sessions-changed"));
     },
     startNewChat() {
       this.messages = [];
@@ -1450,10 +1453,7 @@ const ChatPanel = {
           payload
         )) {
           if (event.type === "session") {
-            if (event.session_id && !this.currentSessionId) {
-              this.currentSessionId = event.session_id;
-              this.saveLastSessionId(event.session_id);
-            }
+            this.adoptNewSessionId(event.session_id);
           } else if (event.type === "text") {
             this.messages[messageIndex].content =
               (this.messages[messageIndex].content || "") + (event.delta || "");
