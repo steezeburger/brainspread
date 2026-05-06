@@ -24,9 +24,7 @@ class TestReorderFavoritedPagesCommand(TestCase):
         return page
 
     def _reorder(self, user, page_uuids):
-        form = ReorderFavoritedPagesForm(
-            {"user": user.id, "page_uuids": page_uuids}
-        )
+        form = ReorderFavoritedPagesForm({"user": user.id, "page_uuids": page_uuids})
         self.assertTrue(form.is_valid(), form.errors)
         return ReorderFavoritedPagesCommand(form).execute()
 
@@ -35,9 +33,7 @@ class TestReorderFavoritedPagesCommand(TestCase):
         b = self._favorite(self.user, title="Beta")
         c = self._favorite(self.user, title="Gamma")
 
-        result = self._reorder(
-            self.user, [str(c.uuid), str(a.uuid), str(b.uuid)]
-        )
+        result = self._reorder(self.user, [str(c.uuid), str(a.uuid), str(b.uuid)])
         self.assertEqual(
             [str(p.uuid) for p in result],
             [str(c.uuid), str(a.uuid), str(b.uuid)],

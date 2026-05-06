@@ -633,9 +633,7 @@ const ChatPanel = {
             // when the worker rewrote the canonical content during
             // finalize() — without this, the client would double-count
             // any tokens already buffered locally.
-            if (
-              Object.prototype.hasOwnProperty.call(event, "replace")
-            ) {
+            if (Object.prototype.hasOwnProperty.call(event, "replace")) {
               this.messages[assistantIndex].content = event.replace || "";
             } else {
               this.messages[assistantIndex].content =
@@ -646,7 +644,10 @@ const ChatPanel = {
             this.messages[assistantIndex].thinking =
               (this.messages[assistantIndex].thinking || "") +
               (event.delta || "");
-          } else if (event.type === "tool_use" || event.type === "tool_result") {
+          } else if (
+            event.type === "tool_use" ||
+            event.type === "tool_result"
+          ) {
             if (!this.messages[assistantIndex].tool_events) {
               this.messages[assistantIndex].tool_events = [];
             }

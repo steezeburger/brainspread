@@ -593,8 +593,7 @@ const Page = {
 
       const confirmed = await window.appModals.confirm({
         title: "delete block?",
-        message:
-          "this will also delete any child blocks and cannot be undone.",
+        message: "this will also delete any child blocks and cannot be undone.",
         confirmLabel: "delete",
         destructive: true,
       });
@@ -3024,8 +3023,7 @@ const Page = {
       const plural = uuids.length === 1 ? "" : "s";
       const confirmed = await window.appModals.confirm({
         title: `delete ${uuids.length} block${plural}?`,
-        message:
-          "this also deletes any child blocks and cannot be undone.",
+        message: "this also deletes any child blocks and cannot be undone.",
         confirmLabel: "delete",
         destructive: true,
       });

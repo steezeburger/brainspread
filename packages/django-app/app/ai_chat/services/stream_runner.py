@@ -206,8 +206,7 @@ def _run_worker(
         # the partial response on reload.
         try:
             error_text = (
-                accumulated_text
-                or "An error occurred while generating the response."
+                accumulated_text or "An error occurred while generating the response."
             )
             _finalize(
                 msg,
@@ -341,9 +340,7 @@ def follow_message(message_uuid: str) -> Iterator[Dict[str, Any]]:
             yield {
                 "type": "done",
                 "session_id": str(msg.session.uuid),
-                "message": SendMessageCommand._serialize_message(
-                    msg, msg.ai_model
-                ),
+                "message": SendMessageCommand._serialize_message(msg, msg.ai_model),
             }
     finally:
         close_old_connections()

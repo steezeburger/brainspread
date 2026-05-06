@@ -20,7 +20,10 @@ const ChatHistory = {
     document.addEventListener("chat:sessions-changed", this.onSessionsChanged);
   },
   beforeUnmount() {
-    document.removeEventListener("chat:sessions-changed", this.onSessionsChanged);
+    document.removeEventListener(
+      "chat:sessions-changed",
+      this.onSessionsChanged
+    );
     if (this._searchTimer) {
       clearTimeout(this._searchTimer);
       this._searchTimer = null;

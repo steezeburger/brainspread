@@ -13,27 +13,21 @@ class TestListChatSessionsCommand(TestCase):
         cls.user = UserFactory()
         cls.other_user = UserFactory()
 
-        cls.session_titled = ChatSessionFactory(
-            user=cls.user, title="Pinecone Recipes"
-        )
+        cls.session_titled = ChatSessionFactory(user=cls.user, title="Pinecone Recipes")
         ChatMessageFactory(
             session=cls.session_titled,
             role="user",
             content="What's the best fertilizer schedule for tomatoes?",
         )
 
-        cls.session_message = ChatSessionFactory(
-            user=cls.user, title="General Chat"
-        )
+        cls.session_message = ChatSessionFactory(user=cls.user, title="General Chat")
         ChatMessageFactory(
             session=cls.session_message,
             role="user",
             content="Tell me about pinecone propagation in dry climates.",
         )
 
-        cls.session_unrelated = ChatSessionFactory(
-            user=cls.user, title="Travel Plans"
-        )
+        cls.session_unrelated = ChatSessionFactory(user=cls.user, title="Travel Plans")
         ChatMessageFactory(
             session=cls.session_unrelated,
             role="user",
@@ -84,9 +78,7 @@ class TestListChatSessionsCommand(TestCase):
     def test_search_is_case_insensitive(self):
         upper = self._run(self.user, "PINECONE")
         lower = self._run(self.user, "pinecone")
-        self.assertEqual(
-            {e["uuid"] for e in upper}, {e["uuid"] for e in lower}
-        )
+        self.assertEqual({e["uuid"] for e in upper}, {e["uuid"] for e in lower})
 
     def test_match_snippet_present_for_message_hit(self):
         result = self._run(self.user, "propagation")

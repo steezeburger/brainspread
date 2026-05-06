@@ -412,8 +412,7 @@ const KnowledgeApp = createApp({
       let title = prefilledTitle;
       if (title == null) {
         title = await window.appModals.prompt({
-          title:
-            pageType === "whiteboard" ? "new whiteboard" : "new page",
+          title: pageType === "whiteboard" ? "new whiteboard" : "new page",
           message:
             pageType === "whiteboard"
               ? "enter whiteboard title:"

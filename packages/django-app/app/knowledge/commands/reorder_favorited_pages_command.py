@@ -36,8 +36,7 @@ class ReorderFavoritedPagesCommand(AbstractBaseCommand):
         unknown = [u for u in ordered_uuids if u not in page_by_uuid]
         if unknown:
             raise ValidationError(
-                "One or more pages are not in your favorites: "
-                + ", ".join(unknown)
+                "One or more pages are not in your favorites: " + ", ".join(unknown)
             )
 
         # Apply the requested order first, then append any favorites the

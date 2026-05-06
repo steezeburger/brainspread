@@ -39,8 +39,7 @@ class ListChatSessionsCommand(AbstractBaseCommand):
             # join through messages can multiply rows when many messages
             # match in one session.
             sessions = sessions.filter(
-                Q(title__icontains=search)
-                | Q(messages__content__icontains=search)
+                Q(title__icontains=search) | Q(messages__content__icontains=search)
             ).distinct()
 
         sessions = sessions.order_by("-modified_at")

@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <title>{% block title %}brainspread{% endblock %}</title>
     {% load static %} {% csrf_token %}
     <script>
@@ -27,7 +30,10 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="{% static 'knowledge/css/app.css' %}?v={{ STATIC_VERSION }}" />
+    <link
+      rel="stylesheet"
+      href="{% static 'knowledge/css/app.css' %}?v={{ STATIC_VERSION }}"
+    />
     <link rel="stylesheet" href="https://esm.sh/tldraw@3/tldraw.css" />
     {% block extra_css %}{% endblock %}
   </head>
@@ -47,7 +53,10 @@
     <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 
     <!-- Prism CSS Theme -->
-    <link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css"
+      rel="stylesheet"
+    />
 
     <!-- API Service -->
     <script src="{% static 'knowledge/js/services/api.js' %}?v={{ STATIC_VERSION }}"></script>
