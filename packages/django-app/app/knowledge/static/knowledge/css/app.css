@@ -6778,7 +6778,9 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 
 /* #slug mentions in chat messages — clickable chips that navigate to
    the page. Mirrors the inline-tag styling used in block content so
-   tags look the same wherever the user sees them. */
+   tags look the same wherever the user sees them. font-weight bumped
+   so the chip stays readable on themes where --tag-bg / --tag-text
+   contrast is low (staging theme, mostly). */
 .hashtag-mention {
   display: inline-block;
   padding: 0.05rem 0.3rem;
@@ -6788,6 +6790,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   border-radius: 3px;
   text-decoration: none;
   font-size: 0.92em;
+  font-weight: 600;
 }
 
 .hashtag-mention:hover {
@@ -6795,8 +6798,9 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   text-decoration: none;
 }
 
-/* Hashtag autocomplete popover anchored to the chat textarea. Mirrors
-   the spotlight styling so the menu feels native. */
+/* Hashtag autocomplete popover anchored to the chat textarea. Reuses
+   --bg-primary (the same token the block-editor tag-suggestions
+   popover uses) so it has a real background on every theme. */
 .hashtag-autocomplete {
   position: absolute;
   z-index: 1100;
@@ -6804,7 +6808,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   max-width: 18rem;
   max-height: 14rem;
   overflow-y: auto;
-  background: var(--bg-elevated, var(--bg-secondary));
+  background: var(--bg-primary);
   border: 1px solid var(--border-primary);
   border-radius: 4px;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
@@ -6819,11 +6823,15 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   cursor: pointer;
   font-size: 0.9rem;
   color: var(--text-primary);
+  background: transparent;
+  border: none;
+  text-align: left;
+  width: 100%;
 }
 
 .hashtag-autocomplete-item.is-selected,
 .hashtag-autocomplete-item:hover {
-  background: var(--bg-hover, var(--bg-tertiary));
+  background: var(--hover-bg, var(--accent-bg));
 }
 
 .hashtag-autocomplete-slug {

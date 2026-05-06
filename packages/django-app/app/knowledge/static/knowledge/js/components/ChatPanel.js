@@ -2086,6 +2086,7 @@ const ChatPanel = {
                 v-if="showTagSuggestions"
                 class="hashtag-autocomplete"
                 @mousedown.prevent
+                @click.stop
                 role="listbox"
               >
                 <button
