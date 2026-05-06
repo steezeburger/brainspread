@@ -296,6 +296,18 @@ const KnowledgeApp = createApp({
     applyTheme() {
       const theme = this.user?.theme || "dark";
       document.documentElement.setAttribute("data-theme", theme);
+      // Cache the chosen theme so the inline boot script in base.html
+      // can apply it on the next reload before the user-settings fetch
+      // returns. Without this the document repaints the default theme
+      // for ~one frame after navigation.
+      try {
+        if (typeof window !== "undefined" && window.localStorage) {
+          window.localStorage.setItem("brainspread.theme", theme);
+        }
+      } catch (_) {
+        // localStorage can throw in private mode; the in-session theme
+        // still works, the next reload just won't have the cached hint.
+      }
       // Mermaid diagrams pick their palette at render time, so a theme
       // swap only takes effect on already-rendered SVGs if we reset and
       // re-render them.

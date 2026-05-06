@@ -5,6 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>{% block title %}brainspread{% endblock %}</title>
     {% load static %} {% csrf_token %}
+    <script>
+      // Apply the user's last-known theme synchronously so the page
+      // doesn't flash the default theme for a frame while the auth /
+      // user-settings fetch is in flight. The Vue app rewrites this
+      // attribute and the cache after the fetch lands, so a cross-
+      // device theme change on a different session corrects on the
+      // next reload.
+      (function () {
+        try {
+          if (window.localStorage) {
+            var saved = window.localStorage.getItem("brainspread.theme");
+            if (saved) {
+              document.documentElement.setAttribute("data-theme", saved);
+            }
+          }
+        } catch (_) {
+          // localStorage can throw in private mode; the app still works,
+          // it just shows the default theme until Vue applies the real
+          // one.
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="{% static 'knowledge/css/app.css' %}?v={{ STATIC_VERSION }}" />
     <link rel="stylesheet" href="https://esm.sh/tldraw@3/tldraw.css" />
     {% block extra_css %}{% endblock %}
