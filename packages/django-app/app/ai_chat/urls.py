@@ -22,6 +22,11 @@ urlpatterns = [
         views.chat_session_detail,
         name="chat_session_detail",
     ),
+    path(
+        "messages/<str:message_uuid>/follow/",
+        views.FollowMessageView.as_view(),
+        name="follow_message",
+    ),
     path("settings/", views.ai_settings, name="ai_settings"),
     path("settings/update/", views.update_ai_settings, name="update_ai_settings"),
 ]

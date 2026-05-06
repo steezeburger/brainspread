@@ -21,11 +21,13 @@ from .forms import ListChatSessionsForm, ResumeApprovalForm, SendMessageForm
 from .models import (
     AIModel,
     AIProvider,
+    ChatMessage,
     ChatSession,
     UserAISettings,
     UserProviderConfig,
 )
 from .repositories.user_settings_repository import UserSettingsRepository
+from .services.stream_runner import follow_message
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +112,61 @@ class ServerSentEventRenderer(BaseRenderer):
 
     def render(self, data, accepted_media_type=None, renderer_context=None):
         return data
+
+
+class FollowMessageView(APIView):
+    """SSE endpoint that lets a client reconnect to an in-flight
+    assistant response after a page reload (issue #118).
+
+    The actual LLM call runs in a background thread spawned by
+    StreamSendMessageView so it survives the original client's
+    disconnect; this endpoint just tails the message row and ships
+    deltas. Returns the final message immediately if the stream has
+    already finished by the time the client reconnects.
+    """
+
+    permission_classes = [IsAuthenticated]
+    renderer_classes = [ServerSentEventRenderer]
+
+    def get(self, request, message_uuid):
+        try:
+            message = ChatMessage.objects.select_related(
+                "session", "ai_model__provider"
+            ).get(uuid=message_uuid, session__user=request.user)
+        except ChatMessage.DoesNotExist:
+            return Response(
+                {"success": False, "error": "Message not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        session_id = str(message.session.uuid)
+
+        def event_stream():
+            # Echo the session id up front so a reconnecting ChatPanel
+            # doesn't have to track it separately.
+            yield _sse_event({"type": "session", "session_id": session_id})
+            try:
+                for event in follow_message(str(message.uuid)):
+                    if event.get("type") == "done":
+                        event.setdefault("session_id", session_id)
+                    yield _sse_event(event)
+            except Exception as e:  # noqa: BLE001
+                logger.error(
+                    "follow_message error for user %s message %s: %s",
+                    request.user.id,
+                    message_uuid,
+                    e,
+                )
+                yield _sse_event(
+                    {"type": "error", "error": "An unexpected error occurred."}
+                )
+
+        response = StreamingHttpResponse(
+            event_stream(), content_type="text/event-stream"
+        )
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
 
 
 class StreamSendMessageView(APIView):
@@ -260,12 +317,17 @@ def chat_session_detail(request, session_id):
 
         messages_data = [
             {
+                "uuid": str(msg.uuid),
                 "role": msg.role,
                 "content": msg.content,
                 "thinking": msg.thinking or None,
                 "created_at": msg.created_at.isoformat(),
                 "tool_events": list(msg.tool_events or []),
                 "attachments": list(msg.attachments or []),
+                # Surface status so the UI can spot in-flight assistant
+                # rows on session load and reconnect to the follow
+                # endpoint without losing the in-progress response.
+                "status": msg.status,
                 "usage": {
                     "input_tokens": msg.input_tokens,
                     "output_tokens": msg.output_tokens,

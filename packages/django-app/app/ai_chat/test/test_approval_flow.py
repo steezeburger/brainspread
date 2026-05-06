@@ -1,11 +1,12 @@
 from unittest.mock import Mock, patch
 
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 
 from ai_chat.commands.resume_approval_command import ResumeApprovalCommand
 from ai_chat.commands.stream_send_message_command import StreamSendMessageCommand
 from ai_chat.forms import ResumeApprovalForm, SendMessageForm
 from ai_chat.models import AIModel, PendingToolApproval
+from ai_chat.services import stream_runner
 from ai_chat.services.base_ai_service import AIUsage, PendingApproval
 from ai_chat.test.helpers import (
     OpenAIProviderFactory,
@@ -14,15 +15,18 @@ from ai_chat.test.helpers import (
 from core.test.helpers import UserFactory
 
 
-class ApprovalPausePersistTestCase(TestCase):
-    """When the service emits pending_approval, the command persists it."""
+class ApprovalPausePersistTestCase(TransactionTestCase):
+    """When the service emits pending_approval, the command persists it.
 
-    @classmethod
-    def setUpTestData(cls):
-        cls.user = UserFactory(email="approve@example.com")
-        cls.provider = OpenAIProviderFactory()
+    TransactionTestCase rather than TestCase because StreamSendMessage
+    now spawns a worker thread that needs to read setup data committed
+    outside the test's wrapping transaction (which TestCase wouldn't
+    commit until after teardown).
+    """
 
     def setUp(self):
+        self.user = UserFactory(email="approve@example.com")
+        self.provider = OpenAIProviderFactory()
         self.model = AIModel.objects.create(
             name="gpt-4", provider=self.provider, display_name="GPT-4", is_active=True
         )
@@ -32,6 +36,11 @@ class ApprovalPausePersistTestCase(TestCase):
             api_key="approve-key",
             enabled_models=[self.model],
         )
+        self._original_poll = stream_runner.POLL_INTERVAL_SECONDS
+        stream_runner.POLL_INTERVAL_SECONDS = 0.02
+
+    def tearDown(self):
+        stream_runner.POLL_INTERVAL_SECONDS = self._original_poll
 
     def _form(self):
         return SendMessageForm(

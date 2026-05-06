@@ -555,6 +555,63 @@ class ApiService {
     }
   }
 
+  async *followAIMessage(messageUuid) {
+    // Reconnect to an in-flight assistant response after a reload.
+    // Same SSE event shape as streamAIMessage, just GET-only and
+    // keyed by the message UUID the server returned during the
+    // original send. Closes once the server marks the message done
+    // (or errored).
+    const headers = {
+      Accept: "text/event-stream",
+    };
+    if (this.token) {
+      headers["Authorization"] = `Token ${this.token}`;
+    }
+
+    const response = await fetch(
+      `${this.baseURL}/api/ai-chat/messages/${encodeURIComponent(messageUuid)}/follow/`,
+      { method: "GET", headers }
+    );
+
+    if (!response.ok) {
+      let detail = "Follow request failed";
+      try {
+        const data = await response.json();
+        detail = data.error || data.detail || detail;
+      } catch (_) {
+        // non-JSON error body
+      }
+      throw new Error(detail);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary !== -1) {
+        const frame = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        for (const line of frame.split("\n")) {
+          if (!line.startsWith("data:")) continue;
+          const raw = line.slice(5).trim();
+          if (!raw) continue;
+          try {
+            yield JSON.parse(raw);
+          } catch (e) {
+            console.error("Failed to parse SSE frame:", raw, e);
+          }
+        }
+        boundary = buffer.indexOf("\n\n");
+      }
+    }
+  }
+
   async *resumeApproval(approvalId, payload) {
     const headers = {
       "Content-Type": "application/json",
