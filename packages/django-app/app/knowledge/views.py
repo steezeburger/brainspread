@@ -13,6 +13,7 @@ from assets.models import Asset
 from knowledge.commands import (
     BulkDeleteBlocksCommand,
     BulkMoveBlocksCommand,
+    ConsumeReminderActionCommand,
     CreateBlockCommand,
     CreatePageCommand,
     DeleteBlockCommand,
@@ -45,6 +46,7 @@ from knowledge.commands.move_undone_todos_command import MoveUndoneTodosData
 from knowledge.forms import (
     BulkDeleteBlocksForm,
     BulkMoveBlocksForm,
+    ConsumeReminderActionForm,
     CreateBlockForm,
     CreatePageForm,
     DeleteBlockForm,
@@ -1306,6 +1308,94 @@ def bulk_delete_blocks(request):
             "errors": {"non_field_errors": [str(e)]},
         }
         return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def reminder_action(request, token: str):
+    """Public, no-auth handler for a reminder action click from Discord.
+
+    Resolves `token` to a (reminder, action) pair via
+    `ConsumeReminderActionCommand`. The command itself is responsible
+    for authorizing the click — possession of an unguessable, single-
+    use, time-bound token is the credential. The view's only job is
+    HTTP shape: return the right status code and render a small
+    confirmation page so the user sees something legible after the
+    click instead of a JSON blob.
+
+    Status codes mirror the command result:
+      - 200: action ran (or block was already complete; no-op)
+      - 404: unknown token
+      - 410: token expired or already used
+    """
+    form = ConsumeReminderActionForm({"token": token})
+    if not form.is_valid():
+        # The URL pattern only matches `<str:token>`, so an invalid form
+        # here means the input is too long / malformed — same UX as
+        # "unknown token" from the user's POV.
+        return render(
+            request,
+            "knowledge/reminder_action.html",
+            {
+                "title": "Action link not found",
+                "message": "Unknown action link.",
+                "block_url": "",
+            },
+            status=404,
+        )
+
+    result = ConsumeReminderActionCommand(form).execute()
+    block_url = _block_link_for_result(result)
+
+    status_code = {
+        "executed": 200,
+        "block_completed": 200,
+        "not_found": 404,
+        "expired": 410,
+        "already_used": 410,
+    }.get(result["status"], 400)
+
+    title = {
+        "executed": "Done",
+        "block_completed": "Already complete",
+        "not_found": "Action link not found",
+        "expired": "Action link expired",
+        "already_used": "Already used",
+    }.get(result["status"], "")
+
+    response = render(
+        request,
+        "knowledge/reminder_action.html",
+        {
+            "title": title,
+            "message": result["detail"],
+            "block_url": block_url,
+        },
+        status=status_code,
+    )
+    # Action confirmation pages are stateful (they show "executed" /
+    # "expired" depending on the click), so don't let an intermediary
+    # cache them.
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+def _block_link_for_result(result) -> str:
+    """Build the in-app block link for the confirmation page, if we can.
+
+    Skips when SITE_URL isn't a real http(s) URL (mirrors the embed's
+    `_page_link` behavior) and when the result lacks a block — e.g.
+    the token didn't resolve.
+    """
+    from django.conf import settings
+
+    site_url = settings.SITE_URL or ""
+    if not site_url.startswith(("http://", "https://")):
+        return ""
+    block_uuid = result.get("block_uuid")
+    page_slug = result.get("page_slug")
+    if not block_uuid or not page_slug:
+        return ""
+    base = site_url.rstrip("/")
+    return f"{base}/knowledge/page/{page_slug}/#block-{block_uuid}"
 
 
 @api_view(["POST"])

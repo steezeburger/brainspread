@@ -1,0 +1,107 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>{{ title|default:"reminder" }} · brainspread</title>
+    <style>
+      /* Self-contained brutalist palette to match the editor's default
+         dark/green look. We don't pull in app.css because this view is
+         shown to logged-out browsers (followed from a Discord ping)
+         and theme preference isn't readable here. */
+      :root {
+        --bg: #000000;
+        --fg: #00ff00;
+        --muted: #888888;
+        --border: #00ff00;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+      }
+
+      body {
+        font-family:
+          "SF Mono", "Monaco", "Inconsolata", "Roboto Mono", "Source Code Pro",
+          monospace;
+        background: var(--bg);
+        color: var(--fg);
+        line-height: 1.4;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 1rem;
+      }
+
+      main {
+        width: 100%;
+        max-width: 32rem;
+        border: 3px solid var(--border);
+        background: var(--bg);
+        padding: 2rem;
+        box-shadow: 6px 6px 0 var(--border);
+      }
+
+      .brand {
+        font-size: 0.8rem;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 0 0 1.25rem;
+      }
+
+      h1 {
+        margin: 0 0 0.75rem;
+        font-size: 1.25rem;
+        font-weight: bold;
+        letter-spacing: 0.5px;
+      }
+
+      p {
+        margin: 0 0 1.5rem;
+        color: var(--fg);
+      }
+
+      .btn {
+        display: inline-block;
+        padding: 0.6rem 1.1rem;
+        border: 3px solid var(--border);
+        background: var(--bg);
+        color: var(--fg);
+        text-decoration: none;
+        font-family: inherit;
+        font-size: 0.95rem;
+        font-weight: bold;
+        letter-spacing: 0.5px;
+        box-shadow: 4px 4px 0 var(--border);
+        transition: none;
+      }
+
+      .btn:hover {
+        transform: translate(-2px, -2px);
+        box-shadow: 6px 6px 0 var(--border);
+      }
+
+      .btn:active {
+        transform: translate(2px, 2px);
+        box-shadow: 2px 2px 0 var(--border);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="brand">brainspread</p>
+      <h1>{{ title }}</h1>
+      <p>{{ message }}</p>
+      {% if block_url %}
+        <a class="btn" href="{{ block_url }}">Open block →</a>
+      {% endif %}
+    </main>
+  </body>
+</html>

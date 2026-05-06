@@ -6,6 +6,7 @@ from .bulk_schedule_command import BulkScheduleCommand
 from .bulk_set_block_type_command import BulkSetBlockTypeCommand
 from .bulk_snooze_command import BulkSnoozeCommand
 from .cancel_reminder_command import CancelReminderCommand
+from .consume_reminder_action_command import ConsumeReminderActionCommand
 from .create_block_command import CreateBlockCommand
 from .create_blocks_bulk_command import CreateBlocksBulkCommand
 from .create_page_command import CreatePageCommand

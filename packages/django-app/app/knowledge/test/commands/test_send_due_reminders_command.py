@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from knowledge.commands import SendDueRemindersCommand
 from knowledge.forms import SendDueRemindersForm
-from knowledge.models import Reminder
+from knowledge.models import Reminder, ReminderAction
 from knowledge.services.discord_webhook import DiscordDeliveryResult
 
 from ..helpers import BlockFactory, PageFactory, UserFactory
@@ -242,7 +242,9 @@ class TestSendDueRemindersCommand(TestCase):
     def test_embed_description_carries_open_block_link(self):
         # When SITE_URL is real, the embed gets a description with a
         # markdown link to the block — that's the "open block" call to
-        # action that sits visually right under the title.
+        # action that sits visually right under the title. The action
+        # quick-row gets appended after it (see
+        # `test_embed_includes_action_links_when_site_url_is_real`).
         page = PageFactory(user=self.user, title="Backlog", slug="backlog")
         block = BlockFactory(user=self.user, page=page, content="TODO ship")
         Reminder.objects.create(
@@ -255,11 +257,12 @@ class TestSendDueRemindersCommand(TestCase):
             self._run()
 
         embed = captured["embeds"][0]
-        expected = (
+        open_block_link = (
             f"[Open block →](https://app.example.com/knowledge/page/backlog/"
             f"#block-{block.uuid})"
         )
-        self.assertEqual(embed["description"], expected)
+        # First line of the description is always the open-block link.
+        self.assertTrue(embed["description"].startswith(open_block_link))
 
     def test_embed_omits_description_when_site_url_is_placeholder(self):
         # Default SITE_URL is "0.0.0.0" — no scheme, can't form a real
@@ -381,6 +384,65 @@ class TestSendDueRemindersCommand(TestCase):
 
         embed = captured["embeds"][0]
         self.assertEqual(embed["footer"], {"text": "on Backlog"})
+
+    def test_embed_includes_action_links_when_site_url_is_real(self):
+        # When a real SITE_URL is set, the dispatcher mints per-action
+        # tokens and the embed description picks up a quick-action row
+        # ([Mark done](u) · [Snooze 1h](u) · [Snooze 1d](u)) underneath
+        # the existing "Open block" link.
+        page = PageFactory(user=self.user, title="Backlog", slug="backlog")
+        block = BlockFactory(user=self.user, page=page, content="TODO ship")
+        reminder = Reminder.objects.create(
+            block=block,
+            fire_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        captured, patcher = self._capture_payload()
+        with self.settings(SITE_URL="https://app.example.com"), patcher:
+            self._run()
+
+        embed = captured["embeds"][0]
+        description = embed["description"]
+        self.assertIn("[Open block →]", description)
+        self.assertIn("[Mark done]", description)
+        self.assertIn("[Snooze 1h]", description)
+        self.assertIn("[Snooze 1d]", description)
+
+        # Three action rows minted, all linked to this reminder, none
+        # consumed yet.
+        actions = list(ReminderAction.objects.filter(reminder=reminder))
+        self.assertEqual(len(actions), 3)
+        self.assertEqual(
+            {a.action for a in actions},
+            {
+                ReminderAction.ACTION_COMPLETE,
+                ReminderAction.ACTION_SNOOZE_1H,
+                ReminderAction.ACTION_SNOOZE_1D,
+            },
+        )
+        # Token URLs in the description must match what was minted.
+        for a in actions:
+            self.assertIn(
+                f"https://app.example.com/knowledge/r/{a.token}/", description
+            )
+
+    def test_no_action_links_when_site_url_is_placeholder(self):
+        # 0.0.0.0 doesn't form a real URL, so the embed renders without
+        # action links — and we don't burn token rows we can't link to.
+        block = BlockFactory(user=self.user, page=self.page, content="TODO ship")
+        reminder = Reminder.objects.create(
+            block=block,
+            fire_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        captured, patcher = self._capture_payload()
+        with self.settings(SITE_URL="0.0.0.0"), patcher:
+            self._run()
+
+        embed = captured["embeds"][0]
+        # No description at all — no page link, no action links.
+        self.assertNotIn("description", embed)
+        self.assertEqual(ReminderAction.objects.filter(reminder=reminder).count(), 0)
 
     def test_color_varies_by_env(self):
         # Quick visual cue for which deploy a ping came from. Asserts on
