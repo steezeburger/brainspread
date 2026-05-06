@@ -616,8 +616,12 @@ class ApiService {
     }
   }
 
-  async getChatSessions() {
-    return await this.request("/api/ai-chat/sessions/");
+  async getChatSessions(search) {
+    const trimmed = (search || "").trim();
+    const path = trimmed
+      ? `/api/ai-chat/sessions/?search=${encodeURIComponent(trimmed)}`
+      : "/api/ai-chat/sessions/";
+    return await this.request(path);
   }
 
   async getChatSessionDetail(sessionId) {

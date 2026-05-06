@@ -11,12 +11,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .commands import (
+    ListChatSessionsCommand,
     ResumeApprovalCommand,
     SendMessageCommand,
     StreamSendMessageCommand,
 )
 from .commands.send_message_command import SendMessageCommandError
-from .forms import ResumeApprovalForm, SendMessageForm
+from .forms import ListChatSessionsForm, ResumeApprovalForm, SendMessageForm
 from .models import (
     AIModel,
     AIProvider,
@@ -219,33 +220,22 @@ class ResumeApprovalView(APIView):
 def chat_sessions(request):
     """
     Get list of chat sessions for the current user.
+
+    Optional ?search= query param matches case-insensitively against
+    session titles and the content of any message in the session, with
+    a short snippet around the first message hit attached to each
+    matching session.
     """
     try:
-        sessions = ChatSession.objects.filter(user=request.user).order_by(
-            "-modified_at"
+        form = ListChatSessionsForm(
+            {"user": request.user.id, "search": request.GET.get("search", "")}
         )
-
-        # Get first message from each session for preview
-        sessions_data = []
-        for session in sessions:
-            first_message = session.messages.filter(role="user").first()
-            preview = (
-                first_message.content[:100] + "..."
-                if first_message and len(first_message.content) > 100
-                else (first_message.content if first_message else "")
+        if not form.is_valid():
+            return Response(
+                {"success": False, "errors": form.errors},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-
-            sessions_data.append(
-                {
-                    "uuid": str(session.uuid),
-                    "title": session.title or preview or "New Chat",
-                    "preview": preview,
-                    "created_at": session.created_at.isoformat(),
-                    "modified_at": session.modified_at.isoformat(),
-                    "message_count": session.messages.count(),
-                }
-            )
-
+        sessions_data = ListChatSessionsCommand(form).execute()
         return Response({"success": True, "data": sessions_data})
 
     except Exception as e:

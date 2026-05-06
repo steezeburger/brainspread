@@ -285,6 +285,27 @@ class ResumeApprovalForm(BaseForm):
         return cleaned_data
 
 
+class ListChatSessionsForm(BaseForm):
+    """Inputs for the chat history list endpoint, with optional search.
+
+    The search field is matched (case-insensitive) against session
+    titles and the content of any message in the session. Empty /
+    blank search returns the user's full session list.
+    """
+
+    user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
+    search = forms.CharField(required=False, max_length=200)
+
+    def clean_user(self) -> User:
+        user = self.cleaned_data.get("user")
+        if not user:
+            raise ValidationError("User is required")
+        return user
+
+    def clean_search(self) -> str:
+        return (self.cleaned_data.get("search") or "").strip()
+
+
 class GetChatHistorySummaryForm(BaseForm):
     """Inputs for the assistant's get_chat_history_summary tool.
 
