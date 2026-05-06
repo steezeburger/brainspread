@@ -81,6 +81,13 @@ class Page(UUIDModelMixin, CRUDTimestampsMixin):
     favorited = models.BooleanField(
         default=False, help_text="Whether the user has starred this page"
     )
+    favorite_position = models.IntegerField(
+        default=0,
+        help_text=(
+            "Order within the user's Favorites list. Lower values appear "
+            "first; ties fall back to title."
+        ),
+    )
 
     class Meta:
         db_table = "pages"

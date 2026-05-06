@@ -155,6 +155,13 @@ class ApiService {
     return await this.request("/knowledge/api/pages/favorites/");
   }
 
+  async reorderFavoritedPages(pageUuids) {
+    return await this.request("/knowledge/api/pages/favorites/reorder/", {
+      method: "POST",
+      body: JSON.stringify({ page_uuids: pageUuids }),
+    });
+  }
+
   async getPages(publishedOnly = true, limit = 10, offset = 0) {
     return await this.request(
       `/knowledge/api/pages/list/?published_only=${publishedOnly}&limit=${limit}&offset=${offset}`

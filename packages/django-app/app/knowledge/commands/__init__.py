@@ -34,6 +34,7 @@ from .list_scheduled_blocks_command import ListScheduledBlocksCommand
 from .move_block_to_daily_command import MoveBlockToDailyCommand
 from .move_undone_todos_command import MoveUndoneTodosCommand
 from .reorder_blocks_command import ReorderBlocksCommand
+from .reorder_favorited_pages_command import ReorderFavoritedPagesCommand
 from .schedule_block_command import ScheduleBlockCommand
 from .search_notes_command import SearchNotesCommand
 from .search_pages_command import SearchPagesCommand

@@ -34,6 +34,7 @@ from .list_scheduled_blocks_form import ListScheduledBlocksForm
 from .move_block_to_daily_form import MoveBlockToDailyForm
 from .move_undone_todos_form import MoveUndoneTodosForm
 from .reorder_blocks_form import ReorderBlocksForm
+from .reorder_favorited_pages_form import ReorderFavoritedPagesForm
 from .schedule_block_form import ScheduleBlockForm
 from .search_notes_form import SearchNotesForm
 from .search_pages_form import SearchPagesForm

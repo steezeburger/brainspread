@@ -61,6 +61,11 @@ window.LeftNav = {
       favoritesLoading: false,
       favoritesError: null,
       favoritesExpanded,
+      // HTML5 drag-and-drop state for the favorites list. Index of the
+      // page currently being dragged and the index it would drop into;
+      // both reset to null on dragend / drop / dragleave-of-the-list.
+      favoriteDragIndex: null,
+      favoriteDropIndex: null,
     };
   },
 
@@ -260,6 +265,88 @@ window.LeftNav = {
       } finally {
         this.favoritesLoading = false;
       }
+    },
+
+    onFavoriteDragStart(event, index) {
+      this.favoriteDragIndex = index;
+      this.favoriteDropIndex = index;
+      // Without setting some data the drag never starts in Firefox.
+      // The actual payload doesn't matter — we keep state in component
+      // data because a drag from a Vue list to itself is purely local.
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+        try {
+          event.dataTransfer.setData("text/plain", String(index));
+        } catch (_) {
+          // some browsers throw on setData with certain mime types in
+          // restricted contexts; the drag still works without it.
+        }
+      }
+    },
+
+    onFavoriteDragOver(event, index) {
+      if (this.favoriteDragIndex === null) return;
+      event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "move";
+      }
+      // Halve the row to decide whether the dragged item should land
+      // above or below the hovered row. This produces the familiar
+      // "indicator above / below" feel from Notion-style drag lists.
+      const rect = event.currentTarget.getBoundingClientRect();
+      const before = event.clientY < rect.top + rect.height / 2;
+      this.favoriteDropIndex = before ? index : index + 1;
+    },
+
+    onFavoriteDragLeaveList() {
+      // Drop indicator should only show while the cursor is over the
+      // list. Clearing on list-leave (rather than per-row) avoids a
+      // flicker as the cursor moves between adjacent rows.
+      this.favoriteDropIndex = null;
+    },
+
+    async onFavoriteDrop(event) {
+      event.preventDefault();
+      const fromIndex = this.favoriteDragIndex;
+      let toIndex = this.favoriteDropIndex;
+      this.favoriteDragIndex = null;
+      this.favoriteDropIndex = null;
+      if (fromIndex === null || toIndex === null) return;
+      if (toIndex > fromIndex) toIndex -= 1;
+      if (toIndex === fromIndex) return;
+
+      const next = this.favorites.slice();
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      const previous = this.favorites;
+      // Optimistic update so the list snaps into place instantly. On
+      // failure we revert and surface an error.
+      this.favorites = next;
+
+      try {
+        const result = await window.apiService.reorderFavoritedPages(
+          next.map((p) => p.uuid)
+        );
+        if (!result.success) {
+          this.favorites = previous;
+          this.favoritesError = "failed to reorder favorites";
+          return;
+        }
+        if (result.data?.pages) {
+          // Trust the server's full ordering in case other tabs added
+          // favorites since the page loaded.
+          this.favorites = result.data.pages;
+        }
+      } catch (error) {
+        console.error("error reordering favorites:", error);
+        this.favorites = previous;
+        this.favoritesError = error.message || "failed to reorder favorites";
+      }
+    },
+
+    onFavoriteDragEnd() {
+      this.favoriteDragIndex = null;
+      this.favoriteDropIndex = null;
     },
 
     formatDate(dateString) {
@@ -764,19 +851,41 @@ window.LeftNav = {
               <div v-else-if="!favorites.length" class="leftnav-empty">
                 No favorites yet. Star a page from its menu.
               </div>
-              <div v-else class="leftnav-favorites-list">
-                <a
-                  v-for="page in favorites"
-                  :key="page.uuid"
-                  :href="pageUrl(page.slug)"
-                  class="leftnav-item leftnav-favorite-item"
-                  @click="handleNavClick($event, page.slug)"
-                  @auxclick="handleNavClick($event, page.slug)"
-                  :title="'Open ' + page.title"
-                >
-                  <span class="leftnav-icon" aria-hidden="true">★</span>
-                  <span class="leftnav-label">{{ formatPageTitle(page) }}</span>
-                </a>
+              <div
+                v-else
+                class="leftnav-favorites-list"
+                @dragleave.self="onFavoriteDragLeaveList"
+                @drop="onFavoriteDrop"
+                @dragover.prevent
+              >
+                <template v-for="(page, index) in favorites" :key="page.uuid">
+                  <div
+                    v-if="favoriteDropIndex === index && favoriteDragIndex !== null"
+                    class="leftnav-favorite-drop-indicator"
+                    aria-hidden="true"
+                  ></div>
+                  <a
+                    :href="pageUrl(page.slug)"
+                    class="leftnav-item leftnav-favorite-item"
+                    :class="{ 'is-dragging': favoriteDragIndex === index }"
+                    draggable="true"
+                    @click="handleNavClick($event, page.slug)"
+                    @auxclick="handleNavClick($event, page.slug)"
+                    @dragstart="onFavoriteDragStart($event, index)"
+                    @dragover="onFavoriteDragOver($event, index)"
+                    @dragend="onFavoriteDragEnd"
+                    :title="'Open ' + page.title + ' — drag to reorder'"
+                  >
+                    <span class="leftnav-favorite-grip" aria-hidden="true">⋮⋮</span>
+                    <span class="leftnav-icon" aria-hidden="true">★</span>
+                    <span class="leftnav-label">{{ formatPageTitle(page) }}</span>
+                  </a>
+                </template>
+                <div
+                  v-if="favoriteDropIndex === favorites.length && favoriteDragIndex !== null"
+                  class="leftnav-favorite-drop-indicator"
+                  aria-hidden="true"
+                ></div>
               </div>
             </div>
           </section>
