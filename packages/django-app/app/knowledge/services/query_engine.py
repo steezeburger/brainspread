@@ -238,12 +238,26 @@ def _completed_at_q(value: Any, user) -> Q:
 def _has_tag_q(value: Any, user) -> Q:
     """Compose-friendly tag predicate.
 
-    Each ``has_tag`` expands to an independent ``Exists()`` subquery
-    against the Block.pages through table. That gives correct semantics
-    under arbitrary combinator nesting — multiple ``has_tag`` under
-    ``all`` AND together (each block must carry every named tag), under
-    ``any`` they OR together, and the same predicate composes inside a
-    nested tree without the join-reuse trap.
+    Matches a block when *either*:
+
+      • the block lives on a page with the given slug
+        (``block.page.slug == X``), or
+      • the block has an explicit hashtag/wiki-link reference to a
+        page with that slug (the ``Block.pages`` M2M).
+
+    The user-facing model treats "this block is on page X" and "this
+    block has #X" as the same organizational signal — a block written
+    under page foo is implicitly about foo, even if the user didn't
+    type #foo on the line itself. Surfaces that ask "is this block
+    about X?" (this predicate, the tag-content view) honor that;
+    surfaces that ask "does this block reference X from elsewhere?"
+    (backlinks) intentionally do not, since a child block on page X
+    isn't a cross-reference to X.
+
+    Each ``has_tag`` expands to an independent expression so multi-
+    has_tag composes correctly under any combinator nesting — the
+    M2M side uses an ``Exists()`` subquery so AND across distinct
+    tags doesn't collapse via join reuse.
     """
     if isinstance(value, dict):
         value = value.get("eq")
@@ -257,7 +271,8 @@ def _has_tag_q(value: Any, user) -> Q:
         page__slug=slug,
         page__user=user,
     )
-    return Q(Exists(sub))
+    page_membership = Q(page__slug=slug, page__user=user)
+    return page_membership | Q(Exists(sub))
 
 
 def _has_property_q(value: Any, user) -> Q:

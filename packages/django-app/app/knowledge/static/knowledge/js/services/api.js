@@ -792,9 +792,7 @@ class ApiService {
     if (uuid) params.set("view_uuid", uuid);
     if (slug) params.set("view_slug", slug);
     params.set("limit", String(limit));
-    return await this.request(
-      `/knowledge/api/views/run/?${params.toString()}`
-    );
+    return await this.request(`/knowledge/api/views/run/?${params.toString()}`);
   }
 
   async createSavedView(payload) {

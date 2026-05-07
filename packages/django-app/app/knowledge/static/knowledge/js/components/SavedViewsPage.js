@@ -220,7 +220,11 @@ const SavedViewsPage = {
       let filterParsed, sortParsed;
       try {
         filterParsed = JSON.parse(this.editor.filter);
-        if (!filterParsed || typeof filterParsed !== "object" || Array.isArray(filterParsed)) {
+        if (
+          !filterParsed ||
+          typeof filterParsed !== "object" ||
+          Array.isArray(filterParsed)
+        ) {
           errs.filter = "filter must be a JSON object";
         }
       } catch (e) {
@@ -425,7 +429,8 @@ const SavedViewsPage = {
     blockLabel(block) {
       if (!block) return "";
       const content = (block.content || "").trim();
-      if (content) return content.length > 200 ? content.slice(0, 200) + "…" : content;
+      if (content)
+        return content.length > 200 ? content.slice(0, 200) + "…" : content;
       return "(empty block)";
     },
   },
@@ -483,6 +488,7 @@ const SavedViewsPage = {
   ]
 }</pre>
             <p>Predicates: block_type, scheduled_for, completed_at, has_tag, has_property, property_eq, content_contains. Combinators: all, any. Date tokens: today, tomorrow, yesterday, "N days ago", "N days from now", or YYYY-MM-DD.</p>
+            <p><strong>has_tag</strong> matches blocks that live on a page with that slug <em>or</em> blocks that explicitly link to that page with #tag / [[link]].</p>
           </div>
         </div>
 

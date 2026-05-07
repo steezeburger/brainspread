@@ -234,6 +234,49 @@ class HasTagTests(_EngineTestBase):
         with self.assertRaises(query_engine.QueryEngineError):
             query_engine.compile({"has_tag": ""}, user=self.user)
 
+    def test_block_on_page_matches_without_explicit_tag(self):
+        """Page-membership counts as an implicit tag — a block on page foo
+        matches ``has_tag: foo`` even without an explicit M2M row."""
+        foo = PageFactory(user=self.user, slug="foo", title="Foo")
+        on_foo = BlockFactory(user=self.user, page=foo)
+        BlockFactory(user=self.user, page=self.page)  # not on foo, untagged
+        out = self.run_query({"has_tag": "foo"})
+        self.assertEqual([b.id for b in out], [on_foo.id])
+
+    def test_page_membership_unions_with_m2m_under_or(self):
+        """A block on page foo and a block tagged #foo from another page
+        both come back from a single ``has_tag: foo``."""
+        foo = PageFactory(user=self.user, slug="foo", title="Foo")
+        on_foo = BlockFactory(user=self.user, page=foo)
+        tagged = BlockFactory(user=self.user, page=self.page)
+        tagged.pages.add(foo)
+        out = self.run_query({"has_tag": "foo"})
+        self.assertEqual({b.id for b in out}, {on_foo.id, tagged.id})
+
+    def test_page_membership_isolated_per_user(self):
+        """Cross-user isolation also holds for the page-membership path —
+        another user's block on their own ``foo`` page must not leak."""
+        my_foo = PageFactory(user=self.user, slug="foo", title="Mine")
+        my_block = BlockFactory(user=self.user, page=my_foo)
+        their_foo = PageFactory(user=self.other_user, slug="foo", title="Theirs")
+        BlockFactory(user=self.other_user, page=their_foo)
+        out = self.run_query({"has_tag": "foo"})
+        self.assertEqual([b.id for b in out], [my_block.id])
+
+    def test_multi_tag_AND_with_page_membership(self):
+        """A block on page foo that's also tagged #bar should match
+        ``all: [has_tag foo, has_tag bar]``. This is the user's
+        mental model: the home page contributes its slug as if it
+        were an explicit tag."""
+        foo = PageFactory(user=self.user, slug="foo", title="Foo")
+        bar = PageFactory(user=self.user, slug="bar", title="Bar")
+        match = BlockFactory(user=self.user, page=foo)
+        match.pages.add(bar)
+        # Block on foo without #bar → must not match.
+        BlockFactory(user=self.user, page=foo)
+        out = self.run_query({"all": [{"has_tag": "foo"}, {"has_tag": "bar"}]})
+        self.assertEqual([b.id for b in out], [match.id])
+
 
 class HasPropertyTests(_EngineTestBase):
     def test_key_present(self):
