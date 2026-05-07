@@ -429,6 +429,12 @@ body {
 .chat-controls .tools-btn {
   background: var(--bg-primary) !important;
   border: 1px solid var(--border-secondary) !important;
+  /* The baseline button reset further up zeroes the user-agent
+     radius, but the rest of this rule is !important so we mirror
+     that here — otherwise a future tweak that adds a rounded
+     style elsewhere could override the baseline without
+     overriding the rest of this declaration. */
+  border-radius: 0 !important;
   color: var(--text-primary) !important;
   padding: 0.25rem 0.5rem !important;
   font-size: 0.8rem !important;
