@@ -2,7 +2,7 @@
 
 A web-based knowledge management system with hierarchical note-taking, daily journaling, and AI chat integration.
 
-![Brainspread screenshot](docs/images/screenshot1.png)
+![Brainspread screenshot](docs/images/screenshot2.png)
 
 ## Features
 
