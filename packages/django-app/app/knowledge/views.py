@@ -22,12 +22,15 @@ from knowledge.commands import (
     GetGraphDataCommand,
     GetHistoricalDataCommand,
     GetPageWithBlocksCommand,
+    GetSavedViewCommand,
     GetTagContentCommand,
     GetUserPagesCommand,
+    ListSavedViewsCommand,
     MoveBlockToDailyCommand,
     MoveUndoneTodosCommand,
     ReorderBlocksCommand,
     ReorderFavoritedPagesCommand,
+    RunSavedViewCommand,
     ScheduleBlockCommand,
     SearchNotesCommand,
     SearchPagesCommand,
@@ -56,12 +59,15 @@ from knowledge.forms import (
     GetGraphDataForm,
     GetHistoricalDataForm,
     GetPageWithBlocksForm,
+    GetSavedViewForm,
     GetTagContentForm,
     GetUserPagesForm,
+    ListSavedViewsForm,
     MoveBlockToDailyForm,
     MoveUndoneTodosForm,
     ReorderBlocksForm,
     ReorderFavoritedPagesForm,
+    RunSavedViewForm,
     ScheduleBlockForm,
     SearchNotesForm,
     SearchPagesForm,
@@ -1489,3 +1495,66 @@ def bulk_move_blocks(request):
             "errors": {"non_field_errors": [str(e)]},
         }
         return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ---------------------------------------------------------------------------
+# Saved views (issue #60) — read endpoints. Write endpoints ship in a
+# follow-up commit on this branch.
+# ---------------------------------------------------------------------------
+
+
+def _saved_view_response(success, data=None, errors=None, http_status=None):
+    response = {"success": success, "data": data, "errors": errors}
+    if http_status is None:
+        http_status = status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST
+    return Response(response, status=http_status)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def list_saved_views(request):
+    """List the user's saved views (system + own)."""
+    data = {"user": request.user.id}
+    form = ListSavedViewsForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        views = ListSavedViewsCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
+    return _saved_view_response(True, data={"views": [v.to_dict() for v in views]})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_saved_view(request):
+    data = request.query_params.copy()
+    data["user"] = request.user.id
+    form = GetSavedViewForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        view = GetSavedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(
+            False,
+            errors={"non_field_errors": [str(exc)]},
+            http_status=status.HTTP_404_NOT_FOUND,
+        )
+    return _saved_view_response(True, data=view.to_dict())
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def run_saved_view(request):
+    """Compile + execute a saved view's filter, returning matched blocks."""
+    data = request.query_params.copy()
+    data["user"] = request.user.id
+    form = RunSavedViewForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        result = RunSavedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
+    return _saved_view_response(True, data=result)

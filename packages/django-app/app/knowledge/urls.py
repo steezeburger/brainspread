@@ -78,4 +78,9 @@ urlpatterns = [
     path("api/historical/", views.get_historical_data, name="get_historical_data"),
     path("api/graph/", views.get_graph_data, name="get_graph_data"),
     path("api/tag/<str:tag_name>/", views.get_tag_content, name="get_tag_content"),
+    # Saved views (issue #60) — read endpoints. Write endpoints + the SPA
+    # routes ship in a follow-up commit on this branch.
+    path("api/views/", views.list_saved_views, name="list_saved_views"),
+    path("api/views/get/", views.get_saved_view, name="get_saved_view"),
+    path("api/views/run/", views.run_saved_view, name="run_saved_view"),
 ]
