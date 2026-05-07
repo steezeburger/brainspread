@@ -1,9 +1,9 @@
-"""End-to-end tests for the SavedView read commands.
+"""End-to-end tests for the SavedView CRUD + run + duplicate commands.
 
 The query engine itself is exercised in test/services/test_query_engine.py.
-This file pins the read-side command behaviors (List / Get / Run) that
-wrap it. Write-side commands (Create/Update/Delete/Duplicate) ship in a
-follow-up commit on this branch and add their own test classes here.
+This file pins the command behaviors that wrap it: validation rules,
+system-view read-only enforcement, slug uniqueness, and the run-vs-stored
+mapping.
 """
 
 from datetime import date, datetime
@@ -14,14 +14,22 @@ from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from knowledge.commands import (
+    CreateSavedViewCommand,
+    DeleteSavedViewCommand,
+    DuplicateSavedViewCommand,
     GetSavedViewCommand,
     ListSavedViewsCommand,
     RunSavedViewCommand,
+    UpdateSavedViewCommand,
 )
 from knowledge.forms import (
+    CreateSavedViewForm,
+    DeleteSavedViewForm,
+    DuplicateSavedViewForm,
     GetSavedViewForm,
     ListSavedViewsForm,
     RunSavedViewForm,
+    UpdateSavedViewForm,
 )
 from knowledge.models import SYSTEM_VIEW_OVERDUE, SavedView
 from knowledge.services.system_views import seed_system_views_for_user
@@ -49,6 +57,141 @@ class _SavedViewTestBase(TestCase):
         self.addCleanup(patcher.stop)
         # Tests run on a per-test transaction, so seed system views fresh.
         seed_system_views_for_user(self.user)
+
+
+class CreateSavedViewTests(_SavedViewTestBase):
+    def _make(self, **overrides):
+        data = {
+            "user": self.user.id,
+            "name": "My View",
+            "filter": {"block_type": "todo"},
+        }
+        data.update(overrides)
+        form = CreateSavedViewForm(data)
+        self.assertTrue(form.is_valid(), form.errors)
+        return CreateSavedViewCommand(form).execute()
+
+    def test_creates_with_auto_slug(self):
+        view = self._make()
+        self.assertEqual(view.slug, "my-view")
+        self.assertFalse(view.is_system)
+
+    def test_rejects_duplicate_slug(self):
+        self._make(slug="dupe")
+        with self.assertRaises(ValidationError):
+            self._make(name="Other", slug="dupe")
+
+    def test_rejects_invalid_filter_at_create(self):
+        # Compile-time validation should reject unknown predicate fields
+        # rather than wait for first run.
+        with self.assertRaises(ValidationError):
+            self._make(filter={"never_heard_of_it": 1})
+
+
+class UpdateSavedViewTests(_SavedViewTestBase):
+    def _create_user_view(self):
+        form = CreateSavedViewForm(
+            {
+                "user": self.user.id,
+                "name": "Editable",
+                "filter": {"block_type": "todo"},
+            }
+        )
+        self.assertTrue(form.is_valid())
+        return CreateSavedViewCommand(form).execute()
+
+    def test_can_edit_user_view(self):
+        view = self._create_user_view()
+        form = UpdateSavedViewForm(
+            {
+                "user": self.user.id,
+                "view_uuid": str(view.uuid),
+                "name": "Renamed",
+                "filter": {"block_type": "doing"},
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        updated = UpdateSavedViewCommand(form).execute()
+        self.assertEqual(updated.name, "Renamed")
+        self.assertEqual(updated.filter, {"block_type": "doing"})
+
+    def test_cannot_edit_system_view(self):
+        sys_view = SavedView.objects.get(
+            user=self.user, slug=SYSTEM_VIEW_OVERDUE, is_system=True
+        )
+        form = UpdateSavedViewForm(
+            {
+                "user": self.user.id,
+                "view_uuid": str(sys_view.uuid),
+                "name": "Hijack",
+            }
+        )
+        self.assertTrue(form.is_valid())
+        with self.assertRaises(ValidationError):
+            UpdateSavedViewCommand(form).execute()
+
+
+class DeleteSavedViewTests(_SavedViewTestBase):
+    def test_delete_user_view(self):
+        form = CreateSavedViewForm(
+            {
+                "user": self.user.id,
+                "name": "Tossable",
+                "filter": {"block_type": "todo"},
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        view = CreateSavedViewCommand(form).execute()
+
+        del_form = DeleteSavedViewForm(
+            {"user": self.user.id, "view_uuid": str(view.uuid)}
+        )
+        self.assertTrue(del_form.is_valid())
+        DeleteSavedViewCommand(del_form).execute()
+        self.assertFalse(SavedView.objects.filter(uuid=view.uuid).exists())
+
+    def test_cannot_delete_system_view(self):
+        sys_view = SavedView.objects.get(
+            user=self.user, slug=SYSTEM_VIEW_OVERDUE, is_system=True
+        )
+        form = DeleteSavedViewForm(
+            {"user": self.user.id, "view_uuid": str(sys_view.uuid)}
+        )
+        self.assertTrue(form.is_valid())
+        with self.assertRaises(ValidationError):
+            DeleteSavedViewCommand(form).execute()
+
+
+class DuplicateSavedViewTests(_SavedViewTestBase):
+    def test_duplicates_system_view_into_user_view(self):
+        sys_view = SavedView.objects.get(
+            user=self.user, slug=SYSTEM_VIEW_OVERDUE, is_system=True
+        )
+        form = DuplicateSavedViewForm(
+            {"user": self.user.id, "view_uuid": str(sys_view.uuid)}
+        )
+        self.assertTrue(form.is_valid())
+        clone = DuplicateSavedViewCommand(form).execute()
+        self.assertFalse(clone.is_system)
+        self.assertEqual(clone.filter, sys_view.filter)
+        self.assertNotEqual(clone.uuid, sys_view.uuid)
+        self.assertIn("(copy)", clone.name)
+
+    def test_duplicate_unique_suffix(self):
+        first = SavedView.objects.create(
+            user=self.user, name="Foo", slug="foo", filter={}
+        )
+        # First clone → "foo-copy"
+        DuplicateSavedViewCommand(
+            DuplicateSavedViewForm({"user": self.user.id, "view_uuid": str(first.uuid)})
+        ).execute()
+        # Second clone of same view → should auto-suffix
+        form = DuplicateSavedViewForm(
+            {"user": self.user.id, "view_uuid": str(first.uuid)}
+        )
+        self.assertTrue(form.is_valid())
+        second = DuplicateSavedViewCommand(form).execute()
+        self.assertNotIn(second.slug, [first.slug, "foo-copy"])
 
 
 class RunSavedViewTests(_SavedViewTestBase):

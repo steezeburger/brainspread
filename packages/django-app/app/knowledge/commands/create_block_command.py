@@ -31,6 +31,7 @@ class CreateBlockCommand(AbstractBaseCommand):
         media_metadata = self.form.cleaned_data.get("media_metadata", {})
         properties = self.form.cleaned_data.get("properties", {})
         asset = self.form.cleaned_data.get("asset")
+        query_view = self.form.cleaned_data.get("query_view")
 
         # Auto-detect block type from content if not explicitly set
         final_block_type = self._detect_block_type_from_content(content, block_type)
@@ -48,6 +49,7 @@ class CreateBlockCommand(AbstractBaseCommand):
             media_metadata=media_metadata,
             properties=properties,
             asset=asset,
+            query_view=query_view,
         )
 
         # Extract and set tags from content (business logic)

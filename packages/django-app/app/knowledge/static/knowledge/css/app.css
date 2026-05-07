@@ -7065,3 +7065,295 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 .hashtag-autocomplete-title {
   font-weight: 500;
 }
+
+/* ---------------------------------------------------------------------
+   Saved views surface (issue #60)
+   --------------------------------------------------------------------- */
+
+.views-layout {
+  display: flex;
+  flex-direction: row;
+  min-height: 100vh;
+}
+
+.saved-views-page {
+  padding: 1.25rem 1.75rem 4rem;
+  max-width: 950px;
+  margin: 0 auto;
+  width: 100%;
+  color: var(--text-primary);
+}
+
+.saved-views-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.saved-views-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.saved-views-header .header-actions {
+  display: inline-flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.saved-views-page .system-pill {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  background: var(--tag-bg, var(--bg-secondary));
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+
+.saved-views-page .back-link {
+  display: inline-block;
+  margin-bottom: 0.6rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+.saved-views-page .back-link:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.saved-view-list ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  background: var(--bg-secondary);
+}
+
+.saved-view-list li {
+  border-bottom: 1px solid var(--border-primary);
+}
+.saved-view-list li:last-child {
+  border-bottom: none;
+}
+.saved-view-list a {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.7rem 0.9rem;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.saved-view-list a:hover {
+  background: var(--hover-bg);
+}
+.saved-view-list .view-name {
+  font-weight: 600;
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.saved-view-list .view-description {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.saved-view-editor {
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  margin: 1rem 0;
+}
+
+.saved-view-editor h2 {
+  margin-top: 0;
+  font-size: 1.15rem;
+}
+
+.saved-view-editor .form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.65rem;
+}
+
+.saved-view-editor label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.saved-view-editor input[type="text"],
+.saved-view-editor textarea {
+  font-family: inherit;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.9rem;
+}
+
+.saved-view-editor textarea {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85rem;
+  resize: vertical;
+}
+
+.saved-view-editor .form-actions {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.saved-view-editor .form-error {
+  color: var(--error-text, #d24);
+  font-size: 0.85rem;
+}
+
+.saved-view-help {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--border-primary);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+.saved-view-help pre {
+  background: var(--bg-primary);
+  padding: 0.6rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  font-size: 0.8rem;
+  overflow-x: auto;
+}
+
+.saved-view-spec details {
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  padding: 0.4rem 0.6rem;
+  margin: 0.5rem 0 1rem;
+  background: var(--bg-secondary);
+}
+.saved-view-spec summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.saved-view-spec pre {
+  font-family: var(--font-mono, monospace);
+  background: var(--bg-primary);
+  padding: 0.5rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  overflow-x: auto;
+}
+
+.saved-view-results {
+  margin-top: 1rem;
+}
+.saved-view-results h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.saved-view-desc {
+  color: var(--text-secondary);
+  margin-top: -0.5rem;
+}
+
+.result-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  background: var(--bg-secondary);
+}
+.result-list li {
+  border-bottom: 1px solid var(--border-primary);
+}
+.result-list li:last-child {
+  border-bottom: none;
+}
+.result-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.6rem 0.8rem;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.result-row:hover {
+  background: var(--hover-bg);
+}
+.result-content {
+  font-size: 0.95rem;
+}
+.result-meta {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono, monospace);
+}
+.result-block-type {
+  display: inline-block;
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-right: 0.25rem;
+}
+
+.empty-state {
+  color: var(--text-secondary);
+  padding: 1rem;
+  text-align: center;
+}
+
+/* Embedded query block (block_type=query) on a page. */
+.block-query-embed {
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  padding: 0.6rem 0.8rem;
+  background: var(--bg-secondary);
+  margin: 0.25rem 0;
+}
+.block-query-embed-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+.block-query-embed-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.block-query-embed-title:hover {
+  text-decoration: underline;
+}
+.block-query-embed-meta {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono, monospace);
+}
+.block-query-embed-empty {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  padding: 0.5rem 0;
+}

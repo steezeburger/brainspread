@@ -10,8 +10,11 @@ from .consume_reminder_action_command import ConsumeReminderActionCommand
 from .create_block_command import CreateBlockCommand
 from .create_blocks_bulk_command import CreateBlocksBulkCommand
 from .create_page_command import CreatePageCommand
+from .create_saved_view_command import CreateSavedViewCommand
 from .delete_block_command import DeleteBlockCommand
 from .delete_page_command import DeletePageCommand
+from .delete_saved_view_command import DeleteSavedViewCommand
+from .duplicate_saved_view_command import DuplicateSavedViewCommand
 from .find_stale_todos_command import FindStaleTodosCommand
 from .get_backlinks_command import GetBacklinksCommand
 from .get_block_by_id_command import GetBlockByIdCommand
@@ -52,3 +55,4 @@ from .toggle_block_todo_command import ToggleBlockTodoCommand
 from .touch_page_command import TouchPageCommand
 from .update_block_command import UpdateBlockCommand
 from .update_page_command import UpdatePageCommand
+from .update_saved_view_command import UpdateSavedViewCommand

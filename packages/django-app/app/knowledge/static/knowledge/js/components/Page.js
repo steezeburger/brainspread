@@ -5,6 +5,7 @@ const Page = {
     Whiteboard: window.Whiteboard || {},
     ScheduleBlockPopover: window.ScheduleBlockPopover || {},
     BlockChatPopover: window.BlockChatPopover || {},
+    QueryEmbedBlock: window.QueryEmbedBlock || {},
   },
   props: {
     chatContextBlocks: {
@@ -3335,41 +3336,46 @@ const Page = {
             @dragover="handleUrlDragOver"
             @drop="handleUrlDrop"
           >
-            <BlockComponent
-              v-for="block in directBlocks"
-              :key="block.uuid"
-              :block="block"
-              :onBlockContentChange="onBlockContentChange"
-              :onBlockKeyDown="onBlockKeyDown"
-              :startEditing="startEditing"
-              :stopEditing="stopEditing"
-              :deleteBlock="deleteBlock"
-              :toggleBlockTodo="toggleBlockTodo"
-              :setBlockProperties="setBlockProperties"
-              :formatContentWithTags="formatContentWithTags"
-              :isBlockInContext="isBlockInContext"
-              :isBlockSelected="isBlockSelected"
-              :onBlockAddToContext="onBlockAddToContext"
-              :onBlockRemoveFromContext="onBlockRemoveFromContext"
-              :indentBlock="indentBlock"
-              :outdentBlock="outdentBlock"
-              :createBlockAfter="createBlockAfter"
-              :createBlockBefore="createBlockBefore"
-              :moveBlockUp="moveBlockUp"
-              :moveBlockDown="moveBlockDown"
-              :moveBlockToToday="moveBlockToToday"
-              :onBlockPaste="onBlockPaste"
-              :onBlockDrop="onBlockDrop"
-              :onBlockAttachPick="onBlockAttachPick"
-              :scheduleBlock="scheduleBlock"
-              :copyBlockLink="copyBlockLink"
-              :openBlockChatPopover="openBlockChatPopover"
-              :onBlockSelectClick="handleBlockSelectClick"
-              :selectedBlockCount="selectedBlockCount"
-              :bulkDeleteSelected="bulkDeleteSelected"
-              :bulkMoveSelectedToToday="bulkMoveSelectedToToday"
-              :selectionMode="selectionMode"
-            />
+            <template v-for="block in directBlocks" :key="block.uuid">
+              <QueryEmbedBlock
+                v-if="block.block_type === 'query'"
+                :block="block"
+              />
+              <BlockComponent
+                v-else
+                :block="block"
+                :onBlockContentChange="onBlockContentChange"
+                :onBlockKeyDown="onBlockKeyDown"
+                :startEditing="startEditing"
+                :stopEditing="stopEditing"
+                :deleteBlock="deleteBlock"
+                :toggleBlockTodo="toggleBlockTodo"
+                :setBlockProperties="setBlockProperties"
+                :formatContentWithTags="formatContentWithTags"
+                :isBlockInContext="isBlockInContext"
+                :isBlockSelected="isBlockSelected"
+                :onBlockAddToContext="onBlockAddToContext"
+                :onBlockRemoveFromContext="onBlockRemoveFromContext"
+                :indentBlock="indentBlock"
+                :outdentBlock="outdentBlock"
+                :createBlockAfter="createBlockAfter"
+                :createBlockBefore="createBlockBefore"
+                :moveBlockUp="moveBlockUp"
+                :moveBlockDown="moveBlockDown"
+                :moveBlockToToday="moveBlockToToday"
+                :onBlockPaste="onBlockPaste"
+                :onBlockDrop="onBlockDrop"
+                :onBlockAttachPick="onBlockAttachPick"
+                :scheduleBlock="scheduleBlock"
+                :copyBlockLink="copyBlockLink"
+                :openBlockChatPopover="openBlockChatPopover"
+                :onBlockSelectClick="handleBlockSelectClick"
+                :selectedBlockCount="selectedBlockCount"
+                :bulkDeleteSelected="bulkDeleteSelected"
+                :bulkMoveSelectedToToday="bulkMoveSelectedToToday"
+                :selectionMode="selectionMode"
+              />
+            </template>
             <button @click="addNewBlock" class="add-block-btn">
               + add new block
             </button>

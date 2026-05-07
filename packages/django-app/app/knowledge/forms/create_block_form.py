@@ -10,8 +10,8 @@ from common.forms.base_form import BaseForm
 from core.models import User
 from core.repositories import UserRepository
 
-from ..models import Block, Page
-from ..repositories import BlockRepository, PageRepository
+from ..models import Block, Page, SavedView
+from ..repositories import BlockRepository, PageRepository, SavedViewRepository
 
 
 class CreateBlockForm(BaseForm):
@@ -29,6 +29,10 @@ class CreateBlockForm(BaseForm):
     properties = forms.JSONField(required=False, initial=dict)
     asset = UUIDModelChoiceField(
         queryset=AssetRepository.get_queryset(), required=False
+    )
+    # When block_type='query', the SavedView the block embeds.
+    query_view = UUIDModelChoiceField(
+        queryset=SavedViewRepository.get_queryset(), required=False
     )
 
     def clean_page(self) -> Optional[Page]:
@@ -65,3 +69,12 @@ class CreateBlockForm(BaseForm):
         if asset and user and asset.user_id != user.id:
             raise ValidationError("Asset not found")
         return asset
+
+    def clean_query_view(self) -> Optional[SavedView]:
+        view = self.cleaned_data.get("query_view")
+        user = self.cleaned_data.get("user")
+        # Same cross-user guard as `asset` — a uuid alone shouldn't
+        # let the caller bind to another user's saved view.
+        if view and user and view.user_id != user.id:
+            raise ValidationError("Saved view not found")
+        return view

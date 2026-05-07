@@ -10,8 +10,11 @@ from .consume_reminder_action_form import ConsumeReminderActionForm
 from .create_block_form import CreateBlockForm
 from .create_blocks_bulk_form import CreateBlocksBulkForm
 from .create_page_form import CreatePageForm
+from .create_saved_view_form import CreateSavedViewForm
 from .delete_block_form import DeleteBlockForm
 from .delete_page_form import DeletePageForm
+from .delete_saved_view_form import DeleteSavedViewForm
+from .duplicate_saved_view_form import DuplicateSavedViewForm
 from .find_stale_todos_form import FindStaleTodosForm
 from .get_backlinks_form import GetBacklinksForm
 from .get_block_by_id_form import GetBlockByIdForm
@@ -52,3 +55,4 @@ from .toggle_block_todo_form import ToggleBlockTodoForm
 from .touch_page_form import TouchPageForm
 from .update_block_form import UpdateBlockForm
 from .update_page_form import UpdatePageForm
+from .update_saved_view_form import UpdateSavedViewForm
