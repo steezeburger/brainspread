@@ -361,16 +361,20 @@ const SavedViewsPage = {
       try {
         // Resolve / create today's daily so we have a target page.
         const pageResult = await window.apiService.getPageWithBlocks();
-        const pageUuid =
+        const page =
           pageResult && pageResult.data && pageResult.data.page
-            ? pageResult.data.page.uuid
+            ? pageResult.data.page
             : null;
-        if (!pageUuid) {
-          console.error("Could not resolve today's daily page");
+        if (!page || !page.uuid) {
+          this._toast(
+            this._formatErrors(pageResult && pageResult.errors) ||
+              "Could not resolve today's daily page",
+            "error"
+          );
           return;
         }
         const blockResult = await window.apiService.createBlock({
-          page: pageUuid,
+          page: page.uuid,
           block_type: "query",
           query_view: this.activeView.uuid,
           content: "",
@@ -378,11 +382,26 @@ const SavedViewsPage = {
         });
         if (blockResult && blockResult.success) {
           // Hop to today so the user sees the embed land.
-          window.location.href = `/knowledge/page/${pageResult.data.page.slug}/#block-${blockResult.data.uuid}`;
+          window.location.href = `/knowledge/page/${page.slug}/#block-${blockResult.data.uuid}`;
+          return;
         }
+        this._toast(
+          this._formatErrors(blockResult && blockResult.errors) ||
+            "Embed failed",
+          "error"
+        );
       } catch (err) {
         console.error("embedOnToday failed:", err);
+        this._toast(`Embed failed: ${err}`, "error");
       }
+    },
+
+    _toast(message, type = "info", duration = 4000) {
+      document.dispatchEvent(
+        new CustomEvent("brainspread:toast", {
+          detail: { message, type, duration },
+        })
+      );
     },
 
     async _confirm(msg) {
