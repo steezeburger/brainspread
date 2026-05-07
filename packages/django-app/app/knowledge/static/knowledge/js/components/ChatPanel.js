@@ -777,14 +777,11 @@ const ChatPanel = {
         e.preventDefault();
         this.sendMessage();
       }
-      if (e.key === "Escape" && this.isOpen) {
-        // Close the panel. preventDefault + stopPropagation so the textarea
-        // doesn't surface this to the document-level handler as a second
-        // event; the app-level handler already skips editable targets.
-        e.preventDefault();
-        e.stopPropagation();
-        this.closePanel();
-      }
+      // Escape used to close the chat panel here, but we now let the
+      // app-level handler do it so a single Escape closes whichever
+      // sidebars happen to be open instead of just this one. Letting
+      // the event bubble keeps the behavior consistent with the left
+      // nav's own Escape handling.
       // Shift+Enter will naturally create a newline (default behavior)
     },
 

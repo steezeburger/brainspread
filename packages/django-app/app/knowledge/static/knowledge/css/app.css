@@ -471,14 +471,23 @@ body {
  * above the ctx button. Lists the current page's visible blocks and
  * lets the user toggle each one in/out of context with a click. */
 .context-picker-wrapper {
-  position: relative;
+  /* Stay out of the popover's absolute-positioning chain so it
+     anchors against .chat-controls (the wrapper is the size of the
+     ctx button, way too narrow to host a 280px popover). */
+  position: static;
 }
 
 .context-picker {
   position: absolute;
   bottom: calc(100% + 0.4rem);
-  left: 0;
+  /* Right-anchor against the chat-controls row so the popover stays
+     inside the chat panel regardless of where the ctx button sits in
+     the row. Falls back to the left edge if the popover is wider than
+     the panel via max-width. */
+  right: 0.5rem;
+  left: auto;
   width: 280px;
+  max-width: calc(100% - 1rem);
   max-height: 320px;
   overflow-y: auto;
   background: var(--bg-primary);
@@ -2555,14 +2564,16 @@ kbd {
   letter-spacing: -2px;
   color: var(--text-muted);
   cursor: grab;
-  /* Faint until you hover the row, so the list doesn't feel busy. */
-  opacity: 0;
-  transition: opacity 0.1s ease;
+  /* Always visible — the favorites section is the only sidebar list
+     where rows are reorderable, so the affordance has to stand on
+     its own without needing a hover. Slightly muted so it doesn't
+     compete with the title text. */
+  opacity: 0.55;
 }
 
 .leftnav-favorite-item:hover .leftnav-favorite-grip,
 .leftnav-favorite-item.is-dragging .leftnav-favorite-grip {
-  opacity: 0.7;
+  opacity: 0.9;
 }
 
 .leftnav-favorite-grip:active {
@@ -3800,6 +3811,12 @@ a.sidebar-item:visited {
 
 /* Chat Panel Controls Row */
 .chat-controls {
+  /* Position so the .context-picker popover can right-anchor against
+     the controls row instead of its tiny .context-picker-wrapper —
+     otherwise the 280px popover overflows past the chat panel's
+     right edge for narrow panels (the ctx button sits a couple of
+     items in from the left). */
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;

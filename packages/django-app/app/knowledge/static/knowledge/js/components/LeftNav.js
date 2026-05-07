@@ -877,7 +877,6 @@ window.LeftNav = {
                     :title="'Open ' + page.title + ' — drag to reorder'"
                   >
                     <span class="leftnav-favorite-grip" aria-hidden="true">⋮⋮</span>
-                    <span class="leftnav-icon" aria-hidden="true">★</span>
                     <span class="leftnav-label">{{ formatPageTitle(page) }}</span>
                   </a>
                 </template>

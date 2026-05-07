@@ -537,23 +537,32 @@ const KnowledgeApp = createApp({
         if (this.showLogoutConfirm) {
           event.preventDefault();
           this.cancelLogout();
-        } else if (this.showSpotlight) {
+          return;
+        }
+        if (this.showSpotlight) {
           this.closeSpotlight();
-        } else if (this._isInsideLeftNav(event.target)) {
-          // If Escape fires from inside the left nav (e.g., its filter
-          // selects have focus), close that sidebar directly. Skips the
-          // editable-target guard because the sidebar itself doesn't host
-          // any serious editing surface.
-          if (this._closeLeftNavIfOpen()) event.preventDefault();
-        } else if (!this._isEditableTarget(event.target)) {
-          // Escape dismisses any open sidebars, but only when the user isn't
-          // typing in a real editor (blocks, chat input). Those have their
-          // own Escape handlers.
-          const closedLeftNav = this._closeLeftNavIfOpen();
-          const closedChat = this._closeChatIfOpen();
-          if (closedLeftNav || closedChat) {
-            event.preventDefault();
-          }
+          return;
+        }
+
+        // Escape clears any open sidebar(s) in one keystroke. Same
+        // behavior whether focus is in a sidebar's input (chat
+        // textarea, leftnav filter selects) or outside, so the
+        // mental model is consistent: Escape = "close the chrome".
+        // We still skip when the user is editing inside a non-
+        // sidebar surface (block editor, page title) — those have
+        // their own Escape handlers and shouldn't lose context to
+        // a sidebar dismiss.
+        const targetIsInSidebar =
+          this._isInsideLeftNav(event.target) ||
+          this._isInsideChatPanel(event.target);
+        if (!targetIsInSidebar && this._isEditableTarget(event.target)) {
+          return;
+        }
+
+        const closedLeftNav = this._closeLeftNavIfOpen();
+        const closedChat = this._closeChatIfOpen();
+        if (closedLeftNav || closedChat) {
+          event.preventDefault();
         }
       }
     },
@@ -561,6 +570,11 @@ const KnowledgeApp = createApp({
     _isInsideLeftNav(el) {
       const sidebar = this.$refs.leftNav;
       return !!(sidebar && sidebar.$el && sidebar.$el.contains(el));
+    },
+
+    _isInsideChatPanel(el) {
+      const panel = this.$refs.chatPanel;
+      return !!(panel && panel.$el && panel.$el.contains(el));
     },
 
     _closeLeftNavIfOpen() {
