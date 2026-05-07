@@ -1,11 +1,10 @@
 from typing import Any, Dict, List, Optional
 
-from django.db.models import Q
-
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms import ListChatSessionsForm
 from ..models import ChatMessage, ChatSession
+from ..repositories import ChatMessageRepository, ChatSessionRepository
 
 PREVIEW_LEN = 100
 SNIPPET_RADIUS = 60
@@ -32,21 +31,11 @@ class ListChatSessionsCommand(AbstractBaseCommand):
         user = self.form.cleaned_data["user"]
         search: str = self.form.cleaned_data.get("search") or ""
 
-        sessions = ChatSession.objects.filter(user=user)
-
-        if search:
-            # An OR over title + message content. distinct() because the
-            # join through messages can multiply rows when many messages
-            # match in one session.
-            sessions = sessions.filter(
-                Q(title__icontains=search) | Q(messages__content__icontains=search)
-            ).distinct()
-
-        sessions = sessions.order_by("-modified_at")
+        sessions = ChatSessionRepository.list_for_user(user, search=search)
 
         sessions_data: List[Dict[str, Any]] = []
         for session in sessions:
-            first_message = session.messages.filter(role="user").first()
+            first_message = ChatMessageRepository.first_user_message(session)
             preview = ""
             if first_message and first_message.content:
                 content = first_message.content
@@ -62,7 +51,7 @@ class ListChatSessionsCommand(AbstractBaseCommand):
                 "preview": preview,
                 "created_at": session.created_at.isoformat(),
                 "modified_at": session.modified_at.isoformat(),
-                "message_count": session.messages.count(),
+                "message_count": ChatMessageRepository.count_for_session(session),
             }
 
             if search:
@@ -79,9 +68,7 @@ class ListChatSessionsCommand(AbstractBaseCommand):
         case from the source so the matching substring renders the
         same as the user wrote it."""
         match: Optional[ChatMessage] = (
-            session.messages.filter(content__icontains=search)
-            .order_by("created_at")
-            .first()
+            ChatMessageRepository.first_content_match_in_session(session, search)
         )
         if not match or not match.content:
             return None

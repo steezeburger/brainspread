@@ -17,6 +17,7 @@ from typing import Any, Dict, Iterator, List, Optional
 from django.db import close_old_connections
 
 from ..models import ChatMessage
+from ..repositories import ChatMessageRepository
 from ..services.base_ai_service import AIUsage
 
 logger = logging.getLogger(__name__)
@@ -95,9 +96,8 @@ def _run_worker(
 ) -> None:
     """Worker entry point. Runs in its own thread so a client
     disconnect doesn't take down the LLM call."""
-    try:
-        msg = ChatMessage.objects.get(id=assistant_message_id)
-    except ChatMessage.DoesNotExist:
+    msg = ChatMessageRepository.get(pk=assistant_message_id)
+    if msg is None:
         logger.error(
             "stream_runner: assistant message %s vanished before worker start",
             assistant_message_id,
@@ -282,9 +282,8 @@ def follow_message(message_uuid: str) -> Iterator[Dict[str, Any]]:
     """
     state = FollowState()
     try:
-        try:
-            msg = ChatMessage.objects.get(uuid=message_uuid)
-        except ChatMessage.DoesNotExist:
+        msg = ChatMessageRepository.get_by_uuid(message_uuid)
+        if msg is None:
             yield {"type": "error", "error": "Message not found"}
             return
 
@@ -314,9 +313,7 @@ def follow_message(message_uuid: str) -> Iterator[Dict[str, Any]]:
                 # Worker died without finalizing. Promote the row to
                 # 'error' so future viewers don't tail forever, and
                 # surface the partial we have.
-                ChatMessage.objects.filter(
-                    pk=msg.pk, status=ChatMessage.STATUS_STREAMING
-                ).update(status=ChatMessage.STATUS_ERROR)
+                ChatMessageRepository.mark_streaming_as_error(str(msg.uuid))
                 yield {
                     "type": "error",
                     "error": "Stream stopped responding.",

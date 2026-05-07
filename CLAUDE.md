@@ -59,7 +59,18 @@ Navigate to `packages/django-app/` for most development tasks.
   which makes them a frequent source of surprise behavior. If you need
   cross-cutting behavior on a model change, route it through a Command.
 - **Tests**: All commands should be tested. Use factoryboy for model factories.
-- **Repository Pattern**: Use `BaseRepository` for data access
+- **Repository Pattern**: ALL data access goes through a repository
+  method. That includes commands, views, services, and tools — none
+  of them should call `Model.objects.<query>()` directly, and none
+  should chain off a model's reverse manager (e.g. `session.messages
+  .filter(...)`) either; add a method to the relevant repository
+  instead. Repositories live in `<app>/repositories/`, extend
+  `common.repositories.BaseRepository`, and own all `select_related`
+  / `prefetch_related` hints. The only legitimate `Model.objects`
+  uses outside repositories are inside the repository itself and the
+  `cls.model.objects.create(**fields)` calls inside repository
+  classmethods. If you find yourself reaching for the ORM at a
+  callsite, add the method to the repository first.
 - **Model Mixins**: UUID, timestamps, soft delete functionality
 - **Soft Delete**: Models can inherit `SoftDeleteTimestampMixin` for logical deletion
 - **Custom Managers**: Extend Django's model managers for complex queries

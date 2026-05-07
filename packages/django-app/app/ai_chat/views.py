@@ -21,11 +21,11 @@ from .forms import ListChatSessionsForm, ResumeApprovalForm, SendMessageForm
 from .models import (
     AIModel,
     AIProvider,
-    ChatMessage,
     ChatSession,
     UserAISettings,
     UserProviderConfig,
 )
+from .repositories import ChatMessageRepository, ChatSessionRepository
 from .repositories.user_settings_repository import UserSettingsRepository
 from .services.stream_runner import follow_message
 
@@ -129,11 +129,10 @@ class FollowMessageView(APIView):
     renderer_classes = [ServerSentEventRenderer]
 
     def get(self, request, message_uuid):
-        try:
-            message = ChatMessage.objects.select_related(
-                "session", "ai_model__provider"
-            ).get(uuid=message_uuid, session__user=request.user)
-        except ChatMessage.DoesNotExist:
+        message = ChatMessageRepository.get_for_user_with_session(
+            uuid=message_uuid, user=request.user
+        )
+        if message is None:
             return Response(
                 {"success": False, "error": "Message not found"},
                 status=status.HTTP_404_NOT_FOUND,
@@ -312,8 +311,10 @@ def chat_session_detail(request, session_id):
     Get detailed chat session with all messages.
     """
     try:
-        session = ChatSession.objects.get(uuid=session_id, user=request.user)
-        messages = session.messages.select_related("ai_model__provider").all()
+        session = ChatSessionRepository.get_for_user(uuid=session_id, user=request.user)
+        if session is None:
+            raise ChatSession.DoesNotExist()
+        messages = ChatMessageRepository.messages_for_session_with_models(session)
 
         messages_data = [
             {

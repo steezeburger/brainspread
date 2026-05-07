@@ -2,9 +2,8 @@ from django.test import TestCase
 
 from ai_chat.commands import ListChatSessionsCommand
 from ai_chat.forms import ListChatSessionsForm
-from core.test.helpers import UserFactory
-
 from ai_chat.test.helpers import ChatMessageFactory, ChatSessionFactory
+from core.test.helpers import UserFactory
 
 
 class TestListChatSessionsCommand(TestCase):
