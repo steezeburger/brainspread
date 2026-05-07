@@ -129,7 +129,12 @@ Navigate to `packages/django-app/` for most development tasks.
 
 ### Always load information from extra files in .ai/
 - .ai/DEBUGGING.md contains debugging tips and tricks
-- .ai/PROJECT_SETUP.md is a guide for setting up the project
+- .ai/PROJECT_SETUP.md is a guide for setting up the project (default: all-Docker)
+- .ai/LOCAL_SETUP.md documents two non-Docker workflows: hybrid
+  (Docker for Postgres + host uv for Django) and fully-local (Postgres
+  on the host too). Use these when you can't run a Docker daemon (e.g.
+  Claude Code on web) or when you want native debugger / IDE access to
+  the Django process.
 
 ### Pull requests
 - When a PR resolves a GitHub issue, the PR description MUST include a

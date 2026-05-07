@@ -2,6 +2,12 @@
 
 This document outlines the completed setup steps for the Brainspread Django MVP project.
 
+> **Looking for a non-Docker workflow?** See [LOCAL_SETUP.md](./LOCAL_SETUP.md)
+> for two alternatives: (B) Docker for Postgres + uv for Django, and
+> (C) fully local with no Docker at all. Use those when you need IDE
+> debugging against a real interpreter or when you're in an environment
+> that can't run a Docker daemon (e.g. Claude Code on web).
+
 ## Prerequisites
 - Docker and Docker Compose installed
 - Just task runner installed
