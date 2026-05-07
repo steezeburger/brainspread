@@ -3,10 +3,15 @@ from typing import Any, Dict, Iterator, List, Optional
 
 from ai_chat.services.ai_service_factory import AIServiceFactory, AIServiceFactoryError
 from ai_chat.services.base_ai_service import AIServiceError, AIUsage
+from ai_chat.services.stream_runner import (
+    StreamRunnerInputs,
+    follow_message,
+    run_stream_in_thread,
+)
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms import SendMessageForm
-from ..models import PendingToolApproval
+from ..models import ChatMessage, PendingToolApproval
 from ..repositories import (
     AIModelRepository,
     ChatMessageRepository,
@@ -135,100 +140,113 @@ class StreamSendMessageCommand(AbstractBaseCommand):
                 current_page_uuid=current_page_uuid,
             )
 
-            yield {
-                "type": "session",
-                "session_id": str(session.uuid),
-            }
-
-            final_content = ""
-            final_thinking = ""
-            final_usage = AIUsage()
-            final_tool_events: List[Dict[str, Any]] = []
-            final_pending_approval = None
-
-            for event in service.stream_message(
-                messages,
-                tools,
-                system=BRAINSPREAD_SYSTEM_PROMPT,
-                tool_executor=tool_executor,
-                response_format=response_format,
-            ):
-                etype = event.get("type")
-                if etype == "text":
-                    yield {"type": "text", "delta": event.get("delta", "")}
-                elif etype == "thinking":
-                    yield {"type": "thinking", "delta": event.get("delta", "")}
-                elif etype == "tool_use":
-                    yield {
-                        "type": "tool_use",
-                        "tool_use_id": event.get("tool_use_id", ""),
-                        "name": event.get("name", ""),
-                        "input": event.get("input", {}),
-                    }
-                elif etype == "tool_result":
-                    yield {
-                        "type": "tool_result",
-                        "tool_use_id": event.get("tool_use_id", ""),
-                        "name": event.get("name", ""),
-                        "result": event.get("result", {}),
-                    }
-                elif etype == "approval_required":
-                    # Intermediate event — the real persistence happens when
-                    # the service's final `done` carries pending_approval.
-                    continue
-                elif etype == "done":
-                    final_content = event.get("content", "") or ""
-                    final_thinking = event.get("thinking") or ""
-                    final_usage = event.get("usage") or AIUsage()
-                    final_tool_events = event.get("tool_events") or []
-                    final_pending_approval = event.get("pending_approval")
-
             ai_model = AIModelRepository.get_by_name(model)
 
-            if final_pending_approval is not None:
-                approval = self._persist_pending_approval(
-                    session=session,
-                    ai_model=ai_model,
-                    provider_name=provider_name,
-                    pending=final_pending_approval,
-                    partial_text=final_content,
-                    partial_thinking=final_thinking,
-                    tool_events=final_tool_events,
-                    usage=final_usage,
-                    enable_notes_tools=bool(enable_notes_tools),
-                    enable_notes_write_tools=bool(enable_notes_write_tools),
-                    auto_approve_notes_writes=bool(auto_approve_notes_writes),
-                    enable_web_search=bool(enable_web_search),
-                    current_page_uuid=current_page_uuid,
-                )
-                yield {
-                    "type": "approval_required",
-                    "session_id": str(session.uuid),
-                    "approval_id": str(approval.uuid),
-                    "tool_uses": approval.tool_uses,
-                    "partial_text": approval.partial_text,
-                    "partial_thinking": approval.partial_thinking,
-                    "tool_events": approval.tool_events,
-                }
-                return
-
+            # Pre-create the assistant row in 'streaming' state so we
+            # have a stable handle the worker thread can write into and
+            # the client can reconnect to via /messages/<uuid>/follow/
+            # after a reload.
             assistant_message = ChatMessageRepository.add_message(
                 session,
                 "assistant",
-                final_content,
+                "",
                 ai_model=ai_model,
-                thinking=final_thinking,
-                usage=final_usage,
-                tool_events=final_tool_events,
+                status=ChatMessage.STATUS_STREAMING,
             )
 
             yield {
-                "type": "done",
+                "type": "session",
                 "session_id": str(session.uuid),
-                "message": SendMessageCommand._serialize_message(
-                    assistant_message, ai_model
-                ),
+                "assistant_message_uuid": str(assistant_message.uuid),
             }
+
+            # Hook the approval flow back into the existing
+            # PendingToolApproval persistence. The worker calls this
+            # from its own thread, so we capture the small set of vars
+            # it needs by closure rather than threading them through
+            # follow_message.
+            approval_holder: Dict[str, Any] = {}
+
+            def _on_approval(
+                *,
+                assistant_message,
+                pending,
+                partial_text,
+                partial_thinking,
+                tool_events,
+                usage,
+            ):
+                try:
+                    approval = self._persist_pending_approval(
+                        session=session,
+                        ai_model=ai_model,
+                        provider_name=provider_name,
+                        pending=pending,
+                        partial_text=partial_text,
+                        partial_thinking=partial_thinking,
+                        tool_events=tool_events,
+                        usage=usage,
+                        enable_notes_tools=bool(enable_notes_tools),
+                        enable_notes_write_tools=bool(enable_notes_write_tools),
+                        auto_approve_notes_writes=bool(auto_approve_notes_writes),
+                        enable_web_search=bool(enable_web_search),
+                        current_page_uuid=current_page_uuid,
+                    )
+                    approval_holder["approval"] = approval
+                    # The PendingToolApproval row holds the canonical
+                    # partial state for the approval pause; the
+                    # pre-created assistant_message would otherwise
+                    # double-record it and leave a stub message in the
+                    # session that the resume flow doesn't expect.
+                    # Delete the stub so resume_approval_command stays
+                    # the sole creator of the assistant message.
+                    assistant_message.delete()
+                except PendingApprovalPersistError as e:
+                    approval_holder["error"] = e
+                    logger.error("Failed to persist pending approval: %s", e)
+
+            run_stream_in_thread(
+                assistant_message=assistant_message,
+                inputs=StreamRunnerInputs(
+                    service=service,
+                    messages=messages,
+                    tools=tools,
+                    tool_executor=tool_executor,
+                    system=BRAINSPREAD_SYSTEM_PROMPT,
+                    response_format=response_format,
+                ),
+                on_approval=_on_approval,
+            )
+
+            # Tail the message row, yielding deltas to the client. If
+            # the client disconnects mid-stream, the worker thread
+            # keeps writing and the next follow request picks up where
+            # we left off. The follow generator handles the terminal
+            # transition; we only need to substitute approval_required
+            # for done/error when the worker tripped an approval
+            # (the hook deletes the stub message, so follow_message
+            # surfaces that as a "Message disappeared" error which
+            # we then mask).
+            for event in follow_message(str(assistant_message.uuid)):
+                etype = event.get("type")
+                if etype in ("done", "error") and approval_holder.get("approval"):
+                    approval = approval_holder["approval"]
+                    yield {
+                        "type": "approval_required",
+                        "session_id": str(session.uuid),
+                        "approval_id": str(approval.uuid),
+                        "tool_uses": approval.tool_uses,
+                        "partial_text": approval.partial_text,
+                        "partial_thinking": approval.partial_thinking,
+                        "tool_events": approval.tool_events,
+                    }
+                    return
+                if etype == "done":
+                    event["session_id"] = str(session.uuid)
+                yield event
+
+            if approval_holder.get("error") is not None:
+                raise approval_holder["error"]
 
         except PendingApprovalPersistError as e:
             logger.error(f"Failed to persist pending approval: {e}")

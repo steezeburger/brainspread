@@ -65,6 +65,11 @@ urlpatterns = [
         views.get_favorited_pages,
         name="get_favorited_pages",
     ),
+    path(
+        "api/pages/favorites/reorder/",
+        views.reorder_favorited_pages,
+        name="reorder_favorited_pages",
+    ),
     path("api/pages/delete/", views.delete_page, name="delete_page"),
     path("api/pages/list/", views.get_pages, name="list_pages"),
     path("api/pages/search/", views.search_pages, name="search_pages"),

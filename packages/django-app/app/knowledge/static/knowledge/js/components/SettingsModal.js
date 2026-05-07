@@ -127,6 +127,17 @@ window.SettingsModal = {
   },
 
   methods: {
+    // Centralized toast emit. The root app component listens for this
+    // CustomEvent and forwards to its toast list — keeps SettingsModal
+    // from needing a back-channel into the parent.
+    emitToast(message, type = "error", duration = 4000) {
+      document.dispatchEvent(
+        new CustomEvent("brainspread:toast", {
+          detail: { message, type, duration },
+        })
+      );
+    },
+
     selectTheme(theme) {
       this.selectedTheme = theme;
       // Apply theme immediately so user can see the change
@@ -162,7 +173,7 @@ window.SettingsModal = {
               hasUpdates = true;
             } else {
               console.error("Failed to update theme:", result.errors);
-              alert("Failed to update theme. Please try again.");
+              this.emitToast("failed to update theme");
               return;
             }
           }
@@ -177,7 +188,7 @@ window.SettingsModal = {
               hasUpdates = true;
             } else {
               console.error("Failed to update timezone:", result.errors);
-              alert("Failed to update timezone. Please try again.");
+              this.emitToast("failed to update timezone");
               return;
             }
           }
@@ -191,7 +202,7 @@ window.SettingsModal = {
               console.log("Time format updated");
               hasUpdates = true;
             } else {
-              alert("Failed to update time format. Please try again.");
+              this.emitToast("failed to update time format");
               return;
             }
           }
@@ -208,7 +219,7 @@ window.SettingsModal = {
               const msg =
                 result.errors?.discord_webhook_url?.[0] ||
                 "Failed to update Discord webhook URL. Please check the value and try again.";
-              alert(msg);
+              this.emitToast(msg);
               return;
             }
           }
@@ -225,7 +236,7 @@ window.SettingsModal = {
               const msg =
                 result.errors?.discord_user_id?.[0] ||
                 "Failed to update Discord user ID. Please check the value and try again.";
-              alert(msg);
+              this.emitToast(msg);
               return;
             }
           }
@@ -245,7 +256,7 @@ window.SettingsModal = {
         this.closeModal();
       } catch (error) {
         console.error("Error updating settings:", error);
-        alert("Failed to update settings. Please try again.");
+        this.emitToast("failed to update settings");
       } finally {
         this.isUpdating = false;
       }
@@ -371,11 +382,11 @@ window.SettingsModal = {
           console.log("AI settings updated successfully");
         } else {
           console.error("Failed to update AI settings:", result.errors);
-          alert("Failed to update AI settings. Please try again.");
+          this.emitToast("failed to update AI settings");
         }
       } catch (error) {
         console.error("Error updating AI settings:", error);
-        alert("Failed to update AI settings. Please try again.");
+        this.emitToast("failed to update AI settings");
       }
     },
 

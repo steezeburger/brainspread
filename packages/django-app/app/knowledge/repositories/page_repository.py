@@ -191,8 +191,28 @@ class PageRepository(BaseRepository):
 
     @classmethod
     def get_favorited(cls, user) -> QuerySet:
-        """Get the user's starred pages, ordered by title for the sidebar."""
-        return cls.get_queryset().filter(user=user, favorited=True).order_by("title")
+        """Get the user's starred pages, ordered by their drag-sorted
+        position. Ties (e.g. an existing user whose favorites all share the
+        default 0 position) fall back to title for a stable order."""
+        return (
+            cls.get_queryset()
+            .filter(user=user, favorited=True)
+            .order_by("favorite_position", "title")
+        )
+
+    @classmethod
+    def next_favorite_position(cls, user) -> int:
+        """Return the next-highest favorite_position for newly favorited
+        pages so they land at the bottom of the Favorites list."""
+        from django.db.models import Max
+
+        result = (
+            cls.get_queryset()
+            .filter(user=user, favorited=True)
+            .aggregate(max_pos=Max("favorite_position"))
+        )
+        max_pos = result.get("max_pos")
+        return (max_pos + 1) if max_pos is not None else 0
 
     @classmethod
     def get_tag_page(cls, tag_name: str, user) -> Optional[Page]:

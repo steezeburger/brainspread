@@ -2,10 +2,38 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <title>{% block title %}brainspread{% endblock %}</title>
     {% load static %} {% csrf_token %}
-    <link rel="stylesheet" href="{% static 'knowledge/css/app.css' %}?v={{ STATIC_VERSION }}" />
+    <script>
+      // Apply the user's last-known theme synchronously so the page
+      // doesn't flash the default theme for a frame while the auth /
+      // user-settings fetch is in flight. The Vue app rewrites this
+      // attribute and the cache after the fetch lands, so a cross-
+      // device theme change on a different session corrects on the
+      // next reload.
+      (function () {
+        try {
+          if (window.localStorage) {
+            var saved = window.localStorage.getItem("brainspread.theme");
+            if (saved) {
+              document.documentElement.setAttribute("data-theme", saved);
+            }
+          }
+        } catch (_) {
+          // localStorage can throw in private mode; the app still works,
+          // it just shows the default theme until Vue applies the real
+          // one.
+        }
+      })();
+    </script>
+    <link
+      rel="stylesheet"
+      href="{% static 'knowledge/css/app.css' %}?v={{ STATIC_VERSION }}"
+    />
     <link rel="stylesheet" href="https://esm.sh/tldraw@3/tldraw.css" />
     {% block extra_css %}{% endblock %}
   </head>
@@ -25,7 +53,10 @@
     <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 
     <!-- Prism CSS Theme -->
-    <link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css"
+      rel="stylesheet"
+    />
 
     <!-- API Service -->
     <script src="{% static 'knowledge/js/services/api.js' %}?v={{ STATIC_VERSION }}"></script>
@@ -48,6 +79,7 @@
     <script src="{% static 'knowledge/js/components/ChatHistory.js' %}?v={{ STATIC_VERSION }}"></script>
     <script src="{% static 'knowledge/js/components/ChatPanel.js' %}?v={{ STATIC_VERSION }}"></script>
     <script src="{% static 'knowledge/js/components/ToastNotifications.js' %}?v={{ STATIC_VERSION }}"></script>
+    <script src="{% static 'knowledge/js/components/AppModals.js' %}?v={{ STATIC_VERSION }}"></script>
     <script src="{% static 'knowledge/js/components/SpotlightSearch.js' %}?v={{ STATIC_VERSION }}"></script>
     <script src="{% static 'knowledge/js/components/GraphView.js' %}?v={{ STATIC_VERSION }}"></script>
 

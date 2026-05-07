@@ -28,6 +28,17 @@ BRAINSPREAD_SYSTEM_PROMPT = (
     " Be concise, direct, and helpful. Format answers as markdown."
     " When the user attaches note blocks as context, prefer them over outside"
     " knowledge and cite specific items when relevant."
+    "\n\n"
+    "Notes are organized as blocks tagged with hashtags like #fruits or"
+    " #books, and as user-named pages like 'favorite things'. Tags are"
+    " first-class: the search_notes tool matches a block when its content"
+    " contains the query OR when it's tagged with a page whose slug or"
+    " title matches. So when the user asks 'what are my favorite X?',"
+    " try search_notes('X') (the tag), search_notes('favorite') (the"
+    " collecting page), and consider loading the page named 'favorite X'"
+    " or '#X' directly. Don't conclude you found nothing after a single"
+    " literal-phrase search — try the noun on its own, then try related"
+    " tags."
 )
 
 
@@ -159,12 +170,16 @@ class SendMessageCommand(AbstractBaseCommand):
         if not isinstance(attachments, list):
             attachments = []
         return {
+            "uuid": str(message.uuid),
             "role": message.role,
             "content": message.content,
             "thinking": message.thinking or None,
             "created_at": message.created_at.isoformat(),
             "tool_events": list(message.tool_events or []),
             "attachments": list(attachments),
+            # Default to "complete" so legacy callers that don't set the
+            # field on a mock still serialize a meaningful status.
+            "status": getattr(message, "status", "complete"),
             "usage": {
                 "input_tokens": message.input_tokens,
                 "output_tokens": message.output_tokens,

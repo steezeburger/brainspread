@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Any, Dict, Iterable, List, Optional
 
 from django.db import transaction
-from django.db.models import Count, Max, QuerySet
+from django.db.models import Count, Max, Q, QuerySet
 from django.db.models.functions import TruncDate
 
 from common.repositories.base_repository import BaseRepository
@@ -80,8 +80,31 @@ class BlockRepository(BaseRepository):
 
     @classmethod
     def search_by_content(cls, user, query: str) -> QuerySet:
-        """Search blocks by content"""
-        return cls.get_queryset().filter(user=user, content__icontains=query)
+        """Free-text + tag-aware search over the user's blocks.
+
+        Matches a block when any of these holds:
+          - the block's text content ICONTAINS the query (the original
+            substring behavior)
+          - the block is tagged with a Page whose slug ICONTAINS the
+            query (e.g. searching "fruit" picks up blocks tagged
+            #fruits via the M2M)
+          - the block is tagged with a Page whose title ICONTAINS the
+            query (covers tag pages whose title was customized away
+            from the slug)
+
+        distinct() because the M2M join can multiply rows when a block
+        carries several matching tag pages.
+        """
+        return (
+            cls.get_queryset()
+            .filter(user=user)
+            .filter(
+                Q(content__icontains=query)
+                | Q(pages__slug__icontains=query)
+                | Q(pages__title__icontains=query)
+            )
+            .distinct()
+        )
 
     @classmethod
     def get_blocks_with_media(cls, user, content_type: str = None) -> QuerySet:

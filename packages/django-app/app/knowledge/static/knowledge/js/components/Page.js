@@ -584,19 +584,19 @@ const Page = {
 
     async deleteBlock(block) {
       // Mark the block as being deleted BEFORE we open the confirm
-      // dialog. On mobile especially, the native confirm() dismisses
-      // the soft keyboard, which blurs the active textarea — and the
-      // blur handler fires stopEditing → updateBlock against this
-      // exact block. Without the guard set first, that update race
-      // can land after the delete has gone through, in which case
-      // the backend 400s ("block not found") and the editor flashes
-      // "failed to update block" even though the user just deleted
-      // the block on purpose.
+      // dialog. The same guard mattered for the native confirm() — it
+      // dismissed the soft keyboard on mobile and blurred the active
+      // textarea, racing stopEditing → updateBlock against the delete.
+      // The Vue dialog doesn't blur, but keeping the guard costs
+      // nothing and keeps any future re-entry from racing.
       this.deletingBlocks.add(block.uuid);
 
-      const confirmed = confirm(
-        `are you sure you want to delete this block? this will also delete any child blocks and cannot be undone.`
-      );
+      const confirmed = await window.appModals.confirm({
+        title: "delete block?",
+        message: "this will also delete any child blocks and cannot be undone.",
+        confirmLabel: "delete",
+        destructive: true,
+      });
 
       if (!confirmed) {
         // Drop the guard on the same delayed timer the success path
@@ -1831,9 +1831,13 @@ const Page = {
     async deletePage() {
       if (!this.page) return;
 
-      const confirmed = confirm(
-        `Are you sure you want to delete the page "${this.page.title}"? This will also delete all direct blocks and cannot be undone.`
-      );
+      const confirmed = await window.appModals.confirm({
+        title: `delete "${this.page.title}"?`,
+        message:
+          "this will also delete all direct blocks and cannot be undone.",
+        confirmLabel: "delete",
+        destructive: true,
+      });
 
       if (!confirmed) return;
 
@@ -3016,9 +3020,13 @@ const Page = {
         return;
       }
 
-      const confirmed = confirm(
-        `delete ${uuids.length} selected block${uuids.length === 1 ? "" : "s"}? this also deletes any child blocks and cannot be undone.`
-      );
+      const plural = uuids.length === 1 ? "" : "s";
+      const confirmed = await window.appModals.confirm({
+        title: `delete ${uuids.length} block${plural}?`,
+        message: "this also deletes any child blocks and cannot be undone.",
+        confirmLabel: "delete",
+        destructive: true,
+      });
       if (!confirmed) return;
 
       try {

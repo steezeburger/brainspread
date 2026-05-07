@@ -4,6 +4,11 @@
 :root {
   /* Dark theme (default) */
   --bg-primary: #000000;
+  /* Slightly-different surface used for code chips, table headers,
+     blockquote backgrounds, etc. Define this in every theme — the
+     fallback used to be transparent, which made inline code in chat
+     messages indistinguishable from the bubble background. */
+  --bg-secondary: #001a00;
   --text-primary: #00ff00;
   --text-secondary: #888888;
   --text-muted: #666666;
@@ -28,6 +33,7 @@
 /* Light theme */
 :root[data-theme="light"] {
   --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f5;
   --text-primary: #1a1a1a;
   --text-secondary: #666666;
   --text-muted: #888888;
@@ -52,6 +58,7 @@
 /* Solarized Dark theme */
 :root[data-theme="solarized_dark"] {
   --bg-primary: #002b36;
+  --bg-secondary: #073642;
   --text-primary: #839496;
   --text-secondary: #586e75;
   --text-muted: #657b83;
@@ -76,6 +83,7 @@
 /* Purple theme */
 :root[data-theme="purple"] {
   --bg-primary: #2e073f;
+  --bg-secondary: #3d1447;
   --text-primary: #ebd3f8;
   --text-secondary: #ad49e1;
   --text-muted: #7a1cac;
@@ -100,6 +108,7 @@
 /* Earthy theme */
 :root[data-theme="earthy"] {
   --bg-primary: #fff1ca;
+  --bg-secondary: #ffe5a3;
   --text-primary: #2d4f2b;
   --text-secondary: #708a58;
   --text-muted: #708a58;
@@ -124,6 +133,7 @@
 /* Forest theme */
 :root[data-theme="forest"] {
   --bg-primary: #d2f079;
+  --bg-secondary: #c0e068;
   --text-primary: #a2663e;
   --text-secondary: #ad8c45;
   --text-muted: #c8d35b;
@@ -151,6 +161,7 @@
    seeded staging superuser to it. */
 :root[data-theme="staging"] {
   --bg-primary: #ff1493;
+  --bg-secondary: #e01184;
   --text-primary: #d4ff00;
   --text-secondary: #00ffff;
   --text-muted: #ffae00;
@@ -174,6 +185,19 @@
 
 * {
   box-sizing: border-box;
+}
+
+/* Zero the user-agent default border-radius on form controls. The
+   brutalist look across the app uses square corners; without this,
+   any new button or input that doesn't explicitly set border-radius
+   inherits Chrome / Safari's small default radius and looks rounded
+   next to its square neighbours. Individual rules can opt back in
+   to a small chip-style radius (e.g. 3px) when needed. */
+button,
+input,
+select,
+textarea {
+  border-radius: 0;
 }
 
 /* Hide login form during initial load to prevent flash */
@@ -228,12 +252,14 @@ body {
   flex: 1;
   padding: 2rem;
   width: 100%;
-  /* Cap the readable area and center it. The leftnav rail and chat
-   * panel are position: fixed against the viewport edges, so they
-   * don't push this container - they overlay the empty gutter that
-   * the centering margin creates on wide screens. */
-  max-width: 1200px;
-  margin: 0 auto;
+  /* Pinned sidebars are position: fixed against the viewport edges.
+     LeftNav and ChatPanel keep --leftnav-width / --chat-panel-width in
+     sync with their open state so the content area sits between them
+     instead of being covered. Below 768px the sidebars revert to
+     overlay drawers and the padding override later in this file
+     collapses these gutters. */
+  padding-left: calc(2rem + var(--leftnav-width, 0px));
+  padding-right: calc(2rem + var(--chat-panel-width, 0px));
 }
 
 /* Loading */
@@ -362,14 +388,19 @@ body {
 }
 
 .btn-danger {
-  background-color: transparent;
-  color: var(--error-color, #c44);
+  /* Filled rather than ghost so the destructive action stays
+     readable across every theme. The transparent variant put red
+     text on top of whatever the modal background was — fine on
+     dark themes, awful on the staging hot-pink bg. */
+  background-color: var(--error-color, #c44);
+  color: var(--btn-danger-text, #fff);
   border: 1px solid var(--error-color, #c44);
 }
 
 .btn-danger:hover:not(:disabled) {
-  background-color: var(--error-color, #c44);
-  color: var(--bg-primary);
+  background-color: var(--error-hover, #c44);
+  border-color: var(--error-hover, #c44);
+  color: var(--btn-danger-text, #fff);
 }
 
 .btn-link {
@@ -409,6 +440,12 @@ body {
 .chat-controls .tools-btn {
   background: var(--bg-primary) !important;
   border: 1px solid var(--border-secondary) !important;
+  /* The baseline button reset further up zeroes the user-agent
+     radius, but the rest of this rule is !important so we mirror
+     that here — otherwise a future tweak that adds a rounded
+     style elsewhere could override the baseline without
+     overriding the rest of this declaration. */
+  border-radius: 0 !important;
   color: var(--text-primary) !important;
   padding: 0.25rem 0.5rem !important;
   font-size: 0.8rem !important;
@@ -451,14 +488,23 @@ body {
  * above the ctx button. Lists the current page's visible blocks and
  * lets the user toggle each one in/out of context with a click. */
 .context-picker-wrapper {
-  position: relative;
+  /* Stay out of the popover's absolute-positioning chain so it
+     anchors against .chat-controls (the wrapper is the size of the
+     ctx button, way too narrow to host a 280px popover). */
+  position: static;
 }
 
 .context-picker {
   position: absolute;
   bottom: calc(100% + 0.4rem);
-  left: 0;
+  /* Right-anchor against the chat-controls row so the popover stays
+     inside the chat panel regardless of where the ctx button sits in
+     the row. Falls back to the left edge if the popover is wider than
+     the panel via max-width. */
+  right: 0.5rem;
+  left: auto;
   width: 280px;
+  max-width: calc(100% - 1rem);
   max-height: 320px;
   overflow-y: auto;
   background: var(--bg-primary);
@@ -665,6 +711,81 @@ body {
   align-items: center;
   justify-content: center;
   z-index: 1200;
+}
+
+/* Global confirm / prompt / alert dialog host (AppModals.js). The
+   styling intentionally mirrors .confirm-modal-content above so the
+   dialogs feel like part of the same family. */
+.app-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Above settings (1000) and the chat panel (1000) but below toasts
+     so a toast for "saved" can render over the resolved confirm. */
+  z-index: 1300;
+  padding: 1rem;
+}
+
+.app-modal {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  padding: 1.25rem 1.5rem;
+  max-width: 440px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  font-family: inherit;
+  color: var(--text-primary);
+}
+
+.app-modal-header {
+  font-size: 1rem;
+  font-weight: bold;
+  color: var(--text-primary);
+}
+
+.app-modal-body {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.app-modal-input {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+.app-modal-input:focus {
+  outline: none;
+  border-color: var(--text-primary);
+}
+
+.app-modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.app-modal-actions .btn {
+  padding: 0.45rem 1rem;
+  font-size: 0.9rem;
+  font-weight: bold;
+  border-width: 2px;
+  border-radius: 0;
 }
 
 .confirm-modal-content {
@@ -2443,6 +2564,46 @@ kbd {
   color: var(--text-muted);
 }
 
+.leftnav-favorite-item {
+  /* Lay out the drag grip + star + label cleanly. */
+  position: relative;
+}
+
+.leftnav-favorite-item.is-dragging {
+  opacity: 0.4;
+}
+
+.leftnav-favorite-grip {
+  flex-shrink: 0;
+  width: 0.9rem;
+  text-align: center;
+  font-size: 0.75rem;
+  letter-spacing: -2px;
+  color: var(--text-muted);
+  cursor: grab;
+  /* Always visible — the favorites section is the only sidebar list
+     where rows are reorderable, so the affordance has to stand on
+     its own without needing a hover. Slightly muted so it doesn't
+     compete with the title text. */
+  opacity: 0.55;
+}
+
+.leftnav-favorite-item:hover .leftnav-favorite-grip,
+.leftnav-favorite-item.is-dragging .leftnav-favorite-grip {
+  opacity: 0.9;
+}
+
+.leftnav-favorite-grip:active {
+  cursor: grabbing;
+}
+
+.leftnav-favorite-drop-indicator {
+  height: 2px;
+  margin: 1px 0.4rem;
+  background: var(--tag-hover, var(--text-primary));
+  pointer-events: none;
+}
+
 .leftnav-empty {
   padding: 0.4rem 0.6rem 0.5rem;
   color: var(--text-muted);
@@ -3370,6 +3531,47 @@ a.sidebar-item:visited {
   border-radius: 4px;
 }
 
+.history-search {
+  position: relative;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border-secondary);
+}
+
+.history-search-input {
+  width: 100%;
+  padding: 0.4rem 1.6rem 0.4rem 0.6rem;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 0;
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.history-search-input:focus {
+  outline: none;
+  border-color: var(--text-primary);
+}
+
+.history-search-clear {
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+  border-radius: 0;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.2rem;
+}
+
+.history-search-clear:hover {
+  color: var(--text-primary);
+}
+
 .history-content {
   max-height: 320px;
   overflow-y: auto;
@@ -3422,6 +3624,20 @@ a.sidebar-item:visited {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.session-match-snippet {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+  line-height: 1.3;
+  /* Wrap to 2 lines so the user can see the match in context. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  border-left: 2px solid var(--border-secondary);
+  padding-left: 0.5rem;
 }
 
 .session-meta {
@@ -3612,6 +3828,12 @@ a.sidebar-item:visited {
 
 /* Chat Panel Controls Row */
 .chat-controls {
+  /* Position so the .context-picker popover can right-anchor against
+     the controls row instead of its tiny .context-picker-wrapper —
+     otherwise the 280px popover overflows past the chat panel's
+     right edge for narrow panels (the ctx button sits a couple of
+     items in from the left). */
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;

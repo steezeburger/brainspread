@@ -27,6 +27,7 @@ from knowledge.commands import (
     MoveBlockToDailyCommand,
     MoveUndoneTodosCommand,
     ReorderBlocksCommand,
+    ReorderFavoritedPagesCommand,
     ScheduleBlockCommand,
     SearchNotesCommand,
     SearchPagesCommand,
@@ -60,6 +61,7 @@ from knowledge.forms import (
     MoveBlockToDailyForm,
     MoveUndoneTodosForm,
     ReorderBlocksForm,
+    ReorderFavoritedPagesForm,
     ScheduleBlockForm,
     SearchNotesForm,
     SearchPagesForm,
@@ -616,6 +618,54 @@ def get_favorited_pages(request):
             "errors": form.errors,
         }
         return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        response: PagesResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def reorder_favorited_pages(request):
+    """Persist a new drag-sorted order for the user's Favorites list."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = ReorderFavoritedPagesForm(data)
+
+        if form.is_valid():
+            command = ReorderFavoritedPagesCommand(form)
+            pages = command.execute()
+
+            pages_data: PagesData = {
+                "pages": [page.to_dict() for page in pages],
+                "total_count": len(pages),
+                "has_more": False,
+            }
+
+            response: PagesResponse = {
+                "success": True,
+                "data": pages_data,
+                "errors": None,
+            }
+            return Response(response)
+
+        response: PagesResponse = {
+            "success": False,
+            "data": None,
+            "errors": form.errors,
+        }
+        return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     except Exception as e:
         response: PagesResponse = {

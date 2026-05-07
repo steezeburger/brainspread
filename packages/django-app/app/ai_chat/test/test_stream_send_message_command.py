@@ -1,10 +1,11 @@
 from unittest.mock import Mock, patch
 
-from django.test import TestCase
+from django.test import TransactionTestCase
 
 from ai_chat.commands.stream_send_message_command import StreamSendMessageCommand
 from ai_chat.forms import SendMessageForm
 from ai_chat.models import AIModel
+from ai_chat.services import stream_runner
 from ai_chat.services.base_ai_service import AIUsage
 from ai_chat.test.helpers import (
     OpenAIProviderFactory,
@@ -13,15 +14,18 @@ from ai_chat.test.helpers import (
 from core.test.helpers import UserFactory
 
 
-class StreamSendMessageCommandTestCase(TestCase):
-    """Test StreamSendMessageCommand with mocked streaming services."""
+class StreamSendMessageCommandTestCase(TransactionTestCase):
+    """Test StreamSendMessageCommand with mocked streaming services.
 
-    @classmethod
-    def setUpTestData(cls):
-        cls.user = UserFactory(email="stream@example.com")
-        cls.openai_provider = OpenAIProviderFactory()
+    TransactionTestCase rather than TestCase because the streaming
+    command spawns a worker thread that needs to see committed setup
+    data — TestCase's wrapping transaction would hide users / models
+    from the worker's separate DB connection.
+    """
 
     def setUp(self):
+        self.user = UserFactory(email="stream@example.com")
+        self.openai_provider = OpenAIProviderFactory()
         self.model = AIModel.objects.create(
             name="gpt-4",
             provider=self.openai_provider,
@@ -34,6 +38,13 @@ class StreamSendMessageCommandTestCase(TestCase):
             api_key="stream-api-key",
             enabled_models=[self.model],
         )
+        # Tighten the tail-loop poll so the worker thread's writes
+        # surface within the test's normal wait window.
+        self._original_poll = stream_runner.POLL_INTERVAL_SECONDS
+        stream_runner.POLL_INTERVAL_SECONDS = 0.02
+
+    def tearDown(self):
+        stream_runner.POLL_INTERVAL_SECONDS = self._original_poll
 
     def _create_form(self):
         return SendMessageForm(

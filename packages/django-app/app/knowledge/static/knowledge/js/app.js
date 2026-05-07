@@ -58,6 +58,7 @@ const KnowledgeApp = createApp({
     HelpModal: window.HelpModal,
     ChatPanel: window.ChatPanel,
     ToastNotifications: window.ToastNotifications,
+    AppModals: window.AppModals,
     SpotlightSearch: window.SpotlightSearch,
     GraphView: window.GraphView,
   },
@@ -215,16 +216,20 @@ const KnowledgeApp = createApp({
       }
     },
 
-    checkTimezoneChange() {
-      if (window.apiService.checkTimezoneChange()) {
-        const browserTimezone = window.apiService.getCurrentBrowserTimezone();
-        const currentUser = window.apiService.getCurrentUser();
+    async checkTimezoneChange() {
+      if (!window.apiService.checkTimezoneChange()) return;
+      const browserTimezone = window.apiService.getCurrentBrowserTimezone();
+      const currentUser = window.apiService.getCurrentUser();
 
-        const message = `Your device's timezone appears to have changed from ${currentUser.timezone} to ${browserTimezone}. Would you like to update your timezone preference?`;
+      const message = `Your device's timezone appears to have changed from ${currentUser.timezone} to ${browserTimezone}. Would you like to update your timezone preference?`;
 
-        if (confirm(message)) {
-          this.updateTimezone(browserTimezone);
-        }
+      const confirmed = await window.appModals.confirm({
+        title: "update timezone?",
+        message,
+        confirmLabel: "update",
+      });
+      if (confirmed) {
+        this.updateTimezone(browserTimezone);
       }
     },
 
@@ -238,7 +243,7 @@ const KnowledgeApp = createApp({
         }
       } catch (error) {
         console.error("Failed to update timezone:", error);
-        alert("Failed to update timezone. Please try again.");
+        this.addToast("failed to update timezone", "error");
       }
     },
 
@@ -296,6 +301,18 @@ const KnowledgeApp = createApp({
     applyTheme() {
       const theme = this.user?.theme || "dark";
       document.documentElement.setAttribute("data-theme", theme);
+      // Cache the chosen theme so the inline boot script in base.html
+      // can apply it on the next reload before the user-settings fetch
+      // returns. Without this the document repaints the default theme
+      // for ~one frame after navigation.
+      try {
+        if (typeof window !== "undefined" && window.localStorage) {
+          window.localStorage.setItem("brainspread.theme", theme);
+        }
+      } catch (_) {
+        // localStorage can throw in private mode; the in-session theme
+        // still works, the next reload just won't have the cached hint.
+      }
       // Mermaid diagrams pick their palette at render time, so a theme
       // swap only takes effect on already-rendered SVGs if we reset and
       // re-render them.
@@ -392,14 +409,20 @@ const KnowledgeApp = createApp({
     },
 
     async createNewPage(prefilledTitle = null, pageType = "page") {
-      const title =
-        prefilledTitle ??
-        prompt(
-          pageType === "whiteboard"
-            ? "Enter whiteboard title:"
-            : "Enter page title:"
-        );
-      if (!title || !title.trim()) return;
+      let title = prefilledTitle;
+      if (title == null) {
+        title = await window.appModals.prompt({
+          title: pageType === "whiteboard" ? "new whiteboard" : "new page",
+          message:
+            pageType === "whiteboard"
+              ? "enter whiteboard title:"
+              : "enter page title:",
+          placeholder: "title",
+          confirmLabel: "create",
+        });
+      }
+      if (title == null) return;
+      if (!title.trim()) return;
 
       try {
         // Generate a simple slug from the title
@@ -421,14 +444,15 @@ const KnowledgeApp = createApp({
           // Navigate to the new page
           window.location.href = `/knowledge/page/${slug}/`;
         } else {
-          alert(
-            "Failed to create page: " +
-              (result.errors?.title?.[0] || "Unknown error")
+          this.addToast(
+            "failed to create page: " +
+              (result.errors?.title?.[0] || "unknown error"),
+            "error"
           );
         }
       } catch (error) {
         console.error("Failed to create page:", error);
-        alert("Failed to create page. Please try again.");
+        this.addToast("failed to create page", "error");
       }
     },
 
@@ -513,23 +537,32 @@ const KnowledgeApp = createApp({
         if (this.showLogoutConfirm) {
           event.preventDefault();
           this.cancelLogout();
-        } else if (this.showSpotlight) {
+          return;
+        }
+        if (this.showSpotlight) {
           this.closeSpotlight();
-        } else if (this._isInsideLeftNav(event.target)) {
-          // If Escape fires from inside the left nav (e.g., its filter
-          // selects have focus), close that sidebar directly. Skips the
-          // editable-target guard because the sidebar itself doesn't host
-          // any serious editing surface.
-          if (this._closeLeftNavIfOpen()) event.preventDefault();
-        } else if (!this._isEditableTarget(event.target)) {
-          // Escape dismisses any open sidebars, but only when the user isn't
-          // typing in a real editor (blocks, chat input). Those have their
-          // own Escape handlers.
-          const closedLeftNav = this._closeLeftNavIfOpen();
-          const closedChat = this._closeChatIfOpen();
-          if (closedLeftNav || closedChat) {
-            event.preventDefault();
-          }
+          return;
+        }
+
+        // Escape clears any open sidebar(s) in one keystroke. Same
+        // behavior whether focus is in a sidebar's input (chat
+        // textarea, leftnav filter selects) or outside, so the
+        // mental model is consistent: Escape = "close the chrome".
+        // We still skip when the user is editing inside a non-
+        // sidebar surface (block editor, page title) — those have
+        // their own Escape handlers and shouldn't lose context to
+        // a sidebar dismiss.
+        const targetIsInSidebar =
+          this._isInsideLeftNav(event.target) ||
+          this._isInsideChatPanel(event.target);
+        if (!targetIsInSidebar && this._isEditableTarget(event.target)) {
+          return;
+        }
+
+        const closedLeftNav = this._closeLeftNavIfOpen();
+        const closedChat = this._closeChatIfOpen();
+        if (closedLeftNav || closedChat) {
+          event.preventDefault();
         }
       }
     },
@@ -537,6 +570,11 @@ const KnowledgeApp = createApp({
     _isInsideLeftNav(el) {
       const sidebar = this.$refs.leftNav;
       return !!(sidebar && sidebar.$el && sidebar.$el.contains(el));
+    },
+
+    _isInsideChatPanel(el) {
+      const panel = this.$refs.chatPanel;
+      return !!(panel && panel.$el && panel.$el.contains(el));
     },
 
     _closeLeftNavIfOpen() {
@@ -1029,6 +1067,10 @@ const KnowledgeApp = createApp({
                 </div>
             </main>
         </div>
+
+        <!-- Global confirm/prompt/alert dialog host. Mount unconditionally
+             so it's available even before the user has logged in. -->
+        <AppModals />
 
         <!-- Settings Modal -->
         <SettingsModal

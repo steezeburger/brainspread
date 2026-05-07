@@ -11,12 +11,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .commands import (
+    ListChatSessionsCommand,
     ResumeApprovalCommand,
     SendMessageCommand,
     StreamSendMessageCommand,
 )
 from .commands.send_message_command import SendMessageCommandError
-from .forms import ResumeApprovalForm, SendMessageForm
+from .forms import ListChatSessionsForm, ResumeApprovalForm, SendMessageForm
 from .models import (
     AIModel,
     AIProvider,
@@ -24,7 +25,9 @@ from .models import (
     UserAISettings,
     UserProviderConfig,
 )
+from .repositories import ChatMessageRepository, ChatSessionRepository
 from .repositories.user_settings_repository import UserSettingsRepository
+from .services.stream_runner import follow_message
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +112,60 @@ class ServerSentEventRenderer(BaseRenderer):
 
     def render(self, data, accepted_media_type=None, renderer_context=None):
         return data
+
+
+class FollowMessageView(APIView):
+    """SSE endpoint that lets a client reconnect to an in-flight
+    assistant response after a page reload (issue #118).
+
+    The actual LLM call runs in a background thread spawned by
+    StreamSendMessageView so it survives the original client's
+    disconnect; this endpoint just tails the message row and ships
+    deltas. Returns the final message immediately if the stream has
+    already finished by the time the client reconnects.
+    """
+
+    permission_classes = [IsAuthenticated]
+    renderer_classes = [ServerSentEventRenderer]
+
+    def get(self, request, message_uuid):
+        message = ChatMessageRepository.get_for_user_with_session(
+            uuid=message_uuid, user=request.user
+        )
+        if message is None:
+            return Response(
+                {"success": False, "error": "Message not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        session_id = str(message.session.uuid)
+
+        def event_stream():
+            # Echo the session id up front so a reconnecting ChatPanel
+            # doesn't have to track it separately.
+            yield _sse_event({"type": "session", "session_id": session_id})
+            try:
+                for event in follow_message(str(message.uuid)):
+                    if event.get("type") == "done":
+                        event.setdefault("session_id", session_id)
+                    yield _sse_event(event)
+            except Exception as e:  # noqa: BLE001
+                logger.error(
+                    "follow_message error for user %s message %s: %s",
+                    request.user.id,
+                    message_uuid,
+                    e,
+                )
+                yield _sse_event(
+                    {"type": "error", "error": "An unexpected error occurred."}
+                )
+
+        response = StreamingHttpResponse(
+            event_stream(), content_type="text/event-stream"
+        )
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
 
 
 class StreamSendMessageView(APIView):
@@ -219,33 +276,22 @@ class ResumeApprovalView(APIView):
 def chat_sessions(request):
     """
     Get list of chat sessions for the current user.
+
+    Optional ?search= query param matches case-insensitively against
+    session titles and the content of any message in the session, with
+    a short snippet around the first message hit attached to each
+    matching session.
     """
     try:
-        sessions = ChatSession.objects.filter(user=request.user).order_by(
-            "-modified_at"
+        form = ListChatSessionsForm(
+            {"user": request.user.id, "search": request.GET.get("search", "")}
         )
-
-        # Get first message from each session for preview
-        sessions_data = []
-        for session in sessions:
-            first_message = session.messages.filter(role="user").first()
-            preview = (
-                first_message.content[:100] + "..."
-                if first_message and len(first_message.content) > 100
-                else (first_message.content if first_message else "")
+        if not form.is_valid():
+            return Response(
+                {"success": False, "errors": form.errors},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-
-            sessions_data.append(
-                {
-                    "uuid": str(session.uuid),
-                    "title": session.title or preview or "New Chat",
-                    "preview": preview,
-                    "created_at": session.created_at.isoformat(),
-                    "modified_at": session.modified_at.isoformat(),
-                    "message_count": session.messages.count(),
-                }
-            )
-
+        sessions_data = ListChatSessionsCommand(form).execute()
         return Response({"success": True, "data": sessions_data})
 
     except Exception as e:
@@ -265,17 +311,24 @@ def chat_session_detail(request, session_id):
     Get detailed chat session with all messages.
     """
     try:
-        session = ChatSession.objects.get(uuid=session_id, user=request.user)
-        messages = session.messages.select_related("ai_model__provider").all()
+        session = ChatSessionRepository.get_for_user(uuid=session_id, user=request.user)
+        if session is None:
+            raise ChatSession.DoesNotExist()
+        messages = ChatMessageRepository.messages_for_session_with_models(session)
 
         messages_data = [
             {
+                "uuid": str(msg.uuid),
                 "role": msg.role,
                 "content": msg.content,
                 "thinking": msg.thinking or None,
                 "created_at": msg.created_at.isoformat(),
                 "tool_events": list(msg.tool_events or []),
                 "attachments": list(msg.attachments or []),
+                # Surface status so the UI can spot in-flight assistant
+                # rows on session load and reconnect to the follow
+                # endpoint without losing the in-progress response.
+                "status": msg.status,
                 "usage": {
                     "input_tokens": msg.input_tokens,
                     "output_tokens": msg.output_tokens,
