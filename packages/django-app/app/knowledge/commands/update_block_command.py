@@ -63,6 +63,11 @@ class UpdateBlockCommand(AbstractBaseCommand):
         if "asset" in self.form.cleaned_data:
             block.asset = self.form.cleaned_data["asset"]
 
+        # Same nullable-rebind logic for query_view (issue #60) — the
+        # caller can detach a saved-view embed by passing a null value.
+        if "query_view" in self.form.cleaned_data:
+            block.query_view = self.form.cleaned_data["query_view"]
+
         # Auto-detect block type from content if content was updated
         if content_updated:
             auto_detected_type = self._detect_block_type_from_content(

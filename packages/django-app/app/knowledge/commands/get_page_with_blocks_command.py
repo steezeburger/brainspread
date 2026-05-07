@@ -3,10 +3,12 @@ from typing import List, Tuple
 from django.core.exceptions import ValidationError
 
 from common.commands.abstract_base_command import AbstractBaseCommand
-from knowledge.models import Block, Page
-from knowledge.repositories import BlockRepository, PageRepository
+from knowledge.models import SYSTEM_VIEW_OVERDUE, Block, Page
+from knowledge.repositories import BlockRepository, PageRepository, SavedViewRepository
+from knowledge.services import query_engine
 
 from ..forms.get_page_with_blocks_form import GetPageWithBlocksForm
+from ..services.system_views import seed_system_views_for_user
 
 
 class GetPageWithBlocksCommand(AbstractBaseCommand):
@@ -19,9 +21,12 @@ class GetPageWithBlocksCommand(AbstractBaseCommand):
         """Return page, direct blocks, referenced blocks, and overdue blocks.
 
         Overdue blocks are only populated when the resolved page is today's
-        daily note; on any other page the list is empty. Overdue is defined
-        per issue #59: scheduled_for < today AND block_type in
-        (todo, doing, later) AND completed_at IS NULL.
+        daily note; on any other page the list is empty. Overdue is now
+        evaluated by the query engine against the seeded ``overdue``
+        system view (issue #60). The predicate is unchanged from #59 —
+        scheduled_for < today AND block_type IN (todo, doing, later) AND
+        completed_at IS NULL — but the plumbing is now general so users
+        can build their own analogous sections.
         """
         super().execute()
 
@@ -55,14 +60,29 @@ class GetPageWithBlocksCommand(AbstractBaseCommand):
             .prefetch_related("reminders")
         )
 
-        # Overdue only renders on today's daily page. On any other view it's
-        # empty — historical daily pages show themselves as they were, and
-        # non-daily pages don't surface a calendar-driven section.
-        # NOTE: this section is intentionally hard-coded for now. Issue #60
-        # will generalize it into a SavedView so users can build their own
-        # sections with the same query+display pattern.
         overdue_blocks: List[Block] = []
         if page.page_type == "daily" and page.date == today:
-            overdue_blocks = list(BlockRepository.get_overdue_blocks(user, today))
+            overdue_blocks = self._fetch_overdue_via_system_view(user)
 
         return page, list(direct_blocks), list(referenced_blocks), overdue_blocks
+
+    def _fetch_overdue_via_system_view(self, user) -> List[Block]:
+        """Run the seeded ``overdue`` SavedView for the user.
+
+        Lazily seeds the system views if the user predates the seed
+        migration somehow (the migration backfilled existing users, but
+        defensive: missing seed shouldn't 500 the daily page). On a
+        compile error we fall through to an empty list rather than break
+        the page render.
+        """
+        view = SavedViewRepository.get_system_view(SYSTEM_VIEW_OVERDUE, user=user)
+        if view is None:
+            seed_system_views_for_user(user)
+            view = SavedViewRepository.get_system_view(SYSTEM_VIEW_OVERDUE, user=user)
+        if view is None:
+            return []
+        try:
+            compiled = query_engine.compile(view.filter, user=user, sort=view.sort)
+        except query_engine.QueryEngineError:
+            return []
+        return list(BlockRepository.run_compiled_query(user, compiled))

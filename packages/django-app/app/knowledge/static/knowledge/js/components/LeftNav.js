@@ -12,6 +12,7 @@ window.LeftNav = {
     "create-page",
     "create-whiteboard",
     "navigate-graph",
+    "navigate-views",
     "navigate-today",
     "open-settings",
     "open-help",
@@ -459,6 +460,12 @@ window.LeftNav = {
       this.$emit("navigate-graph");
     },
 
+    onViewsClick(event) {
+      if (this.shouldDeferToBrowser(event)) return;
+      event.preventDefault();
+      this.$emit("navigate-views");
+    },
+
     onSearchClick() {
       this.$emit("open-search");
     },
@@ -725,6 +732,14 @@ window.LeftNav = {
           title="Graph"
           aria-label="Graph"
         >◉</a>
+        <a
+          href="/knowledge/views/"
+          class="leftnav-rail-btn leftnav-rail-action"
+          @click="onViewsClick"
+          @auxclick="onViewsClick"
+          title="Saved views"
+          aria-label="Saved views"
+        >▤</a>
         <div class="leftnav-rail-spacer leftnav-rail-action"></div>
         <button
           type="button"
@@ -825,6 +840,16 @@ window.LeftNav = {
             >
               <span class="leftnav-icon" aria-hidden="true">◉</span>
               <span class="leftnav-label">graph</span>
+            </a>
+            <a
+              href="/knowledge/views/"
+              class="leftnav-item"
+              @click="onViewsClick"
+              @auxclick="onViewsClick"
+              title="Saved views (queries)"
+            >
+              <span class="leftnav-icon" aria-hidden="true">▤</span>
+              <span class="leftnav-label">saved views</span>
             </a>
           </nav>
 

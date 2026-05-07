@@ -21,7 +21,20 @@ const KnowledgeApp = createApp({
     const cachedUser = window.apiService.getCurrentUser();
 
     const isGraphRoute = window.location.pathname === "/knowledge/graph/";
-    const initialView = isAuth ? (isGraphRoute ? "graph" : "journal") : "login";
+    const viewsMatch = window.location.pathname.match(
+      /^\/knowledge\/views(?:\/([^\/]+))?\/?$/
+    );
+    const isViewsRoute = !!viewsMatch;
+    const initialViewsSlug = viewsMatch
+      ? decodeURIComponent(viewsMatch[1] || "")
+      : null;
+    const initialView = isAuth
+      ? isGraphRoute
+        ? "graph"
+        : isViewsRoute
+          ? "views"
+          : "journal"
+      : "login";
 
     return {
       user: cachedUser, // Load user immediately from cache
@@ -47,6 +60,10 @@ const KnowledgeApp = createApp({
       spotlightSearchTimeout: null, // Debounce timeout for search
       currentPagePageType: null, // page_type of the currently-loaded page
       currentPageUuid: null, // uuid of the currently-loaded page (for chat context)
+      // Saved-views route state. `viewsSlug` is the slug from the URL or
+      // null on the index. Lifted to the app shell so back/forward and
+      // sidebar navigation can update it without remounting the page.
+      viewsSlug: initialViewsSlug,
     };
   },
 
@@ -61,6 +78,7 @@ const KnowledgeApp = createApp({
     AppModals: window.AppModals,
     SpotlightSearch: window.SpotlightSearch,
     GraphView: window.GraphView,
+    SavedViewsPage: window.SavedViewsPage,
   },
 
   computed: {
@@ -82,8 +100,10 @@ const KnowledgeApp = createApp({
     },
 
     showChatPanel() {
-      // Whiteboards and the graph view use the full column width; chat is noise there.
+      // Whiteboards, graph view, and saved-views surface use the full
+      // column width; chat is noise there.
       if (this.currentView === "graph") return false;
+      if (this.currentView === "views") return false;
       return this.currentPagePageType !== "whiteboard";
     },
   },
@@ -125,6 +145,13 @@ const KnowledgeApp = createApp({
       window.location.pathname === "/knowledge/graph/"
     ) {
       this.currentView = "graph";
+    }
+
+    if (
+      this.isAuthenticated &&
+      /^\/knowledge\/views(?:\/[^\/]+)?\/?$/.test(window.location.pathname)
+    ) {
+      this.currentView = "views";
     }
 
     // Reapply theme after auth check in case user data was updated
@@ -462,6 +489,10 @@ const KnowledgeApp = createApp({
 
     navigateToGraph() {
       window.location.href = "/knowledge/graph/";
+    },
+
+    navigateToViews() {
+      window.location.href = "/knowledge/views/";
     },
 
     // Fired by child components (CustomEvent 'brainspread:toast', detail = {message, type, duration}).
@@ -1013,6 +1044,7 @@ const KnowledgeApp = createApp({
                             @navigate-to-slug="onNavigateToSlug"
                             @navigate-today="redirectToToday"
                             @navigate-graph="navigateToGraph"
+                            @navigate-views="navigateToViews"
                             @open-search="openSpotlight"
                             @create-page="createNewPage"
                             @create-whiteboard="createNewWhiteboard"
@@ -1021,6 +1053,24 @@ const KnowledgeApp = createApp({
                             @logout="requestLogout" />
                         <GraphView />
                     </div>
+                    <div v-else-if="currentView === 'views'" class="views-layout">
+                        <LeftNav
+                            ref="leftNav"
+                            :user="user"
+                            @navigate-to-slug="onNavigateToSlug"
+                            @navigate-today="redirectToToday"
+                            @navigate-graph="navigateToGraph"
+                            @navigate-views="navigateToViews"
+                            @open-search="openSpotlight"
+                            @create-page="createNewPage"
+                            @create-whiteboard="createNewWhiteboard"
+                            @open-settings="openSettings"
+                            @open-help="openHelp"
+                            @logout="requestLogout" />
+                        <div class="main-content-area">
+                            <SavedViewsPage :initial-slug="viewsSlug" />
+                        </div>
+                    </div>
                     <div v-else class="content-layout">
                         <LeftNav
                             ref="leftNav"
@@ -1028,6 +1078,7 @@ const KnowledgeApp = createApp({
                             @navigate-to-slug="onNavigateToSlug"
                             @navigate-today="redirectToToday"
                             @navigate-graph="navigateToGraph"
+                            @navigate-views="navigateToViews"
                             @open-search="openSpotlight"
                             @create-page="createNewPage"
                             @create-whiteboard="createNewWhiteboard"

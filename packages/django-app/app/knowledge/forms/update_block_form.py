@@ -9,8 +9,8 @@ from common.forms import BaseForm, UUIDModelChoiceField
 from core.models import User
 from core.repositories import UserRepository
 
-from ..models import Block
-from ..repositories import BlockRepository
+from ..models import Block, SavedView
+from ..repositories import BlockRepository, SavedViewRepository
 
 
 class UpdateBlockForm(BaseForm):
@@ -29,6 +29,9 @@ class UpdateBlockForm(BaseForm):
     collapsed = forms.NullBooleanField(required=False)
     asset = UUIDModelChoiceField(
         queryset=AssetRepository.get_queryset(), required=False
+    )
+    query_view = UUIDModelChoiceField(
+        queryset=SavedViewRepository.get_queryset(), required=False
     )
 
     def clean_block(self) -> Block:
@@ -65,3 +68,10 @@ class UpdateBlockForm(BaseForm):
         if asset and user and asset.user_id != user.id:
             raise ValidationError("Asset not found")
         return asset
+
+    def clean_query_view(self) -> Optional[SavedView]:
+        view = self.cleaned_data.get("query_view")
+        user = self.cleaned_data.get("user")
+        if view and user and view.user_id != user.id:
+            raise ValidationError("Saved view not found")
+        return view

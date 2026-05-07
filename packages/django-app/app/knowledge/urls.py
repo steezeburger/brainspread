@@ -78,4 +78,20 @@ urlpatterns = [
     path("api/historical/", views.get_historical_data, name="get_historical_data"),
     path("api/graph/", views.get_graph_data, name="get_graph_data"),
     path("api/tag/<str:tag_name>/", views.get_tag_content, name="get_tag_content"),
+    # Saved views (issue #60) — JSON CRUD + run.
+    path("api/views/", views.list_saved_views, name="list_saved_views"),
+    path("api/views/get/", views.get_saved_view, name="get_saved_view"),
+    path("api/views/run/", views.run_saved_view, name="run_saved_view"),
+    path("api/views/create/", views.create_saved_view, name="create_saved_view"),
+    path("api/views/update/", views.update_saved_view, name="update_saved_view"),
+    path("api/views/delete/", views.delete_saved_view, name="delete_saved_view"),
+    path(
+        "api/views/duplicate/",
+        views.duplicate_saved_view,
+        name="duplicate_saved_view",
+    ),
+    # Standalone view page (the SPA shell catches the path; Vue routes to
+    # the SavedViewPage component based on the slug).
+    path("views/", views.index, name="views_index"),
+    path("views/<str:slug>/", views.index, name="views_detail"),
 ]

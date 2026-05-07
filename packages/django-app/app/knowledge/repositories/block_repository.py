@@ -443,6 +443,34 @@ class BlockRepository(BaseRepository):
         )
 
     @classmethod
+    def run_compiled_query(
+        cls,
+        user,
+        compiled,
+        limit: Optional[int] = None,
+    ) -> QuerySet:
+        """Execute a CompiledQuery (from knowledge.services.query_engine) for
+        the user. Always scoped to ``user`` — saved views can never reach
+        across users. The default ordering is by ``scheduled_for``-then-
+        ``order`` so list-shaped views fall back to a stable, useful sort
+        when the spec doesn't supply one.
+        """
+        qs = (
+            cls.get_queryset()
+            .filter(user=user)
+            .filter(compiled.filter_q)
+            .select_related("page", "user")
+            .prefetch_related("reminders")
+        )
+        if compiled.order_by:
+            qs = qs.order_by(*compiled.order_by)
+        else:
+            qs = qs.order_by("scheduled_for", "order")
+        if limit is not None:
+            qs = qs[:limit]
+        return qs
+
+    @classmethod
     def move_blocks_to_page(cls, blocks: List[Block], target_page: Page) -> bool:
         """Move blocks to target page and update their order"""
         if not blocks:

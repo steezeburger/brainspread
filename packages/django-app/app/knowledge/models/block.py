@@ -84,8 +84,22 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             ("quote", "Quote"),
             ("code", "Code Block"),
             ("divider", "Divider"),
+            ("query", "Saved View Embed"),
         ],
         default="bullet",
+    )
+
+    # When block_type='query', this points at the SavedView this block
+    # renders inline. SET_NULL so deleting the saved view leaves an empty
+    # query block in place rather than cascading the block away — the
+    # user can re-bind or convert it to a normal bullet.
+    query_view = models.ForeignKey(
+        "SavedView",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="embed_blocks",
+        help_text="When block_type='query', the SavedView this block embeds",
     )
 
     order = models.PositiveIntegerField(default=0, help_text="Order within parent/page")
@@ -254,6 +268,9 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             "completed_at": (
                 self.completed_at.isoformat() if self.completed_at else None
             ),
+            "query_view_uuid": (
+                str(self.query_view.uuid) if self.query_view_id else None
+            ),
             # The popover round-trips these so a user can re-open it and
             # see their previous reminder still selected. Both reflect the
             # single pending reminder for the block (or None for both).
@@ -383,6 +400,7 @@ class BlockData(TypedDict):
     children: Optional[list["BlockData"]]
     scheduled_for: Optional[str]
     completed_at: Optional[str]
+    query_view_uuid: Optional[str]
     pending_reminder_date: Optional[str]
     pending_reminder_time: Optional[str]
     # Page context fields (when included in API responses)

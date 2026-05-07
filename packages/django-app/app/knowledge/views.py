@@ -16,18 +16,24 @@ from knowledge.commands import (
     ConsumeReminderActionCommand,
     CreateBlockCommand,
     CreatePageCommand,
+    CreateSavedViewCommand,
     DeleteBlockCommand,
     DeletePageCommand,
+    DeleteSavedViewCommand,
+    DuplicateSavedViewCommand,
     GetFavoritedPagesCommand,
     GetGraphDataCommand,
     GetHistoricalDataCommand,
     GetPageWithBlocksCommand,
+    GetSavedViewCommand,
     GetTagContentCommand,
     GetUserPagesCommand,
+    ListSavedViewsCommand,
     MoveBlockToDailyCommand,
     MoveUndoneTodosCommand,
     ReorderBlocksCommand,
     ReorderFavoritedPagesCommand,
+    RunSavedViewCommand,
     ScheduleBlockCommand,
     SearchNotesCommand,
     SearchPagesCommand,
@@ -36,6 +42,7 @@ from knowledge.commands import (
     ToggleBlockTodoCommand,
     UpdateBlockCommand,
     UpdatePageCommand,
+    UpdateSavedViewCommand,
 )
 from knowledge.commands.bulk_delete_blocks_command import BulkDeleteBlocksData
 from knowledge.commands.bulk_move_blocks_command import BulkMoveBlocksData
@@ -50,18 +57,24 @@ from knowledge.forms import (
     ConsumeReminderActionForm,
     CreateBlockForm,
     CreatePageForm,
+    CreateSavedViewForm,
     DeleteBlockForm,
     DeletePageForm,
+    DeleteSavedViewForm,
+    DuplicateSavedViewForm,
     GetFavoritedPagesForm,
     GetGraphDataForm,
     GetHistoricalDataForm,
     GetPageWithBlocksForm,
+    GetSavedViewForm,
     GetTagContentForm,
     GetUserPagesForm,
+    ListSavedViewsForm,
     MoveBlockToDailyForm,
     MoveUndoneTodosForm,
     ReorderBlocksForm,
     ReorderFavoritedPagesForm,
+    RunSavedViewForm,
     ScheduleBlockForm,
     SearchNotesForm,
     SearchPagesForm,
@@ -70,6 +83,7 @@ from knowledge.forms import (
     ToggleBlockTodoForm,
     UpdateBlockForm,
     UpdatePageForm,
+    UpdateSavedViewForm,
 )
 from knowledge.models import BlockData, Page, PageData, PagesData
 from knowledge.models.page import PageWithBlocksData
@@ -1489,3 +1503,131 @@ def bulk_move_blocks(request):
             "errors": {"non_field_errors": [str(e)]},
         }
         return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ---------------------------------------------------------------------------
+# Saved views (issue #60) — JSON CRUD + run.
+# ---------------------------------------------------------------------------
+
+
+def _saved_view_response(success, data=None, errors=None, http_status=None):
+    response = {"success": success, "data": data, "errors": errors}
+    if http_status is None:
+        http_status = status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST
+    return Response(response, status=http_status)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def list_saved_views(request):
+    """List the user's saved views (system + own)."""
+    data = {"user": request.user.id}
+    form = ListSavedViewsForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        views = ListSavedViewsCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
+    return _saved_view_response(True, data={"views": [v.to_dict() for v in views]})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_saved_view(request):
+    data = request.query_params.copy()
+    data["user"] = request.user.id
+    form = GetSavedViewForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        view = GetSavedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(
+            False,
+            errors={"non_field_errors": [str(exc)]},
+            http_status=status.HTTP_404_NOT_FOUND,
+        )
+    return _saved_view_response(True, data=view.to_dict())
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def run_saved_view(request):
+    """Compile + execute a saved view's filter, returning matched blocks."""
+    data = request.query_params.copy()
+    data["user"] = request.user.id
+    form = RunSavedViewForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        result = RunSavedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
+    return _saved_view_response(True, data=result)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def create_saved_view(request):
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = CreateSavedViewForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        view = CreateSavedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
+    return _saved_view_response(
+        True, data=view.to_dict(), http_status=status.HTTP_201_CREATED
+    )
+
+
+@api_view(["PUT"])
+@permission_classes([IsAuthenticated])
+def update_saved_view(request):
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = UpdateSavedViewForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        view = UpdateSavedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
+    return _saved_view_response(True, data=view.to_dict())
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_saved_view(request):
+    # DELETE w/ body is non-standard but matches the existing DELETE
+    # handlers in this app (delete_block, delete_page).
+    data = request.data.copy() if request.data else request.query_params.copy()
+    data["user"] = request.user.id
+    form = DeleteSavedViewForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        DeleteSavedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
+    return _saved_view_response(True, data={"deleted": True})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def duplicate_saved_view(request):
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = DuplicateSavedViewForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        view = DuplicateSavedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
+    return _saved_view_response(
+        True, data=view.to_dict(), http_status=status.HTTP_201_CREATED
+    )
