@@ -11,6 +11,11 @@
 window.QueryEmbedBlock = {
   props: {
     block: { type: Object, required: true },
+    // Parent's delete handler — same one BlockComponent uses, so the
+    // confirm dialog + page reload are consistent across block types.
+    // Optional so the embed can also render outside the page surface
+    // (e.g. preview) without forcing the caller to wire it up.
+    onDelete: { type: Function, default: null },
   },
 
   data() {
@@ -77,6 +82,14 @@ window.QueryEmbedBlock = {
       if (!c) return "(empty block)";
       return c.length > 200 ? c.slice(0, 200) + "…" : c;
     },
+    async onRemoveClick() {
+      if (!this.onDelete) return;
+      try {
+        await this.onDelete(this.block);
+      } catch (err) {
+        console.error("remove embed failed:", err);
+      }
+    },
   },
 
   template: `
@@ -86,6 +99,14 @@ window.QueryEmbedBlock = {
         <span v-if="result" class="block-query-embed-meta">
           {{ result.count }}<span v-if="result.truncated">+ truncated</span>
         </span>
+        <button
+          v-if="onDelete"
+          type="button"
+          class="block-query-embed-remove"
+          @click="onRemoveClick"
+          title="Remove embed from page"
+          aria-label="Remove embed from page"
+        >×</button>
       </div>
       <div v-if="loading" class="block-query-embed-empty">Loading…</div>
       <div v-else-if="error" class="block-query-embed-empty">{{ error }}</div>

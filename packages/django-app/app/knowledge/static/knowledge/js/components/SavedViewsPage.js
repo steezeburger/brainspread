@@ -353,13 +353,14 @@ const SavedViewsPage = {
     },
 
     async embedOnToday() {
-      // Create a query-block on today's daily page that embeds this view.
-      // Useful for "I want this view to appear as a section on today" —
-      // saves the user from manually typing the right block_type +
-      // query_view_uuid combo.
+      // Add this view as a query-block on today's daily page. Idempotent
+      // by (page, saved_view) — a second click navigates to the existing
+      // embed instead of creating a duplicate. Almost every double-click
+      // here is a misclick, and stacking identical embeds clutters the
+      // page; users can always Embed-on-today from a different page if
+      // they want two copies.
       if (!this.activeView) return;
       try {
-        // Resolve / create today's daily so we have a target page.
         const pageResult = await window.apiService.getPageWithBlocks();
         const page =
           pageResult && pageResult.data && pageResult.data.page
@@ -373,6 +374,20 @@ const SavedViewsPage = {
           );
           return;
         }
+
+        // Walk today's existing direct blocks for an embed already bound
+        // to this saved view; if found, jump to it rather than create.
+        const existingBlocks = (pageResult.data.direct_blocks || []).filter(
+          (b) =>
+            b.block_type === "query" &&
+            b.query_view_uuid === this.activeView.uuid
+        );
+        if (existingBlocks.length) {
+          this._toast("Already embedded on today — jumping to it.", "info");
+          window.location.href = `/knowledge/page/${page.slug}/#block-${existingBlocks[0].uuid}`;
+          return;
+        }
+
         const blockResult = await window.apiService.createBlock({
           page: page.uuid,
           block_type: "query",
@@ -381,7 +396,6 @@ const SavedViewsPage = {
           order: 9999, // append at the end; the API trusts this and slots in
         });
         if (blockResult && blockResult.success) {
-          // Hop to today so the user sees the embed land.
           window.location.href = `/knowledge/page/${page.slug}/#block-${blockResult.data.uuid}`;
           return;
         }

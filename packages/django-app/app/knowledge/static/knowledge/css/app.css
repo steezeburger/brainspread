@@ -7352,6 +7352,22 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   color: var(--text-secondary);
   font-family: var(--font-mono, monospace);
 }
+.block-query-embed-remove {
+  background: transparent;
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 0 0.4rem;
+  margin-left: 0.25rem;
+}
+.block-query-embed-remove:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
 .block-query-embed-empty {
   color: var(--text-secondary);
   font-size: 0.9rem;

@@ -3340,6 +3340,7 @@ const Page = {
               <QueryEmbedBlock
                 v-if="block.block_type === 'query'"
                 :block="block"
+                :on-delete="deleteBlock"
               />
               <BlockComponent
                 v-else
