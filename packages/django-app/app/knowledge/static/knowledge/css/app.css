@@ -4,6 +4,11 @@
 :root {
   /* Dark theme (default) */
   --bg-primary: #000000;
+  /* Slightly-different surface used for code chips, table headers,
+     blockquote backgrounds, etc. Define this in every theme — the
+     fallback used to be transparent, which made inline code in chat
+     messages indistinguishable from the bubble background. */
+  --bg-secondary: #001a00;
   --text-primary: #00ff00;
   --text-secondary: #888888;
   --text-muted: #666666;
@@ -28,6 +33,7 @@
 /* Light theme */
 :root[data-theme="light"] {
   --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f5;
   --text-primary: #1a1a1a;
   --text-secondary: #666666;
   --text-muted: #888888;
@@ -52,6 +58,7 @@
 /* Solarized Dark theme */
 :root[data-theme="solarized_dark"] {
   --bg-primary: #002b36;
+  --bg-secondary: #073642;
   --text-primary: #839496;
   --text-secondary: #586e75;
   --text-muted: #657b83;
@@ -76,6 +83,7 @@
 /* Purple theme */
 :root[data-theme="purple"] {
   --bg-primary: #2e073f;
+  --bg-secondary: #3d1447;
   --text-primary: #ebd3f8;
   --text-secondary: #ad49e1;
   --text-muted: #7a1cac;
@@ -100,6 +108,7 @@
 /* Earthy theme */
 :root[data-theme="earthy"] {
   --bg-primary: #fff1ca;
+  --bg-secondary: #ffe5a3;
   --text-primary: #2d4f2b;
   --text-secondary: #708a58;
   --text-muted: #708a58;
@@ -124,6 +133,7 @@
 /* Forest theme */
 :root[data-theme="forest"] {
   --bg-primary: #d2f079;
+  --bg-secondary: #c0e068;
   --text-primary: #a2663e;
   --text-secondary: #ad8c45;
   --text-muted: #c8d35b;
@@ -151,6 +161,7 @@
    seeded staging superuser to it. */
 :root[data-theme="staging"] {
   --bg-primary: #ff1493;
+  --bg-secondary: #e01184;
   --text-primary: #d4ff00;
   --text-secondary: #00ffff;
   --text-muted: #ffae00;
