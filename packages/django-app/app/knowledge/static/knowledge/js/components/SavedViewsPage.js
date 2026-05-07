@@ -513,7 +513,7 @@ const SavedViewsPage = {
     { "completed_at": { "is_null": true } }
   ]
 }</pre>
-            <p>Predicates: block_type, scheduled_for, completed_at, has_tag, has_property, property_eq, content_contains. Combinators: all, any. Date tokens: today, tomorrow, yesterday, "N days ago", "N days from now", or YYYY-MM-DD.</p>
+            <p>Predicates: block_type, scheduled_for, completed_at, has_tag, has_property, property_eq, content_contains. Combinators: all, any, not. Date tokens: today, tomorrow, yesterday, "N days ago", "N days from now", or YYYY-MM-DD.</p>
             <p><strong>has_tag</strong> matches blocks that live on a page with that slug <em>or</em> blocks that explicitly link to that page with #tag / [[link]].</p>
           </div>
         </div>

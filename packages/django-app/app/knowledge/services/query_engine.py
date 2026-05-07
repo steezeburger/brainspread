@@ -3,7 +3,9 @@
 The filter spec is JSON with two flavors of node:
 
 - **Combinator**: ``{"all": [<node>, ...]}`` or ``{"any": [<node>, ...]}``
-  combines child nodes under AND / OR.
+  combines child nodes under AND / OR. ``{"not": <node>}`` negates a
+  single child (``"Glitch's favorites without Jesse"`` =
+  ``all: [has_tag glitch, has_tag favorite-things, not: {has_tag jesse}]``).
 - **Predicate**: ``{<field>: <value-or-op-dict>}`` where ``<field>`` is one
   of the supported predicate names. ``<value>`` is either a scalar
   shorthand (interpreted as ``eq``) or a dict of ``{op: arg, ...}``.
@@ -322,7 +324,7 @@ PREDICATE_HANDLERS: Dict[str, Callable[[Any, Any], Q]] = {
     "content_contains": _content_contains_q,
 }
 
-COMBINATORS = ("all", "any")
+COMBINATORS = ("all", "any", "not")
 
 
 # ---------------------------------------------------------------------------
@@ -346,6 +348,19 @@ def _compile_node(spec: Any, user) -> Q:
     key, value = next(iter(spec.items()))
 
     if key in COMBINATORS:
+        if key == "not":
+            # ``not`` takes a single child node, not a list. Lifting the
+            # value into [value] would let users write ``{"not": []}``
+            # which has no useful semantics (negation of "vacuous true"
+            # matches nothing) and obscures typos like ``{"not": [a, b]}``
+            # where they probably meant ``{"not": {"any": [a, b]}}``.
+            if not isinstance(value, dict) or not value:
+                raise QueryEngineError(
+                    "'not' combinator requires a single non-empty filter "
+                    "node as its value"
+                )
+            return ~_compile_node(value, user)
+
         if not isinstance(value, list) or not value:
             raise QueryEngineError(
                 f"{key!r} combinator requires a non-empty list of children"

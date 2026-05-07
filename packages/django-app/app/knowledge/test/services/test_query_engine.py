@@ -397,6 +397,66 @@ class CombinatorTests(_EngineTestBase):
         self.assertEqual([b.id for b in out], [match.id])
 
 
+class NotCombinatorTests(_EngineTestBase):
+    """Negation — ``{"not": <node>}`` wraps any subspec with ~Q.
+
+    The headline use case is "Glitch's favorites without Jesse": a
+    block tagged with #glitch and #favorite-things, but not #jesse.
+    Without ``not``, callers can't express AND-with-exclusions in the
+    saved-view JSON.
+    """
+
+    def test_not_excludes_tagged(self):
+        glitch = PageFactory(user=self.user, slug="glitch", title="Glitch")
+        favs = PageFactory(user=self.user, slug="favorite-things", title="Favs")
+        jesse = PageFactory(user=self.user, slug="jesse", title="Jesse")
+
+        glitch_only = BlockFactory(user=self.user, page=self.page)
+        glitch_only.pages.add(glitch)
+        glitch_only.pages.add(favs)
+
+        glitch_and_jesse = BlockFactory(user=self.user, page=self.page)
+        glitch_and_jesse.pages.add(glitch)
+        glitch_and_jesse.pages.add(favs)
+        glitch_and_jesse.pages.add(jesse)
+
+        out = self.run_query(
+            {
+                "all": [
+                    {"has_tag": "glitch"},
+                    {"has_tag": "favorite-things"},
+                    {"not": {"has_tag": "jesse"}},
+                ]
+            }
+        )
+        self.assertEqual([b.id for b in out], [glitch_only.id])
+
+    def test_not_negates_block_type(self):
+        a = BlockFactory(user=self.user, page=self.page, block_type="todo")
+        BlockFactory(user=self.user, page=self.page, block_type="bullet")
+        out = self.run_query({"not": {"block_type": "bullet"}})
+        # Among blocks the user owns, the only non-bullet block is `a`.
+        self.assertEqual({b.id for b in out}, {a.id})
+
+    def test_double_negation_is_noop(self):
+        """``not(not(X))`` should match the same set as ``X``."""
+        glitch = PageFactory(user=self.user, slug="glitch", title="Glitch")
+        match = BlockFactory(user=self.user, page=self.page)
+        match.pages.add(glitch)
+        BlockFactory(user=self.user, page=self.page)  # untagged
+        out_double = self.run_query({"not": {"not": {"has_tag": "glitch"}}})
+        out_plain = self.run_query({"has_tag": "glitch"})
+        self.assertEqual([b.id for b in out_double], [b.id for b in out_plain])
+
+    def test_not_requires_dict_value(self):
+        with self.assertRaises(query_engine.QueryEngineError):
+            query_engine.compile({"not": []}, user=self.user)
+        with self.assertRaises(query_engine.QueryEngineError):
+            query_engine.compile({"not": {}}, user=self.user)
+        with self.assertRaises(query_engine.QueryEngineError):
+            query_engine.compile({"not": "glitch"}, user=self.user)
+
+
 class SortTests(_EngineTestBase):
     def test_sort_asc_by_scheduled_for(self):
         a = BlockFactory(
