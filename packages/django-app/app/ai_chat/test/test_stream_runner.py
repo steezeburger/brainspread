@@ -17,7 +17,7 @@ from ai_chat.services.stream_runner import (
 )
 from core.test.helpers import UserFactory
 
-from .helpers import ChatSessionFactory
+from ai_chat.test.helpers import ChatSessionFactory
 
 
 class FakeAIService:

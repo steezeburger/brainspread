@@ -4,7 +4,7 @@ from ai_chat.commands import ListChatSessionsCommand
 from ai_chat.forms import ListChatSessionsForm
 from core.test.helpers import UserFactory
 
-from .helpers import ChatMessageFactory, ChatSessionFactory
+from ai_chat.test.helpers import ChatMessageFactory, ChatSessionFactory
 
 
 class TestListChatSessionsCommand(TestCase):

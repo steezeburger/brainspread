@@ -377,14 +377,19 @@ body {
 }
 
 .btn-danger {
-  background-color: transparent;
-  color: var(--error-color, #c44);
+  /* Filled rather than ghost so the destructive action stays
+     readable across every theme. The transparent variant put red
+     text on top of whatever the modal background was — fine on
+     dark themes, awful on the staging hot-pink bg. */
+  background-color: var(--error-color, #c44);
+  color: var(--btn-danger-text, #fff);
   border: 1px solid var(--error-color, #c44);
 }
 
 .btn-danger:hover:not(:disabled) {
-  background-color: var(--error-color, #c44);
-  color: var(--bg-primary);
+  background-color: var(--error-hover, #c44);
+  border-color: var(--error-hover, #c44);
+  color: var(--btn-danger-text, #fff);
 }
 
 .btn-link {
