@@ -48,6 +48,18 @@
       .replace(/>/g, "&gt;");
   }
 
+  // Mermaid's render() appends temp scaffolding directly to <body> while
+  // it measures the SVG (a `<div id="d{id}">`, sometimes an
+  // `<iframe id="i{id}">`). On parse failure those nodes can be left
+  // behind and the unstyled error SVG / sad-face icon ends up showing
+  // beneath the page content. We sweep them after each render.
+  function cleanupOrphans(id) {
+    for (const orphanId of [`d${id}`, `i${id}`, id]) {
+      const node = document.getElementById(orphanId);
+      if (node && node.parentNode === document.body) node.remove();
+    }
+  }
+
   async function renderOne(el) {
     const source = el.dataset.mermaidSource || "";
     if (!source.trim()) {
@@ -65,6 +77,8 @@
         msg
       )}</div>`;
       el.dataset.mermaidRendered = "error";
+    } finally {
+      cleanupOrphans(id);
     }
   }
 

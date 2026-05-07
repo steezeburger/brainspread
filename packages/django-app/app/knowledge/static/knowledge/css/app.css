@@ -6998,26 +6998,27 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   gap: 0.5rem;
 }
 
-/* #slug mentions in chat messages — clickable chips that navigate to
-   the page. Mirrors the inline-tag styling used in block content so
-   tags look the same wherever the user sees them. font-weight bumped
-   so the chip stays readable on themes where --tag-bg / --tag-text
-   contrast is low (staging theme, mostly). */
+/* #slug mentions in chat messages — styled to match .inline-tag in
+   block content so hashtags look the same wherever the user sees
+   them. Selector includes `a.hashtag-mention` so it beats the
+   `.message-content a { color: var(--accent-color) }` rule above,
+   which would otherwise paint the chip text in the accent color
+   (often the same hue as --tag-bg, making it invisible). */
+a.hashtag-mention,
 .hashtag-mention {
-  display: inline-block;
-  padding: 0.05rem 0.3rem;
-  background: var(--tag-bg);
+  background-color: var(--tag-bg);
   color: var(--tag-text);
+  padding: 0.1rem 0.3rem;
+  font-weight: normal;
   border: 1px solid var(--tag-bg);
-  border-radius: 3px;
   text-decoration: none;
-  font-size: 0.92em;
-  font-weight: 600;
 }
 
+a.hashtag-mention:hover,
 .hashtag-mention:hover {
-  filter: brightness(1.1);
-  text-decoration: none;
+  background-color: var(--tag-hover);
+  color: var(--tag-text);
+  text-decoration: underline;
 }
 
 /* Hashtag autocomplete popover anchored to the chat textarea. Reuses
