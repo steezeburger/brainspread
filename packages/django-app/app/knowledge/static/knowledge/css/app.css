@@ -7000,7 +7000,11 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 
 /* #slug mentions in chat messages — styled to match .inline-tag in
    block content so hashtags look the same wherever the user sees
-   them. */
+   them. Selector includes `a.hashtag-mention` so it beats the
+   `.message-content a { color: var(--accent-color) }` rule above,
+   which would otherwise paint the chip text in the accent color
+   (often the same hue as --tag-bg, making it invisible). */
+a.hashtag-mention,
 .hashtag-mention {
   background-color: var(--tag-bg);
   color: var(--tag-text);
@@ -7010,8 +7014,10 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   text-decoration: none;
 }
 
+a.hashtag-mention:hover,
 .hashtag-mention:hover {
   background-color: var(--tag-hover);
+  color: var(--tag-text);
   text-decoration: underline;
 }
 
