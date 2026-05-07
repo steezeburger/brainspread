@@ -6999,16 +6999,16 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 }
 
 /* #slug mentions in chat messages — clickable chips that navigate to
-   the page. Mirrors the inline-tag styling used in block content so
-   tags look the same wherever the user sees them. font-weight bumped
-   so the chip stays readable on themes where --tag-bg / --tag-text
-   contrast is low (staging theme, mostly). */
+   the page. Uses the same highlight tokens as ==text== in block
+   content (yellow on dark) so chips stay legible against the chat
+   bubble backgrounds (--accent-bg / --hover-bg) on every theme,
+   where --tag-bg can clash. */
 .hashtag-mention {
   display: inline-block;
   padding: 0.05rem 0.3rem;
-  background: var(--tag-bg);
-  color: var(--tag-text);
-  border: 1px solid var(--tag-bg);
+  background: var(--highlight-bg, #ffe066);
+  color: var(--highlight-text, #333);
+  border: 1px solid var(--highlight-bg, #ffe066);
   border-radius: 3px;
   text-decoration: none;
   font-size: 0.92em;
