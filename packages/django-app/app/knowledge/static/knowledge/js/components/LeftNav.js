@@ -739,7 +739,7 @@ window.LeftNav = {
           @auxclick="onViewsClick"
           title="Saved views"
           aria-label="Saved views"
-        >▤</a>
+        >≡</a>
         <div class="leftnav-rail-spacer leftnav-rail-action"></div>
         <button
           type="button"
@@ -848,7 +848,7 @@ window.LeftNav = {
               @auxclick="onViewsClick"
               title="Saved views (queries)"
             >
-              <span class="leftnav-icon" aria-hidden="true">▤</span>
+              <span class="leftnav-icon" aria-hidden="true">≡</span>
               <span class="leftnav-label">saved views</span>
             </a>
           </nav>

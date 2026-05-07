@@ -82,7 +82,7 @@ window.QueryEmbedBlock = {
   template: `
     <div class="block-query-embed" :data-block-uuid="block.uuid">
       <div class="block-query-embed-header">
-        <a class="block-query-embed-title" :href="viewLink">▤ {{ title }}</a>
+        <a class="block-query-embed-title" :href="viewLink">≡ {{ title }}</a>
         <span v-if="result" class="block-query-embed-meta">
           {{ result.count }}<span v-if="result.truncated">+ truncated</span>
         </span>
