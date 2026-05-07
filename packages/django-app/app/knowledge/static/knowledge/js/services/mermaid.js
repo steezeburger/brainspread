@@ -48,16 +48,42 @@
       .replace(/>/g, "&gt;");
   }
 
-  // Mermaid's render() appends temp scaffolding directly to <body> while
-  // it measures the SVG (a `<div id="d{id}">`, sometimes an
-  // `<iframe id="i{id}">`). On parse failure those nodes can be left
-  // behind and the unstyled error SVG / sad-face icon ends up showing
-  // beneath the page content. We sweep them after each render.
+  // Mermaid's render() defaults to `select('body')` when no
+  // svgContainingElement is passed, then appends a measurement div
+  // (`<div id="d{id}"><svg id="{id}">...</svg></div>`). On the success
+  // path mermaid removes that div via removeTempElements(); on a render
+  // error the cleanup is skipped and the error SVG (the "Syntax error
+  // in graph" sad-face) is left visible at the bottom of the page.
+  //
+  // We give mermaid an offscreen host to measure into so any leak
+  // can't surface under the page, and still id-sweep as a belt-and-
+  // braces safety net.
+  let renderHost = null;
+  function getRenderHost() {
+    if (renderHost && renderHost.isConnected) return renderHost;
+    renderHost = document.createElement("div");
+    renderHost.id = "brainspread-mermaid-render-host";
+    renderHost.setAttribute("aria-hidden", "true");
+    renderHost.style.cssText =
+      "position:absolute;left:-99999px;top:-99999px;width:1px;height:1px;overflow:hidden;visibility:hidden;pointer-events:none";
+    document.body.appendChild(renderHost);
+    return renderHost;
+  }
+
   function cleanupOrphans(id) {
+    // Direct id matches mermaid uses (`d{id}` for the wrapper div,
+    // `i{id}` for the sandboxed iframe, `{id}` for the SVG itself).
     for (const orphanId of [`d${id}`, `i${id}`, id]) {
       const node = document.getElementById(orphanId);
-      if (node && node.parentNode === document.body) node.remove();
+      if (node) node.remove();
     }
+    // Belt-and-braces: drop anything mermaid stranded directly under
+    // <body>. We never put mermaid output there ourselves.
+    document
+      .querySelectorAll(
+        'body > div[id^="dmermaid-"], body > svg[id^="mermaid-"], body > iframe[id^="imermaid-"]'
+      )
+      .forEach((node) => node.remove());
   }
 
   async function renderOne(el) {
@@ -68,7 +94,7 @@
     }
     const id = `mermaid-${Math.random().toString(36).slice(2, 11)}`;
     try {
-      const { svg } = await window.mermaid.render(id, source);
+      const { svg } = await window.mermaid.render(id, source, getRenderHost());
       el.innerHTML = svg;
       el.dataset.mermaidRendered = "true";
     } catch (err) {
