@@ -1,5 +1,6 @@
 from .block import Block, BlockData
 from .page import Page, PageData, PagesData, PageWithBlocksData
+from .page_embedded_view import PageEmbeddedView, PageEmbeddedViewData
 from .reminder import Reminder, ReminderData
 from .reminder_action import ReminderAction
 from .saved_view import (

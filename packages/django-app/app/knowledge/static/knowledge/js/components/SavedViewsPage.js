@@ -353,12 +353,11 @@ const SavedViewsPage = {
     },
 
     async embedOnToday() {
-      // Add this view as a query-block on today's daily page. Idempotent
-      // by (page, saved_view) — a second click navigates to the existing
-      // embed instead of creating a duplicate. Almost every double-click
-      // here is a misclick, and stacking identical embeds clutters the
-      // page; users can always Embed-on-today from a different page if
-      // they want two copies.
+      // Pin this saved view to today's daily page as a PageEmbeddedView.
+      // The backend command is idempotent on (page, saved_view) — a
+      // second click returns the existing embed rather than creating a
+      // duplicate. We surface that with a "Already embedded" toast so
+      // the user knows their click landed somewhere.
       if (!this.activeView) return;
       try {
         const pageResult = await window.apiService.getPageWithBlocks();
@@ -375,33 +374,27 @@ const SavedViewsPage = {
           return;
         }
 
-        // Walk today's existing direct blocks for an embed already bound
-        // to this saved view; if found, jump to it rather than create.
-        const existingBlocks = (pageResult.data.direct_blocks || []).filter(
-          (b) =>
-            b.block_type === "query" &&
-            b.query_view_uuid === this.activeView.uuid
+        // Frontend short-circuit: if today already has an embed for
+        // this view in the response we just fetched, skip the POST.
+        const existing = (pageResult.data.embedded_views || []).find(
+          (e) => e.saved_view && e.saved_view.uuid === this.activeView.uuid
         );
-        if (existingBlocks.length) {
+        if (existing) {
           this._toast("Already embedded on today — jumping to it.", "info");
-          window.location.href = `/knowledge/page/${page.slug}/#block-${existingBlocks[0].uuid}`;
+          window.location.href = `/knowledge/page/${page.slug}/`;
           return;
         }
 
-        const blockResult = await window.apiService.createBlock({
-          page: page.uuid,
-          block_type: "query",
-          query_view: this.activeView.uuid,
-          content: "",
-          order: 9999, // append at the end; the API trusts this and slots in
-        });
-        if (blockResult && blockResult.success) {
-          window.location.href = `/knowledge/page/${page.slug}/#block-${blockResult.data.uuid}`;
+        const r = await window.apiService.createPageEmbeddedView(
+          page.uuid,
+          this.activeView.uuid
+        );
+        if (r && r.success) {
+          window.location.href = `/knowledge/page/${page.slug}/`;
           return;
         }
         this._toast(
-          this._formatErrors(blockResult && blockResult.errors) ||
-            "Embed failed",
+          this._formatErrors(r && r.errors) || "Embed failed",
           "error"
         );
       } catch (err) {

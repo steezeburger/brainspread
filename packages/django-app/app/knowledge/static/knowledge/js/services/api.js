@@ -824,6 +824,42 @@ class ApiService {
       body: JSON.stringify(payload),
     });
   }
+
+  // ---- Page embedded views (issue #60 follow-up) ---------------------
+
+  async createPageEmbeddedView(pageUuid, savedViewUuid) {
+    return await this.request("/knowledge/api/embeds/", {
+      method: "POST",
+      body: JSON.stringify({
+        page_uuid: pageUuid,
+        saved_view_uuid: savedViewUuid,
+      }),
+    });
+  }
+
+  async deletePageEmbeddedView(embedUuid) {
+    return await this.request("/knowledge/api/embeds/delete/", {
+      method: "DELETE",
+      body: JSON.stringify({ embed_uuid: embedUuid }),
+    });
+  }
+
+  async updatePageEmbeddedView(embedUuid, fields) {
+    return await this.request("/knowledge/api/embeds/update/", {
+      method: "PUT",
+      body: JSON.stringify({ embed_uuid: embedUuid, ...fields }),
+    });
+  }
+
+  async reorderPageEmbeddedViews(pageUuid, orderedUuids) {
+    return await this.request("/knowledge/api/embeds/reorder/", {
+      method: "POST",
+      body: JSON.stringify({
+        page_uuid: pageUuid,
+        ordered_uuids: orderedUuids,
+      }),
+    });
+  }
 }
 
 // Export for use in other files

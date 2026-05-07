@@ -10,9 +10,11 @@ from .consume_reminder_action_command import ConsumeReminderActionCommand
 from .create_block_command import CreateBlockCommand
 from .create_blocks_bulk_command import CreateBlocksBulkCommand
 from .create_page_command import CreatePageCommand
+from .create_page_embedded_view_command import CreatePageEmbeddedViewCommand
 from .create_saved_view_command import CreateSavedViewCommand
 from .delete_block_command import DeleteBlockCommand
 from .delete_page_command import DeletePageCommand
+from .delete_page_embedded_view_command import DeletePageEmbeddedViewCommand
 from .delete_saved_view_command import DeleteSavedViewCommand
 from .duplicate_saved_view_command import DuplicateSavedViewCommand
 from .find_stale_todos_command import FindStaleTodosCommand
@@ -40,6 +42,7 @@ from .move_block_to_daily_command import MoveBlockToDailyCommand
 from .move_undone_todos_command import MoveUndoneTodosCommand
 from .reorder_blocks_command import ReorderBlocksCommand
 from .reorder_favorited_pages_command import ReorderFavoritedPagesCommand
+from .reorder_page_embedded_views_command import ReorderPageEmbeddedViewsCommand
 from .run_saved_view_command import RunSavedViewCommand
 from .schedule_block_command import ScheduleBlockCommand
 from .search_notes_command import SearchNotesCommand
@@ -55,4 +58,5 @@ from .toggle_block_todo_command import ToggleBlockTodoCommand
 from .touch_page_command import TouchPageCommand
 from .update_block_command import UpdateBlockCommand
 from .update_page_command import UpdatePageCommand
+from .update_page_embedded_view_command import UpdatePageEmbeddedViewCommand
 from .update_saved_view_command import UpdateSavedViewCommand

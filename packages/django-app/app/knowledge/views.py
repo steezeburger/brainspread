@@ -16,9 +16,11 @@ from knowledge.commands import (
     ConsumeReminderActionCommand,
     CreateBlockCommand,
     CreatePageCommand,
+    CreatePageEmbeddedViewCommand,
     CreateSavedViewCommand,
     DeleteBlockCommand,
     DeletePageCommand,
+    DeletePageEmbeddedViewCommand,
     DeleteSavedViewCommand,
     DuplicateSavedViewCommand,
     GetFavoritedPagesCommand,
@@ -33,6 +35,7 @@ from knowledge.commands import (
     MoveUndoneTodosCommand,
     ReorderBlocksCommand,
     ReorderFavoritedPagesCommand,
+    ReorderPageEmbeddedViewsCommand,
     RunSavedViewCommand,
     ScheduleBlockCommand,
     SearchNotesCommand,
@@ -42,6 +45,7 @@ from knowledge.commands import (
     ToggleBlockTodoCommand,
     UpdateBlockCommand,
     UpdatePageCommand,
+    UpdatePageEmbeddedViewCommand,
     UpdateSavedViewCommand,
 )
 from knowledge.commands.bulk_delete_blocks_command import BulkDeleteBlocksData
@@ -56,9 +60,11 @@ from knowledge.forms import (
     BulkMoveBlocksForm,
     ConsumeReminderActionForm,
     CreateBlockForm,
+    CreatePageEmbeddedViewForm,
     CreatePageForm,
     CreateSavedViewForm,
     DeleteBlockForm,
+    DeletePageEmbeddedViewForm,
     DeletePageForm,
     DeleteSavedViewForm,
     DuplicateSavedViewForm,
@@ -74,6 +80,7 @@ from knowledge.forms import (
     MoveUndoneTodosForm,
     ReorderBlocksForm,
     ReorderFavoritedPagesForm,
+    ReorderPageEmbeddedViewsForm,
     RunSavedViewForm,
     ScheduleBlockForm,
     SearchNotesForm,
@@ -82,6 +89,7 @@ from knowledge.forms import (
     SharePageForm,
     ToggleBlockTodoForm,
     UpdateBlockForm,
+    UpdatePageEmbeddedViewForm,
     UpdatePageForm,
     UpdateSavedViewForm,
 )
@@ -790,7 +798,13 @@ def get_page_with_blocks(request):
 
         if form.is_valid():
             command = GetPageWithBlocksCommand(form)
-            page, direct_blocks, referenced_blocks, overdue_blocks = command.execute()
+            (
+                page,
+                direct_blocks,
+                referenced_blocks,
+                overdue_blocks,
+                embedded_views,
+            ) = command.execute()
 
             page_with_blocks_data = PageWithBlocksData(
                 page=page.to_dict(),
@@ -804,6 +818,7 @@ def get_page_with_blocks(request):
                 overdue_blocks=[
                     block.to_dict(include_page_context=True) for block in overdue_blocks
                 ],
+                embedded_views=[embed.to_dict() for embed in embedded_views],
             )
 
             response: GetPageWithBlocksResponse = {
@@ -1631,3 +1646,84 @@ def duplicate_saved_view(request):
     return _saved_view_response(
         True, data=view.to_dict(), http_status=status.HTTP_201_CREATED
     )
+
+
+# ---------------------------------------------------------------------------
+# Page embedded views (issue #60 follow-up) — embeds are no longer
+# Block(block_type='query'); they live in their own table and have a
+# minimal CRUD surface for create / delete / update (collapsed, order)
+# / reorder. See knowledge.models.PageEmbeddedView.
+# ---------------------------------------------------------------------------
+
+
+def _embed_response(success, data=None, errors=None, http_status=None):
+    response = {"success": success, "data": data, "errors": errors}
+    if http_status is None:
+        http_status = status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST
+    return Response(response, status=http_status)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def create_page_embedded_view(request):
+    """Embed a SavedView on a Page (idempotent on (page, saved_view))."""
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = CreatePageEmbeddedViewForm(data)
+    if not form.is_valid():
+        return _embed_response(False, errors=form.errors)
+    try:
+        embed = CreatePageEmbeddedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _embed_response(False, errors={"non_field_errors": [str(exc)]})
+    return _embed_response(
+        True, data=embed.to_dict(), http_status=status.HTTP_201_CREATED
+    )
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_page_embedded_view(request):
+    # Same DELETE-with-body pattern as delete_block / delete_saved_view.
+    data = request.data.copy() if request.data else request.query_params.copy()
+    data["user"] = request.user.id
+    form = DeletePageEmbeddedViewForm(data)
+    if not form.is_valid():
+        return _embed_response(False, errors=form.errors)
+    try:
+        DeletePageEmbeddedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _embed_response(False, errors={"non_field_errors": [str(exc)]})
+    return _embed_response(True, data={"deleted": True})
+
+
+@api_view(["PUT"])
+@permission_classes([IsAuthenticated])
+def update_page_embedded_view(request):
+    """Toggle collapsed flag and/or set a single embed's order."""
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = UpdatePageEmbeddedViewForm(data)
+    if not form.is_valid():
+        return _embed_response(False, errors=form.errors)
+    try:
+        embed = UpdatePageEmbeddedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _embed_response(False, errors={"non_field_errors": [str(exc)]})
+    return _embed_response(True, data=embed.to_dict())
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def reorder_page_embedded_views(request):
+    """Bulk-reorder all embeds on a page from a single ordered uuid list."""
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = ReorderPageEmbeddedViewsForm(data)
+    if not form.is_valid():
+        return _embed_response(False, errors=form.errors)
+    try:
+        embeds = ReorderPageEmbeddedViewsCommand(form).execute()
+    except ValidationError as exc:
+        return _embed_response(False, errors={"non_field_errors": [str(exc)]})
+    return _embed_response(True, data={"embeds": [e.to_dict() for e in embeds]})

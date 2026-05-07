@@ -9,9 +9,11 @@ from .cancel_reminder_form import CancelReminderForm
 from .consume_reminder_action_form import ConsumeReminderActionForm
 from .create_block_form import CreateBlockForm
 from .create_blocks_bulk_form import CreateBlocksBulkForm
+from .create_page_embedded_view_form import CreatePageEmbeddedViewForm
 from .create_page_form import CreatePageForm
 from .create_saved_view_form import CreateSavedViewForm
 from .delete_block_form import DeleteBlockForm
+from .delete_page_embedded_view_form import DeletePageEmbeddedViewForm
 from .delete_page_form import DeletePageForm
 from .delete_saved_view_form import DeleteSavedViewForm
 from .duplicate_saved_view_form import DuplicateSavedViewForm
@@ -40,6 +42,7 @@ from .move_block_to_daily_form import MoveBlockToDailyForm
 from .move_undone_todos_form import MoveUndoneTodosForm
 from .reorder_blocks_form import ReorderBlocksForm
 from .reorder_favorited_pages_form import ReorderFavoritedPagesForm
+from .reorder_page_embedded_views_form import ReorderPageEmbeddedViewsForm
 from .run_saved_view_form import RunSavedViewForm
 from .schedule_block_form import ScheduleBlockForm
 from .search_notes_form import SearchNotesForm
@@ -54,5 +57,6 @@ from .tag_blocks_form import TagBlocksForm, UntagBlocksForm
 from .toggle_block_todo_form import ToggleBlockTodoForm
 from .touch_page_form import TouchPageForm
 from .update_block_form import UpdateBlockForm
+from .update_page_embedded_view_form import UpdatePageEmbeddedViewForm
 from .update_page_form import UpdatePageForm
 from .update_saved_view_form import UpdateSavedViewForm

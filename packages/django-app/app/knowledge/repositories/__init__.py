@@ -1,4 +1,5 @@
 from .block_repository import BlockRepository
+from .page_embedded_view_repository import PageEmbeddedViewRepository
 from .page_repository import PageRepository
 from .reminder_repository import ReminderRepository
 from .saved_view_repository import SavedViewRepository

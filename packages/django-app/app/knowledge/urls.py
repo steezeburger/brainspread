@@ -90,6 +90,16 @@ urlpatterns = [
         views.duplicate_saved_view,
         name="duplicate_saved_view",
     ),
+    # Page embedded views (issue #60 follow-up) — embeds live in their
+    # own table and have their own CRUD endpoints.
+    path("api/embeds/", views.create_page_embedded_view, name="create_embed"),
+    path("api/embeds/delete/", views.delete_page_embedded_view, name="delete_embed"),
+    path("api/embeds/update/", views.update_page_embedded_view, name="update_embed"),
+    path(
+        "api/embeds/reorder/",
+        views.reorder_page_embedded_views,
+        name="reorder_embeds",
+    ),
     # Standalone view page (the SPA shell catches the path; Vue routes to
     # the SavedViewPage component based on the slug).
     path("views/", views.index, name="views_index"),

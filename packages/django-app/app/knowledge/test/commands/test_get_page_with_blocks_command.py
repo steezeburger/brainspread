@@ -51,7 +51,7 @@ class TestGetPageWithBlocksOverdue(TestCase):
             scheduled_for=yesterday,
         )
 
-        _, direct_blocks, _, overdue_blocks = self._run(date=today)
+        _, direct_blocks, _, overdue_blocks, _ = self._run(date=today)
 
         self.assertEqual(len(overdue_blocks), 1)
         self.assertEqual(str(overdue_blocks[0].uuid), str(overdue.uuid))
@@ -81,7 +81,7 @@ class TestGetPageWithBlocksOverdue(TestCase):
             scheduled_for=yesterday,
         )
 
-        _, _, _, overdue_blocks = self._run(date=two_days_ago)
+        _, _, _, overdue_blocks, _ = self._run(date=two_days_ago)
         self.assertEqual(overdue_blocks, [])
 
     @patch("core.models.user.timezone")
@@ -110,7 +110,7 @@ class TestGetPageWithBlocksOverdue(TestCase):
             scheduled_for=yesterday,
         )
 
-        _, _, _, overdue_blocks = self._run(slug=regular_page.slug)
+        _, _, _, overdue_blocks, _ = self._run(slug=regular_page.slug)
         self.assertEqual(overdue_blocks, [])
 
     @patch("core.models.user.timezone")
@@ -160,7 +160,7 @@ class TestGetPageWithBlocksOverdue(TestCase):
             scheduled_for=yesterday,
         )
 
-        _, _, _, overdue_blocks = self._run(date=today)
+        _, _, _, overdue_blocks, _ = self._run(date=today)
         self.assertEqual([str(b.uuid) for b in overdue_blocks], [str(included.uuid)])
 
     @patch("core.models.user.timezone")
@@ -185,5 +185,5 @@ class TestGetPageWithBlocksOverdue(TestCase):
             scheduled_for=yesterday,
         )
 
-        _, _, _, overdue_blocks = self._run(date=today)
+        _, _, _, overdue_blocks, _ = self._run(date=today)
         self.assertEqual(overdue_blocks, [])

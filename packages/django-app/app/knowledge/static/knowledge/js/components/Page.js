@@ -32,6 +32,7 @@ const Page = {
       directBlocks: [], // Blocks that belong directly to this page
       referencedBlocks: [], // Blocks from other pages that reference this page
       overdueBlocks: [], // Dated blocks past their due date (today's daily only)
+      embeddedViews: [], // SavedView widgets pinned to this page (PageEmbeddedView)
       schedulePopoverOpen: false,
       schedulePopoverBlock: null,
       schedulePopoverInitialDate: "",
@@ -378,6 +379,7 @@ const Page = {
           );
           this.referencedBlocks = result.data.referenced_blocks || [];
           this.overdueBlocks = result.data.overdue_blocks || [];
+          this.embeddedViews = result.data.embedded_views || [];
           this.$emit("page-loaded", this.page);
           // Flatten the block tree for consumers (e.g. ChatPanel's
           // ctx picker) that want a single list of every block on
@@ -580,6 +582,91 @@ const Page = {
       } catch (error) {
         console.error("failed to update block:", error);
         this.error = "failed to update block";
+      }
+    },
+
+    // ---- Embedded views (PageEmbeddedView) -------------------------
+    // Pinned above the bullet area; managed via /api/embeds/. Delete /
+    // collapse / move-up / move-down are passed down to QueryEmbedBlock
+    // via the matching prop names.
+
+    async deleteEmbed(embed) {
+      const confirmed = await window.appModals.confirm({
+        title: "remove embed?",
+        message:
+          "the saved view itself stays — only this page's reference to it is removed.",
+        confirmLabel: "remove",
+        destructive: true,
+      });
+      if (!confirmed) return;
+      try {
+        const r = await window.apiService.deletePageEmbeddedView(embed.uuid);
+        if (r && r.success) {
+          this.embeddedViews = this.embeddedViews.filter(
+            (e) => e.uuid !== embed.uuid
+          );
+        } else {
+          console.error("delete embed failed:", r && r.errors);
+        }
+      } catch (err) {
+        console.error("delete embed failed:", err);
+      }
+    },
+
+    async toggleEmbedCollapsed(embed) {
+      const next = !embed.collapsed;
+      // Optimistic: flip locally so the UI reacts immediately, then
+      // roll back if the API rejects.
+      const idx = this.embeddedViews.findIndex((e) => e.uuid === embed.uuid);
+      if (idx === -1) return;
+      this.embeddedViews[idx] = { ...embed, collapsed: next };
+      try {
+        const r = await window.apiService.updatePageEmbeddedView(embed.uuid, {
+          collapsed: next,
+        });
+        if (!r || !r.success) {
+          this.embeddedViews[idx] = embed; // rollback
+        }
+      } catch (err) {
+        console.error("toggle embed collapsed failed:", err);
+        this.embeddedViews[idx] = embed; // rollback
+      }
+    },
+
+    async moveEmbedUp(embed) {
+      const idx = this.embeddedViews.findIndex((e) => e.uuid === embed.uuid);
+      if (idx <= 0) return;
+      await this._swapEmbeds(idx, idx - 1);
+    },
+
+    async moveEmbedDown(embed) {
+      const idx = this.embeddedViews.findIndex((e) => e.uuid === embed.uuid);
+      if (idx === -1 || idx >= this.embeddedViews.length - 1) return;
+      await this._swapEmbeds(idx, idx + 1);
+    },
+
+    async _swapEmbeds(i, j) {
+      // Swap optimistically, then persist via bulk reorder. The bulk
+      // endpoint accepts a list of uuids in display order, which is
+      // simpler than two single-embed updates and avoids interleaving.
+      if (!this.page) return;
+      const next = this.embeddedViews.slice();
+      [next[i], next[j]] = [next[j], next[i]];
+      const previous = this.embeddedViews;
+      this.embeddedViews = next;
+      try {
+        const r = await window.apiService.reorderPageEmbeddedViews(
+          this.page.uuid,
+          next.map((e) => e.uuid)
+        );
+        if (!r || !r.success) {
+          this.embeddedViews = previous;
+        } else if (r.data && r.data.embeds) {
+          this.embeddedViews = r.data.embeds;
+        }
+      } catch (err) {
+        console.error("reorder embeds failed:", err);
+        this.embeddedViews = previous;
       }
     },
 
@@ -3329,6 +3416,19 @@ const Page = {
           </div>
         </div>
 
+        <!-- Embedded Views Section (pinned above bullets) -->
+        <div v-if="embeddedViews.length" class="embedded-views-section">
+          <QueryEmbedBlock
+            v-for="(embed, idx) in embeddedViews"
+            :key="embed.uuid"
+            :embed="embed"
+            :on-delete="deleteEmbed"
+            :on-toggle-collapsed="toggleEmbedCollapsed"
+            :on-move-up="idx > 0 ? moveEmbedUp : null"
+            :on-move-down="idx < embeddedViews.length - 1 ? moveEmbedDown : null"
+          />
+        </div>
+
         <!-- Direct Blocks Section -->
         <div class="direct-blocks-section">
           <div
@@ -3337,13 +3437,7 @@ const Page = {
             @drop="handleUrlDrop"
           >
             <template v-for="block in directBlocks" :key="block.uuid">
-              <QueryEmbedBlock
-                v-if="block.block_type === 'query'"
-                :block="block"
-                :on-delete="deleteBlock"
-              />
               <BlockComponent
-                v-else
                 :block="block"
                 :onBlockContentChange="onBlockContentChange"
                 :onBlockKeyDown="onBlockKeyDown"
