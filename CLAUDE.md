@@ -129,12 +129,13 @@ Navigate to `packages/django-app/` for most development tasks.
 
 ### Always load information from extra files in .ai/
 - .ai/DEBUGGING.md contains debugging tips and tricks
-- .ai/PROJECT_SETUP.md is the single setup guide. Three workflows are
-  documented there with a comparison table at the top: all-Docker
-  (default), hybrid (Docker for Postgres + host uv for Django), and
-  fully-local (Postgres on host too). Use the non-Docker workflows
-  when you can't run a Docker daemon (e.g. Claude Code on web) or
-  when you want native debugger / IDE access to the Django process.
+- .ai/PROJECT_SETUP.md is the single setup guide. The canonical
+  workflow is all-Docker (`just …` recipes against the dockerized
+  web + db). Two fallbacks are documented for environments that
+  can't run a full Docker stack — hybrid (Docker for Postgres +
+  host uv for Django) and fully-local (Postgres on host too). Reach
+  for them only when you can't use the canonical workflow, e.g. an
+  agent in an env without a Docker daemon.
 
 ### Pull requests
 - When a PR resolves a GitHub issue, the PR description MUST include a

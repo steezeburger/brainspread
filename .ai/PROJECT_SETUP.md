@@ -1,18 +1,27 @@
 # Project Setup
 
-The Brainspread Django app supports three setup workflows. Pick the one
-that matches your environment, then follow that section. The standard
-prerequisites (Just task runner) are only needed for workflow A.
+**The canonical setup is all-Docker (workflow A below).** That's what the
+`just …` recipes target, what CI runs, and what every contributor and
+reviewer is expected to use day-to-day. If you're a human setting this
+up locally, stop reading after workflow A.
+
+Workflows B and C exist as fallbacks for environments that can't run a
+full Docker stack — most often a coding agent (Claude Code on web) that
+has no Docker daemon, or the rare case where a contributor wants to
+attach a native debugger to the Django process without dockerizing the
+whole thing. Don't reach for them as a daily-dev preference; they
+sidestep `just`, drift from CI, and the maintenance burden lives on
+whoever picked them.
 
 | Workflow                       | Postgres   | Django / pytest | When to use                                                                          |
 | ------------------------------ | ---------- | --------------- | ------------------------------------------------------------------------------------ |
-| **A. All-Docker (default)**    | Docker     | Docker          | Daily dev, production parity, CI. The `just …` recipes assume this.                  |
-| **B. Hybrid (recommended)**    | Docker     | Host (uv)       | Faster Python iteration + native debugger without installing Postgres on the host.   |
-| **C. Fully local (no Docker)** | Host (apt) | Host (uv)       | Environments that can't run a Docker daemon (Claude Code on web, restricted CI).     |
+| **A. All-Docker (canonical)**  | Docker     | Docker          | Default for humans and CI. Use this unless you literally can't.                      |
+| **B. Hybrid fallback**         | Docker     | Host (uv)       | Coding agents that can't `docker compose run web` but can run `docker compose up db`, or one-off native-debugger sessions. |
+| **C. Fully-local fallback**    | Host (apt) | Host (uv)       | Environments with no Docker daemon at all (Claude Code on web, restricted CI).       |
 
 Workflows B and C share the same Django side; they differ only in where
 Postgres comes from. All three read configuration from the same `.env`
-file, so steps 1–3 below are common to everything.
+file, so the common bootstrap steps below apply to everything.
 
 ---
 
@@ -114,11 +123,11 @@ export POSTGRES_PORT=5433                    # 5432 if you went fully local
 
 ---
 
-## Workflow B — Docker for Postgres + uv for Django
+## Workflow B — Docker for Postgres + uv for Django (fallback)
 
-Recommended local-dev path: same Postgres 15.4 image CI uses, but the
-web process runs straight from your venv with native debugger /
-breakpoint support.
+Same Postgres 15.4 image CI uses, but the web process runs straight
+from your venv. Use this only when workflow A isn't available — most
+often for an agent or one-off IDE-debugger sessions.
 
 ```bash
 # Start *only* the db service from docker-compose.
@@ -141,10 +150,10 @@ uv run pytest --reuse-db
 
 ---
 
-## Workflow C — fully local (no Docker at all)
+## Workflow C — fully local, no Docker at all (fallback)
 
-Required when Docker isn't available. Postgres lives on the host; the
-Django side is identical to workflow B.
+Last-resort path for environments with no Docker daemon. Postgres
+lives on the host; the Django side is identical to workflow B.
 
 ### Install + start Postgres
 
