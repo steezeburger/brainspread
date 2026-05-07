@@ -434,6 +434,121 @@ NOTES_READ_TOOLS: List[Dict[str, Any]] = [
             },
         },
     },
+    {
+        "name": "list_saved_views",
+        "description": (
+            "List the user's SavedViews — bundled system views"
+            " (Overdue, Done this week) and any user-created ones."
+            " Useful before referring to a view by name. Returns each"
+            " view's uuid, name, slug, description, filter/sort JSON,"
+            " and is_system flag."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "get_saved_view",
+        "description": (
+            "Fetch a single SavedView by slug or uuid (one or the"
+            " other, not both). Returns the full record including the"
+            " stored filter/sort JSON — useful for showing the user"
+            " the current shape of a view before proposing an edit."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "slug": {
+                    "type": "string",
+                    "description": (
+                        "Slug of the view (e.g. 'overdue'). Use this OR uuid."
+                    ),
+                },
+                "uuid": {
+                    "type": "string",
+                    "description": "UUID of the view. Use this OR slug.",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "run_saved_view",
+        "description": (
+            "Execute a SavedView's filter and return the matched"
+            " blocks. Use this to dry-run a view (or a draft filter"
+            " before saving) and show the user the results. The"
+            " engine's filter language:\n"
+            "  • Predicates (object with one key):\n"
+            "    - block_type: 'todo' | {'in': [...]} | 'doing' /"
+            " 'done' / 'bullet' / 'heading' / 'quote' / 'code' /"
+            " 'divider' / 'later' / 'wontdo'\n"
+            "    - scheduled_for: <date-token> | {'lt' | 'lte' | 'gt'"
+            " | 'gte' | 'eq': <date-token>} | {'between': [<from>,"
+            " <to>]} | {'is_null': true|false}\n"
+            "    - completed_at: same shape as scheduled_for\n"
+            "    - has_tag: 'foo' (matches blocks tagged #foo OR"
+            " blocks living on a page named foo)\n"
+            "    - has_property: 'priority'\n"
+            "    - property_eq: {'key': 'priority', 'value': 'high'}\n"
+            "    - content_contains: 'milk'\n"
+            "  • Combinators:\n"
+            "    - {'all': [...]} — AND of children\n"
+            "    - {'any': [...]} — OR of children\n"
+            "    - {'not': <node>} — single negated child (e.g. 'glitch's"
+            " favorites without jesse')\n"
+            "  • Date tokens: 'today', 'tomorrow', 'yesterday',"
+            " 'N days ago', 'N days from now', or 'YYYY-MM-DD'\n"
+            "Pass either an existing view's slug/uuid, OR a draft"
+            " `filter` (and optional `sort`) to dry-run without"
+            " saving. limit defaults to 25, max 500."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "slug": {"type": "string"},
+                "uuid": {"type": "string"},
+                "filter": {
+                    "type": "object",
+                    "description": (
+                        "Inline filter to dry-run instead of looking"
+                        " up a saved view. Mutually exclusive with"
+                        " slug/uuid."
+                    ),
+                },
+                "sort": {
+                    "type": "array",
+                    "description": (
+                        "Optional sort spec, e.g."
+                        " [{'field': 'scheduled_for', 'dir': 'asc'}]."
+                    ),
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 500,
+                    "description": "Max results (default 25).",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "list_page_embedded_views",
+        "description": (
+            "List the SavedView embeds pinned to a page (the"
+            " saved-view widgets shown above the bullets section)."
+            " Pass page_uuid OR page_slug. Returns each embed's uuid,"
+            " order, collapsed flag, and the embedded view's"
+            " uuid/name/slug."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "page_uuid": {"type": "string"},
+                "page_slug": {"type": "string"},
+            },
+            "required": [],
+        },
+    },
 ]
 
 
@@ -1067,6 +1182,148 @@ NOTES_WRITE_TOOLS: List[Dict[str, Any]] = [
                 },
             },
             "required": ["block_uuids"],
+        },
+    },
+    # ---- SavedView + PageEmbeddedView write tools (issue #60) ----
+    {
+        "name": "create_saved_view",
+        "description": (
+            "Create a new SavedView. The filter spec follows the same"
+            " language as run_saved_view — predicates (block_type,"
+            " scheduled_for, completed_at, has_tag, has_property,"
+            " property_eq, content_contains), combinators (all, any,"
+            " not), date tokens (today, yesterday, 'N days ago',"
+            " 'N days from now', YYYY-MM-DD). Validate by calling"
+            " run_saved_view with the same filter first to make sure"
+            " the matched blocks look right. The slug is auto-derived"
+            " from name unless you pass one explicitly. Every call"
+            " pauses for explicit user approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Human-readable view name.",
+                },
+                "filter": {
+                    "type": "object",
+                    "description": (
+                        "Structured filter JSON. See run_saved_view"
+                        " for the full schema."
+                    ),
+                },
+                "slug": {
+                    "type": "string",
+                    "description": (
+                        "Optional URL-friendly identifier. Auto-"
+                        "derived from name if omitted."
+                    ),
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Optional one-liner shown alongside the view.",
+                },
+                "sort": {
+                    "type": "array",
+                    "description": (
+                        "Optional sort spec, e.g."
+                        " [{'field': 'scheduled_for', 'dir': 'asc'}]."
+                    ),
+                },
+            },
+            "required": ["name", "filter"],
+        },
+    },
+    {
+        "name": "update_saved_view",
+        "description": (
+            "Edit a user-created SavedView. Pass uuid plus the fields"
+            " you're changing. System views (Overdue, Done this week)"
+            " are read-only — propose duplicate_saved_view to clone"
+            " into an editable copy first. Every call pauses for"
+            " explicit user approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "uuid": {"type": "string"},
+                "name": {"type": "string"},
+                "filter": {"type": "object"},
+                "sort": {"type": "array"},
+                "description": {"type": "string"},
+                "slug": {"type": "string"},
+            },
+            "required": ["uuid"],
+        },
+    },
+    {
+        "name": "delete_saved_view",
+        "description": (
+            "Delete a user-created SavedView. System views can't be"
+            " deleted. Deleting a view also drops every page-embed"
+            " bound to it (CASCADE). Every call pauses for explicit"
+            " user approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"uuid": {"type": "string"}},
+            "required": ["uuid"],
+        },
+    },
+    {
+        "name": "duplicate_saved_view",
+        "description": (
+            "Clone a SavedView (system or user-owned) into a new"
+            " editable user view with an auto-suffixed slug. Use this"
+            " before update_saved_view when the user wants to tweak a"
+            " system view. Every call pauses for explicit user"
+            " approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "uuid": {"type": "string"},
+                "new_name": {
+                    "type": "string",
+                    "description": (
+                        "Optional name for the clone. Defaults to '<original>"
+                        " (copy)'."
+                    ),
+                },
+            },
+            "required": ["uuid"],
+        },
+    },
+    {
+        "name": "embed_view_on_page",
+        "description": (
+            "Pin a SavedView to a Page as a query embed (the widgets"
+            " above the bullets section). Idempotent on (page,"
+            " saved_view) — a second call returns the existing embed"
+            " rather than creating a duplicate. Every call pauses for"
+            " explicit user approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "page_uuid": {"type": "string"},
+                "saved_view_uuid": {"type": "string"},
+            },
+            "required": ["page_uuid", "saved_view_uuid"],
+        },
+    },
+    {
+        "name": "delete_page_embed",
+        "description": (
+            "Remove a SavedView embed from its page. Does not touch"
+            " the SavedView itself. Every call pauses for explicit"
+            " user approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"embed_uuid": {"type": "string"}},
+            "required": ["embed_uuid"],
         },
     },
 ]
