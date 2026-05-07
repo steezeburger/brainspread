@@ -51,7 +51,6 @@ class ChatSessionRepository(BaseRepository):
         qs = cls.get_queryset().filter(user=user)
         if search:
             qs = qs.filter(
-                Q(title__icontains=search)
-                | Q(messages__content__icontains=search)
+                Q(title__icontains=search) | Q(messages__content__icontains=search)
             ).distinct()
         return qs.order_by("-modified_at")

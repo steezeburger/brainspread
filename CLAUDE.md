@@ -5,9 +5,11 @@ You can remember 20 TODOs at a time in your memory.
 This is a Django + PostgreSQL project using Docker Compose and Just as the task runner.
 
 ### Working Directory
+
 Navigate to `packages/django-app/` for most development tasks.
 
 ### Django Commands
+
 - `just django-admin <command>` - Run Django management commands with safety checks
 - `just migrate` - Run database migrations
 - `just makemigrations` - Create new migrations
@@ -15,6 +17,7 @@ Navigate to `packages/django-app/` for most development tasks.
 - `just up-d` - Start services in detached mode
 
 ### Testing
+
 - `just test` - Run tests (excludes integration tests marked with `@pytest.mark.integration`)
 - Tests use pytest with `--reuse-db` and coverage reporting
 - Test files: `tests.py`, `test_*.py`, `*_test.py`, `*_tests.py`
@@ -23,6 +26,7 @@ Navigate to `packages/django-app/` for most development tasks.
 - Always run `just prepush` after your work and iterate until everything passes
 
 ### Docker Management
+
 - `just up-d` - Start services in background
 - `just down` - Stop services
 - `just build` - Build Docker images
@@ -31,12 +35,14 @@ Navigate to `packages/django-app/` for most development tasks.
 ## Architecture
 
 ### Project Structure
+
 - **Monorepo**: Single project with packages in `packages/`
 - **Django App**: Main application in `packages/django-app/app/`
 - **Custom User Model**: Uses `core.User` as AUTH_USER_MODEL
 - **Docker Compose**: PostgreSQL database + Django web service
 
 ### Code Organization
+
 - `app/` - Main Django project
 - `core/` - Core models (User), admin, fixtures
 - `common/` - Shared utilities and base classes
@@ -46,6 +52,7 @@ Navigate to `packages/django-app/` for most development tasks.
   - `forms/` - Form base classes and mixins
 
 ### Key Patterns
+
 - **Commands Pattern**: ALL business logic must be implemented in Commands, not in models, managers, or views
   - Commands encapsulate business operations and workflows
   - Models should only contain data validation and simple property methods
@@ -63,7 +70,7 @@ Navigate to `packages/django-app/` for most development tasks.
   method. That includes commands, views, services, and tools — none
   of them should call `Model.objects.<query>()` directly, and none
   should chain off a model's reverse manager (e.g. `session.messages
-  .filter(...)`) either; add a method to the relevant repository
+.filter(...)`) either; add a method to the relevant repository
   instead. Repositories live in `<app>/repositories/`, extend
   `common.repositories.BaseRepository`, and own all `select_related`
   / `prefetch_related` hints. The only legitimate `Model.objects`
@@ -78,11 +85,13 @@ Navigate to `packages/django-app/` for most development tasks.
 - Import Python modules at the top of the file, not inside methods
 
 ### Environment Configuration
+
 - Uses environment variables for sensitive data (SECRET_KEY, DEBUG, etc.)
 - Database safety checks prevent accidental production commands
 - Separate test settings in `app.test_settings`
 
 ### UI / styling conventions
+
 - **Never use emoji icons** in the app UI (templates, Vue components,
   toast messages, context menu items, etc.). Prefer text labels or
   monochrome geometric Unicode glyphs (e.g. `◷`, `⧗`, `▼`, `▶`, `↑`,
@@ -120,6 +129,7 @@ Navigate to `packages/django-app/` for most development tasks.
   `window.innerWidth <= 768` or a media query).
 
 ### Debugging
+
 - you can run `just tail-logs web 100` or `just tail-logs db 100`
   to get server logs or database logs to debug issues.
 - you can use browser mcp to debug issues also
@@ -128,6 +138,7 @@ Navigate to `packages/django-app/` for most development tasks.
   - for the admin app go to http://localhost:8001/admin/
 
 ### Always load information from extra files in .ai/
+
 - .ai/DEBUGGING.md contains debugging tips and tricks
 - .ai/PROJECT_SETUP.md is the single setup guide. The canonical
   workflow is all-Docker (`just …` recipes against the dockerized
@@ -138,6 +149,7 @@ Navigate to `packages/django-app/` for most development tasks.
   agent in an env without a Docker daemon.
 
 ### Pull requests
+
 - When a PR resolves a GitHub issue, the PR description MUST include a
   `Closes #<issue>` (or `Fixes #<issue>` / `Resolves #<issue>`) line so
   GitHub auto-links the PR to the issue and closes the issue on merge.

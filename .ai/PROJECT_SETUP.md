@@ -13,11 +13,11 @@ whole thing. Don't reach for them as a daily-dev preference; they
 sidestep `just`, drift from CI, and the maintenance burden lives on
 whoever picked them.
 
-| Workflow                       | Postgres   | Django / pytest | When to use                                                                          |
-| ------------------------------ | ---------- | --------------- | ------------------------------------------------------------------------------------ |
-| **A. All-Docker (canonical)**  | Docker     | Docker          | Default for humans and CI. Use this unless you literally can't.                      |
-| **B. Hybrid fallback**         | Docker     | Host (uv)       | Coding agents that can't `docker compose run web` but can run `docker compose up db`, or one-off native-debugger sessions. |
-| **C. Fully-local fallback**    | Host (apt) | Host (uv)       | Environments with no Docker daemon at all (Claude Code on web, restricted CI).       |
+| Workflow                      | Postgres   | Django / pytest | When to use                                                                                                                |
+| ----------------------------- | ---------- | --------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **A. All-Docker (canonical)** | Docker     | Docker          | Default for humans and CI. Use this unless you literally can't.                                                            |
+| **B. Hybrid fallback**        | Docker     | Host (uv)       | Coding agents that can't `docker compose run web` but can run `docker compose up db`, or one-off native-debugger sessions. |
+| **C. Fully-local fallback**   | Host (apt) | Host (uv)       | Environments with no Docker daemon at all (Claude Code on web, restricted CI).                                             |
 
 Workflows B and C share the same Django side; they differ only in where
 Postgres comes from. All three read configuration from the same `.env`
@@ -67,17 +67,17 @@ just up
 
 Key commands:
 
-| Command                    | What it does                                  |
-| -------------------------- | --------------------------------------------- |
-| `just up` / `just down`    | Start / stop all services                     |
-| `just up-d`                | Start in background                           |
-| `just migrate`             | Run database migrations                       |
-| `just makemigrations`      | Create new migrations                         |
-| `just test`                | Run pytest in the web container               |
-| `just shell`               | Django shell                                  |
-| `just reload-db`           | Reset the DB and reload `dev_data.json`       |
-| `just tail-logs web 100`   | Tail the web service logs                     |
-| `just prepush`             | Format + lint + Django check + tests          |
+| Command                  | What it does                            |
+| ------------------------ | --------------------------------------- |
+| `just up` / `just down`  | Start / stop all services               |
+| `just up-d`              | Start in background                     |
+| `just migrate`           | Run database migrations                 |
+| `just makemigrations`    | Create new migrations                   |
+| `just test`              | Run pytest in the web container         |
+| `just shell`             | Django shell                            |
+| `just reload-db`         | Reset the DB and reload `dev_data.json` |
+| `just tail-logs web 100` | Tail the web service logs               |
+| `just prepush`           | Format + lint + Django check + tests    |
 
 Access:
 
