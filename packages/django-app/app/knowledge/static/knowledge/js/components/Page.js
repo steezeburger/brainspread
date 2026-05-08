@@ -1427,17 +1427,6 @@ const Page = {
         '<span class="markdown-highlight">$1</span>'
       );
 
-      // Restore code spans as inline code elements
-      codeSegments.forEach((code, idx) => {
-        const safeCode = code
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;");
-        formatted = formatted
-          .split(`\x00CODE${idx}\x00`)
-          .join(`<code class="markdown-code">${safeCode}</code>`);
-      });
-
       // Linkify bare URLs (https://, http://, www.) that aren't already
       // wrapped in a markdown link placeholder.
       formatted = formatted.replace(
@@ -1459,11 +1448,25 @@ const Page = {
         formatted = formatted.split(`\x00LINK${idx}\x00`).join(replacement);
       });
 
-      // Replace hashtags with clickable anchor elements so browsers support cmd+click, middle-click, right-click → open in new tab
+      // Replace hashtags with clickable anchor elements so browsers support
+      // cmd+click, middle-click, right-click → open in new tab. Code spans
+      // and fenced blocks are still placeholders here, so `#foo` inside
+      // `` `code` `` or ```` ```...``` ```` is intentionally not matched.
       formatted = formatted.replace(
         /#([a-zA-Z0-9_-]+)/g,
         '<a class="inline-tag clickable-tag" href="/knowledge/page/$1/" data-tag="$1">#$1</a>'
       );
+
+      // Restore inline code spans now that hashtag replacement is done.
+      codeSegments.forEach((code, idx) => {
+        const safeCode = code
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+        formatted = formatted
+          .split(`\x00CODE${idx}\x00`)
+          .join(`<code class="markdown-code">${safeCode}</code>`);
+      });
 
       // Restore escaped characters as literal text (done last so escaped `#`
       // doesn't get re-matched by the hashtag regex).

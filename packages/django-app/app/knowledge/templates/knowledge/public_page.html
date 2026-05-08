@@ -6,7 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow" />
     <title>{{ page.title }}</title>
-    <link rel="stylesheet" href="{% static 'knowledge/css/public_page.css' %}?v={{ STATIC_VERSION }}" />
+    <link
+      rel="stylesheet"
+      href="{% static 'knowledge/css/public_page.css' %}?v={{ STATIC_VERSION }}"
+    />
   </head>
   <body class="public-page-body">
     <div class="public-page">
@@ -20,36 +23,46 @@
       </header>
 
       {% if blocks %}
-        <ul class="public-block-list">
-          {% include 'knowledge/_public_block_list.html' with blocks=blocks %}
-        </ul>
+      <ul class="public-block-list">
+        {% include 'knowledge/_public_block_list.html' with blocks=blocks %}
+      </ul>
       {% elif not references %}
-        <p class="public-page-empty">This page has no content yet.</p>
-      {% endif %}
-
-      {% if references %}
-        <section class="public-references">
-          <h2 class="public-references-title">linked references</h2>
-          <ul class="public-block-list public-references-list">
-            {% for ref in references %}
-              <li class="public-block public-block-type-{{ ref.block_type }} public-reference">
-                <div class="public-reference-source">
-                  {% if ref.source_page_type == 'daily' and ref.source_page_date %}
-                    {{ ref.source_page_date }}
-                  {% else %}
-                    {{ ref.source_page_title }}
-                  {% endif %}
-                </div>
-                {% if ref.asset_is_image and ref.asset_url %}
-                  <img class="public-block-image" src="{{ ref.asset_url }}" alt="" loading="lazy" />
-                {% elif ref.content_type == 'image' and ref.media_url %}
-                  <img class="public-block-image" src="{{ ref.media_url }}" alt="" loading="lazy" />
-                {% endif %}
-                <div class="public-block-content" data-md="{{ ref.content }}">{{ ref.content }}</div>
-              </li>
-            {% endfor %}
-          </ul>
-        </section>
+      <p class="public-page-empty">This page has no content yet.</p>
+      {% endif %} {% if references %}
+      <section class="public-references">
+        <h2 class="public-references-title">linked references</h2>
+        <ul class="public-block-list public-references-list">
+          {% for ref in references %}
+          <li
+            class="public-block public-block-type-{{ ref.block_type }} public-reference"
+          >
+            <div class="public-reference-source">
+              {% if ref.source_page_type == 'daily' and ref.source_page_date %}
+              {{ ref.source_page_date }} {% else %} {{ ref.source_page_title }}
+              {% endif %}
+            </div>
+            {% if ref.asset_is_image and ref.asset_url %}
+            <img
+              class="public-block-image"
+              src="{{ ref.asset_url }}"
+              alt=""
+              loading="lazy"
+            />
+            {% elif ref.content_type == 'image' and ref.media_url %}
+            <img
+              class="public-block-image"
+              src="{{ ref.media_url }}"
+              alt=""
+              loading="lazy"
+            />
+            {% endif %}
+            <div class="public-block-content" data-md="{{ ref.content }}">
+              {{ ref.content }}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+      </section>
       {% endif %}
 
       <footer class="public-page-footer">
@@ -60,6 +73,78 @@
     <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js"></script>
     <script>
+      // marked GFM autolinks bare URLs, but if the bundle is stale or
+      // some content edge-case slips through we still want bare URLs to
+      // render as clickable links — the prod symptom was a bare
+      // https://… URL not surfacing on the share page at all. Walk the
+      // rendered DOM and linkify any URL that's still a plain text node
+      // (skipping <a>/<code>/<pre>) as belt-and-braces.
+      var BARE_URL_RE =
+        /\b((?:https?:\/\/|www\.)[^\s<>"'()]+[^\s<>"'(),.;:!?])/g;
+
+      function linkifyTextNodes(rootEl) {
+        var walker = document.createTreeWalker(rootEl, NodeFilter.SHOW_TEXT, {
+          acceptNode: function (node) {
+            var p = node.parentNode;
+            while (p && p !== rootEl) {
+              var tag = p.tagName;
+              if (tag === "A" || tag === "CODE" || tag === "PRE") {
+                return NodeFilter.FILTER_REJECT;
+              }
+              p = p.parentNode;
+            }
+            return NodeFilter.FILTER_ACCEPT;
+          },
+        });
+        var targets = [];
+        var n;
+        while ((n = walker.nextNode())) targets.push(n);
+        for (var i = 0; i < targets.length; i++) {
+          var textNode = targets[i];
+          var text = textNode.nodeValue;
+          if (!BARE_URL_RE.test(text)) continue;
+          BARE_URL_RE.lastIndex = 0;
+          var frag = document.createDocumentFragment();
+          var lastIndex = 0;
+          var m;
+          while ((m = BARE_URL_RE.exec(text)) !== null) {
+            if (m.index > lastIndex) {
+              frag.appendChild(
+                document.createTextNode(text.slice(lastIndex, m.index))
+              );
+            }
+            var url = m[0];
+            var href = /^www\./i.test(url) ? "https://" + url : url;
+            var a = document.createElement("a");
+            a.href = href;
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+            a.textContent = url;
+            frag.appendChild(a);
+            lastIndex = m.index + url.length;
+          }
+          if (lastIndex < text.length) {
+            frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+          }
+          textNode.parentNode.replaceChild(frag, textNode);
+        }
+      }
+
+      // Open every outbound link in a new tab so the share doesn't lose
+      // its place when the reader clicks through, and add rel=noopener
+      // so the destination can't tamper with the opener window.
+      function decorateLinks(rootEl) {
+        var anchors = rootEl.querySelectorAll("a[href]");
+        for (var i = 0; i < anchors.length; i++) {
+          var a = anchors[i];
+          var href = a.getAttribute("href") || "";
+          if (/^(https?:|www\.|mailto:)/i.test(href)) {
+            a.setAttribute("target", "_blank");
+            a.setAttribute("rel", "noopener noreferrer");
+          }
+        }
+      }
+
       // Render each block's raw markdown into the corresponding container.
       // Using data-md keeps the source text on the element so View Source
       // still shows the original content, and we sanitize before injecting.
@@ -72,7 +157,11 @@
         }
         try {
           var html = marked.parse(raw, { breaks: true, gfm: true });
-          el.innerHTML = DOMPurify.sanitize(html);
+          el.innerHTML = DOMPurify.sanitize(html, {
+            ADD_ATTR: ["target", "rel"],
+          });
+          linkifyTextNodes(el);
+          decorateLinks(el);
         } catch (e) {
           el.textContent = raw;
         }

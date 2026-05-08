@@ -91,6 +91,58 @@
     el.dataset.mermaidRendered = "load-failed";
   }
 
+  // Mermaid's render() defaults to `select('body')` when no
+  // svgContainingElement is passed, then appends a measurement div
+  // (`<div id="d{id}"><svg id="{id}">...</svg></div>`). On the success
+  // path mermaid removes that div via removeTempElements(); on a render
+  // error the cleanup is skipped and the error SVG (the "Syntax error
+  // in graph" sad-face) is left visible at the bottom of the page.
+  //
+  // We give mermaid an offscreen host to measure into so any leak
+  // can't surface under the page, and still id-sweep as a belt-and-
+  // braces safety net.
+  let renderHost = null;
+  function getRenderHost() {
+    if (renderHost && renderHost.isConnected) return renderHost;
+    renderHost = document.createElement("div");
+    renderHost.id = "brainspread-mermaid-render-host";
+    renderHost.setAttribute("aria-hidden", "true");
+    renderHost.style.cssText =
+      "position:absolute;left:-99999px;top:-99999px;width:1px;height:1px;overflow:hidden;visibility:hidden;pointer-events:none";
+    document.body.appendChild(renderHost);
+    return renderHost;
+  }
+
+  // After mermaid.render() returns, we put its SVG into the user's
+  // placeholder via innerHTML. That SVG carries id="{id}" — the same
+  // id the prior cleanup pass used in `getElementById(id).remove()`,
+  // which then deleted our legitimate output from inside the
+  // .block-mermaid div. (That's the staging-vs-prod divergence: this
+  // branch's older code didn't do the destructive sweep.)
+  //
+  // Scope cleanup to scaffolding mermaid actually leaks: nodes inside
+  // our offscreen render host, or stranded as direct children of
+  // <body>. Never touch anything inside a .block-mermaid placeholder.
+  function isOurPlaceholderDescendant(node) {
+    return !!node.closest(".block-mermaid");
+  }
+  function cleanupOrphans() {
+    const host = renderHost && renderHost.isConnected ? renderHost : null;
+    if (host) {
+      // Mermaid removes its scaffolding on success but not on error;
+      // wipe whatever's left inside the host either way so the next
+      // render starts clean.
+      host.replaceChildren();
+    }
+    document
+      .querySelectorAll(
+        'body > div[id^="dmermaid-"], body > svg[id^="mermaid-"], body > iframe[id^="imermaid-"]'
+      )
+      .forEach((node) => {
+        if (!isOurPlaceholderDescendant(node)) node.remove();
+      });
+  }
+
   async function renderOne(el) {
     const source = el.dataset.mermaidSource || "";
     if (!source.trim()) {
@@ -99,33 +151,29 @@
     }
     const id = `mermaid-${Math.random().toString(36).slice(2, 11)}`;
     try {
-      const { svg } = await window.mermaid.render(id, source);
+      const { svg } = await window.mermaid.render(id, source, getRenderHost());
       // Mermaid v11 can resolve with an empty `svg` string instead of
       // throwing when the diagram's labels trip strict-mode sanitization
-      // (e.g. literal "<...>" / "<br/>" content inside Note labels). The
-      // original code happily wrote "" and stamped data-mermaid-rendered=
-      // true, so on prod you saw an empty placeholder with no clue why.
-      // Surface the empty case as a visible error instead.
+      // (e.g. literal "<...>" / "<br/>" content inside Note labels).
+      // Surface the empty case as a visible error instead of stamping
+      // rendered=true with no diagram.
       if (!svg) {
         el.innerHTML =
           '<div class="block-mermaid-error">mermaid produced an empty' +
-          " SVG (often: HTML in labels under strict securityLevel, or a" +
-          " Trusted Types policy stripping the output). Check the diagram" +
-          " for &lt;...&gt; / &lt;br/&gt; in labels.</div>";
+          " SVG (often: HTML in labels under strict securityLevel).</div>";
         el.dataset.mermaidRendered = "empty";
         return;
       }
       el.innerHTML = svg;
       el.dataset.mermaidRendered = "true";
-      // Defensive: if some downstream sanitizer (Trusted Types, an
-      // adblocker, or a stale service worker) strips the SVG after we
-      // assign it, surface that too. Without this the user sees the same
-      // empty placeholder as the strict-mode case.
+      // Defensive: if a downstream sanitizer (Trusted Types, an
+      // adblocker, a stale service worker) strips the SVG after we
+      // assign it, surface that too — without this the user sees the
+      // same empty placeholder as the strict-mode case.
       if (!el.querySelector("svg")) {
         el.innerHTML =
           '<div class="block-mermaid-error">mermaid SVG was stripped' +
-          " after render (Trusted Types / CSP / adblocker). Check the" +
-          " browser console for a Trusted-Types policy violation.</div>";
+          " after render (Trusted Types / CSP / adblocker).</div>";
         el.dataset.mermaidRendered = "stripped";
       }
     } catch (err) {
@@ -134,6 +182,8 @@
         msg
       )}</div>`;
       el.dataset.mermaidRendered = "error";
+    } finally {
+      cleanupOrphans();
     }
   }
 

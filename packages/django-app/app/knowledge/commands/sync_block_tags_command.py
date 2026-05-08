@@ -55,10 +55,17 @@ class SyncBlockTagsCommand(AbstractBaseCommand):
         if not content:
             return []
 
+        # Drop fenced code blocks and inline code spans before scanning so
+        # `#foo` inside `` `code` `` or ```` ```...``` ```` doesn't create
+        # tag pages. Mirrors the frontend rendering, which leaves hashtags
+        # inside code untouched.
+        cleaned = re.sub(r"```[^\n`]*\n[\s\S]*?```", "", content)
+        cleaned = re.sub(r"`[^`\n]+`", "", cleaned)
+
         # Negative lookbehind skips `\#tag` so backslash-escaped hashtags
         # don't create page links.
         hashtag_pattern = r"(?<!\\)#([a-zA-Z0-9_-]+)"
-        return re.findall(hashtag_pattern, content)
+        return re.findall(hashtag_pattern, cleaned)
 
     def _get_or_create_tag_page(self, tag_name: str, user) -> Page:
         """Get or create a tag page for the given tag name"""
