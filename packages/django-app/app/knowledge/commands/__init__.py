@@ -16,6 +16,7 @@ from .delete_block_command import DeleteBlockCommand
 from .delete_page_command import DeletePageCommand
 from .delete_page_embedded_view_command import DeletePageEmbeddedViewCommand
 from .delete_saved_view_command import DeleteSavedViewCommand
+from .duplicate_page_command import DuplicatePageCommand
 from .duplicate_saved_view_command import DuplicateSavedViewCommand
 from .find_stale_todos_command import FindStaleTodosCommand
 from .get_backlinks_command import GetBacklinksCommand
@@ -38,6 +39,7 @@ from .list_overdue_blocks_command import ListOverdueBlocksCommand
 from .list_pending_reminders_command import ListPendingRemindersCommand
 from .list_saved_views_command import ListSavedViewsCommand
 from .list_scheduled_blocks_command import ListScheduledBlocksCommand
+from .list_templates_command import ListTemplatesCommand
 from .move_block_to_daily_command import MoveBlockToDailyCommand
 from .move_undone_todos_command import MoveUndoneTodosCommand
 from .reorder_blocks_command import ReorderBlocksCommand

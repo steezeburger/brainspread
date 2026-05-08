@@ -2611,6 +2611,63 @@ kbd {
   font-style: italic;
 }
 
+/* Templates list (issue #106). Each row pairs a "use this template"
+   button (which takes most of the row) with a small arrow link to
+   open the template page itself for editing. */
+.leftnav-templates-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0.1rem 0 0.4rem;
+}
+
+.leftnav-templates-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.leftnav-template-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.leftnav-template-row .leftnav-template-use {
+  flex: 1;
+  text-align: left;
+}
+
+.leftnav-template-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-right: 0.2rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  border-radius: 3px;
+  font-size: 0.85rem;
+  opacity: 0;
+  transition: opacity 80ms linear;
+}
+
+.leftnav-template-row:hover .leftnav-template-edit,
+.leftnav-template-edit:focus-visible {
+  opacity: 1;
+}
+
+.leftnav-template-edit:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+/* Inline "use template" button on the template page header (issue
+   #106). Sits next to the kebab so it's discoverable without forcing
+   the user to open the menu. */
+.use-template-btn {
+  margin-right: 0.4rem;
+}
+
 .leftnav-recent {
   flex: 1;
   min-height: 0;
