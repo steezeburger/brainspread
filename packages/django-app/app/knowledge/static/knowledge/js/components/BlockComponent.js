@@ -420,6 +420,16 @@ const BlockComponent = {
         ? `${months[m - 1]} ${day}`
         : `${months[m - 1]} ${day}, ${y}`;
     },
+    reminderInlineLabel() {
+      // Single combined string so the date/time render with a guaranteed
+      // separator. Splitting them across <span> + interpolation lets the
+      // Vue compiler's whitespace-condense pass eat the space between
+      // ("may 9" + "9:01 AM" → "may 99:01 AM"). Reading bug from staging.
+      const t = this.reminderTimeLabel;
+      const d = this.reminderDateLabel;
+      if (d && t) return `${d}, ${t}`;
+      return t || d;
+    },
     isOverdue() {
       const d = this.block.scheduled_for;
       if (!d) return false;
@@ -1791,7 +1801,7 @@ const BlockComponent = {
           :class="{ 'overdue': isOverdue }"
           @click.stop="scheduleBlock(block)"
           :title="'Scheduled ' + block.scheduled_for + (reminderTimeLabel ? ' · reminder at ' + reminderTimeLabel : '') + (isOverdue ? ' (overdue)' : '') + ' — click to change'"
-        ><svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="1"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg> {{ scheduledForLabel }}<span v-if="reminderTimeLabel"> · <svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><circle cx="8" cy="8" r="6.25"/><polyline points="8,4.5 8,8 11,9.5"/></g></svg> <span v-if="reminderDateLabel">{{ reminderDateLabel }} </span>{{ reminderTimeLabel }}</span></button>
+        ><svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="1"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg> {{ scheduledForLabel }}<span v-if="reminderTimeLabel"> · <svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><circle cx="8" cy="8" r="6.25"/><polyline points="8,4.5 8,8 11,9.5"/></g></svg> {{ reminderInlineLabel }}</span></button>
         <button
           v-else
           type="button"

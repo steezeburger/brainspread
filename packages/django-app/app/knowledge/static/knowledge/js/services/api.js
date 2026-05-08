@@ -773,6 +773,93 @@ class ApiService {
   assetServeUrl(uuid) {
     return `${this.baseURL}/api/assets/${uuid}/`;
   }
+
+  // ---- Saved views (issue #60) ----------------------------------------
+
+  async listSavedViews() {
+    return await this.request("/knowledge/api/views/");
+  }
+
+  async getSavedView({ uuid = null, slug = null } = {}) {
+    const qs = uuid
+      ? `view_uuid=${encodeURIComponent(uuid)}`
+      : `view_slug=${encodeURIComponent(slug)}`;
+    return await this.request(`/knowledge/api/views/get/?${qs}`);
+  }
+
+  async runSavedView({ uuid = null, slug = null, limit = 100 } = {}) {
+    const params = new URLSearchParams();
+    if (uuid) params.set("view_uuid", uuid);
+    if (slug) params.set("view_slug", slug);
+    params.set("limit", String(limit));
+    return await this.request(`/knowledge/api/views/run/?${params.toString()}`);
+  }
+
+  async createSavedView(payload) {
+    return await this.request("/knowledge/api/views/create/", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async updateSavedView(payload) {
+    return await this.request("/knowledge/api/views/update/", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async deleteSavedView(viewUuid) {
+    return await this.request("/knowledge/api/views/delete/", {
+      method: "DELETE",
+      body: JSON.stringify({ view_uuid: viewUuid }),
+    });
+  }
+
+  async duplicateSavedView(viewUuid, newName = null) {
+    const payload = { view_uuid: viewUuid };
+    if (newName) payload.new_name = newName;
+    return await this.request("/knowledge/api/views/duplicate/", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // ---- Page embedded views (issue #60 follow-up) ---------------------
+
+  async createPageEmbeddedView(pageUuid, savedViewUuid) {
+    return await this.request("/knowledge/api/embeds/", {
+      method: "POST",
+      body: JSON.stringify({
+        page_uuid: pageUuid,
+        saved_view_uuid: savedViewUuid,
+      }),
+    });
+  }
+
+  async deletePageEmbeddedView(embedUuid) {
+    return await this.request("/knowledge/api/embeds/delete/", {
+      method: "DELETE",
+      body: JSON.stringify({ embed_uuid: embedUuid }),
+    });
+  }
+
+  async updatePageEmbeddedView(embedUuid, fields) {
+    return await this.request("/knowledge/api/embeds/update/", {
+      method: "PUT",
+      body: JSON.stringify({ embed_uuid: embedUuid, ...fields }),
+    });
+  }
+
+  async reorderPageEmbeddedViews(pageUuid, orderedUuids) {
+    return await this.request("/knowledge/api/embeds/reorder/", {
+      method: "POST",
+      body: JSON.stringify({
+        page_uuid: pageUuid,
+        ordered_uuids: orderedUuids,
+      }),
+    });
+  }
 }
 
 // Export for use in other files

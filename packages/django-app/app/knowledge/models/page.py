@@ -173,3 +173,4 @@ class PageWithBlocksData(TypedDict):
     direct_blocks: List[BlockData]
     referenced_blocks: List[BlockData]
     overdue_blocks: List[BlockData]
+    embedded_views: List["dict"]

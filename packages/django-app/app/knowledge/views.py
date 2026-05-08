@@ -16,18 +16,27 @@ from knowledge.commands import (
     ConsumeReminderActionCommand,
     CreateBlockCommand,
     CreatePageCommand,
+    CreatePageEmbeddedViewCommand,
+    CreateSavedViewCommand,
     DeleteBlockCommand,
     DeletePageCommand,
+    DeletePageEmbeddedViewCommand,
+    DeleteSavedViewCommand,
+    DuplicateSavedViewCommand,
     GetFavoritedPagesCommand,
     GetGraphDataCommand,
     GetHistoricalDataCommand,
     GetPageWithBlocksCommand,
+    GetSavedViewCommand,
     GetTagContentCommand,
     GetUserPagesCommand,
+    ListSavedViewsCommand,
     MoveBlockToDailyCommand,
     MoveUndoneTodosCommand,
     ReorderBlocksCommand,
     ReorderFavoritedPagesCommand,
+    ReorderPageEmbeddedViewsCommand,
+    RunSavedViewCommand,
     ScheduleBlockCommand,
     SearchNotesCommand,
     SearchPagesCommand,
@@ -36,6 +45,8 @@ from knowledge.commands import (
     ToggleBlockTodoCommand,
     UpdateBlockCommand,
     UpdatePageCommand,
+    UpdatePageEmbeddedViewCommand,
+    UpdateSavedViewCommand,
 )
 from knowledge.commands.bulk_delete_blocks_command import BulkDeleteBlocksData
 from knowledge.commands.bulk_move_blocks_command import BulkMoveBlocksData
@@ -49,19 +60,28 @@ from knowledge.forms import (
     BulkMoveBlocksForm,
     ConsumeReminderActionForm,
     CreateBlockForm,
+    CreatePageEmbeddedViewForm,
     CreatePageForm,
+    CreateSavedViewForm,
     DeleteBlockForm,
+    DeletePageEmbeddedViewForm,
     DeletePageForm,
+    DeleteSavedViewForm,
+    DuplicateSavedViewForm,
     GetFavoritedPagesForm,
     GetGraphDataForm,
     GetHistoricalDataForm,
     GetPageWithBlocksForm,
+    GetSavedViewForm,
     GetTagContentForm,
     GetUserPagesForm,
+    ListSavedViewsForm,
     MoveBlockToDailyForm,
     MoveUndoneTodosForm,
     ReorderBlocksForm,
     ReorderFavoritedPagesForm,
+    ReorderPageEmbeddedViewsForm,
+    RunSavedViewForm,
     ScheduleBlockForm,
     SearchNotesForm,
     SearchPagesForm,
@@ -69,7 +89,9 @@ from knowledge.forms import (
     SharePageForm,
     ToggleBlockTodoForm,
     UpdateBlockForm,
+    UpdatePageEmbeddedViewForm,
     UpdatePageForm,
+    UpdateSavedViewForm,
 )
 from knowledge.models import BlockData, Page, PageData, PagesData
 from knowledge.models.page import PageWithBlocksData
@@ -776,7 +798,13 @@ def get_page_with_blocks(request):
 
         if form.is_valid():
             command = GetPageWithBlocksCommand(form)
-            page, direct_blocks, referenced_blocks, overdue_blocks = command.execute()
+            (
+                page,
+                direct_blocks,
+                referenced_blocks,
+                overdue_blocks,
+                embedded_views,
+            ) = command.execute()
 
             page_with_blocks_data = PageWithBlocksData(
                 page=page.to_dict(),
@@ -790,6 +818,7 @@ def get_page_with_blocks(request):
                 overdue_blocks=[
                     block.to_dict(include_page_context=True) for block in overdue_blocks
                 ],
+                embedded_views=[embed.to_dict() for embed in embedded_views],
             )
 
             response: GetPageWithBlocksResponse = {
@@ -1489,3 +1518,212 @@ def bulk_move_blocks(request):
             "errors": {"non_field_errors": [str(e)]},
         }
         return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ---------------------------------------------------------------------------
+# Saved views (issue #60) — JSON CRUD + run.
+# ---------------------------------------------------------------------------
+
+
+def _saved_view_response(success, data=None, errors=None, http_status=None):
+    response = {"success": success, "data": data, "errors": errors}
+    if http_status is None:
+        http_status = status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST
+    return Response(response, status=http_status)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def list_saved_views(request):
+    """List the user's saved views (system + own)."""
+    data = {"user": request.user.id}
+    form = ListSavedViewsForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        views = ListSavedViewsCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
+    return _saved_view_response(True, data={"views": [v.to_dict() for v in views]})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_saved_view(request):
+    data = request.query_params.copy()
+    data["user"] = request.user.id
+    form = GetSavedViewForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        view = GetSavedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(
+            False,
+            errors={"non_field_errors": [str(exc)]},
+            http_status=status.HTTP_404_NOT_FOUND,
+        )
+    return _saved_view_response(True, data=view.to_dict())
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def run_saved_view(request):
+    """Compile + execute a saved view's filter, returning matched blocks."""
+    data = request.query_params.copy()
+    data["user"] = request.user.id
+    form = RunSavedViewForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        result = RunSavedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
+    return _saved_view_response(True, data=result)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def create_saved_view(request):
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = CreateSavedViewForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        view = CreateSavedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
+    return _saved_view_response(
+        True, data=view.to_dict(), http_status=status.HTTP_201_CREATED
+    )
+
+
+@api_view(["PUT"])
+@permission_classes([IsAuthenticated])
+def update_saved_view(request):
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = UpdateSavedViewForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        view = UpdateSavedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
+    return _saved_view_response(True, data=view.to_dict())
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_saved_view(request):
+    # DELETE w/ body is non-standard but matches the existing DELETE
+    # handlers in this app (delete_block, delete_page).
+    data = request.data.copy() if request.data else request.query_params.copy()
+    data["user"] = request.user.id
+    form = DeleteSavedViewForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        DeleteSavedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
+    return _saved_view_response(True, data={"deleted": True})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def duplicate_saved_view(request):
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = DuplicateSavedViewForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        view = DuplicateSavedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
+    return _saved_view_response(
+        True, data=view.to_dict(), http_status=status.HTTP_201_CREATED
+    )
+
+
+# ---------------------------------------------------------------------------
+# Page embedded views (issue #60 follow-up) — embeds are no longer
+# Block(block_type='query'); they live in their own table and have a
+# minimal CRUD surface for create / delete / update (collapsed, order)
+# / reorder. See knowledge.models.PageEmbeddedView.
+# ---------------------------------------------------------------------------
+
+
+def _embed_response(success, data=None, errors=None, http_status=None):
+    response = {"success": success, "data": data, "errors": errors}
+    if http_status is None:
+        http_status = status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST
+    return Response(response, status=http_status)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def create_page_embedded_view(request):
+    """Embed a SavedView on a Page (idempotent on (page, saved_view))."""
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = CreatePageEmbeddedViewForm(data)
+    if not form.is_valid():
+        return _embed_response(False, errors=form.errors)
+    try:
+        embed = CreatePageEmbeddedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _embed_response(False, errors={"non_field_errors": [str(exc)]})
+    return _embed_response(
+        True, data=embed.to_dict(), http_status=status.HTTP_201_CREATED
+    )
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_page_embedded_view(request):
+    # Same DELETE-with-body pattern as delete_block / delete_saved_view.
+    data = request.data.copy() if request.data else request.query_params.copy()
+    data["user"] = request.user.id
+    form = DeletePageEmbeddedViewForm(data)
+    if not form.is_valid():
+        return _embed_response(False, errors=form.errors)
+    try:
+        DeletePageEmbeddedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _embed_response(False, errors={"non_field_errors": [str(exc)]})
+    return _embed_response(True, data={"deleted": True})
+
+
+@api_view(["PUT"])
+@permission_classes([IsAuthenticated])
+def update_page_embedded_view(request):
+    """Toggle collapsed flag and/or set a single embed's order."""
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = UpdatePageEmbeddedViewForm(data)
+    if not form.is_valid():
+        return _embed_response(False, errors=form.errors)
+    try:
+        embed = UpdatePageEmbeddedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _embed_response(False, errors={"non_field_errors": [str(exc)]})
+    return _embed_response(True, data=embed.to_dict())
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def reorder_page_embedded_views(request):
+    """Bulk-reorder all embeds on a page from a single ordered uuid list."""
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = ReorderPageEmbeddedViewsForm(data)
+    if not form.is_valid():
+        return _embed_response(False, errors=form.errors)
+    try:
+        embeds = ReorderPageEmbeddedViewsCommand(form).execute()
+    except ValidationError as exc:
+        return _embed_response(False, errors={"non_field_errors": [str(exc)]})
+    return _embed_response(True, data={"embeds": [e.to_dict() for e in embeds]})

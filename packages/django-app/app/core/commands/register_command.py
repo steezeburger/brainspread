@@ -3,6 +3,7 @@ from typing import NamedTuple
 from rest_framework.authtoken.models import Token
 
 from common.commands.abstract_base_command import AbstractBaseCommand
+from knowledge.services.system_views import seed_system_views_for_user
 
 from ..forms import RegisterForm
 from ..models.user import User
@@ -26,5 +27,9 @@ class RegisterCommand(AbstractBaseCommand):
 
         user = UserRepository.create_user(email=email, password=password)
         token, created = Token.objects.get_or_create(user=user)
+
+        # Seed bundled system views (Overdue / Done this week) — see #60.
+        # Existing-user accounts get backfilled by migration 0031.
+        seed_system_views_for_user(user)
 
         return RegisterResult(user=user, token=token.key)

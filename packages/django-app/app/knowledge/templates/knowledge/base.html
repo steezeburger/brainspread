@@ -68,9 +68,13 @@
     <script src="{% static 'knowledge/js/components/LoginForm.js' %}?v={{ STATIC_VERSION }}"></script>
     <script src="{% static 'knowledge/js/components/Whiteboard.js' %}?v={{ STATIC_VERSION }}"></script>
     <!-- ScheduleBlockPopover and BlockChatPopover must load before Page.js —
-         Page registers them as child components at evaluation time. -->
+         Page registers them as child components at evaluation time.
+         QueryEmbedBlock is in the same boat — Page.js renders it for
+         block_type='query', so without this ordering the registration
+         resolves to {} and Vue warns "missing template or render function". -->
     <script src="{% static 'knowledge/js/components/ScheduleBlockPopover.js' %}?v={{ STATIC_VERSION }}"></script>
     <script src="{% static 'knowledge/js/components/BlockChatPopover.js' %}?v={{ STATIC_VERSION }}"></script>
+    <script src="{% static 'knowledge/js/components/QueryEmbedBlock.js' %}?v={{ STATIC_VERSION }}"></script>
     <script src="{% static 'knowledge/js/components/Page.js' %}?v={{ STATIC_VERSION }}"></script>
     <script src="{% static 'knowledge/js/components/TaggedBlockDisplay.js' %}?v={{ STATIC_VERSION }}"></script>
     <script src="{% static 'knowledge/js/components/LeftNav.js' %}?v={{ STATIC_VERSION }}"></script>
@@ -82,6 +86,7 @@
     <script src="{% static 'knowledge/js/components/AppModals.js' %}?v={{ STATIC_VERSION }}"></script>
     <script src="{% static 'knowledge/js/components/SpotlightSearch.js' %}?v={{ STATIC_VERSION }}"></script>
     <script src="{% static 'knowledge/js/components/GraphView.js' %}?v={{ STATIC_VERSION }}"></script>
+    <script src="{% static 'knowledge/js/components/SavedViewsPage.js' %}?v={{ STATIC_VERSION }}"></script>
 
     <!-- Main App -->
     <script src="{% static 'knowledge/js/app.js' %}?v={{ STATIC_VERSION }}"></script>

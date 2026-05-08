@@ -36,6 +36,15 @@ from knowledge.commands.cancel_reminder_command import CancelReminderCommand
 from knowledge.commands.create_block_command import CreateBlockCommand
 from knowledge.commands.create_blocks_bulk_command import CreateBlocksBulkCommand
 from knowledge.commands.create_page_command import CreatePageCommand
+from knowledge.commands.create_page_embedded_view_command import (
+    CreatePageEmbeddedViewCommand,
+)
+from knowledge.commands.create_saved_view_command import CreateSavedViewCommand
+from knowledge.commands.delete_page_embedded_view_command import (
+    DeletePageEmbeddedViewCommand,
+)
+from knowledge.commands.delete_saved_view_command import DeleteSavedViewCommand
+from knowledge.commands.duplicate_saved_view_command import DuplicateSavedViewCommand
 from knowledge.commands.find_stale_todos_command import FindStaleTodosCommand
 from knowledge.commands.get_backlinks_command import GetBacklinksCommand
 from knowledge.commands.get_block_by_id_command import GetBlockByIdCommand
@@ -48,20 +57,24 @@ from knowledge.commands.get_page_by_title_or_slug_command import (
     GetPageByTitleOrSlugCommand,
 )
 from knowledge.commands.get_recent_activity_command import GetRecentActivityCommand
+from knowledge.commands.get_saved_view_command import GetSavedViewCommand
 from knowledge.commands.get_streaks_command import GetStreaksCommand
 from knowledge.commands.get_tag_graph_command import GetTagGraphCommand
 from knowledge.commands.list_overdue_blocks_command import ListOverdueBlocksCommand
 from knowledge.commands.list_pending_reminders_command import (
     ListPendingRemindersCommand,
 )
+from knowledge.commands.list_saved_views_command import ListSavedViewsCommand
 from knowledge.commands.list_scheduled_blocks_command import ListScheduledBlocksCommand
 from knowledge.commands.move_block_to_daily_command import MoveBlockToDailyCommand
+from knowledge.commands.run_saved_view_command import RunSavedViewCommand
 from knowledge.commands.schedule_block_command import ScheduleBlockCommand
 from knowledge.commands.search_notes_command import SearchNotesCommand
 from knowledge.commands.set_block_type_command import SetBlockTypeCommand
 from knowledge.commands.snooze_block_command import SnoozeBlockCommand
 from knowledge.commands.tag_blocks_command import TagBlocksCommand, UntagBlocksCommand
 from knowledge.commands.update_block_command import UpdateBlockCommand
+from knowledge.commands.update_saved_view_command import UpdateSavedViewCommand
 from knowledge.forms.bulk_cancel_reminders_form import BulkCancelRemindersForm
 from knowledge.forms.bulk_clear_schedule_form import BulkClearScheduleForm
 from knowledge.forms.bulk_schedule_form import BulkScheduleForm
@@ -70,7 +83,16 @@ from knowledge.forms.bulk_snooze_form import BulkSnoozeForm
 from knowledge.forms.cancel_reminder_form import CancelReminderForm
 from knowledge.forms.create_block_form import CreateBlockForm
 from knowledge.forms.create_blocks_bulk_form import CreateBlocksBulkForm
+from knowledge.forms.create_page_embedded_view_form import (
+    CreatePageEmbeddedViewForm,
+)
 from knowledge.forms.create_page_form import CreatePageForm
+from knowledge.forms.create_saved_view_form import CreateSavedViewForm
+from knowledge.forms.delete_page_embedded_view_form import (
+    DeletePageEmbeddedViewForm,
+)
+from knowledge.forms.delete_saved_view_form import DeleteSavedViewForm
+from knowledge.forms.duplicate_saved_view_form import DuplicateSavedViewForm
 from knowledge.forms.find_stale_todos_form import FindStaleTodosForm
 from knowledge.forms.get_backlinks_form import GetBacklinksForm
 from knowledge.forms.get_block_by_id_form import GetBlockByIdForm
@@ -79,19 +101,26 @@ from knowledge.forms.get_current_page_form import GetCurrentPageForm
 from knowledge.forms.get_daily_pages_in_range_form import GetDailyPagesInRangeForm
 from knowledge.forms.get_page_by_title_or_slug_form import GetPageByTitleOrSlugForm
 from knowledge.forms.get_recent_activity_form import GetRecentActivityForm
+from knowledge.forms.get_saved_view_form import GetSavedViewForm
 from knowledge.forms.get_streaks_form import GetStreaksForm
 from knowledge.forms.get_tag_graph_form import GetTagGraphForm
 from knowledge.forms.list_overdue_blocks_form import ListOverdueBlocksForm
 from knowledge.forms.list_pending_reminders_form import ListPendingRemindersForm
+from knowledge.forms.list_saved_views_form import ListSavedViewsForm
 from knowledge.forms.list_scheduled_blocks_form import ListScheduledBlocksForm
 from knowledge.forms.move_block_to_daily_form import MoveBlockToDailyForm
+from knowledge.forms.run_saved_view_form import RunSavedViewForm
 from knowledge.forms.schedule_block_form import ScheduleBlockForm
 from knowledge.forms.search_notes_form import SearchNotesForm
 from knowledge.forms.set_block_type_form import SetBlockTypeForm
 from knowledge.forms.snooze_block_form import SnoozeBlockForm
 from knowledge.forms.tag_blocks_form import TagBlocksForm, UntagBlocksForm
 from knowledge.forms.update_block_form import UpdateBlockForm
+from knowledge.forms.update_saved_view_form import UpdateSavedViewForm
 from knowledge.repositories.block_repository import BlockRepository
+from knowledge.repositories.page_embedded_view_repository import (
+    PageEmbeddedViewRepository,
+)
 from knowledge.repositories.page_repository import PageRepository
 
 from .notes_tools import (
@@ -175,6 +204,14 @@ class NotesToolExecutor:
                 return self._get_user_preferences(args)
             if name == "get_current_page":
                 return self._get_current_page(args)
+            if name == "list_saved_views":
+                return self._list_saved_views(args)
+            if name == "get_saved_view":
+                return self._get_saved_view(args)
+            if name == "run_saved_view":
+                return self._run_saved_view(args)
+            if name == "list_page_embedded_views":
+                return self._list_page_embedded_views(args)
             if name == "create_page":
                 return self._create_page(args)
             if name == "create_block":
@@ -213,6 +250,18 @@ class NotesToolExecutor:
                 return self._bulk_cancel_reminders(args)
             if name == "bulk_snooze":
                 return self._bulk_snooze(args)
+            if name == "create_saved_view":
+                return self._create_saved_view(args)
+            if name == "update_saved_view":
+                return self._update_saved_view(args)
+            if name == "delete_saved_view":
+                return self._delete_saved_view(args)
+            if name == "duplicate_saved_view":
+                return self._duplicate_saved_view(args)
+            if name == "embed_view_on_page":
+                return self._embed_view_on_page(args)
+            if name == "delete_page_embed":
+                return self._delete_page_embed(args)
             return {"error": f"Unknown tool: {name}"}
         except Exception as e:
             logger.exception("Notes tool %s failed", name)
@@ -441,6 +490,121 @@ class NotesToolExecutor:
         if not form.is_valid():
             return {"error": _first_form_error(form)}
         return GetCurrentPageCommand(form).execute()
+
+    # ---- SavedView read tools (issue #60) ----
+
+    def _list_saved_views(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        form = ListSavedViewsForm({"user": self.user.id})
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        views = ListSavedViewsCommand(form).execute()
+        return {"views": [v.to_dict() for v in views]}
+
+    def _get_saved_view(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        slug = (args.get("slug") or "").strip() or None
+        uuid = (args.get("uuid") or "").strip() or None
+        if not slug and not uuid:
+            return {"error": "pass either slug or uuid"}
+        if slug and uuid:
+            return {"error": "pass slug OR uuid, not both"}
+        form_data: Dict[str, Any] = {"user": self.user.id}
+        if uuid:
+            form_data["view_uuid"] = uuid
+        else:
+            form_data["view_slug"] = slug
+        form = GetSavedViewForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        view = GetSavedViewCommand(form).execute()
+        return view.to_dict()
+
+    def _run_saved_view(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Run a saved view by slug/uuid OR a draft inline filter.
+
+        For the draft path we don't persist anything — we synthesize an
+        in-memory SavedView via the create/run cycle so the command's
+        compile-then-execute logic still pins validation errors.
+        """
+        slug = (args.get("slug") or "").strip() or None
+        uuid = (args.get("uuid") or "").strip() or None
+        inline_filter = args.get("filter")
+        sort = args.get("sort")
+        limit = args.get("limit")
+
+        identifiers = [bool(slug), bool(uuid), inline_filter is not None]
+        if sum(identifiers) != 1:
+            return {
+                "error": ("pass exactly one of: slug, uuid, or filter (inline draft)")
+            }
+
+        if inline_filter is not None:
+            # Draft path — compile + execute without saving. Mirrors what
+            # RunSavedViewCommand does internally so the LLM can dry-run
+            # before proposing a save.
+            from django.core.exceptions import ValidationError
+
+            from knowledge.services import query_engine
+
+            if not isinstance(inline_filter, dict):
+                return {"error": "filter must be an object"}
+            if sort is not None and not isinstance(sort, list):
+                return {"error": "sort must be an array"}
+            try:
+                compiled = query_engine.compile(
+                    inline_filter, user=self.user, sort=sort or []
+                )
+            except (query_engine.QueryEngineError, ValidationError) as exc:
+                return {"error": f"filter compile error: {exc}"}
+            try:
+                cap = int(limit) if limit is not None else 25
+            except (TypeError, ValueError):
+                return {"error": "limit must be an integer"}
+            cap = max(1, min(cap, 500))
+            rows = list(
+                BlockRepository.run_compiled_query(self.user, compiled, limit=cap + 1)
+            )
+            truncated = len(rows) > cap
+            if truncated:
+                rows = rows[:cap]
+            return {
+                "view": None,
+                "count": len(rows),
+                "results": [b.to_dict(include_page_context=True) for b in rows],
+                "truncated": truncated,
+            }
+
+        form_data: Dict[str, Any] = {"user": self.user.id}
+        if uuid:
+            form_data["view_uuid"] = uuid
+        else:
+            form_data["view_slug"] = slug
+        if limit is not None:
+            form_data["limit"] = limit
+        form = RunSavedViewForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        return RunSavedViewCommand(form).execute()
+
+    def _list_page_embedded_views(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        page_uuid = (args.get("page_uuid") or "").strip() or None
+        page_slug = (args.get("page_slug") or "").strip() or None
+        if not page_uuid and not page_slug:
+            return {"error": "pass either page_uuid or page_slug"}
+        if page_uuid and page_slug:
+            return {"error": "pass page_uuid OR page_slug, not both"}
+
+        if page_uuid:
+            page = PageRepository.get_by_uuid(page_uuid, user=self.user)
+        else:
+            page = PageRepository.get_by_slug(page_slug, self.user)
+        if not page:
+            return {"error": "page not found"}
+
+        embeds = PageEmbeddedViewRepository.list_for_page(page)
+        return {
+            "page": {"uuid": str(page.uuid), "slug": page.slug, "title": page.title},
+            "embeds": [e.to_dict() for e in embeds],
+        }
 
     # ---- Write tools ----
 
@@ -1000,6 +1164,134 @@ class NotesToolExecutor:
         if not form.is_valid():
             return {"error": _first_form_error(form)}
         return BulkSnoozeCommand(form).execute()
+
+    # ---- SavedView + PageEmbeddedView write tools (issue #60) ----
+
+    def _create_saved_view(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        from django.core.exceptions import ValidationError
+
+        form_data: Dict[str, Any] = {
+            "user": self.user.id,
+            "name": (args.get("name") or "").strip(),
+            "filter": args.get("filter") or {},
+        }
+        for key in ("slug", "description"):
+            value = args.get(key)
+            if value is not None:
+                form_data[key] = value
+        if args.get("sort") is not None:
+            form_data["sort"] = args["sort"]
+        form = CreateSavedViewForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        try:
+            view = CreateSavedViewCommand(form).execute()
+        except ValidationError as exc:
+            return {"error": str(exc)}
+        return {"created": True, "view": view.to_dict()}
+
+    def _update_saved_view(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        from django.core.exceptions import ValidationError
+
+        view_uuid = (args.get("uuid") or "").strip()
+        if not view_uuid:
+            return {"error": "uuid is required"}
+        form_data: Dict[str, Any] = {
+            "user": self.user.id,
+            "view_uuid": view_uuid,
+        }
+        for key in ("name", "slug", "description"):
+            value = args.get(key)
+            if value is not None:
+                form_data[key] = value
+        if args.get("filter") is not None:
+            form_data["filter"] = args["filter"]
+        if args.get("sort") is not None:
+            form_data["sort"] = args["sort"]
+        form = UpdateSavedViewForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        try:
+            view = UpdateSavedViewCommand(form).execute()
+        except ValidationError as exc:
+            return {"error": str(exc)}
+        return {"updated": True, "view": view.to_dict()}
+
+    def _delete_saved_view(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        from django.core.exceptions import ValidationError
+
+        view_uuid = (args.get("uuid") or "").strip()
+        if not view_uuid:
+            return {"error": "uuid is required"}
+        form = DeleteSavedViewForm({"user": self.user.id, "view_uuid": view_uuid})
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        try:
+            DeleteSavedViewCommand(form).execute()
+        except ValidationError as exc:
+            return {"error": str(exc)}
+        return {"deleted": True, "uuid": view_uuid}
+
+    def _duplicate_saved_view(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        from django.core.exceptions import ValidationError
+
+        view_uuid = (args.get("uuid") or "").strip()
+        if not view_uuid:
+            return {"error": "uuid is required"}
+        form_data: Dict[str, Any] = {
+            "user": self.user.id,
+            "view_uuid": view_uuid,
+        }
+        new_name = args.get("new_name")
+        if new_name is not None:
+            form_data["new_name"] = new_name
+        form = DuplicateSavedViewForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        try:
+            clone = DuplicateSavedViewCommand(form).execute()
+        except ValidationError as exc:
+            return {"error": str(exc)}
+        return {"duplicated": True, "view": clone.to_dict()}
+
+    def _embed_view_on_page(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        from django.core.exceptions import ValidationError
+
+        page_uuid = (args.get("page_uuid") or "").strip()
+        view_uuid = (args.get("saved_view_uuid") or "").strip()
+        if not page_uuid or not view_uuid:
+            return {"error": "page_uuid and saved_view_uuid are required"}
+        form = CreatePageEmbeddedViewForm(
+            {
+                "user": self.user.id,
+                "page_uuid": page_uuid,
+                "saved_view_uuid": view_uuid,
+            }
+        )
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        try:
+            embed = CreatePageEmbeddedViewCommand(form).execute()
+        except ValidationError as exc:
+            return {"error": str(exc)}
+        return {"embedded": True, "embed": embed.to_dict()}
+
+    def _delete_page_embed(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        from django.core.exceptions import ValidationError
+
+        embed_uuid = (args.get("embed_uuid") or "").strip()
+        if not embed_uuid:
+            return {"error": "embed_uuid is required"}
+        form = DeletePageEmbeddedViewForm(
+            {"user": self.user.id, "embed_uuid": embed_uuid}
+        )
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        try:
+            DeletePageEmbeddedViewCommand(form).execute()
+        except ValidationError as exc:
+            return {"error": str(exc)}
+        return {"deleted": True, "embed_uuid": embed_uuid}
 
 
 _RELATIVE_OFFSET_RE = re.compile(r"^([+-])(\d+)([dw])$")
