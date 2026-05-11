@@ -528,6 +528,104 @@ class TestMoveUndoneTodosCommand(TestCase):
         self.assertIn("user", form.errors)
 
     @patch("core.models.user.timezone")
+    def test_should_promote_nested_todo_to_root_on_target_page(self, mock_timezone):
+        """A nested TODO on an old daily page must be reparented to None
+        on the target page — otherwise its parent_id keeps pointing at a
+        block on the source page and it renders as an orphan (visible in
+        custom views but missing from the recursive page render)."""
+        today = date(2025, 6, 30)
+        mock_timezone.now.return_value = _utc_noon(today)
+
+        yesterday = date(2025, 6, 29)
+        yesterday_page = PageFactory(
+            user=self.user,
+            date=yesterday,
+            page_type="daily",
+            title="2025-06-29",
+            slug="2025-06-29",
+        )
+
+        parent_bullet = BlockFactory(
+            user=self.user,
+            page=yesterday_page,
+            content="Tasks",
+            block_type="bullet",
+            order=1,
+        )
+        nested_todo = BlockFactory(
+            user=self.user,
+            page=yesterday_page,
+            parent=parent_bullet,
+            content="TODO nested task",
+            block_type="todo",
+            order=2,
+        )
+
+        form = MoveUndoneTodosForm({"user": self.user})
+        self.assertTrue(form.is_valid())
+        result = MoveUndoneTodosCommand(form).execute()
+
+        self.assertEqual(result["moved_count"], 1)
+
+        nested_todo.refresh_from_db()
+        parent_bullet.refresh_from_db()
+
+        # TODO moved to today's page AND promoted to root — parent must
+        # be cleared so it isn't dangling on the source page.
+        self.assertEqual(nested_todo.page.date, today)
+        self.assertIsNone(nested_todo.parent)
+
+        # The original parent stays put on yesterday's page.
+        self.assertEqual(parent_bullet.page, yesterday_page)
+
+    @patch("core.models.user.timezone")
+    def test_should_preserve_subtree_when_moving_parent_todo(self, mock_timezone):
+        """When a TODO with children moves, the descendants ride along
+        so the subtree stays intact on the target page (and doesn't get
+        orphaned on the source page)."""
+        today = date(2025, 6, 30)
+        mock_timezone.now.return_value = _utc_noon(today)
+
+        yesterday = date(2025, 6, 29)
+        yesterday_page = PageFactory(
+            user=self.user,
+            date=yesterday,
+            page_type="daily",
+            title="2025-06-29",
+            slug="2025-06-29",
+        )
+
+        parent_todo = BlockFactory(
+            user=self.user,
+            page=yesterday_page,
+            content="TODO with details",
+            block_type="todo",
+            order=1,
+        )
+        child_note = BlockFactory(
+            user=self.user,
+            page=yesterday_page,
+            parent=parent_todo,
+            content="some context",
+            block_type="bullet",
+            order=2,
+        )
+
+        form = MoveUndoneTodosForm({"user": self.user})
+        self.assertTrue(form.is_valid())
+        result = MoveUndoneTodosCommand(form).execute()
+
+        self.assertEqual(result["moved_count"], 1)
+
+        parent_todo.refresh_from_db()
+        child_note.refresh_from_db()
+
+        # Subtree moved together; child keeps its parent pointer.
+        self.assertEqual(parent_todo.page.date, today)
+        self.assertEqual(child_note.page.date, today)
+        self.assertEqual(child_note.parent, parent_todo)
+
+    @patch("core.models.user.timezone")
     def test_should_skip_dated_blocks_during_rollover(self, mock_timezone):
         """Dated blocks (scheduled_for set) stay on their original page —
         they surface via the overdue query instead."""

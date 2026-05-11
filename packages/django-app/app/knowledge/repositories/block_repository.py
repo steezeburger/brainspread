@@ -472,7 +472,15 @@ class BlockRepository(BaseRepository):
 
     @classmethod
     def move_blocks_to_page(cls, blocks: List[Block], target_page: Page) -> bool:
-        """Move blocks to target page and update their order"""
+        """Move blocks to target page and update their order.
+
+        Blocks whose parent isn't also being moved are promoted to root on
+        the target page — leaving parent_id pointing at a block on a
+        different page produces an orphan: invisible to the recursive
+        page render (which starts from parent=None) but still surfaced by
+        type-based custom views. Descendants of moved blocks ride along
+        so subtrees stay intact on the target page.
+        """
         if not blocks:
             return True
 
@@ -483,11 +491,31 @@ class BlockRepository(BaseRepository):
                 max_order = queryset.aggregate(max_order=Max("order"))["max_order"]
                 max_order = max_order if max_order is not None else 0
 
-                # Update each block's page and order
+                selected_pks = {b.pk for b in blocks}
+
                 for i, block in enumerate(blocks, start=1):
                     block.page = target_page
                     block.order = max_order + i
-                    block.save(update_fields=["page", "order"])
+                    update_fields = ["page", "order"]
+                    if (
+                        block.parent_id is not None
+                        and block.parent_id not in selected_pks
+                    ):
+                        block.parent = None
+                        update_fields.append("parent")
+                    block.save(update_fields=update_fields)
+
+                # Drag descendants of moved blocks onto the target page so
+                # the subtree stays intact. Skip blocks already in the
+                # moving set — they were handled above.
+                seen = set(selected_pks)
+                for block in blocks:
+                    for descendant in cls.get_block_descendants(block):
+                        if descendant.pk in seen:
+                            continue
+                        seen.add(descendant.pk)
+                        descendant.page = target_page
+                        descendant.save(update_fields=["page"])
 
                 return True
         except Exception:
