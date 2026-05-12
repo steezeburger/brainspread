@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Any, Dict, Iterable, List, Optional
 
 from django.db import transaction
-from django.db.models import Count, Max, Q, QuerySet
+from django.db.models import Count, F, Max, Q, QuerySet
 from django.db.models.functions import TruncDate
 
 from common.repositories.base_repository import BaseRepository
@@ -282,6 +282,24 @@ class BlockRepository(BaseRepository):
             .prefetch_related("reminders")
             .order_by("scheduled_for", "order")[:limit]
         )
+
+    @classmethod
+    def get_orphaned_blocks(cls, user=None) -> QuerySet:
+        """Blocks whose parent lives on a different page than they do.
+
+        Produced by older move paths that updated `page` without clearing
+        `parent` — invisible on the recursive page render (which starts
+        from parent=None) but still surfaced by type-based queries.
+        Newly-introduced moves are safe; this is a historical-data probe.
+        """
+        qs = (
+            cls.get_queryset()
+            .filter(parent__isnull=False)
+            .exclude(parent__page_id=F("page_id"))
+        )
+        if user is not None:
+            qs = qs.filter(user=user)
+        return qs
 
     @classmethod
     def get_root_blocks_for_pages(cls, page_ids: Iterable[int]) -> List[Block]:
