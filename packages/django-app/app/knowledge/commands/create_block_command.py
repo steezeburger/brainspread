@@ -42,9 +42,7 @@ class CreateBlockCommand(AbstractBaseCommand):
         # creation — SetBlockTypeCommand only fires on transitions, so a
         # block born done would otherwise have a null completed_at and
         # be invisible to "done this week" / completion queries.
-        completed_at = (
-            timezone.now() if final_block_type in COMPLETED_TYPES else None
-        )
+        completed_at = timezone.now() if final_block_type in COMPLETED_TYPES else None
 
         # Create the block
         block = Block.objects.create(

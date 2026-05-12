@@ -89,11 +89,7 @@ class Command(BaseCommand):
 
         if dry_run:
             self.stdout.write(
-                self.style.WARNING(
-                    f"DRY RUN COMPLETE: would fix {fixed} block(s)"
-                )
+                self.style.WARNING(f"DRY RUN COMPLETE: would fix {fixed} block(s)")
             )
         else:
-            self.stdout.write(
-                self.style.SUCCESS(f"COMPLETE: fixed {fixed} block(s)")
-            )
+            self.stdout.write(self.style.SUCCESS(f"COMPLETE: fixed {fixed} block(s)"))
