@@ -102,6 +102,61 @@ class TestUpdateBlockCommand(TestCase):
         self.assertEqual(updated_block.block_type, "done")
         self.assertEqual(updated_block.content, "[x] Task completed")
 
+    def test_should_stamp_completed_at_when_content_transitions_to_done(self):
+        """Updating an empty bullet to start with 'DONE' must stamp
+        completed_at. This is the real editor flow — Enter creates an
+        empty bullet, then typing 'DONE shipped it' routes through
+        UpdateBlockCommand. Without this stamp the block reads as done
+        but stays invisible to 'done this week' queries."""
+        form_data = {
+            "user": self.user.id,
+            "page": self.page.uuid,
+            "content": "",
+        }
+        form = CreateBlockForm(form_data)
+        form.is_valid()
+        bullet = CreateBlockCommand(form).execute()
+        self.assertEqual(bullet.block_type, "bullet")
+        self.assertIsNone(bullet.completed_at)
+
+        form_data = {
+            "user": self.user.id,
+            "block": str(bullet.uuid),
+            "content": "DONE shipped it",
+        }
+        form = UpdateBlockForm(form_data)
+        form.is_valid()
+        updated = UpdateBlockCommand(form).execute()
+
+        self.assertEqual(updated.block_type, "done")
+        self.assertIsNotNone(updated.completed_at)
+
+    def test_should_clear_completed_at_when_content_leaves_done(self):
+        """The reverse: editing a done block's content so it no longer
+        starts with 'DONE' must clear completed_at."""
+        form_data = {
+            "user": self.user.id,
+            "page": self.page.uuid,
+            "content": "DONE shipped it",
+        }
+        form = CreateBlockForm(form_data)
+        form.is_valid()
+        done_block = CreateBlockCommand(form).execute()
+        self.assertEqual(done_block.block_type, "done")
+        self.assertIsNotNone(done_block.completed_at)
+
+        form_data = {
+            "user": self.user.id,
+            "block": str(done_block.uuid),
+            "content": "TODO actually still working on it",
+        }
+        form = UpdateBlockForm(form_data)
+        form.is_valid()
+        updated = UpdateBlockCommand(form).execute()
+
+        self.assertEqual(updated.block_type, "todo")
+        self.assertIsNone(updated.completed_at)
+
     def test_should_not_override_heading_block_type(self):
         """Test that auto-detection doesn't override heading type"""
         # Create a heading block
