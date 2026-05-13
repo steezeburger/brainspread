@@ -1947,6 +1947,7 @@ const BlockComponent = {
           :onBlockDrop="onBlockDrop"
           :onBlockAttachPick="onBlockAttachPick"
           :scheduleBlock="scheduleBlock"
+          :copyBlockLink="copyBlockLink"
           :openBlockChatPopover="openBlockChatPopover"
           :onBlockSelectClick="onBlockSelectClick"
           :selectedBlockCount="selectedBlockCount"
