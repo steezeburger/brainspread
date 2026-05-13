@@ -1383,6 +1383,21 @@ const Page = {
         }
       );
 
+      // Extract key::value properties as placeholders so later markdown
+      // transforms (emphasis, URL linkification) don't touch the chip
+      // text — a value like *foo* would otherwise pick up italics.
+      // Pattern mirrors Block.extract_properties_from_content's inline
+      // form: word-boundary key, ::, single-token value.
+      const propertySegments = [];
+      formatted = formatted.replace(
+        /\b([a-zA-Z0-9_-]+)::([^\s]+)/g,
+        (_match, key, value) => {
+          const idx = propertySegments.length;
+          propertySegments.push({ key, value });
+          return `\x00PROP${idx}\x00`;
+        }
+      );
+
       // Format lines starting with > as blockquotes
       formatted = formatted.replace(
         /^>\s?(.+)/gm,
@@ -1460,6 +1475,25 @@ const Page = {
         /#([a-zA-Z0-9_-]+)/g,
         '<a class="inline-tag clickable-tag" href="/knowledge/page/$1/" data-tag="$1">#$1</a>'
       );
+
+      // Restore key::value property placeholders as chips. Reuses the
+      // hashtag chip styling (.inline-tag .clickable-tag) and routes to
+      // the saved-views page with prefill params so the user lands on a
+      // property_eq query they can run or save.
+      propertySegments.forEach(({ key, value }, idx) => {
+        const safeKey = this.escapeHtml(key);
+        const safeValue = this.escapeHtml(value);
+        const href =
+          `/knowledge/views/?property_key=${encodeURIComponent(key)}` +
+          `&property_value=${encodeURIComponent(value)}`;
+        const replacement =
+          `<a class="inline-tag inline-property clickable-tag" ` +
+          `href="${href}" ` +
+          `data-property-key="${this.escapeAttr(key)}" ` +
+          `data-property-value="${this.escapeAttr(value)}">` +
+          `${safeKey}::${safeValue}</a>`;
+        formatted = formatted.split(`\x00PROP${idx}\x00`).join(replacement);
+      });
 
       // Restore inline code spans now that hashtag replacement is done.
       codeSegments.forEach((code, idx) => {

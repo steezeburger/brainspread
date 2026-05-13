@@ -1,9 +1,12 @@
+from django.utils import timezone
+
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.create_block_form import CreateBlockForm
 from ..forms.sync_block_tags_form import SyncBlockTagsForm
 from ..forms.touch_page_form import TouchPageForm
 from ..models import Block
+from .set_block_type_command import COMPLETED_TYPES
 from .sync_block_tags_command import SyncBlockTagsCommand
 from .touch_page_command import TouchPageCommand
 
@@ -35,6 +38,12 @@ class CreateBlockCommand(AbstractBaseCommand):
         # Auto-detect block type from content if not explicitly set
         final_block_type = self._detect_block_type_from_content(content, block_type)
 
+        # Terminal states (done/wontdo) need completed_at stamped at
+        # creation — SetBlockTypeCommand only fires on transitions, so a
+        # block born done would otherwise have a null completed_at and
+        # be invisible to "done this week" / completion queries.
+        completed_at = timezone.now() if final_block_type in COMPLETED_TYPES else None
+
         # Create the block
         block = Block.objects.create(
             user=user,
@@ -48,6 +57,7 @@ class CreateBlockCommand(AbstractBaseCommand):
             media_metadata=media_metadata,
             properties=properties,
             asset=asset,
+            completed_at=completed_at,
         )
 
         # Extract and set tags from content (business logic)
@@ -92,9 +102,18 @@ class CreateBlockCommand(AbstractBaseCommand):
         content_stripped = content.strip()
         content_lower = content_stripped.lower()
 
-        # Check for TODO patterns
+        # Check for state-prefix patterns. Mirrors UpdateBlockCommand so
+        # "DONE buy milk" lands as a done block on either path.
         if content_lower.startswith("todo"):
             return "todo"
+        elif content_lower.startswith("doing"):
+            return "doing"
+        elif content_lower.startswith("done"):
+            return "done"
+        elif content_lower.startswith("later"):
+            return "later"
+        elif content_lower.startswith("wontdo"):
+            return "wontdo"
         elif content_lower.startswith("[ ]"):
             return "todo"
         elif content_lower.startswith("[x]"):

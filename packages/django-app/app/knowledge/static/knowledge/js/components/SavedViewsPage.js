@@ -84,6 +84,11 @@ const SavedViewsPage = {
     await this.loadList();
     if (this.activeSlug) {
       await this.loadActive(this.activeSlug);
+    } else {
+      // ?property_key=K&property_value=V on the index drops the user
+      // into "creating" mode with a property_eq filter prefilled —
+      // the landing target for property-chip clicks in block content.
+      this._maybePrefillFromQuery();
     }
     window.addEventListener("popstate", this.onPopState);
   },
@@ -435,6 +440,23 @@ const SavedViewsPage = {
     showCreate() {
       this.creating = true;
       this.editor = this._emptyEditor();
+      this.editorErrors = {};
+      this.saveError = null;
+    },
+
+    _maybePrefillFromQuery() {
+      const params = new URLSearchParams(window.location.search);
+      const key = params.get("property_key");
+      const value = params.get("property_value");
+      if (!key || !value) return;
+      this.creating = true;
+      this.editor = this._emptyEditor();
+      this.editor.name = `${key} = ${value}`;
+      this.editor.filter = JSON.stringify(
+        { property_eq: { key, value } },
+        null,
+        2
+      );
       this.editorErrors = {};
       this.saveError = null;
     },
