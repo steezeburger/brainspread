@@ -4337,6 +4337,35 @@ a.sidebar-item:visited {
   cursor: not-allowed;
 }
 
+/* Page block-sort menu. Reuses .context-menu / .context-menu-item but
+   the trigger button shows a label ("sort" or the active sort name)
+   instead of the ⋮ glyph, and gains an `.is-active` accent when sort
+   isn't on manual so users can spot at a glance that the page isn't
+   in its authored order. */
+.page-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  text-transform: lowercase;
+  white-space: nowrap;
+}
+
+.page-sort-btn-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.page-sort-btn.is-active {
+  background: var(--tag-bg);
+  border-color: var(--border-primary);
+}
+
+.page-sort-menu .context-menu-item.is-selected {
+  font-weight: 600;
+  background: var(--hover-bg);
+}
+
 /* Message Menu Styles */
 .message-footer {
   display: flex;

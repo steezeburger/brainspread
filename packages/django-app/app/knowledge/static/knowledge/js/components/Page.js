@@ -1,4 +1,28 @@
 // Page Component - Complete page handler with data loading and rendering
+
+// Ordered list of available sort modes for the page's top-level blocks.
+// Order matters: the dropdown renders entries in this sequence, with a
+// separator before each new sort key. `manual` is the default and means
+// "leave directBlocks alone" — drag-and-drop and move-up/down still
+// write the real `order` field, so toggling back to manual restores
+// the user-curated arrangement. Persisted per-page in localStorage
+// keyed by page uuid.
+const PAGE_SORT_OPTIONS = [
+  { mode: "manual", label: "manual order", group: "manual" },
+  { mode: "created-desc", label: "created · newest first", group: "created" },
+  { mode: "created-asc", label: "created · oldest first", group: "created" },
+  { mode: "updated-desc", label: "updated · newest first", group: "updated" },
+  { mode: "updated-asc", label: "updated · oldest first", group: "updated" },
+  { mode: "scheduled-asc", label: "scheduled · soonest first", group: "scheduled" },
+  { mode: "scheduled-desc", label: "scheduled · latest first", group: "scheduled" },
+  { mode: "type", label: "type · A to Z", group: "type" },
+];
+const PAGE_SORT_MODES = new Set(PAGE_SORT_OPTIONS.map((o) => o.mode));
+const PAGE_SORT_LABELS = Object.fromEntries(
+  PAGE_SORT_OPTIONS.map((o) => [o.mode, o.label])
+);
+const PAGE_SORT_STORAGE_PREFIX = "bs:page-sort:";
+
 const Page = {
   components: {
     BlockComponent: window.BlockComponent || {},
@@ -47,6 +71,12 @@ const Page = {
       newTitle: "",
       // Page menu
       showPageMenu: false,
+      // Sort menu for the page's top-level blocks. "manual" preserves
+      // the user-managed `order`; other modes sort displayBlocks (the
+      // computed) without touching the persisted order. The selected
+      // mode is restored per-page from localStorage in loadPage().
+      showPageSortMenu: false,
+      sortMode: "manual",
       // Date selector for daily pages
       selectedDate: null,
       // Track blocks being deleted to prevent save conflicts
@@ -93,6 +123,72 @@ const Page = {
 
     totalDirectBlocks() {
       return this.directBlocks.length;
+    },
+
+    // Display-only sort of the page's top-level blocks. Returns a new
+    // array (so we never mutate directBlocks) keyed by the active
+    // sortMode. Falls back to directBlocks for "manual" so the v-for
+    // reference stays identity-stable in the common case. Nulls
+    // always sort last regardless of direction (a block with no
+    // scheduled_for date shouldn't pop to the top when listing
+    // scheduled · latest first). Manual `order` is used as the
+    // stable tiebreaker so equal keys preserve their curated layout.
+    displayBlocks() {
+      if (this.sortMode === "manual" || this.directBlocks.length <= 1) {
+        return this.directBlocks;
+      }
+      const cmpNullsLast = (a, b) => {
+        if (a === b) return 0;
+        if (a == null) return 1;
+        if (b == null) return -1;
+        return a < b ? -1 : a > b ? 1 : 0;
+      };
+      const byOrder = (a, b) => (a.order || 0) - (b.order || 0);
+      const mode = this.sortMode;
+      const compare = (a, b) => {
+        switch (mode) {
+          case "created-asc":
+            return cmpNullsLast(a.created_at, b.created_at);
+          case "created-desc":
+            return cmpNullsLast(b.created_at, a.created_at);
+          case "updated-asc":
+            return cmpNullsLast(a.modified_at, b.modified_at);
+          case "updated-desc":
+            return cmpNullsLast(b.modified_at, a.modified_at);
+          case "scheduled-asc":
+            return cmpNullsLast(a.scheduled_for, b.scheduled_for);
+          case "scheduled-desc": {
+            if (a.scheduled_for == null && b.scheduled_for == null) return 0;
+            if (a.scheduled_for == null) return 1;
+            if (b.scheduled_for == null) return -1;
+            return cmpNullsLast(b.scheduled_for, a.scheduled_for);
+          }
+          case "type": {
+            const t = cmpNullsLast(a.block_type, b.block_type);
+            if (t !== 0) return t;
+            const ac = (a.content || "").toLowerCase();
+            const bc = (b.content || "").toLowerCase();
+            return cmpNullsLast(ac, bc);
+          }
+          default:
+            return 0;
+        }
+      };
+      return [...this.directBlocks].sort(
+        (a, b) => compare(a, b) || byOrder(a, b)
+      );
+    },
+
+    sortLabel() {
+      return PAGE_SORT_LABELS[this.sortMode] || "manual order";
+    },
+
+    isSortActive() {
+      return this.sortMode !== "manual";
+    },
+
+    pageSortOptions() {
+      return PAGE_SORT_OPTIONS;
     },
 
     totalReferencedBlocks() {
@@ -374,6 +470,7 @@ const Page = {
 
         if (result.success) {
           this.page = result.data.page;
+          this.hydrateSortMode();
           this.directBlocks = this.setupParentReferences(
             result.data.direct_blocks || []
           );
@@ -1774,9 +1871,111 @@ const Page = {
       }
     },
 
+    togglePageSortMenu() {
+      this.showPageSortMenu = !this.showPageSortMenu;
+      if (this.showPageSortMenu) {
+        this.showPageMenu = false;
+        this.$nextTick(() => {
+          const firstItem = this.$el?.querySelector(
+            ".page-sort-container .context-menu .context-menu-item"
+          );
+          if (firstItem) firstItem.focus();
+        });
+      }
+    },
+
+    closePageSortMenu() {
+      this.showPageSortMenu = false;
+    },
+
+    closePageSortMenuAndRestoreFocus() {
+      this.closePageSortMenu();
+      this.$nextTick(() => {
+        const btn = this.$el?.querySelector(".page-sort-container .page-sort-btn");
+        if (btn) btn.focus();
+      });
+    },
+
+    handlePageSortMenuKeydown(event) {
+      const items = Array.from(
+        this.$el?.querySelectorAll(
+          ".page-sort-container .context-menu .context-menu-item"
+        ) || []
+      );
+      if (!items.length) return;
+      const currentIndex = items.indexOf(document.activeElement);
+      switch (event.key) {
+        case "ArrowDown":
+          event.preventDefault();
+          items[Math.min(currentIndex + 1, items.length - 1)].focus();
+          break;
+        case "ArrowUp":
+          event.preventDefault();
+          items[Math.max(currentIndex - 1, 0)].focus();
+          break;
+        case "Escape":
+        case "Tab":
+          event.preventDefault();
+          this.closePageSortMenuAndRestoreFocus();
+          break;
+        case "Home":
+          event.preventDefault();
+          items[0].focus();
+          break;
+        case "End":
+          event.preventDefault();
+          items[items.length - 1].focus();
+          break;
+      }
+    },
+
+    setSortMode(mode) {
+      if (!PAGE_SORT_MODES.has(mode)) return;
+      this.sortMode = mode;
+      this.persistSortMode();
+      this.closePageSortMenuAndRestoreFocus();
+    },
+
+    sortStorageKey() {
+      return this.page?.uuid
+        ? `${PAGE_SORT_STORAGE_PREFIX}${this.page.uuid}`
+        : null;
+    },
+
+    persistSortMode() {
+      const key = this.sortStorageKey();
+      if (!key) return;
+      try {
+        if (this.sortMode === "manual") {
+          localStorage.removeItem(key);
+        } else {
+          localStorage.setItem(key, this.sortMode);
+        }
+      } catch (e) {
+        // Safari private mode / storage quota — silently degrade.
+      }
+    },
+
+    hydrateSortMode() {
+      const key = this.sortStorageKey();
+      if (!key) {
+        this.sortMode = "manual";
+        return;
+      }
+      try {
+        const saved = localStorage.getItem(key);
+        this.sortMode =
+          saved && PAGE_SORT_MODES.has(saved) ? saved : "manual";
+      } catch (e) {
+        this.sortMode = "manual";
+      }
+    },
+
     handlePageGlobalKeydown(event) {
       if (event.key === "Escape") {
-        if (this.showPageMenu) {
+        if (this.showPageSortMenu) {
+          this.closePageSortMenuAndRestoreFocus();
+        } else if (this.showPageMenu) {
           this.closePageMenuAndRestoreFocus();
         } else if (this.selectionMode) {
           this.exitSelectionMode();
@@ -1835,7 +2034,21 @@ const Page = {
       const contextMenuContainer = event.target.closest(
         ".context-menu-container"
       );
+      const inSortContainer = event.target.closest(".page-sort-container");
+      // Both menus share `.context-menu-container`, so when one is open
+      // and the other's button is clicked, the closest() check would
+      // keep both open. Discriminate by the more-specific
+      // `.page-sort-container` to close the non-active sibling.
       if (!contextMenuContainer && this.showPageMenu) {
+        this.closePageMenu();
+      }
+      if (!contextMenuContainer && this.showPageSortMenu) {
+        this.closePageSortMenu();
+      }
+      if (contextMenuContainer && !inSortContainer && this.showPageSortMenu) {
+        this.closePageSortMenu();
+      }
+      if (inSortContainer && this.showPageMenu) {
         this.closePageMenu();
       }
       // Clear block selection when clicking outside any block
@@ -3293,6 +3506,21 @@ const Page = {
                 />
               </div>
               <div class="header-controls">
+                <div class="context-menu-container page-sort-container">
+                  <button @click="togglePageSortMenu" class="btn btn-outline context-menu-btn page-sort-btn" :class="{ 'is-active': isSortActive }" :title="'Sort blocks: ' + sortLabel" :aria-expanded="showPageSortMenu" aria-haspopup="menu">
+                    <span class="page-sort-btn-icon" aria-hidden="true">⇅</span>
+                    <span class="page-sort-btn-label">{{ isSortActive ? sortLabel : 'sort' }}</span>
+                  </button>
+                  <div v-if="showPageSortMenu" class="context-menu page-sort-menu" @click.stop @keydown="handlePageSortMenuKeydown" role="menu">
+                    <template v-for="(opt, i) in pageSortOptions" :key="opt.mode">
+                      <div v-if="i > 0 && opt.group !== pageSortOptions[i-1].group" class="context-menu-separator"></div>
+                      <button @click="setSortMode(opt.mode)" class="context-menu-item" :class="{ 'is-selected': sortMode === opt.mode }" role="menuitemradio" :aria-checked="sortMode === opt.mode">
+                        <span class="context-menu-icon">{{ sortMode === opt.mode ? '✓' : '' }}</span>
+                        <span>{{ opt.label }}</span>
+                      </button>
+                    </template>
+                  </div>
+                </div>
                 <div class="context-menu-container">
                   <button @click="togglePageMenu" class="btn btn-outline context-menu-btn" title="Daily note options" :aria-expanded="showPageMenu" aria-haspopup="menu">
                     ⋮
@@ -3350,6 +3578,21 @@ const Page = {
                 </div>
               </div>
               <div class="page-actions">
+                <div class="context-menu-container page-sort-container">
+                  <button @click="togglePageSortMenu" class="btn btn-outline context-menu-btn page-sort-btn" :class="{ 'is-active': isSortActive }" :title="'Sort blocks: ' + sortLabel" :aria-expanded="showPageSortMenu" aria-haspopup="menu">
+                    <span class="page-sort-btn-icon" aria-hidden="true">⇅</span>
+                    <span class="page-sort-btn-label">{{ isSortActive ? sortLabel : 'sort' }}</span>
+                  </button>
+                  <div v-if="showPageSortMenu" class="context-menu page-sort-menu" @click.stop @keydown="handlePageSortMenuKeydown" role="menu">
+                    <template v-for="(opt, i) in pageSortOptions" :key="opt.mode">
+                      <div v-if="i > 0 && opt.group !== pageSortOptions[i-1].group" class="context-menu-separator"></div>
+                      <button @click="setSortMode(opt.mode)" class="context-menu-item" :class="{ 'is-selected': sortMode === opt.mode }" role="menuitemradio" :aria-checked="sortMode === opt.mode">
+                        <span class="context-menu-icon">{{ sortMode === opt.mode ? '✓' : '' }}</span>
+                        <span>{{ opt.label }}</span>
+                      </button>
+                    </template>
+                  </div>
+                </div>
                 <div class="context-menu-container">
                   <button @click="togglePageMenu" class="btn btn-outline context-menu-btn" title="Page options" :aria-expanded="showPageMenu" aria-haspopup="menu">
                     ⋮
@@ -3473,7 +3716,7 @@ const Page = {
             @dragover="handleUrlDragOver"
             @drop="handleUrlDrop"
           >
-            <template v-for="block in directBlocks" :key="block.uuid">
+            <template v-for="block in displayBlocks" :key="block.uuid">
               <BlockComponent
                 :block="block"
                 :onBlockContentChange="onBlockContentChange"
