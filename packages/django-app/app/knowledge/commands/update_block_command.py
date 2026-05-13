@@ -6,6 +6,7 @@ from ..forms.sync_block_tags_form import SyncBlockTagsForm
 from ..forms.touch_page_form import TouchPageForm
 from ..forms.update_block_form import UpdateBlockForm
 from ..models import Block
+from .set_block_type_command import SetBlockTypeCommand
 from .sync_block_tags_command import SyncBlockTagsCommand
 from .touch_page_command import TouchPageCommand
 
@@ -69,6 +70,14 @@ class UpdateBlockCommand(AbstractBaseCommand):
                 block.content, block.block_type
             )
             if auto_detected_type != block.block_type:
+                # Mirror SetBlockTypeCommand's completed_at semantics on
+                # the content-driven path — entering done/wontdo via
+                # typing "DONE foo" must stamp completed_at; backing out
+                # must clear it. Otherwise the block reads as terminal
+                # but stays invisible to "done this week"-style queries.
+                block.completed_at = SetBlockTypeCommand._next_completed_at(
+                    block.block_type, auto_detected_type, block.completed_at
+                )
                 block.block_type = auto_detected_type
 
         block.save()

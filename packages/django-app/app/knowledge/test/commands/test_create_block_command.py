@@ -86,6 +86,57 @@ class TestCreateBlockCommand(TestCase):
 
         self.assertEqual(block.block_type, "done")
 
+    def test_should_auto_detect_done_from_done_prefix(self):
+        """Blocks starting with 'DONE' are created as done type with
+        completed_at stamped — otherwise they're invisible to completion
+        queries since SetBlockTypeCommand only fires on transitions."""
+        form_data = {
+            "user": self.user.id,
+            "page": self.page.uuid,
+            "content": "DONE shipped the fix",
+        }
+        form = CreateBlockForm(form_data)
+        form.is_valid()
+        command = CreateBlockCommand(form)
+        block = command.execute()
+
+        self.assertEqual(block.block_type, "done")
+        self.assertIsNotNone(block.completed_at)
+
+    def test_should_stamp_completed_at_for_explicit_done_block(self):
+        """Explicit block_type=done also needs completed_at stamped at
+        creation — the trigger isn't the DONE prefix, it's the terminal
+        state."""
+        form_data = {
+            "user": self.user.id,
+            "page": self.page.uuid,
+            "content": "anything",
+            "block_type": "done",
+        }
+        form = CreateBlockForm(form_data)
+        form.is_valid()
+        command = CreateBlockCommand(form)
+        block = command.execute()
+
+        self.assertEqual(block.block_type, "done")
+        self.assertIsNotNone(block.completed_at)
+
+    def test_should_leave_completed_at_null_for_non_terminal_block(self):
+        """Non-terminal types (bullet, todo, doing, later) don't get a
+        completed_at stamp on creation."""
+        form_data = {
+            "user": self.user.id,
+            "page": self.page.uuid,
+            "content": "TODO write tests",
+        }
+        form = CreateBlockForm(form_data)
+        form.is_valid()
+        command = CreateBlockCommand(form)
+        block = command.execute()
+
+        self.assertEqual(block.block_type, "todo")
+        self.assertIsNone(block.completed_at)
+
     def test_should_not_override_explicit_block_type(self):
         """Test that explicit block_type is not overridden by auto-detection"""
         form_data = {
