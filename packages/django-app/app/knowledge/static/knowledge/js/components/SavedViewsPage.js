@@ -535,8 +535,14 @@ const SavedViewsPage = {
     { "completed_at": { "is_null": true } }
   ]
 }</pre>
+            <p>Querying <code>key:: value</code> properties — match high or critical priority:</p>
+            <pre>{ "property_eq": { "key": "priority", "in": ["high", "critical"] } }</pre>
+            <p>String comparison is lexicographic, which works for ISO dates stored as properties (e.g. <code>due:: 2026-05-01</code>):</p>
+            <pre>{ "property_eq": { "key": "due", "lt": "2026-05-01" } }</pre>
             <p>Predicates: block_type, scheduled_for, completed_at, has_tag, has_property, property_eq, content_contains. Combinators: all, any, not. Date tokens: today, tomorrow, yesterday, "N days ago", "N days from now", or YYYY-MM-DD.</p>
+            <p><strong>property_eq</strong> ops: eq, ne, in, not_in, contains, starts_with, ends_with, lt, lte, gt, gte. Multiple ops on one predicate AND together. Values are stringly-typed (the parser stores everything as strings), so comparisons are string-vs-string.</p>
             <p><strong>has_tag</strong> matches blocks that live on a page with that slug <em>or</em> blocks that explicitly link to that page with #tag / [[link]].</p>
+            <p>Sort by a property: <code>[{ "field": "properties.priority", "dir": "asc" }]</code>. Blocks without the key sort last in asc, first in desc.</p>
           </div>
         </div>
 
