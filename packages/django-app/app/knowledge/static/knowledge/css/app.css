@@ -4394,6 +4394,35 @@ a.sidebar-item:visited {
   cursor: not-allowed;
 }
 
+/* Page block-sort menu. Reuses .context-menu / .context-menu-item but
+   the trigger button shows a label ("sort" or the active sort name)
+   instead of the ⋮ glyph, and gains an `.is-active` accent when sort
+   isn't on manual so users can spot at a glance that the page isn't
+   in its authored order. */
+.page-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  text-transform: lowercase;
+  white-space: nowrap;
+}
+
+.page-sort-btn-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.page-sort-btn.is-active {
+  background: var(--tag-bg);
+  border-color: var(--border-primary);
+}
+
+.page-sort-menu .context-menu-item.is-selected {
+  font-weight: 600;
+  background: var(--hover-bg);
+}
+
 /* Message Menu Styles */
 .message-footer {
   display: flex;
@@ -5504,6 +5533,42 @@ kbd {
   position: relative;
   display: block;
   max-width: 100%;
+}
+
+/* "Open diagram in new tab" overlay on .block-mermaid-wrapper. Same
+   reveal pattern as .block-resize-handle but pinned to the top-right
+   so the two hover affordances don't overlap. The button opens the
+   rendered SVG as a blob in a new tab so users can zoom natively. */
+.block-mermaid-open {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  line-height: 1;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  z-index: 1;
+}
+
+.block-mermaid-wrapper:hover .block-mermaid-open,
+.block-mermaid-open:focus-visible {
+  opacity: 0.85;
+}
+
+.block-mermaid-open:hover {
+  opacity: 1;
+  background: var(--hover-bg);
 }
 
 .block-resize-handle {
