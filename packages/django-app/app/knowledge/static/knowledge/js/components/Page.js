@@ -1379,7 +1379,9 @@ const Page = {
           const handle = resizable
             ? '<div class="block-resize-handle" aria-hidden="true"></div>'
             : "";
-          return `<div class="${wrapperClass}">${langBadge}<div class="block-mermaid" data-mermaid-source="${attrEscaped}"></div>${handle}</div>`;
+          const openBtn =
+            '<button type="button" class="block-mermaid-open" title="Open diagram in new tab" aria-label="Open diagram in new tab">↗</button>';
+          return `<div class="${wrapperClass}">${langBadge}<div class="block-mermaid" data-mermaid-source="${attrEscaped}"></div>${openBtn}${handle}</div>`;
         }
         if (
           !forceRaw &&

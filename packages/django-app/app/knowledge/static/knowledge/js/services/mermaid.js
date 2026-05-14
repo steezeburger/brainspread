@@ -241,4 +241,62 @@
     renderIn,
     rerenderAll,
   };
+
+  // Hover-overlay "open in new tab" button. The button HTML is emitted
+  // by the formatters (BlockComponent.assetRenderHtml + Page.js's
+  // formatContentWithTags) inside the `.block-mermaid-wrapper`; we
+  // listen on the document so the same handler works for both the
+  // asset path and the inline-code path, and so newly-rendered blocks
+  // pick it up without re-binding.
+  function serializeStandaloneSvg(svgEl) {
+    // Clone so we can ensure required xmlns attributes without mutating
+    // the live DOM. The rendered SVG should already have xmlns set, but
+    // not every mermaid version is consistent about xmlns:xlink.
+    const clone = svgEl.cloneNode(true);
+    if (!clone.getAttribute("xmlns")) {
+      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    }
+    if (!clone.getAttribute("xmlns:xlink")) {
+      clone.setAttribute("xmlns:xlink", "http://www.w3.org/1999/xlink");
+    }
+    const markup = new XMLSerializer().serializeToString(clone);
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + markup;
+  }
+
+  function openSvgInNewTab(svgEl) {
+    if (!svgEl) return;
+    let url;
+    try {
+      const xml = serializeStandaloneSvg(svgEl);
+      const blob = new Blob([xml], { type: "image/svg+xml" });
+      url = URL.createObjectURL(blob);
+    } catch (e) {
+      console.warn("failed to serialize mermaid svg:", e);
+      return;
+    }
+    // Leak-tolerant: the blob is tiny (one SVG) and lives only for the
+    // current tab's lifetime. Revoking immediately can race the new
+    // tab's load; revoke after a generous delay so the new tab has
+    // settled.
+    window.open(url, "_blank", "noopener,noreferrer");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  // Capture phase so we run before the inline-code path's
+  // .block-content-display @click (which starts editing) and before the
+  // asset path's .block-asset @click.stop (which would otherwise
+  // swallow the bubble-phase event entirely).
+  document.addEventListener(
+    "click",
+    (event) => {
+      const btn = event.target.closest(".block-mermaid-open");
+      if (!btn) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const wrapper = btn.closest(".block-mermaid-wrapper");
+      const svg = wrapper && wrapper.querySelector(".block-mermaid svg");
+      openSvgInNewTab(svg);
+    },
+    true
+  );
 })();

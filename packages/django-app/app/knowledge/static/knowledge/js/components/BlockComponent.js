@@ -237,7 +237,7 @@ const BlockComponent = {
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;");
-        return `<div class="block-mermaid-wrapper block-resizable"><div class="block-mermaid" data-mermaid-source="${attr}"></div><div class="block-resize-handle" aria-hidden="true"></div></div>`;
+        return `<div class="block-mermaid-wrapper block-resizable"><div class="block-mermaid" data-mermaid-source="${attr}"></div><button type="button" class="block-mermaid-open" title="Open diagram in new tab" aria-label="Open diagram in new tab">↗</button><div class="block-resize-handle" aria-hidden="true"></div></div>`;
       }
       if (this.detectedAssetType === "markdown") {
         if (!window.marked || !window.DOMPurify) return "";
