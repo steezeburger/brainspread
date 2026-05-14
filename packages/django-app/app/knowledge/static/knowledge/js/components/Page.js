@@ -9,18 +9,18 @@
 // keyed by page uuid.
 const PAGE_SORT_OPTIONS = [
   { mode: "manual", label: "manual order", group: "manual" },
-  { mode: "created-desc", label: "created · newest first", group: "created" },
-  { mode: "created-asc", label: "created · oldest first", group: "created" },
-  { mode: "updated-desc", label: "updated · newest first", group: "updated" },
-  { mode: "updated-asc", label: "updated · oldest first", group: "updated" },
+  { mode: "created-desc", label: "created · newest", group: "created" },
+  { mode: "created-asc", label: "created · oldest", group: "created" },
+  { mode: "updated-desc", label: "updated · newest", group: "updated" },
+  { mode: "updated-asc", label: "updated · oldest", group: "updated" },
   {
     mode: "scheduled-asc",
-    label: "scheduled · soonest first",
+    label: "scheduled · soonest",
     group: "scheduled",
   },
   {
     mode: "scheduled-desc",
-    label: "scheduled · latest first",
+    label: "scheduled · latest",
     group: "scheduled",
   },
   { mode: "type", label: "type · A to Z", group: "type" },
@@ -139,7 +139,7 @@ const Page = {
     // reference stays identity-stable in the common case. Nulls
     // always sort last regardless of direction (a block with no
     // scheduled_for date shouldn't pop to the top when listing
-    // scheduled · latest first). Manual `order` is used as the
+    // scheduled · latest). Manual `order` is used as the
     // stable tiebreaker so equal keys preserve their curated layout.
     displayBlocks() {
       if (this.sortMode === "manual" || this.directBlocks.length <= 1) {
