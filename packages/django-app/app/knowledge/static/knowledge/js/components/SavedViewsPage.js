@@ -37,6 +37,11 @@ const SavedViewsPage = {
 
       // Inline "new view" toggle on the index.
       creating: false,
+
+      // Set when ``_maybePrefillFromQuery`` found an existing view whose
+      // filter matches the clicked property — drives the dismissible
+      // "you already have a view for this" banner above the editor.
+      prefillMatch: null,
     };
   },
 
@@ -459,12 +464,46 @@ const SavedViewsPage = {
       );
       this.editorErrors = {};
       this.saveError = null;
+      this.prefillMatch = this._findPropertyEqView(key, value);
+    },
+
+    _findPropertyEqView(key, value) {
+      // Match an existing view whose top-level filter is a single
+      // ``property_eq`` on (key, value). Handles both the legacy
+      // ``{key, value}`` shorthand and the op-dict ``{key, eq}`` shape
+      // so views saved either way are detected. Deeper structural
+      // matches (e.g. a ``property_eq`` nested inside an ``all``) aren't
+      // worth the complexity — the chip-click path produces top-level
+      // ``property_eq``, so that's what's most likely to duplicate.
+      if (!Array.isArray(this.views)) return null;
+      for (const v of this.views) {
+        const f = v && v.filter;
+        if (!f || typeof f !== "object" || Array.isArray(f)) continue;
+        const pe = f.property_eq;
+        if (!pe || typeof pe !== "object" || pe.key !== key) continue;
+        const eqVal = "eq" in pe ? pe.eq : pe.value;
+        if (eqVal === value) return v;
+      }
+      return null;
+    },
+
+    openPrefillMatch() {
+      if (!this.prefillMatch) return;
+      const slug = this.prefillMatch.slug;
+      this.prefillMatch = null;
+      this.creating = false;
+      this.selectSlug(slug);
+    },
+
+    dismissPrefillMatch() {
+      this.prefillMatch = null;
     },
 
     cancelCreate() {
       this.creating = false;
       this.saveError = null;
       this.editorErrors = {};
+      this.prefillMatch = null;
     },
 
     blockHref(block) {
@@ -496,6 +535,13 @@ const SavedViewsPage = {
 
         <div v-if="creating" class="saved-view-editor">
           <h2>New view</h2>
+          <div v-if="prefillMatch" class="prefill-match-banner">
+            <span>
+              View <strong>{{ prefillMatch.name }}</strong> already filters this property.
+            </span>
+            <button class="btn btn-primary" @click="openPrefillMatch">Open it</button>
+            <button class="btn" @click="dismissPrefillMatch">Dismiss</button>
+          </div>
           <div class="form-row">
             <label>Name</label>
             <input v-model="editor.name" type="text" maxlength="200" />
