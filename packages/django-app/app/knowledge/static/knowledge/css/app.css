@@ -7347,6 +7347,25 @@ a.hashtag-mention:hover,
   font-size: 0.85rem;
 }
 
+.saved-view-editor .prefill-match-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.75rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
+
+.saved-view-editor .prefill-match-banner > span {
+  flex: 1;
+  min-width: 0;
+}
+
 .saved-view-help {
   margin-top: 1rem;
   padding-top: 0.75rem;

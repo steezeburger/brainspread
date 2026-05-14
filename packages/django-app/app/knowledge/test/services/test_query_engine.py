@@ -293,7 +293,9 @@ class HasPropertyTests(_EngineTestBase):
 
 
 class PropertyEqTests(_EngineTestBase):
-    def test_match(self):
+    def test_value_shorthand_match(self):
+        """Legacy ``{"key": K, "value": V}`` shape — kept working so old
+        saved views (and the SavedViewsPage chip-prefill) still compile."""
         a = BlockFactory(
             user=self.user, page=self.page, properties={"priority": "high"}
         )
@@ -301,9 +303,133 @@ class PropertyEqTests(_EngineTestBase):
         out = self.run_query({"property_eq": {"key": "priority", "value": "high"}})
         self.assertEqual([b.id for b in out], [a.id])
 
-    def test_missing_value_rejected(self):
+    def test_eq_op_match(self):
+        a = BlockFactory(
+            user=self.user, page=self.page, properties={"priority": "high"}
+        )
+        BlockFactory(user=self.user, page=self.page, properties={"priority": "low"})
+        out = self.run_query({"property_eq": {"key": "priority", "eq": "high"}})
+        self.assertEqual([b.id for b in out], [a.id])
+
+    def test_ne_excludes_match_but_not_missing(self):
+        """``ne`` matches blocks with the key set to anything else — but
+        *not* blocks without the key (SQL ``NULL <> 'x'`` is NULL)."""
+        a = BlockFactory(
+            user=self.user, page=self.page, properties={"priority": "high"}
+        )
+        BlockFactory(user=self.user, page=self.page, properties={"priority": "low"})
+        BlockFactory(user=self.user, page=self.page, properties={})  # no priority
+        out = self.run_query({"property_eq": {"key": "priority", "ne": "low"}})
+        self.assertEqual([b.id for b in out], [a.id])
+
+    def test_in_op(self):
+        a = BlockFactory(
+            user=self.user, page=self.page, properties={"priority": "high"}
+        )
+        b = BlockFactory(
+            user=self.user, page=self.page, properties={"priority": "critical"}
+        )
+        BlockFactory(user=self.user, page=self.page, properties={"priority": "low"})
+        out = self.run_query(
+            {"property_eq": {"key": "priority", "in": ["high", "critical"]}}
+        )
+        self.assertEqual({blk.id for blk in out}, {a.id, b.id})
+
+    def test_not_in_op(self):
+        a = BlockFactory(
+            user=self.user, page=self.page, properties={"priority": "high"}
+        )
+        BlockFactory(user=self.user, page=self.page, properties={"priority": "low"})
+        BlockFactory(user=self.user, page=self.page, properties={"priority": "trivial"})
+        out = self.run_query(
+            {"property_eq": {"key": "priority", "not_in": ["low", "trivial"]}}
+        )
+        self.assertEqual([blk.id for blk in out], [a.id])
+
+    def test_contains_icontains(self):
+        a = BlockFactory(user=self.user, page=self.page, properties={"area": "Health"})
+        BlockFactory(user=self.user, page=self.page, properties={"area": "Work"})
+        out = self.run_query({"property_eq": {"key": "area", "contains": "heal"}})
+        self.assertEqual([blk.id for blk in out], [a.id])
+
+    def test_starts_with(self):
+        a = BlockFactory(
+            user=self.user, page=self.page, properties={"project": "roadmap-q1"}
+        )
+        BlockFactory(
+            user=self.user, page=self.page, properties={"project": "ops-roadmap"}
+        )
+        out = self.run_query(
+            {"property_eq": {"key": "project", "starts_with": "roadmap"}}
+        )
+        self.assertEqual([blk.id for blk in out], [a.id])
+
+    def test_ends_with(self):
+        a = BlockFactory(user=self.user, page=self.page, properties={"file": "a.md"})
+        BlockFactory(user=self.user, page=self.page, properties={"file": "a.txt"})
+        out = self.run_query({"property_eq": {"key": "file", "ends_with": ".md"}})
+        self.assertEqual([blk.id for blk in out], [a.id])
+
+    def test_lt_lexicographic(self):
+        """String comparison on ISO date-shaped values — useful for
+        ``due:: 2026-05-01`` until typed properties land."""
+        a = BlockFactory(
+            user=self.user, page=self.page, properties={"due": "2026-04-30"}
+        )
+        BlockFactory(user=self.user, page=self.page, properties={"due": "2026-05-05"})
+        out = self.run_query({"property_eq": {"key": "due", "lt": "2026-05-01"}})
+        self.assertEqual([blk.id for blk in out], [a.id])
+
+    def test_range_with_gte_and_lte(self):
+        a = BlockFactory(
+            user=self.user, page=self.page, properties={"due": "2026-05-03"}
+        )
+        BlockFactory(user=self.user, page=self.page, properties={"due": "2026-04-30"})
+        BlockFactory(user=self.user, page=self.page, properties={"due": "2026-05-10"})
+        out = self.run_query(
+            {
+                "property_eq": {
+                    "key": "due",
+                    "gte": "2026-05-01",
+                    "lte": "2026-05-05",
+                }
+            }
+        )
+        self.assertEqual([blk.id for blk in out], [a.id])
+
+    def test_missing_ops_rejected(self):
         with self.assertRaises(query_engine.QueryEngineError):
             query_engine.compile({"property_eq": {"key": "priority"}}, user=self.user)
+
+    def test_value_and_eq_collision_rejected(self):
+        with self.assertRaises(query_engine.QueryEngineError):
+            query_engine.compile(
+                {"property_eq": {"key": "priority", "value": "high", "eq": "low"}},
+                user=self.user,
+            )
+
+    def test_unknown_op_rejected(self):
+        with self.assertRaises(query_engine.QueryEngineError):
+            query_engine.compile(
+                {"property_eq": {"key": "priority", "like": "high"}}, user=self.user
+            )
+
+    def test_in_empty_list_rejected(self):
+        with self.assertRaises(query_engine.QueryEngineError):
+            query_engine.compile(
+                {"property_eq": {"key": "priority", "in": []}}, user=self.user
+            )
+
+    def test_bad_key_charset_rejected(self):
+        """Keys are constrained to the parser's charset so query keys
+        match what the inline ``key:: value`` parser will actually
+        produce — spaces, dots, slashes etc. never appear in real blocks."""
+        for bad_key in ("with space", "priority.x", "key/foo", "k;drop"):
+            with self.assertRaises(query_engine.QueryEngineError):
+                query_engine.compile(
+                    {"property_eq": {"key": bad_key, "eq": "high"}},
+                    user=self.user,
+                )
 
 
 class ContentContainsTests(_EngineTestBase):
@@ -497,6 +623,45 @@ class SortTests(_EngineTestBase):
         with self.assertRaises(query_engine.QueryEngineError):
             query_engine.compile(
                 {}, user=self.user, sort=[{"field": "uuid", "dir": "asc"}]
+            )
+
+    def test_sort_by_property_asc(self):
+        """``properties.<key>`` sorts by JSONB value. Strings compare
+        lexicographically, so a/b/c ordering is by raw string."""
+        b = BlockFactory(user=self.user, page=self.page, properties={"priority": "b"})
+        a = BlockFactory(user=self.user, page=self.page, properties={"priority": "a"})
+        c = BlockFactory(user=self.user, page=self.page, properties={"priority": "c"})
+        out = self.run_query(
+            {"has_property": "priority"},
+            sort=[{"field": "properties.priority", "dir": "asc"}],
+        )
+        self.assertEqual([blk.id for blk in out], [a.id, b.id, c.id])
+
+    def test_sort_by_property_desc(self):
+        b = BlockFactory(user=self.user, page=self.page, properties={"priority": "b"})
+        a = BlockFactory(user=self.user, page=self.page, properties={"priority": "a"})
+        c = BlockFactory(user=self.user, page=self.page, properties={"priority": "c"})
+        out = self.run_query(
+            {"has_property": "priority"},
+            sort=[{"field": "properties.priority", "dir": "desc"}],
+        )
+        self.assertEqual([blk.id for blk in out], [c.id, b.id, a.id])
+
+    def test_sort_property_bad_key_rejected(self):
+        for bad_field in (
+            "properties.with space",
+            "properties.priority.nested",
+            "properties.k/x",
+        ):
+            with self.assertRaises(query_engine.QueryEngineError):
+                query_engine.compile(
+                    {}, user=self.user, sort=[{"field": bad_field, "dir": "asc"}]
+                )
+
+    def test_sort_property_empty_key_rejected(self):
+        with self.assertRaises(query_engine.QueryEngineError):
+            query_engine.compile(
+                {}, user=self.user, sort=[{"field": "properties.", "dir": "asc"}]
             )
 
 
