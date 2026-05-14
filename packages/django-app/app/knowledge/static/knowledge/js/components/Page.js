@@ -13,8 +13,16 @@ const PAGE_SORT_OPTIONS = [
   { mode: "created-asc", label: "created · oldest first", group: "created" },
   { mode: "updated-desc", label: "updated · newest first", group: "updated" },
   { mode: "updated-asc", label: "updated · oldest first", group: "updated" },
-  { mode: "scheduled-asc", label: "scheduled · soonest first", group: "scheduled" },
-  { mode: "scheduled-desc", label: "scheduled · latest first", group: "scheduled" },
+  {
+    mode: "scheduled-asc",
+    label: "scheduled · soonest first",
+    group: "scheduled",
+  },
+  {
+    mode: "scheduled-desc",
+    label: "scheduled · latest first",
+    group: "scheduled",
+  },
   { mode: "type", label: "type · A to Z", group: "type" },
 ];
 const PAGE_SORT_MODES = new Set(PAGE_SORT_OPTIONS.map((o) => o.mode));
@@ -1893,7 +1901,9 @@ const Page = {
     closePageSortMenuAndRestoreFocus() {
       this.closePageSortMenu();
       this.$nextTick(() => {
-        const btn = this.$el?.querySelector(".page-sort-container .page-sort-btn");
+        const btn = this.$el?.querySelector(
+          ".page-sort-container .page-sort-btn"
+        );
         if (btn) btn.focus();
       });
     },
@@ -1966,8 +1976,7 @@ const Page = {
       }
       try {
         const saved = localStorage.getItem(key);
-        this.sortMode =
-          saved && PAGE_SORT_MODES.has(saved) ? saved : "manual";
+        this.sortMode = saved && PAGE_SORT_MODES.has(saved) ? saved : "manual";
       } catch (e) {
         this.sortMode = "manual";
       }
