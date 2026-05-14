@@ -37,6 +37,11 @@ const SavedViewsPage = {
 
       // Inline "new view" toggle on the index.
       creating: false,
+
+      // Set when ``_maybePrefillFromQuery`` found an existing view whose
+      // filter matches the clicked property — drives the dismissible
+      // "you already have a view for this" banner above the editor.
+      prefillMatch: null,
     };
   },
 
@@ -459,12 +464,46 @@ const SavedViewsPage = {
       );
       this.editorErrors = {};
       this.saveError = null;
+      this.prefillMatch = this._findPropertyEqView(key, value);
+    },
+
+    _findPropertyEqView(key, value) {
+      // Match an existing view whose top-level filter is a single
+      // ``property_eq`` on (key, value). Handles both the legacy
+      // ``{key, value}`` shorthand and the op-dict ``{key, eq}`` shape
+      // so views saved either way are detected. Deeper structural
+      // matches (e.g. a ``property_eq`` nested inside an ``all``) aren't
+      // worth the complexity — the chip-click path produces top-level
+      // ``property_eq``, so that's what's most likely to duplicate.
+      if (!Array.isArray(this.views)) return null;
+      for (const v of this.views) {
+        const f = v && v.filter;
+        if (!f || typeof f !== "object" || Array.isArray(f)) continue;
+        const pe = f.property_eq;
+        if (!pe || typeof pe !== "object" || pe.key !== key) continue;
+        const eqVal = "eq" in pe ? pe.eq : pe.value;
+        if (eqVal === value) return v;
+      }
+      return null;
+    },
+
+    openPrefillMatch() {
+      if (!this.prefillMatch) return;
+      const slug = this.prefillMatch.slug;
+      this.prefillMatch = null;
+      this.creating = false;
+      this.selectSlug(slug);
+    },
+
+    dismissPrefillMatch() {
+      this.prefillMatch = null;
     },
 
     cancelCreate() {
       this.creating = false;
       this.saveError = null;
       this.editorErrors = {};
+      this.prefillMatch = null;
     },
 
     blockHref(block) {
@@ -496,6 +535,13 @@ const SavedViewsPage = {
 
         <div v-if="creating" class="saved-view-editor">
           <h2>New view</h2>
+          <div v-if="prefillMatch" class="prefill-match-banner">
+            <span>
+              View <strong>{{ prefillMatch.name }}</strong> already filters this property.
+            </span>
+            <button class="btn btn-primary" @click="openPrefillMatch">Open it</button>
+            <button class="btn" @click="dismissPrefillMatch">Dismiss</button>
+          </div>
           <div class="form-row">
             <label>Name</label>
             <input v-model="editor.name" type="text" maxlength="200" />
@@ -535,8 +581,14 @@ const SavedViewsPage = {
     { "completed_at": { "is_null": true } }
   ]
 }</pre>
+            <p>Querying <code>key:: value</code> properties — match high or critical priority:</p>
+            <pre>{ "property_eq": { "key": "priority", "in": ["high", "critical"] } }</pre>
+            <p>String comparison is lexicographic, which works for ISO dates stored as properties (e.g. <code>due:: 2026-05-01</code>):</p>
+            <pre>{ "property_eq": { "key": "due", "lt": "2026-05-01" } }</pre>
             <p>Predicates: block_type, scheduled_for, completed_at, has_tag, has_property, property_eq, content_contains. Combinators: all, any, not. Date tokens: today, tomorrow, yesterday, "N days ago", "N days from now", or YYYY-MM-DD.</p>
+            <p><strong>property_eq</strong> ops: eq, ne, in, not_in, contains, starts_with, ends_with, lt, lte, gt, gte. Multiple ops on one predicate AND together. Values are stringly-typed (the parser stores everything as strings), so comparisons are string-vs-string.</p>
             <p><strong>has_tag</strong> matches blocks that live on a page with that slug <em>or</em> blocks that explicitly link to that page with #tag / [[link]].</p>
+            <p>Sort by a property: <code>[{ "field": "properties.priority", "dir": "asc" }]</code>. Blocks without the key sort last in asc, first in desc.</p>
           </div>
         </div>
 

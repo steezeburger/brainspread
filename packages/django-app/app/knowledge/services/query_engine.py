@@ -15,6 +15,12 @@ Date tokens (``today``, ``tomorrow``, ``yesterday``, ``N days ago``,
 ``N days from now``, ISO ``YYYY-MM-DD``) are resolved at execute time
 against ``user.today()`` so views stay relative.
 
+``key:: value`` block properties are queryable through ``has_property``
+(key existence) and ``property_eq`` (op-dict against the value). Values
+are stringly-typed today — the inline parser stores ``value.strip()`` —
+so all comparisons are string-vs-string. Sort by a JSONB key with
+``{"field": "properties.<key>", "dir": ...}``.
+
 ``has_tag`` compiles to an ``Exists()`` subquery against the Block.pages
 through table, which makes multi-tag AND/OR composition Just Work under
 arbitrary combinator nesting (a single ``filter(pages__slug__in=[...])``
@@ -277,31 +283,132 @@ def _has_tag_q(value: Any, user) -> Q:
     return page_membership | Q(Exists(sub))
 
 
+# Property keys are constrained to the same charset the parser accepts in
+# ``Block.extract_properties_from_content`` (``[a-zA-Z0-9_-]+``). Once we're
+# inside ``properties__<key>`` Django interprets further ``__`` segments as
+# nested JSON-path lookups, not as model traversals, so the validation is
+# mainly a hygiene check — keep query keys to the same shape the inline
+# parser produces, since those are the only keys real blocks will have.
+_PROPERTY_KEY_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+_PROPERTY_OPS = {
+    "eq",
+    "ne",
+    "in",
+    "not_in",
+    "contains",
+    "starts_with",
+    "ends_with",
+    "lt",
+    "lte",
+    "gt",
+    "gte",
+}
+
+
+def _validate_property_key(key: Any, predicate: str) -> str:
+    if not isinstance(key, str) or not key:
+        raise QueryEngineError(f"{predicate}.key must be a string: {key!r}")
+    if not _PROPERTY_KEY_RE.match(key):
+        raise QueryEngineError(f"{predicate}.key must match [a-zA-Z0-9_-]+: {key!r}")
+    return key
+
+
 def _has_property_q(value: Any, user) -> Q:
     if isinstance(value, dict):
         value = value.get("eq")
-    if not isinstance(value, str) or not value:
-        raise QueryEngineError(f"has_property must be a key string: {value!r}")
-    return Q(properties__has_key=value)
+    key = _validate_property_key(value, "has_property")
+    return Q(properties__has_key=key)
 
 
 def _property_eq_q(value: Any, user) -> Q:
-    """Exact-match predicate against ``Block.properties[key]``.
+    """Op-dict predicate against ``Block.properties[key]``.
 
-    Property values are stringly-typed today (the inline ``key:: value``
-    parser stores ``value.strip()`` as a string) — so this matches a
-    string-vs-string. Numeric / typed comparisons are out of scope until
-    typed properties land.
+    Shorthand ``{"key": K, "value": V}`` is treated as ``{"key": K,
+    "eq": V}`` for backwards compatibility with the original ``eq``-only
+    shape. The general form is ``{"key": K, <op>: <arg>, ...}`` where
+    multiple ops AND together (e.g. ``{"gte": "2h", "lte": "5h"}``).
+
+    Property values are stringly-typed today — the inline ``key:: value``
+    parser stores ``value.strip()`` as a string — so all comparisons are
+    string-vs-string. That's intentionally good enough for ISO date
+    strings (``due:: 2026-05-01`` compares lexicographically the way
+    you'd want) and dollar-prefixed money (``cost:: $042``), but it
+    does mean ``estimate:: 10`` sorts before ``estimate:: 2``. Numeric
+    coercion lands when typed properties do.
+
+    ``ne`` / ``not_in`` match blocks that have the key set to something
+    other than the given value(s); blocks that don't have the key at
+    all are *not* matched (SQL ``NULL <> 'x'`` is NULL). Use
+    ``{"any": [{"property_eq": {...ne...}}, {"not": {"has_property":
+    "K"}}]}`` if you also want missing-key blocks.
     """
     if not isinstance(value, dict):
-        raise QueryEngineError(f"property_eq must be {{key, value}}: {value!r}")
-    key = value.get("key")
-    val = value.get("value")
-    if not isinstance(key, str) or not key:
-        raise QueryEngineError(f"property_eq.key must be a string: {key!r}")
-    if val is None:
-        raise QueryEngineError("property_eq.value is required")
-    return Q(**{f"properties__{key}": val})
+        raise QueryEngineError(f"property_eq must be a dict: {value!r}")
+    key = _validate_property_key(value.get("key"), "property_eq")
+
+    ops = {k: v for k, v in value.items() if k != "key"}
+    if "value" in ops:
+        # Legacy shorthand: {"key": K, "value": V} == {"key": K, "eq": V}.
+        # Reject collision with an explicit eq so the spec stays unambiguous.
+        if "eq" in ops:
+            raise QueryEngineError("property_eq cannot specify both 'value' and 'eq'")
+        ops["eq"] = ops.pop("value")
+
+    if not ops:
+        raise QueryEngineError(
+            "property_eq requires at least one op (eq/ne/in/not_in/"
+            "contains/starts_with/ends_with/lt/lte/gt/gte) or 'value'"
+        )
+
+    lookup = f"properties__{key}"
+    q = Q()
+    for op, arg in ops.items():
+        if op not in _PROPERTY_OPS:
+            raise QueryEngineError(f"Unsupported op {op!r} on property_eq")
+        if op == "eq":
+            if arg is None:
+                raise QueryEngineError("property_eq.eq must not be null")
+            q &= Q(**{lookup: arg})
+        elif op == "ne":
+            if arg is None:
+                raise QueryEngineError("property_eq.ne must not be null")
+            q &= ~Q(**{lookup: arg})
+        elif op == "in":
+            if not isinstance(arg, list) or not arg:
+                raise QueryEngineError(
+                    f"property_eq.in must be a non-empty list: {arg!r}"
+                )
+            q &= Q(**{f"{lookup}__in": arg})
+        elif op == "not_in":
+            if not isinstance(arg, list) or not arg:
+                raise QueryEngineError(
+                    f"property_eq.not_in must be a non-empty list: {arg!r}"
+                )
+            q &= ~Q(**{f"{lookup}__in": arg})
+        elif op == "contains":
+            if not isinstance(arg, str) or not arg:
+                raise QueryEngineError(
+                    f"property_eq.contains must be a non-empty string: {arg!r}"
+                )
+            q &= Q(**{f"{lookup}__icontains": arg})
+        elif op == "starts_with":
+            if not isinstance(arg, str) or not arg:
+                raise QueryEngineError(
+                    f"property_eq.starts_with must be a non-empty string: {arg!r}"
+                )
+            q &= Q(**{f"{lookup}__istartswith": arg})
+        elif op == "ends_with":
+            if not isinstance(arg, str) or not arg:
+                raise QueryEngineError(
+                    f"property_eq.ends_with must be a non-empty string: {arg!r}"
+                )
+            q &= Q(**{f"{lookup}__iendswith": arg})
+        else:  # lt / lte / gt / gte
+            if not isinstance(arg, (str, int, float)):
+                raise QueryEngineError(f"property_eq.{op} must be a scalar: {arg!r}")
+            q &= Q(**{f"{lookup}__{op}": arg})
+    return q
 
 
 def _content_contains_q(value: Any, user) -> Q:
@@ -393,6 +500,28 @@ _SORT_FIELDS = {
 }
 
 
+def _resolve_sort_field(raw: Any) -> str:
+    """Validate a sort field and return the Django ORM expression for it.
+
+    Accepts:
+      - any name in ``_SORT_FIELDS`` (real model field)
+      - ``properties.<key>`` to sort by a JSONB key. ``<key>`` must
+        match the same charset the property parser accepts so we
+        can safely interpolate it into the ORM lookup. Blocks that
+        don't have ``<key>`` set sort as NULL (Postgres default:
+        last in ASC, first in DESC).
+    """
+    if not isinstance(raw, str) or not raw:
+        raise QueryEngineError(f"Sort field must be a non-empty string: {raw!r}")
+    if raw in _SORT_FIELDS:
+        return raw
+    if raw.startswith("properties."):
+        key = raw.split(".", 1)[1]
+        _validate_property_key(key, "sort.properties")
+        return f"properties__{key}"
+    raise QueryEngineError(f"Unsupported sort field: {raw!r}")
+
+
 def _compile_sort(sort_spec: Any) -> List[str]:
     if not sort_spec:
         return []
@@ -403,13 +532,11 @@ def _compile_sort(sort_spec: Any) -> List[str]:
     for item in sort_spec:
         if not isinstance(item, dict) or "field" not in item:
             raise QueryEngineError(f"Sort item must be {{field, dir}}: {item!r}")
-        f = item["field"]
-        if f not in _SORT_FIELDS:
-            raise QueryEngineError(f"Unsupported sort field: {f!r}")
+        resolved = _resolve_sort_field(item["field"])
         direction = item.get("dir", "asc")
         if direction not in ("asc", "desc"):
             raise QueryEngineError(f"Sort dir must be 'asc' or 'desc': {direction!r}")
-        parts.append(f"-{f}" if direction == "desc" else f)
+        parts.append(f"-{resolved}" if direction == "desc" else resolved)
     return parts
 
 
