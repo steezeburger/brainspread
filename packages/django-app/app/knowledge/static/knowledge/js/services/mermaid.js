@@ -299,4 +299,22 @@
     },
     true
   );
+
+  // Mirror the click capture for keyboard activation. The button is a
+  // child of .block-content-display, whose @keydown handler enters
+  // edit mode on Enter / Space — that fires before the browser's
+  // native button activation, so without this the block would start
+  // editing instead of opening the diagram. We stop propagation but
+  // do NOT preventDefault, so the browser still synthesizes the click
+  // that our click listener above handles.
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const btn = event.target.closest(".block-mermaid-open");
+      if (!btn) return;
+      event.stopPropagation();
+    },
+    true
+  );
 })();
