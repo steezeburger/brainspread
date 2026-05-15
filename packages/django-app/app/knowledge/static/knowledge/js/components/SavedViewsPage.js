@@ -185,6 +185,8 @@ const SavedViewsPage = {
   ]
 }</pre>
 
+  <h4>Examples with OR (<code>any</code>)</h4>
+
   <p>Anything tagged either project, due in the next 7 days:</p>
   <pre>{
   "all": [
@@ -193,6 +195,54 @@ const SavedViewsPage = {
         { "has_tag": "homelab" }
       ] },
     { "scheduled_for": { "between": ["today", "today+7d"] } }
+  ]
+}</pre>
+
+  <p>Needs attention — high priority <em>or</em> overdue <em>or</em>
+  flagged as a blocker:</p>
+  <pre>{
+  "all": [
+    { "block_type": { "in": ["todo", "doing", "later"] } },
+    { "any": [
+        { "property_eq": { "key": "priority", "in": ["high", "critical"] } },
+        { "scheduled_for": { "lt": "today" } },
+        { "has_tag": "blocker" }
+      ] }
+  ]
+}</pre>
+
+  <p>"Anything finished this week" — done <em>or</em> wontdo:</p>
+  <pre>{
+  "all": [
+    { "block_type": { "in": ["done", "wontdo"] } },
+    { "completed_at": { "gte": "7 days ago" } }
+  ]
+}</pre>
+  <pre>[{ "field": "completed_at", "dir": "desc" }]</pre>
+
+  <p>Inbox-style triage list — open blocks with no tag <em>and</em> no
+  due date. Uses two <code>not</code>s under <code>all</code>:</p>
+  <pre>{
+  "all": [
+    { "block_type": { "in": ["todo", "doing", "later"] } },
+    { "scheduled_for": { "is_null": true } },
+    { "not": { "any": [
+        { "has_tag": "work" },
+        { "has_tag": "personal" },
+        { "has_tag": "errand" }
+      ] } }
+  ]
+}</pre>
+
+  <p>Search-style view — any block whose content or tag mentions
+  "deploy", that's still open:</p>
+  <pre>{
+  "all": [
+    { "block_type": { "in": ["todo", "doing", "later"] } },
+    { "any": [
+        { "content_contains": "deploy" },
+        { "has_tag": "deploy" }
+      ] }
   ]
 }</pre>
 </details>`;
