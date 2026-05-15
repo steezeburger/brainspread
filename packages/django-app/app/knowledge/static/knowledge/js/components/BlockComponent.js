@@ -87,6 +87,10 @@ const BlockComponent = {
       type: Function,
       default: () => () => {},
     },
+    openBlockInfoModal: {
+      type: Function,
+      default: () => () => {},
+    },
     onBlockPaste: {
       type: Function,
       default: () => () => {},
@@ -1284,6 +1288,9 @@ const BlockComponent = {
         case "moveToPage":
           this.openMovePagePicker(this.block);
           break;
+        case "blockInfo":
+          this.openBlockInfoModal(this.block);
+          break;
         case "newBlockBefore":
           this.createBlockBefore(this.block);
           break;
@@ -1913,6 +1920,10 @@ const BlockComponent = {
           <span>remove from ai context</span>
         </button>
         <div class="context-menu-separator"></div>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('blockInfo')">
+          <span class="context-menu-icon">i</span>
+          <span>block info...</span>
+        </button>
         <button class="context-menu-item context-menu-danger" role="menuitem" tabindex="-1" @click="handleContextMenuAction('delete')">
           <span class="context-menu-icon">×</span>
           <span>delete</span>
@@ -1955,6 +1966,7 @@ const BlockComponent = {
           :moveBlockDown="moveBlockDown"
           :moveBlockToToday="moveBlockToToday"
           :openMovePagePicker="openMovePagePicker"
+          :openBlockInfoModal="openBlockInfoModal"
           :onBlockPaste="onBlockPaste"
           :onBlockDrop="onBlockDrop"
           :onBlockAttachPick="onBlockAttachPick"

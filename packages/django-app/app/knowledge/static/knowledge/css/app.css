@@ -788,6 +788,78 @@ body {
   border-radius: 0;
 }
 
+/* Block info modal — read-only metadata. Wider than the default
+ * .app-modal so multi-line property JSON has room without scrolling
+ * horizontally. */
+.block-info-modal {
+  max-width: 560px;
+}
+
+.block-info-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.4rem 1rem;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.block-info-list dt {
+  color: var(--text-muted);
+  text-transform: lowercase;
+  white-space: nowrap;
+  padding-top: 0.05rem;
+}
+
+.block-info-list dd {
+  margin: 0;
+  color: var(--text-primary);
+  word-break: break-word;
+  min-width: 0;
+}
+
+.block-info-list code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+}
+
+.block-info-uuid {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.block-info-copy-btn {
+  font-family: inherit;
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  padding: 0.1rem 0.4rem;
+  cursor: pointer;
+}
+
+.block-info-copy-btn:hover {
+  border-color: var(--border-primary);
+}
+
+.block-info-properties {
+  margin: 0;
+  padding: 0.5rem 0.6rem;
+  background: var(--bg-secondary, var(--bg-primary));
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
 .confirm-modal-content {
   background: var(--bg-primary);
   border: 1px solid var(--border-primary);

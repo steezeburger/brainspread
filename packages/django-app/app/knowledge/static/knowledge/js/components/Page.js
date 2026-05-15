@@ -37,6 +37,7 @@ const Page = {
     Whiteboard: window.Whiteboard || {},
     ScheduleBlockPopover: window.ScheduleBlockPopover || {},
     BlockChatPopover: window.BlockChatPopover || {},
+    BlockInfoModal: window.BlockInfoModal || {},
     MoveBlockPagePicker: window.MoveBlockPagePicker || {},
     QueryEmbedBlock: window.QueryEmbedBlock || {},
   },
@@ -73,6 +74,8 @@ const Page = {
       schedulePopoverInitialTime: "",
       blockChatPopoverOpen: false,
       blockChatPopoverBlock: null,
+      blockInfoModalOpen: false,
+      blockInfoModalBlock: null,
       movePagePickerOpen: false,
       movePagePickerBlock: null,
       loading: false,
@@ -1041,6 +1044,16 @@ const Page = {
         this.error = "failed to move block to today";
         this.$parent?.addToast?.("failed to move block to today", "error");
       }
+    },
+
+    openBlockInfoModal(block) {
+      this.blockInfoModalBlock = block;
+      this.blockInfoModalOpen = true;
+    },
+
+    closeBlockInfoModal() {
+      this.blockInfoModalOpen = false;
+      this.blockInfoModalBlock = null;
     },
 
     openMovePagePicker(block) {
@@ -3756,6 +3769,7 @@ const Page = {
                 :moveBlockDown="moveBlockDown"
                 :moveBlockToToday="moveBlockToToday"
                 :openMovePagePicker="openMovePagePicker"
+                :openBlockInfoModal="openBlockInfoModal"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"
                 :onBlockAttachPick="onBlockAttachPick"
@@ -3810,6 +3824,7 @@ const Page = {
                 :moveBlockDown="moveBlockDown"
                 :moveBlockToToday="moveBlockToToday"
                 :openMovePagePicker="openMovePagePicker"
+                :openBlockInfoModal="openBlockInfoModal"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"
                 :onBlockAttachPick="onBlockAttachPick"
@@ -3863,6 +3878,7 @@ const Page = {
                 :moveBlockDown="moveBlockDown"
                 :moveBlockToToday="moveBlockToToday"
                 :openMovePagePicker="openMovePagePicker"
+                :openBlockInfoModal="openBlockInfoModal"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"
                 :onBlockAttachPick="onBlockAttachPick"
@@ -3899,6 +3915,13 @@ const Page = {
         :exclude-page-uuids="page ? [page.uuid] : []"
         @select="handleMovePagePickerSelect"
         @cancel="cancelMovePagePicker"
+      />
+
+      <!-- Read-only block-info modal -->
+      <BlockInfoModal
+        :is-open="blockInfoModalOpen"
+        :block="blockInfoModalBlock"
+        @close="closeBlockInfoModal"
       />
 
       <!-- Share modal (issue #90) -->
