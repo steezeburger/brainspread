@@ -3708,12 +3708,6 @@ const Page = {
                 <span v-if="isTemplate" class="page-type-badge" title="This page is a template — use it from the sidebar or the page menu to create a new page from it.">template</span>
               </div>
               <div class="page-actions">
-                <button
-                  v-if="isTemplate"
-                  @click="useThisTemplate"
-                  class="btn btn-primary use-template-btn"
-                  title="Create a new page from this template"
-                >use template</button>
                 <div class="context-menu-container page-sort-container">
                   <button @click="togglePageSortMenu" class="btn btn-outline context-menu-btn page-sort-btn" :class="{ 'is-active': isSortActive }" :title="'Sort blocks: ' + sortLabel" :aria-expanded="showPageSortMenu" aria-haspopup="menu">
                     <span class="page-sort-btn-icon" aria-hidden="true">⇅</span>

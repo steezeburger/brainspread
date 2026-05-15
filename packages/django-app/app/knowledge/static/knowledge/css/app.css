@@ -2661,13 +2661,6 @@ kbd {
   color: var(--text-primary);
 }
 
-/* Inline "use template" button on the template page header (issue
-   #106). Sits next to the kebab so it's discoverable without forcing
-   the user to open the menu. */
-.use-template-btn {
-  margin-right: 0.4rem;
-}
-
 .leftnav-recent {
   flex: 1;
   min-height: 0;
