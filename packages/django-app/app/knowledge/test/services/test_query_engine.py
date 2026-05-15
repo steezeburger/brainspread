@@ -664,6 +664,21 @@ class SortTests(_EngineTestBase):
                 {}, user=self.user, sort=[{"field": "properties.", "dir": "asc"}]
             )
 
+    def test_default_sort_is_newest_first(self):
+        """When the spec omits sort, the repository falls back to
+        ``-created_at`` (newest first). This pins the contract so the
+        default doesn't drift back to ``scheduled_for`` (which felt
+        random for tag-only views that have no dates)."""
+        import time
+
+        older = BlockFactory(user=self.user, page=self.page, content="older")
+        time.sleep(0.01)  # auto_now_add timestamps are precise enough that
+        # a tight loop can land two blocks in the same microsecond on fast
+        # boxes; a 10ms sleep keeps the order assertion deterministic.
+        newer = BlockFactory(user=self.user, page=self.page, content="newer")
+        out = self.run_query({})  # no sort
+        self.assertEqual([b.id for b in out], [newer.id, older.id])
+
 
 class TopLevelTests(_EngineTestBase):
     def test_empty_filter_matches_all(self):

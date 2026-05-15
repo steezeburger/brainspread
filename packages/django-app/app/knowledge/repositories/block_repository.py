@@ -469,9 +469,11 @@ class BlockRepository(BaseRepository):
     ) -> QuerySet:
         """Execute a CompiledQuery (from knowledge.services.query_engine) for
         the user. Always scoped to ``user`` — saved views can never reach
-        across users. The default ordering is by ``scheduled_for``-then-
-        ``order`` so list-shaped views fall back to a stable, useful sort
-        when the spec doesn't supply one.
+        across users. When the spec doesn't supply a sort we fall back to
+        ``-created_at`` (newest first) — "what did I add lately" is the
+        most useful default for an open-ended block list; the older
+        ``scheduled_for, order`` default surfaced undated items at the
+        top, which felt random for views like "all #brainspread #bugs".
         """
         qs = (
             cls.get_queryset()
@@ -483,10 +485,76 @@ class BlockRepository(BaseRepository):
         if compiled.order_by:
             qs = qs.order_by(*compiled.order_by)
         else:
-            qs = qs.order_by("scheduled_for", "order")
+            qs = qs.order_by("-created_at")
         if limit is not None:
             qs = qs[:limit]
         return qs
+
+    @classmethod
+    def clone_block_tree_to_page(
+        cls, source_page: Page, target_page: Page, target_user
+    ) -> List[Block]:
+        """Deep-copy ``source_page``'s block tree onto ``target_page``.
+
+        Used by the page-template / duplicate flows (issue #106). Each
+        cloned block gets a fresh UUID; parent/child structure, order,
+        block_type, content, properties, media_url, asset, scheduled_for,
+        and the M2M tag set are preserved. completed_at is intentionally
+        cleared on clone — a duplicated todo starts uncompleted even if
+        the source was done.
+
+        Returns the list of newly-created blocks.
+        """
+        source_blocks = list(
+            cls.get_queryset().filter(page=source_page).order_by("parent_id", "order")
+        )
+        if not source_blocks:
+            return []
+
+        with transaction.atomic():
+            uuid_map: Dict[Any, Block] = {}
+            created: List[Block] = []
+            # Two-pass: first create all blocks without parent links so we
+            # have new UUIDs for everyone, then wire up parents in a second
+            # pass. Source blocks were ordered by parent_id then order, so
+            # the M2M copy below stays predictable.
+            for src in source_blocks:
+                new_block = Block.objects.create(
+                    user=target_user,
+                    page=target_page,
+                    parent=None,
+                    content=src.content,
+                    content_type=src.content_type,
+                    block_type=src.block_type,
+                    order=src.order,
+                    media_url=src.media_url,
+                    media_metadata=src.media_metadata,
+                    properties=dict(src.properties or {}),
+                    asset=src.asset,
+                    scheduled_for=src.scheduled_for,
+                    collapsed=src.collapsed,
+                )
+                uuid_map[src.id] = new_block
+                created.append(new_block)
+                # Preserve tag-page M2M so a cloned block keeps its #tags.
+                tag_pages = list(src.pages.all())
+                if tag_pages:
+                    new_block.pages.set(tag_pages)
+
+            # Wire up parent references now that all clones exist.
+            parent_updates = []
+            for src in source_blocks:
+                if src.parent_id is None:
+                    continue
+                clone = uuid_map[src.id]
+                parent_clone = uuid_map.get(src.parent_id)
+                if parent_clone is not None:
+                    clone.parent = parent_clone
+                    parent_updates.append(clone)
+            if parent_updates:
+                Block.objects.bulk_update(parent_updates, ["parent"])
+
+            return created
 
     @classmethod
     def move_blocks_to_page(cls, blocks: List[Block], target_page: Page) -> bool:

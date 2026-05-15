@@ -240,3 +240,12 @@ class PageRepository(BaseRepository):
             queryset = queryset.exclude(uuid=exclude_page_uuid)
 
         return queryset.exists()
+
+    @classmethod
+    def get_user_templates(cls, user) -> QuerySet:
+        """User's template pages, alphabetical. Templates are pages with
+        page_type='template' that the user can instantiate into new
+        regular pages (issue #106)."""
+        return (
+            cls.get_queryset().filter(user=user, page_type="template").order_by("title")
+        )

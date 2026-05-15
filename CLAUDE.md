@@ -155,3 +155,10 @@ Navigate to `packages/django-app/` for most development tasks.
   GitHub auto-links the PR to the issue and closes the issue on merge.
   This applies even when the issue number was only mentioned in the
   branch name or commit message — put it in the PR body too.
+- **Keep PR descriptions short.** A summary should fit on one screen:
+  2–4 sentences of what changed and why, plus the `Closes #<issue>`
+  line. Skip the bulleted Summary / Test Plan / Implementation Notes
+  scaffolding unless the change is genuinely large or risky. The diff
+  is the source of truth — the description's job is to give a reviewer
+  the framing they can't get from the code, not to restage it in prose.
+  When in doubt, cut.

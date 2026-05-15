@@ -99,3 +99,34 @@ class PageEmbeddedViewRepository(BaseRepository):
             if embed.order != index:
                 embed.order = index
                 embed.save(update_fields=["order", "modified_at"])
+
+    @classmethod
+    def clone_to_page(
+        cls, source_page, target_page, target_user
+    ) -> List[PageEmbeddedView]:
+        """Copy every embed from ``source_page`` onto ``target_page``.
+
+        Used by the template / duplicate-page flow (issue #106) so a
+        template's embedded saved views come along when the template
+        is instantiated. The saved_view reference is preserved — a
+        SavedView is a query, not page-scoped data, so two pages can
+        embed the same view independently.
+
+        ``unique_together = (page, saved_view)`` is safe here because
+        the target page is brand new and can't already have any embed.
+        """
+        source_embeds = list(
+            cls.get_queryset().filter(page=source_page).order_by("order", "created_at")
+        )
+        if not source_embeds:
+            return []
+        return [
+            cls.model.objects.create(
+                user=target_user,
+                page=target_page,
+                saved_view=src.saved_view,
+                order=src.order,
+                collapsed=src.collapsed,
+            )
+            for src in source_embeds
+        ]
