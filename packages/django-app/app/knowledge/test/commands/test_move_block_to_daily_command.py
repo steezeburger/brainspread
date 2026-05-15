@@ -309,7 +309,10 @@ class TestMoveBlockToDailyCommand(TestCase):
         self.assertGreater(source_page.modified_at, source_modified_before)
 
         target_page = Page.objects.get(user=self.user, date=target_date)
-        # The target was created mid-execute, so we don't have a baseline
-        # to diff against; instead verify it's at least as fresh as the
-        # source after the move.
-        self.assertGreaterEqual(target_page.modified_at, source_page.modified_at)
+        # Verify the target was also touched. We can't compare to the
+        # source's post-touch timestamp because the command's touch
+        # loop iterates over a set ({source, target}) whose order is
+        # non-deterministic — sometimes source is touched last,
+        # sometimes target — so target vs. source isn't a stable
+        # relation. Comparing to the pre-test baseline IS stable.
+        self.assertGreater(target_page.modified_at, source_modified_before)
