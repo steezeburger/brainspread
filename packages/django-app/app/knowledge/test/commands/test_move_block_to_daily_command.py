@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
 import pytz
@@ -286,6 +286,15 @@ class TestMoveBlockToDailyCommand(TestCase):
         source_page = PageFactory(user=self.user, title="Notes", slug="bump-notes")
         block = BlockFactory(user=self.user, page=source_page, content="moved", order=1)
 
+        # Rewind source_page.modified_at to a stable past time so the
+        # bump assertion isn't flaky on fast runners. auto_now can
+        # otherwise stamp the page-create and the touch-during-move
+        # in the same microsecond (PostgreSQL's timestamp resolution),
+        # which makes assertGreater intermittently fail in CI. .update()
+        # bypasses auto_now so we get a stable baseline.
+        past = source_page.modified_at - timedelta(minutes=1)
+        Page.objects.filter(pk=source_page.pk).update(modified_at=past)
+        source_page.refresh_from_db()
         source_modified_before = source_page.modified_at
 
         form = MoveBlockToDailyForm(
