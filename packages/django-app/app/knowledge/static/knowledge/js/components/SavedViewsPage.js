@@ -236,7 +236,10 @@ const SavedViewsPage = {
         slug: "",
         description: "",
         filter: '{\n  "block_type": "todo"\n}',
-        sort: "[]",
+        // Pre-fill with newest-first sort so a freshly-created view
+        // is immediately useful — matches the backend's empty-sort
+        // default and saves the user a copy-paste from the cheatsheet.
+        sort: '[\n  { "field": "created_at", "dir": "desc" }\n]',
       };
     },
 
