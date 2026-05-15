@@ -51,6 +51,7 @@ from .search_pages_command import SearchPagesCommand
 from .send_due_reminders_command import SendDueRemindersCommand
 from .set_block_type_command import SetBlockTypeCommand
 from .set_page_favorited_command import SetPageFavoritedCommand
+from .set_saved_view_pinned_command import SetSavedViewPinnedCommand
 from .share_page_command import SharePageCommand
 from .snooze_block_command import SnoozeBlockCommand
 from .sync_block_tags_command import SyncBlockTagsCommand

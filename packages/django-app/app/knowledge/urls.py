@@ -95,6 +95,16 @@ urlpatterns = [
         views.duplicate_saved_view,
         name="duplicate_saved_view",
     ),
+    path(
+        "api/views/pin/",
+        views.set_saved_view_pinned,
+        name="set_saved_view_pinned",
+    ),
+    path(
+        "api/views/pinned/",
+        views.list_pinned_saved_views,
+        name="list_pinned_saved_views",
+    ),
     # Page embedded views (issue #60 follow-up) — embeds live in their
     # own table and have their own CRUD endpoints.
     path("api/embeds/", views.create_page_embedded_view, name="create_embed"),

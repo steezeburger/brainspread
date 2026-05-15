@@ -2611,6 +2611,21 @@ kbd {
   font-style: italic;
 }
 
+.leftnav-pinned-views-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0.1rem 0 0.4rem;
+}
+
+.leftnav-pinned-views-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.leftnav-pinned-view-item .leftnav-icon {
+  color: var(--text-muted);
+}
+
 .leftnav-recent {
   flex: 1;
   min-height: 0;

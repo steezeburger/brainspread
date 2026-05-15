@@ -343,6 +343,43 @@ const SavedViewsPage = {
       }
     },
 
+    async togglePinned() {
+      // Toggle the pinned flag and dispatch pinned-views:changed so the
+      // left-nav's pinned-views section refreshes without a reload.
+      if (!this.activeView) return;
+      const nextPinned = !this.activeView.pinned;
+      try {
+        const result = await window.apiService.setSavedViewPinned(
+          this.activeView.uuid,
+          nextPinned
+        );
+        if (result && result.success) {
+          this.activeView = result.data;
+          // Keep the local list in sync so a back-trip to the index
+          // shows the new pin state without an extra refetch.
+          const idx = this.views.findIndex(
+            (v) => v.uuid === this.activeView.uuid
+          );
+          if (idx >= 0) this.views.splice(idx, 1, this.activeView);
+          document.dispatchEvent(new CustomEvent("pinned-views:changed"));
+          this._toast(
+            nextPinned
+              ? `pinned "${this.activeView.name}" to left nav`
+              : `unpinned "${this.activeView.name}"`,
+            "success"
+          );
+        } else {
+          this._toast(
+            this._formatErrors(result && result.errors) || "pin toggle failed",
+            "error"
+          );
+        }
+      } catch (err) {
+        console.error("togglePinned failed:", err);
+        this._toast(`pin toggle failed: ${err}`, "error");
+      }
+    },
+
     async deleteActive() {
       if (!this.canDelete) return;
       const ok = await this._confirm(
@@ -626,6 +663,12 @@ const SavedViewsPage = {
                 {{ running ? "Running…" : "Run" }}
               </button>
               <button class="btn" @click="duplicateActive">Duplicate</button>
+              <button
+                class="btn"
+                :class="{ 'btn-primary': activeView.pinned }"
+                @click="togglePinned"
+                :title="activeView.pinned ? 'Unpin from left nav' : 'Pin to left nav'"
+              >{{ activeView.pinned ? '★ Pinned' : '☆ Pin' }}</button>
               <button class="btn" @click="embedOnToday" title="Add this view to today's daily page as a block">Embed on today</button>
               <button class="btn" v-if="canEdit && !editing" @click="startEditing">Edit</button>
               <button class="btn btn-danger" v-if="canDelete" @click="deleteActive">Delete</button>

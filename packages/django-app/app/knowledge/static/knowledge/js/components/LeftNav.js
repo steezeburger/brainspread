@@ -46,6 +46,18 @@ window.LeftNav = {
     } catch (_) {
       // ignore localStorage failures
     }
+    let pinnedViewsExpanded = true;
+    try {
+      const savedPinnedExpanded =
+        typeof window !== "undefined" && window.localStorage
+          ? window.localStorage.getItem(
+              "brainspread.leftNavPinnedViewsExpanded"
+            )
+          : null;
+      if (savedPinnedExpanded === "0") pinnedViewsExpanded = false;
+    } catch (_) {
+      // ignore localStorage failures
+    }
     return {
       historicalData: null,
       loading: false,
@@ -67,6 +79,12 @@ window.LeftNav = {
       // both reset to null on dragend / drop / dragleave-of-the-list.
       favoriteDragIndex: null,
       favoriteDropIndex: null,
+      // Pinned saved views — loaded alongside favorites and refreshed
+      // when SavedViewsPage dispatches "pinned-views:changed".
+      pinnedViews: [],
+      pinnedViewsLoading: false,
+      pinnedViewsError: null,
+      pinnedViewsExpanded,
     };
   },
 
@@ -92,11 +110,19 @@ window.LeftNav = {
   mounted() {
     this.loadHistoricalData();
     this.loadFavorites();
+    this.loadPinnedViews();
     this.setupResizeListener();
     // The page header dispatches this when a user stars/unstars the
     // current page so the Favorites list refreshes without a reload.
     this.handleFavoritesChanged = () => this.loadFavorites();
     document.addEventListener("favorites:changed", this.handleFavoritesChanged);
+    // SavedViewsPage dispatches this when the user pins or unpins a
+    // view so the pinned-views section refreshes without a reload.
+    this.handlePinnedViewsChanged = () => this.loadPinnedViews();
+    document.addEventListener(
+      "pinned-views:changed",
+      this.handlePinnedViewsChanged
+    );
     // Close the nav when the user clicks outside it on mobile only.
     // On desktop the rail and panel sit in their own real-estate column
     // and never overlap content, so an outside click shouldn't dismiss
@@ -120,6 +146,12 @@ window.LeftNav = {
       document.removeEventListener(
         "favorites:changed",
         this.handleFavoritesChanged
+      );
+    }
+    if (this.handlePinnedViewsChanged) {
+      document.removeEventListener(
+        "pinned-views:changed",
+        this.handlePinnedViewsChanged
       );
     }
     this.detachOutsideClickHandler();
@@ -266,6 +298,48 @@ window.LeftNav = {
       } finally {
         this.favoritesLoading = false;
       }
+    },
+
+    async loadPinnedViews() {
+      this.pinnedViewsLoading = true;
+      this.pinnedViewsError = null;
+      try {
+        const result = await window.apiService.listPinnedSavedViews();
+        if (result && result.success) {
+          this.pinnedViews = result.data?.views || [];
+        } else {
+          this.pinnedViewsError = "failed to load pinned views";
+        }
+      } catch (error) {
+        console.error("error loading pinned views:", error);
+        this.pinnedViewsError = error.message || "failed to load pinned views";
+      } finally {
+        this.pinnedViewsLoading = false;
+      }
+    },
+
+    togglePinnedViews() {
+      this.pinnedViewsExpanded = !this.pinnedViewsExpanded;
+      try {
+        if (typeof window !== "undefined" && window.localStorage) {
+          window.localStorage.setItem(
+            "brainspread.leftNavPinnedViewsExpanded",
+            this.pinnedViewsExpanded ? "1" : "0"
+          );
+        }
+      } catch (_) {
+        // localStorage can throw in private mode
+      }
+    },
+
+    onPinnedViewClick(event, slug) {
+      // Defer to the browser on middle / cmd-click so "open in new tab"
+      // still works. Otherwise hard-navigate, matching the rest of the
+      // left-nav's link affordances (the app re-mounts on /knowledge/
+      // path changes).
+      if (this.shouldDeferToBrowser(event)) return;
+      event.preventDefault();
+      window.location.href = `/knowledge/views/${encodeURIComponent(slug)}/`;
     },
 
     onFavoriteDragStart(event, index) {
@@ -428,6 +502,10 @@ window.LeftNav = {
 
     pageUrl(slug) {
       return `/knowledge/page/${encodeURIComponent(slug)}/`;
+    },
+
+    viewUrl(slug) {
+      return `/knowledge/views/${encodeURIComponent(slug)}/`;
     },
 
     shouldDeferToBrowser(event) {
@@ -910,6 +988,46 @@ window.LeftNav = {
                   class="leftnav-favorite-drop-indicator"
                   aria-hidden="true"
                 ></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Pinned saved views (collapsible) -->
+          <section class="leftnav-section leftnav-pinned-views" aria-label="Pinned views">
+            <button
+              type="button"
+              class="leftnav-section-toggle"
+              @click="togglePinnedViews"
+              :aria-expanded="pinnedViewsExpanded"
+            >
+              <span class="leftnav-chevron" :class="{ open: pinnedViewsExpanded }" aria-hidden="true">▸</span>
+              <span>pinned views</span>
+              <span v-if="pinnedViews.length" class="leftnav-section-count">{{ pinnedViews.length }}</span>
+            </button>
+
+            <div v-if="pinnedViewsExpanded" class="leftnav-pinned-views-body">
+              <div v-if="pinnedViewsLoading" class="sidebar-loading">
+                Loading...
+              </div>
+              <div v-else-if="pinnedViewsError" class="sidebar-error">
+                {{ pinnedViewsError }}
+              </div>
+              <div v-else-if="!pinnedViews.length" class="leftnav-empty">
+                No pinned views. Pin a view from its detail page.
+              </div>
+              <div v-else class="leftnav-pinned-views-list">
+                <a
+                  v-for="view in pinnedViews"
+                  :key="view.uuid"
+                  :href="viewUrl(view.slug)"
+                  class="leftnav-item leftnav-pinned-view-item"
+                  @click="onPinnedViewClick($event, view.slug)"
+                  @auxclick="onPinnedViewClick($event, view.slug)"
+                  :title="view.description || view.name"
+                >
+                  <span class="leftnav-icon" aria-hidden="true">≡</span>
+                  <span class="leftnav-label">{{ view.name }}</span>
+                </a>
               </div>
             </div>
           </section>

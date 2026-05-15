@@ -42,6 +42,7 @@ from knowledge.commands import (
     SearchNotesCommand,
     SearchPagesCommand,
     SetPageFavoritedCommand,
+    SetSavedViewPinnedCommand,
     SharePageCommand,
     ToggleBlockTodoCommand,
     UpdateBlockCommand,
@@ -89,6 +90,7 @@ from knowledge.forms import (
     SearchNotesForm,
     SearchPagesForm,
     SetPageFavoritedForm,
+    SetSavedViewPinnedForm,
     SharePageForm,
     ToggleBlockTodoForm,
     UpdateBlockForm,
@@ -98,7 +100,7 @@ from knowledge.forms import (
 )
 from knowledge.models import BlockData, Page, PageData, PagesData
 from knowledge.models.page import PageWithBlocksData
-from knowledge.repositories import BlockRepository
+from knowledge.repositories import BlockRepository, SavedViewRepository
 
 
 # API Response Types with specific data types
@@ -1697,6 +1699,30 @@ def duplicate_saved_view(request):
     return _saved_view_response(
         True, data=view.to_dict(), http_status=status.HTTP_201_CREATED
     )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def set_saved_view_pinned(request):
+    """Pin or unpin a saved view so it appears in the left-nav."""
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = SetSavedViewPinnedForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        view = SetSavedViewPinnedCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
+    return _saved_view_response(True, data=view.to_dict())
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def list_pinned_saved_views(request):
+    """List the user's pinned saved views, for the left-nav."""
+    views = SavedViewRepository.list_pinned_for_user(request.user)
+    return _saved_view_response(True, data={"views": [v.to_dict() for v in views]})
 
 
 # ---------------------------------------------------------------------------
