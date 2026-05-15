@@ -788,6 +788,82 @@ body {
   border-radius: 0;
 }
 
+/* Page picker modal (window.appModals.pickPage). Wider than the
+   prompt/confirm modals so longer page titles fit on one line, and
+   wraps a scrollable result list under the input. */
+.app-modal-picker {
+  max-width: 560px;
+}
+
+.app-modal-picker-results {
+  display: flex;
+  flex-direction: column;
+  max-height: 18rem;
+  overflow-y: auto;
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  background: var(--bg-primary);
+}
+
+.app-modal-picker-empty {
+  padding: 0.75rem 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.app-modal-picker-result {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-primary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-modal-picker-result:last-child {
+  border-bottom: none;
+}
+
+.app-modal-picker-result.is-selected,
+.app-modal-picker-result:hover {
+  background: var(--hover-bg);
+}
+
+.app-modal-picker-result-title {
+  flex: 1;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-modal-picker-result-type {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--tag-bg);
+  padding: 1px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+}
+
+.app-modal-picker-result-slug {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 14rem;
+}
+
 .confirm-modal-content {
   background: var(--bg-primary);
   border: 1px solid var(--border-primary);

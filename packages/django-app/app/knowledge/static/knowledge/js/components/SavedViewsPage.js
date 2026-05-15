@@ -585,35 +585,23 @@ const SavedViewsPage = {
 
     async embedOnPage() {
       // Pin this saved view onto a user-chosen page as a
-      // PageEmbeddedView. Prompts for a target page slug or title;
-      // empty input falls back to today's daily note (the historical
-      // default). The backend command is idempotent on
-      // (page, saved_view) — a second click returns the existing
-      // embed rather than creating a duplicate, surfaced as a toast
-      // so the user knows their click landed somewhere.
+      // PageEmbeddedView. Opens the typeahead page picker; the user
+      // sees their recent pages by default and can search by title.
+      // The backend command is idempotent on (page, saved_view) — a
+      // second click returns the existing embed rather than creating
+      // a duplicate.
       if (!this.activeView) return;
 
-      const todaySlug = this._todaySlug();
-      const target = await window.appModals.prompt({
-        title: "embed view on a page",
-        message: "page title or slug (leave blank for today's daily note):",
-        placeholder: todaySlug,
-        defaultValue: todaySlug,
+      const page = await window.appModals.pickPage({
+        title: `embed "${this.activeView.name}" on a page`,
+        message: "search by page title, or pick from recent:",
+        placeholder: "page title…",
         confirmLabel: "embed",
       });
       // null = user dismissed the dialog
-      if (target == null) return;
+      if (!page || !page.uuid) return;
 
       try {
-        const page = await this._resolveTargetPage(target.trim() || todaySlug);
-        if (!page || !page.uuid) {
-          this._toast(
-            `No page found matching "${target.trim() || todaySlug}".`,
-            "error"
-          );
-          return;
-        }
-
         const r = await window.apiService.createPageEmbeddedView(
           page.uuid,
           this.activeView.uuid
@@ -632,51 +620,6 @@ const SavedViewsPage = {
       } catch (err) {
         console.error("embedOnPage failed:", err);
         this._toast(`Embed failed: ${err}`, "error");
-      }
-    },
-
-    _todaySlug() {
-      const d = new Date();
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      return `${y}-${m}-${day}`;
-    },
-
-    async _resolveTargetPage(query) {
-      // Resolve the user's freeform "where to embed" input into a
-      // concrete Page. Strategy:
-      //   1. Try slug exact-match via getPageWithBlocks(slug=...).
-      //      Cheapest path; covers daily slugs (YYYY-MM-DD) and any
-      //      user who pastes the slug from the URL.
-      //   2. Fall back to title search, prefer exact title match,
-      //      otherwise first hit. Tolerates the user typing the
-      //      page's display name instead of its URL slug.
-      try {
-        const slugRes = await window.apiService.getPageWithBlocks(
-          null,
-          null,
-          query
-        );
-        if (slugRes && slugRes.success && slugRes.data && slugRes.data.page) {
-          return slugRes.data.page;
-        }
-      } catch (_) {
-        // getPageWithBlocks returns a structured error for "not found";
-        // network failures fall through to the title search.
-      }
-      try {
-        const searchRes = await window.apiService.searchPages(query, 10);
-        const pages =
-          (searchRes && searchRes.data && searchRes.data.pages) || [];
-        if (!pages.length) return null;
-        const lower = query.toLowerCase();
-        return (
-          pages.find((p) => p.title && p.title.toLowerCase() === lower) ||
-          pages[0]
-        );
-      } catch (_) {
-        return null;
       }
     },
 
