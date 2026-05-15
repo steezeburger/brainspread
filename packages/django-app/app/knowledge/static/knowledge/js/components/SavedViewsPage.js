@@ -854,8 +854,16 @@ const SavedViewsPage = {
 
         <template v-else>
           <div class="saved-views-header">
-            <h1>
-              {{ activeView.name }}
+            <h1 class="saved-view-title-row">
+              <button
+                type="button"
+                class="page-favorite-toggle"
+                :class="{ 'is-favorited': activeView.pinned }"
+                @click="togglePinned"
+                :title="activeView.pinned ? 'Unpin from left nav' : 'Pin to left nav'"
+                :aria-pressed="activeView.pinned"
+              >{{ activeView.pinned ? '★' : '☆' }}</button>
+              <span class="saved-view-title-text">{{ activeView.name }}</span>
               <span v-if="activeView.is_system" class="system-pill">system</span>
             </h1>
             <div class="header-actions">
@@ -863,12 +871,6 @@ const SavedViewsPage = {
                 {{ running ? "Running…" : editing ? "Preview" : "Run" }}
               </button>
               <button class="btn" @click="duplicateActive">Duplicate</button>
-              <button
-                class="btn"
-                :class="{ 'btn-primary': activeView.pinned }"
-                @click="togglePinned"
-                :title="activeView.pinned ? 'Unpin from left nav' : 'Pin to left nav'"
-              >{{ activeView.pinned ? '★ Pinned' : '☆ Pin' }}</button>
               <button class="btn" @click="embedOnPage" title="Embed this view on a page (defaults to today's daily note)">Embed…</button>
               <button class="btn" v-if="canEdit && !editing" @click="startEditing">Edit</button>
               <button class="btn btn-danger" v-if="canDelete" @click="deleteActive">Delete</button>

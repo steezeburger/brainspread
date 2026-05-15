@@ -5088,12 +5088,33 @@ a.sidebar-item:visited {
    Reveal on hover of the title row, on keyboard focus of the button
    (`:focus-visible` skips mouse focus so a click doesn't pin it
    visible after the cursor leaves), or whenever the page is
-   favorited — the filled ★ then advertises the state at a glance. */
+   favorited — the filled ★ then advertises the state at a glance.
+   The saved-view selector reuses the same affordance for the view-
+   pin star on the saved-view detail page so pin / favorite have one
+   visual vocabulary. */
 .page-header-flex-left:hover .page-favorite-toggle,
 .title-left:hover .page-favorite-toggle,
+.saved-view-title-row:hover .page-favorite-toggle,
 .page-favorite-toggle:focus-visible,
 .page-favorite-toggle.is-favorited {
   opacity: 1;
+}
+
+.saved-view-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.saved-view-title-row .saved-view-title-text {
+  /* Don't let the title push the star off-row when names are long.
+     The star is fixed-width via .page-favorite-toggle padding; the
+     title gets the remaining space and ellipsizes if it overflows. */
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Touch devices have no hover, so the empty ☆ would otherwise be
