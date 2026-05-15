@@ -37,6 +37,7 @@ const Page = {
     Whiteboard: window.Whiteboard || {},
     ScheduleBlockPopover: window.ScheduleBlockPopover || {},
     BlockChatPopover: window.BlockChatPopover || {},
+    MoveBlockPagePicker: window.MoveBlockPagePicker || {},
     QueryEmbedBlock: window.QueryEmbedBlock || {},
   },
   props: {
@@ -72,6 +73,8 @@ const Page = {
       schedulePopoverInitialTime: "",
       blockChatPopoverOpen: false,
       blockChatPopoverBlock: null,
+      movePagePickerOpen: false,
+      movePagePickerBlock: null,
       loading: false,
       error: null,
       // Page title editing
@@ -1037,6 +1040,62 @@ const Page = {
         console.error("failed to move block to today:", error);
         this.error = "failed to move block to today";
         this.$parent?.addToast?.("failed to move block to today", "error");
+      }
+    },
+
+    openMovePagePicker(block) {
+      // Open the page-picker modal for "move to page..." from the
+      // block context menu. We hold a reference to the block so the
+      // picker's select handler can call the move API for the right one.
+      this.movePagePickerBlock = block;
+      this.movePagePickerOpen = true;
+    },
+
+    cancelMovePagePicker() {
+      this.movePagePickerOpen = false;
+      this.movePagePickerBlock = null;
+    },
+
+    async handleMovePagePickerSelect(targetPage) {
+      const block = this.movePagePickerBlock;
+      this.movePagePickerOpen = false;
+      this.movePagePickerBlock = null;
+      if (!block || !targetPage) return;
+
+      try {
+        if (block.isEditing) {
+          await this.updateBlock(block, block.content, true);
+        }
+
+        const result = await window.apiService.moveBlockToPage(
+          block.uuid,
+          targetPage.uuid
+        );
+
+        if (!result.success) {
+          throw new Error(
+            result.errors?.non_field_errors?.[0] || "move failed"
+          );
+        }
+
+        const moved = result.data?.moved;
+        const targetTitle = targetPage.title || result.data?.target_page?.title;
+        if (moved) {
+          this.$parent?.addToast?.(`moved block to ${targetTitle}`, "success");
+        } else {
+          this.$parent?.addToast?.(
+            result.data?.message || `block already on ${targetTitle}`,
+            "info"
+          );
+        }
+
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("failed to move block to page:", error);
+        this.$parent?.addToast?.(
+          `failed to move block: ${error.message || error}`,
+          "error"
+        );
       }
     },
 
@@ -3696,6 +3755,7 @@ const Page = {
                 :moveBlockUp="moveBlockUp"
                 :moveBlockDown="moveBlockDown"
                 :moveBlockToToday="moveBlockToToday"
+                :openMovePagePicker="openMovePagePicker"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"
                 :onBlockAttachPick="onBlockAttachPick"
@@ -3749,6 +3809,7 @@ const Page = {
                 :moveBlockUp="moveBlockUp"
                 :moveBlockDown="moveBlockDown"
                 :moveBlockToToday="moveBlockToToday"
+                :openMovePagePicker="openMovePagePicker"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"
                 :onBlockAttachPick="onBlockAttachPick"
@@ -3801,6 +3862,7 @@ const Page = {
                 :moveBlockUp="moveBlockUp"
                 :moveBlockDown="moveBlockDown"
                 :moveBlockToToday="moveBlockToToday"
+                :openMovePagePicker="openMovePagePicker"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"
                 :onBlockAttachPick="onBlockAttachPick"
@@ -3829,6 +3891,14 @@ const Page = {
         :is-open="blockChatPopoverOpen"
         :block="blockChatPopoverBlock"
         @close="closeBlockChatPopover"
+      />
+
+      <!-- Page-picker for "move to page..." -->
+      <MoveBlockPagePicker
+        :is-open="movePagePickerOpen"
+        :exclude-page-uuids="page ? [page.uuid] : []"
+        @select="handleMovePagePickerSelect"
+        @cancel="cancelMovePagePicker"
       />
 
       <!-- Share modal (issue #90) -->

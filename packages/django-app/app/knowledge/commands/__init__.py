@@ -39,6 +39,7 @@ from .list_pending_reminders_command import ListPendingRemindersCommand
 from .list_saved_views_command import ListSavedViewsCommand
 from .list_scheduled_blocks_command import ListScheduledBlocksCommand
 from .move_block_to_daily_command import MoveBlockToDailyCommand
+from .move_block_to_page_command import MoveBlockToPageCommand
 from .move_undone_todos_command import MoveUndoneTodosCommand
 from .reorder_blocks_command import ReorderBlocksCommand
 from .reorder_favorited_pages_command import ReorderFavoritedPagesCommand

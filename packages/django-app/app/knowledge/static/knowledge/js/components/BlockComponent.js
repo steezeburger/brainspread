@@ -83,6 +83,10 @@ const BlockComponent = {
       type: Function,
       default: () => () => {},
     },
+    openMovePagePicker: {
+      type: Function,
+      default: () => () => {},
+    },
     onBlockPaste: {
       type: Function,
       default: () => () => {},
@@ -1277,6 +1281,9 @@ const BlockComponent = {
         case "moveToToday":
           this.moveBlockToToday(this.block);
           break;
+        case "moveToPage":
+          this.openMovePagePicker(this.block);
+          break;
         case "newBlockBefore":
           this.createBlockBefore(this.block);
           break;
@@ -1859,6 +1866,10 @@ const BlockComponent = {
           <span class="context-menu-icon">⇨</span>
           <span>move to today's daily</span>
         </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('moveToPage')">
+          <span class="context-menu-icon">→</span>
+          <span>move to page…</span>
+        </button>
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('copyLink')">
           <span class="context-menu-icon">↗</span>
           <span>copy link to block</span>
@@ -1943,6 +1954,7 @@ const BlockComponent = {
           :moveBlockUp="moveBlockUp"
           :moveBlockDown="moveBlockDown"
           :moveBlockToToday="moveBlockToToday"
+          :openMovePagePicker="openMovePagePicker"
           :onBlockPaste="onBlockPaste"
           :onBlockDrop="onBlockDrop"
           :onBlockAttachPick="onBlockAttachPick"

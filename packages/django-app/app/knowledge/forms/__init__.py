@@ -39,6 +39,7 @@ from .list_pending_reminders_form import ListPendingRemindersForm
 from .list_saved_views_form import ListSavedViewsForm
 from .list_scheduled_blocks_form import ListScheduledBlocksForm
 from .move_block_to_daily_form import MoveBlockToDailyForm
+from .move_block_to_page_form import MoveBlockToPageForm
 from .move_undone_todos_form import MoveUndoneTodosForm
 from .reorder_blocks_form import ReorderBlocksForm
 from .reorder_favorited_pages_form import ReorderFavoritedPagesForm

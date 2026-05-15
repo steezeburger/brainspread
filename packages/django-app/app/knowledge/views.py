@@ -32,6 +32,7 @@ from knowledge.commands import (
     GetUserPagesCommand,
     ListSavedViewsCommand,
     MoveBlockToDailyCommand,
+    MoveBlockToPageCommand,
     MoveUndoneTodosCommand,
     ReorderBlocksCommand,
     ReorderFavoritedPagesCommand,
@@ -54,6 +55,7 @@ from knowledge.commands.get_graph_data_command import GraphData
 from knowledge.commands.get_historical_data_command import HistoricalData
 from knowledge.commands.get_tag_content_command import TagContentData
 from knowledge.commands.move_block_to_daily_command import MoveBlockToDailyData
+from knowledge.commands.move_block_to_page_command import MoveBlockToPageData
 from knowledge.commands.move_undone_todos_command import MoveUndoneTodosData
 from knowledge.forms import (
     BulkDeleteBlocksForm,
@@ -77,6 +79,7 @@ from knowledge.forms import (
     GetUserPagesForm,
     ListSavedViewsForm,
     MoveBlockToDailyForm,
+    MoveBlockToPageForm,
     MoveUndoneTodosForm,
     ReorderBlocksForm,
     ReorderFavoritedPagesForm,
@@ -150,6 +153,12 @@ class MoveUndoneTodosResponse(TypedDict):
 class MoveBlockToDailyResponse(TypedDict):
     success: bool
     data: Optional[MoveBlockToDailyData]
+    errors: Optional[Dict[str, List[str]]]
+
+
+class MoveBlockToPageResponse(TypedDict):
+    success: bool
+    data: Optional[MoveBlockToPageData]
     errors: Optional[Dict[str, List[str]]]
 
 
@@ -1228,6 +1237,48 @@ def move_block_to_daily(request):
 
     except Exception as e:
         response: MoveBlockToDailyResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def move_block_to_page(request):
+    """Move a single block (and its descendants) to an arbitrary target page."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+
+        form = MoveBlockToPageForm(data)
+
+        if not form.is_valid():
+            response: MoveBlockToPageResponse = {
+                "success": False,
+                "data": None,
+                "errors": form.errors,
+            }
+            return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+        result = MoveBlockToPageCommand(form).execute()
+
+        response: MoveBlockToPageResponse = {
+            "success": True,
+            "data": result,
+            "errors": None,
+        }
+        return Response(response)
+
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    except Exception as e:
+        response: MoveBlockToPageResponse = {
             "success": False,
             "data": None,
             "errors": {"non_field_errors": [str(e)]},

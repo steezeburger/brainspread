@@ -46,6 +46,11 @@ urlpatterns = [
         name="move_block_to_daily",
     ),
     path(
+        "api/blocks/move-to-page/",
+        views.move_block_to_page,
+        name="move_block_to_page",
+    ),
+    path(
         "api/blocks/bulk-delete/",
         views.bulk_delete_blocks,
         name="bulk_delete_blocks",

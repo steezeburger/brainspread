@@ -289,6 +289,16 @@ class ApiService {
     });
   }
 
+  async moveBlockToPage(blockUuid, targetPageUuid) {
+    return await this.request("/knowledge/api/blocks/move-to-page/", {
+      method: "POST",
+      body: JSON.stringify({ block: blockUuid, target_page: targetPageUuid }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
   async bulkDeleteBlocks(blockUuids) {
     return await this.request("/knowledge/api/blocks/bulk-delete/", {
       method: "POST",
@@ -823,6 +833,17 @@ class ApiService {
       method: "POST",
       body: JSON.stringify(payload),
     });
+  }
+
+  async setSavedViewPinned(viewUuid, pinned) {
+    return await this.request("/knowledge/api/views/pin/", {
+      method: "POST",
+      body: JSON.stringify({ view: viewUuid, pinned: !!pinned }),
+    });
+  }
+
+  async listPinnedSavedViews() {
+    return await this.request("/knowledge/api/views/pinned/");
   }
 
   // ---- Page embedded views (issue #60 follow-up) ---------------------
