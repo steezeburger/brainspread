@@ -659,23 +659,6 @@ window.LeftNav = {
       }
     },
 
-    async toggleBlockTodo(block, event) {
-      if (event) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-
-      try {
-        const result = await window.apiService.toggleBlockTodo(block.uuid);
-        if (result.success) {
-          block.block_type = result.data.block_type;
-          block.content = result.data.content;
-        }
-      } catch (error) {
-        console.error("error toggling todo:", error);
-      }
-    },
-
     formatContentWithTags(content, blockType = null) {
       if (!content) return "";
 
@@ -1235,38 +1218,6 @@ window.LeftNav = {
                   </div>
                 </div>
 
-                <!-- Recent Blocks -->
-                <div v-if="historicalData.blocks && historicalData.blocks.length" class="sidebar-section">
-                  <h4>Recent Blocks ({{ historicalData.blocks.length }})</h4>
-                  <div class="sidebar-items">
-                    <a
-                      v-for="block in historicalData.blocks"
-                      :key="block.uuid"
-                      :href="pageUrl(block.page_slug)"
-                      class="sidebar-item block-item clickable"
-                      @click="handleNavClick($event, block.page_slug)"
-                      @auxclick="handleNavClick($event, block.page_slug)"
-                      :title="'Click to open ' + block.page_title + ' (Cmd/Ctrl-click for new tab)'"
-                    >
-                      <div class="item-header">
-                        <span class="item-page">{{ block.page_title }}</span>
-                      </div>
-                      <div class="item-meta">{{ formatTime(block.modified_at || block.created_at) }}</div>
-                      <div class="item-content-row" @click="handleTagClick">
-                        <span
-                          v-if="block.block_type === 'todo' || block.block_type === 'doing' || block.block_type === 'done'"
-                          @click="toggleBlockTodo(block, $event)"
-                          :class="['block-bullet', block.block_type]"
-                          :title="'Toggle ' + (block.block_type === 'done' ? 'undone' : 'done')"
-                        >
-                          <span v-if="block.block_type === 'doing'">◐</span>
-                          <span v-else>{{ block.block_type === 'done' ? '☑' : '☐' }}</span>
-                        </span>
-                        <span class="item-content" :class="{ 'completed': block.block_type === 'done' }" v-html="formatContentWithTags(truncateContent(block.content, 100), block.block_type)"></span>
-                      </div>
-                    </a>
-                  </div>
-                </div>
               </div>
             </div>
           </section>
