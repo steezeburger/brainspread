@@ -64,6 +64,12 @@ class CompiledQuery:
 
     filter_q: Q
     order_by: List[str] = field(default_factory=list)
+    # When False (the default), the repository excludes blocks whose page
+    # is a template — they're scaffolding, not active work, and surfacing
+    # them in "Overdue" / tag views is almost always noise. Set to True
+    # when the filter explicitly mentions ``page_type`` so a power user
+    # can opt template blocks back in (e.g. ``{"page_type": "template"}``).
+    includes_page_type: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -421,6 +427,51 @@ def _content_contains_q(value: Any, user) -> Q:
     return Q(content__icontains=value)
 
 
+# Pulled from Page.page_type choices; refresh if the model gains new types.
+# Resolved lazily to avoid an import cycle at module load.
+def _page_types() -> "set[str]":
+    from knowledge.models import Page
+
+    return {choice[0] for choice in Page._meta.get_field("page_type").choices}
+
+
+def _page_type_q(value: Any, user) -> Q:
+    """Filter blocks by their page's ``page_type``.
+
+    Shorthand ``"template"`` is treated as ``{"eq": "template"}``. The
+    main reason this predicate exists is to let users opt template-page
+    blocks back into a view's results — by default the repository
+    excludes them as scaffolding (see CompiledQuery.includes_page_type).
+    Mentioning ``page_type`` anywhere in the filter (including a
+    negation) turns the default exclusion off so the spec stays in
+    control.
+    """
+    if isinstance(value, str):
+        value = {"eq": value}
+    if not isinstance(value, dict):
+        raise QueryEngineError(f"Invalid page_type predicate: {value!r}")
+
+    page_types = _page_types()
+    q = Q()
+    for op, arg in value.items():
+        if op == "eq":
+            if arg not in page_types:
+                raise QueryEngineError(f"Unknown page_type: {arg!r}")
+            q &= Q(page__page_type=arg)
+        elif op == "in":
+            if not isinstance(arg, list) or not arg:
+                raise QueryEngineError(
+                    f"page_type 'in' must be a non-empty list: {arg!r}"
+                )
+            unknown = [v for v in arg if v not in page_types]
+            if unknown:
+                raise QueryEngineError(f"Unknown page_type(s): {unknown!r}")
+            q &= Q(page__page_type__in=arg)
+        else:
+            raise QueryEngineError(f"Unsupported op {op!r} on page_type")
+    return q
+
+
 PREDICATE_HANDLERS: Dict[str, Callable[[Any, Any], Q]] = {
     "block_type": _block_type_q,
     "scheduled_for": _scheduled_for_q,
@@ -429,6 +480,7 @@ PREDICATE_HANDLERS: Dict[str, Callable[[Any, Any], Q]] = {
     "has_property": _has_property_q,
     "property_eq": _property_eq_q,
     "content_contains": _content_contains_q,
+    "page_type": _page_type_q,
 }
 
 COMBINATORS = ("all", "any", "not")
@@ -540,6 +592,26 @@ def _compile_sort(sort_spec: Any) -> List[str]:
     return parts
 
 
+def _spec_mentions_page_type(spec: Any) -> bool:
+    """True iff the filter spec references the ``page_type`` predicate.
+
+    Used by ``compile`` to flip ``CompiledQuery.includes_page_type``,
+    which in turn tells the repository to skip its default template-
+    page exclusion. Walks through combinators (``all`` / ``any`` /
+    ``not``) so a nested ``page_type`` still counts.
+    """
+    if not isinstance(spec, dict) or not spec:
+        return False
+    key, value = next(iter(spec.items()))
+    if key == "page_type":
+        return True
+    if key == "not":
+        return _spec_mentions_page_type(value)
+    if key in ("all", "any") and isinstance(value, list):
+        return any(_spec_mentions_page_type(child) for child in value)
+    return False
+
+
 def compile(spec: Any, user, sort: Any = None) -> CompiledQuery:
     """Compile a filter spec (and optional sort spec) into a CompiledQuery.
 
@@ -551,4 +623,5 @@ def compile(spec: Any, user, sort: Any = None) -> CompiledQuery:
     return CompiledQuery(
         filter_q=_compile_node(spec, user),
         order_by=_compile_sort(sort),
+        includes_page_type=_spec_mentions_page_type(spec),
     )

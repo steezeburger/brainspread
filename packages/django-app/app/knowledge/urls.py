@@ -46,6 +46,16 @@ urlpatterns = [
         name="move_block_to_daily",
     ),
     path(
+        "api/blocks/move-to-page/",
+        views.move_block_to_page,
+        name="move_block_to_page",
+    ),
+    path(
+        "api/pages/add-template-blocks/",
+        views.add_template_blocks_to_page,
+        name="add_template_blocks_to_page",
+    ),
+    path(
         "api/blocks/bulk-delete/",
         views.bulk_delete_blocks,
         name="bulk_delete_blocks",
@@ -95,6 +105,16 @@ urlpatterns = [
         "api/views/duplicate/",
         views.duplicate_saved_view,
         name="duplicate_saved_view",
+    ),
+    path(
+        "api/views/pin/",
+        views.set_saved_view_pinned,
+        name="set_saved_view_pinned",
+    ),
+    path(
+        "api/views/pinned/",
+        views.list_pinned_saved_views,
+        name="list_pinned_saved_views",
     ),
     # Page embedded views (issue #60 follow-up) — embeds live in their
     # own table and have their own CRUD endpoints.

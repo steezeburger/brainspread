@@ -162,10 +162,15 @@ class ApiService {
     });
   }
 
-  async getPages(publishedOnly = true, limit = 10, offset = 0) {
-    return await this.request(
-      `/knowledge/api/pages/list/?published_only=${publishedOnly}&limit=${limit}&offset=${offset}`
-    );
+  async getPages(
+    publishedOnly = true,
+    limit = 10,
+    offset = 0,
+    pageType = null
+  ) {
+    let url = `/knowledge/api/pages/list/?published_only=${publishedOnly}&limit=${limit}&offset=${offset}`;
+    if (pageType) url += `&page_type=${encodeURIComponent(pageType)}`;
+    return await this.request(url);
   }
 
   // Page templates (issue #106). Templates are pages with
@@ -173,6 +178,16 @@ class ApiService {
   // into a new regular page via the same /pages/duplicate/ endpoint.
   async getTemplates() {
     return await this.request("/knowledge/api/pages/templates/");
+  }
+
+  async addTemplateBlocksToPage(templateUuid, targetPageUuid) {
+    return await this.request("/knowledge/api/pages/add-template-blocks/", {
+      method: "POST",
+      body: JSON.stringify({
+        template: templateUuid,
+        target_page: targetPageUuid,
+      }),
+    });
   }
 
   async duplicatePage(sourcePageUuid, { newTitle, newPageType } = {}) {
@@ -185,10 +200,10 @@ class ApiService {
     });
   }
 
-  async searchPages(query, limit = 10) {
-    return await this.request(
-      `/knowledge/api/pages/search/?query=${encodeURIComponent(query)}&limit=${limit}`
-    );
+  async searchPages(query, limit = 10, pageType = null) {
+    let url = `/knowledge/api/pages/search/?query=${encodeURIComponent(query)}&limit=${limit}`;
+    if (pageType) url += `&page_type=${encodeURIComponent(pageType)}`;
+    return await this.request(url);
   }
 
   async searchBlocks(query, limit = 10) {
@@ -300,6 +315,16 @@ class ApiService {
     return await this.request("/knowledge/api/blocks/move-to-daily/", {
       method: "POST",
       body: JSON.stringify(body),
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
+  async moveBlockToPage(blockUuid, targetPageUuid) {
+    return await this.request("/knowledge/api/blocks/move-to-page/", {
+      method: "POST",
+      body: JSON.stringify({ block: blockUuid, target_page: targetPageUuid }),
       headers: {
         "Content-Type": "application/json",
       },
@@ -847,6 +872,17 @@ class ApiService {
       method: "POST",
       body: JSON.stringify(payload),
     });
+  }
+
+  async setSavedViewPinned(viewUuid, pinned) {
+    return await this.request("/knowledge/api/views/pin/", {
+      method: "POST",
+      body: JSON.stringify({ view: viewUuid, pinned: !!pinned }),
+    });
+  }
+
+  async listPinnedSavedViews() {
+    return await this.request("/knowledge/api/views/pinned/");
   }
 
   // ---- Page embedded views (issue #60 follow-up) ---------------------

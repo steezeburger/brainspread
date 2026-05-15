@@ -1,3 +1,4 @@
+from .add_template_blocks_to_page_command import AddTemplateBlocksToPageCommand
 from .bulk_cancel_reminders_command import BulkCancelRemindersCommand
 from .bulk_clear_schedule_command import BulkClearScheduleCommand
 from .bulk_delete_blocks_command import BulkDeleteBlocksCommand
@@ -41,6 +42,7 @@ from .list_saved_views_command import ListSavedViewsCommand
 from .list_scheduled_blocks_command import ListScheduledBlocksCommand
 from .list_templates_command import ListTemplatesCommand
 from .move_block_to_daily_command import MoveBlockToDailyCommand
+from .move_block_to_page_command import MoveBlockToPageCommand
 from .move_undone_todos_command import MoveUndoneTodosCommand
 from .preview_saved_view_command import PreviewSavedViewCommand
 from .reorder_blocks_command import ReorderBlocksCommand
@@ -53,6 +55,7 @@ from .search_pages_command import SearchPagesCommand
 from .send_due_reminders_command import SendDueRemindersCommand
 from .set_block_type_command import SetBlockTypeCommand
 from .set_page_favorited_command import SetPageFavoritedCommand
+from .set_saved_view_pinned_command import SetSavedViewPinnedCommand
 from .share_page_command import SharePageCommand
 from .snooze_block_command import SnoozeBlockCommand
 from .sync_block_tags_command import SyncBlockTagsCommand

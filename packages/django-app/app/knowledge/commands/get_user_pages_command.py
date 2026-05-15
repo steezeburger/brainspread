@@ -20,10 +20,13 @@ class GetUserPagesCommand(AbstractBaseCommand):
         published_only = self.form.cleaned_data.get("published_only", True)
         limit = self.form.cleaned_data.get("limit", 10)
         offset = self.form.cleaned_data.get("offset", 0)
+        page_type = self.form.cleaned_data.get("page_type") or None
 
         queryset = Page.objects.filter(user=user)
         if published_only:
             queryset = queryset.filter(is_published=True)
+        if page_type:
+            queryset = queryset.filter(page_type=page_type)
 
         pages = queryset[offset : offset + limit]
         total_count = queryset.count()

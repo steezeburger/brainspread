@@ -788,6 +788,78 @@ body {
   border-radius: 0;
 }
 
+/* Block info modal — read-only metadata. Wider than the default
+ * .app-modal so multi-line property JSON has room without scrolling
+ * horizontally. */
+.block-info-modal {
+  max-width: 560px;
+}
+
+.block-info-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.4rem 1rem;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.block-info-list dt {
+  color: var(--text-muted);
+  text-transform: lowercase;
+  white-space: nowrap;
+  padding-top: 0.05rem;
+}
+
+.block-info-list dd {
+  margin: 0;
+  color: var(--text-primary);
+  word-break: break-word;
+  min-width: 0;
+}
+
+.block-info-list code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+}
+
+.block-info-uuid {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.block-info-copy-btn {
+  font-family: inherit;
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  padding: 0.1rem 0.4rem;
+  cursor: pointer;
+}
+
+.block-info-copy-btn:hover {
+  border-color: var(--border-primary);
+}
+
+.block-info-properties {
+  margin: 0;
+  padding: 0.5rem 0.6rem;
+  background: var(--bg-secondary, var(--bg-primary));
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
 /* Page picker modal (window.appModals.pickPage). Wider than the
    prompt/confirm modals so longer page titles fit on one line, and
    wraps a scrollable result list under the input. */
@@ -2457,15 +2529,15 @@ kbd {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 0.75rem;
-  gap: 0.75rem;
+  padding: 0.35rem;
+  gap: 0.25rem;
 }
 
 .leftnav-brand {
-  font-size: 1.15rem;
+  font-size: 1rem;
   color: var(--text-primary);
   text-decoration: none;
-  padding: 0.25rem 0.4rem 0.5rem;
+  padding: 0.05rem 0.4rem 0.2rem;
   border-bottom: 1px solid var(--border-secondary);
 }
 
@@ -2483,7 +2555,7 @@ kbd {
   background: transparent;
   color: var(--text-primary);
   border: 2px solid var(--border-secondary);
-  padding: 0.3rem 0.5rem;
+  padding: 0.2rem 0.45rem;
   font-family: inherit;
   font-size: 0.85rem;
   font-weight: bold;
@@ -2505,7 +2577,7 @@ kbd {
   background: var(--bg-primary);
   color: var(--text-secondary);
   border: 2px solid var(--border-secondary);
-  padding: 0.4rem 0.6rem;
+  padding: 0.25rem 0.55rem;
   font-family: inherit;
   font-size: 0.85rem;
   cursor: pointer;
@@ -2534,12 +2606,12 @@ kbd {
 .leftnav-section {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0;
 }
 
 .leftnav-section + .leftnav-section {
   border-top: 1px solid var(--border-secondary);
-  padding-top: 0.5rem;
+  padding-top: 0.15rem;
 }
 
 .leftnav-primary .leftnav-item {
@@ -2549,14 +2621,15 @@ kbd {
 .leftnav-item {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.45rem;
   width: 100%;
   background: transparent;
   color: var(--text-primary);
   border: none;
-  padding: 0.45rem 0.6rem;
+  padding: 0.15rem 0.5rem;
   font-family: inherit;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  line-height: 1.3;
   text-align: left;
   text-decoration: none;
   cursor: pointer;
@@ -2575,10 +2648,10 @@ kbd {
 
 .leftnav-icon {
   flex-shrink: 0;
-  width: 1.1rem;
+  width: 1rem;
   text-align: center;
   color: var(--text-secondary);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
 }
 
 .leftnav-label {
@@ -2589,16 +2662,16 @@ kbd {
 .leftnav-section-toggle {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.35rem;
   width: 100%;
   background: transparent;
   color: var(--text-secondary);
   border: none;
-  padding: 0.35rem 0.4rem;
+  padding: 0.05rem 0.35rem;
   font-family: inherit;
-  font-size: 0.75rem;
+  font-size: 0.68rem;
   font-weight: bold;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
   text-transform: uppercase;
   cursor: pointer;
   text-align: left;
@@ -2628,7 +2701,7 @@ kbd {
 .leftnav-favorites-body {
   display: flex;
   flex-direction: column;
-  padding: 0.1rem 0 0.4rem;
+  padding: 0 0 0.1rem;
 }
 
 .leftnav-favorites-list {
@@ -2681,10 +2754,25 @@ kbd {
 }
 
 .leftnav-empty {
-  padding: 0.4rem 0.6rem 0.5rem;
+  padding: 0.15rem 0.55rem 0.2rem;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   font-style: italic;
+}
+
+.leftnav-pinned-views-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0 0 0.1rem;
+}
+
+.leftnav-pinned-views-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.leftnav-pinned-view-item .leftnav-icon {
+  color: var(--text-muted);
 }
 
 /* Templates list (issue #106). Each row pairs a "use this template"
@@ -2693,7 +2781,7 @@ kbd {
 .leftnav-templates-body {
   display: flex;
   flex-direction: column;
-  padding: 0.1rem 0 0.4rem;
+  padding: 0 0 0.1rem;
 }
 
 .leftnav-templates-list {
@@ -2746,14 +2834,14 @@ kbd {
 .leftnav-recent-body {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
-  padding: 0.25rem 0.1rem 0.5rem;
+  gap: 0.2rem;
+  padding: 0.05rem 0.05rem 0.15rem;
 }
 
 .leftnav-recent-body .filter-controls {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.15rem;
 }
 
 .leftnav-recent-body .filter-controls label {
@@ -2777,15 +2865,15 @@ kbd {
 .leftnav-footer {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0;
   border-top: 1px solid var(--border-secondary);
-  padding-top: 0.5rem;
+  padding-top: 0.2rem;
 }
 
 .leftnav-user {
   color: var(--text-secondary);
-  font-size: 0.75rem;
-  padding: 0.25rem 0.6rem;
+  font-size: 0.7rem;
+  padding: 0.05rem 0.5rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2805,32 +2893,35 @@ kbd {
 
 .date-range {
   color: var(--text-muted);
-  font-size: 0.7rem;
-  margin-bottom: 1rem;
+  font-size: 0.68rem;
+  margin-bottom: 0.25rem;
   text-align: center;
 }
 
 .sidebar-section {
-  margin-bottom: 2rem;
+  margin-bottom: 0.5rem;
 }
 
 .sidebar-section h4 {
   color: var(--text-primary);
-  font-size: 0.9rem;
-  margin: 0 0 0.8rem 0;
+  font-size: 0.7rem;
+  font-weight: bold;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  margin: 0 0 0.25rem 0;
   border-bottom: 1px solid var(--border-secondary);
-  padding-bottom: 0.3rem;
+  padding-bottom: 0.15rem;
 }
 
 .sidebar-items {
   display: flex;
   flex-direction: column;
-  gap: 0.8rem;
+  gap: 0.2rem;
 }
 
 .sidebar-item {
   border: 1px solid var(--border-secondary);
-  padding: 0.8rem;
+  padding: 0.25rem 0.4rem;
   background: var(--bg-primary);
 }
 
@@ -2868,8 +2959,8 @@ a.sidebar-item:visited {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 0.3rem;
-  gap: 0.5rem;
+  margin-bottom: 0.1rem;
+  gap: 0.4rem;
 }
 
 .item-title {
@@ -2877,6 +2968,7 @@ a.sidebar-item:visited {
   font-size: 0.8rem;
   font-weight: bold;
   flex: 1;
+  line-height: 1.25;
 }
 
 .item-type,
@@ -2894,15 +2986,16 @@ a.sidebar-item:visited {
 
 .item-meta {
   color: var(--text-muted);
-  font-size: 0.7rem;
-  margin-bottom: 0.3rem;
+  font-size: 0.68rem;
+  margin-bottom: 0.05rem;
+  line-height: 1.2;
 }
 
 .item-content {
   color: var(--text-secondary);
-  font-size: 0.8rem;
-  line-height: 1.3;
-  margin-bottom: 0.3rem;
+  font-size: 0.78rem;
+  line-height: 1.25;
+  margin-bottom: 0.1rem;
 }
 
 .item-tags {
@@ -2948,22 +3041,22 @@ a.sidebar-item:visited {
 }
 
 .recent-blocks-preview {
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
+  margin-top: 0.2rem;
+  padding-top: 0.2rem;
 }
 
 .preview-label {
   color: var(--text-secondary);
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   display: block;
-  margin-bottom: 0.3rem;
+  margin-bottom: 0.1rem;
 }
 
 /* Vertical layout for left nav recent page cards */
 .page-card-vertical {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.05rem;
   width: 100%;
 }
 
@@ -2981,7 +3074,7 @@ a.sidebar-item:visited {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.2;
+  line-height: 1.15;
   flex: 1;
   min-width: 0;
 }
@@ -3001,8 +3094,8 @@ a.sidebar-item:visited {
 
 .page-date-row .item-date {
   color: var(--text-secondary);
-  font-size: 0.75rem;
-  line-height: 1.2;
+  font-size: 0.7rem;
+  line-height: 1.15;
 }
 
 .page-content-rows {
@@ -4995,12 +5088,33 @@ a.sidebar-item:visited {
    Reveal on hover of the title row, on keyboard focus of the button
    (`:focus-visible` skips mouse focus so a click doesn't pin it
    visible after the cursor leaves), or whenever the page is
-   favorited — the filled ★ then advertises the state at a glance. */
+   favorited — the filled ★ then advertises the state at a glance.
+   The saved-view selector reuses the same affordance for the view-
+   pin star on the saved-view detail page so pin / favorite have one
+   visual vocabulary. */
 .page-header-flex-left:hover .page-favorite-toggle,
 .title-left:hover .page-favorite-toggle,
+.saved-view-title-row:hover .page-favorite-toggle,
 .page-favorite-toggle:focus-visible,
 .page-favorite-toggle.is-favorited {
   opacity: 1;
+}
+
+.saved-view-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.saved-view-title-row .saved-view-title-text {
+  /* Don't let the title push the star off-row when names are long.
+     The star is fixed-width via .page-favorite-toggle padding; the
+     title gets the remaining space and ellipsizes if it overflows. */
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Touch devices have no hover, so the empty ☆ would otherwise be
@@ -6385,6 +6499,32 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   justify-content: flex-end;
   gap: 0.5rem;
   margin-top: 0.5rem;
+}
+
+/* Mobile: the desktop popover lays the date/reminder controls out in a
+ * single row, which overflows below ~420px-wide viewports. Stack the
+ * rows vertically and clamp the modal width to the viewport so the
+ * popover stays usable in portrait mobile. */
+@media (max-width: 480px) {
+  .schedule-popover {
+    min-width: 0;
+    width: calc(100vw - 1.5rem);
+    max-width: 22rem;
+    padding: 1rem;
+  }
+  .schedule-popover-row {
+    flex-wrap: wrap;
+    row-gap: 0.4rem;
+  }
+  .schedule-popover-label {
+    min-width: 4rem;
+  }
+  .schedule-popover-row-reminder .schedule-popover-input,
+  .schedule-popover-row-reminder .schedule-popover-label-narrow {
+    /* Let the select claim the full row width once the row wraps so it
+     * isn't squeezed to a sliver next to the time input. */
+    flex-basis: 100%;
+  }
 }
 
 /* Asset attachment rendering inside a block. Image renders inline so the

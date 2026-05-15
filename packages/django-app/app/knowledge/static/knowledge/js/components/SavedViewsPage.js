@@ -115,6 +115,13 @@ const SavedViewsPage = {
     <tr><th><code>content_contains</code></th><td>
       Substring match on the block's text content (case-insensitive).
     </td></tr>
+    <tr><th><code>page_type</code></th><td>
+      Shorthand <code>"page"</code> / <code>"daily"</code> /
+      <code>"template"</code> / <code>"whiteboard"</code>, or op-dict
+      <code>{"in": ["daily", "page"]}</code>. Template-page blocks are
+      excluded by default (treated as scaffolding); mention
+      <code>page_type</code> anywhere in the filter to opt them back in.
+    </td></tr>
   </table>
 
   <h4>Combinators</h4>
@@ -564,6 +571,43 @@ const SavedViewsPage = {
       }
     },
 
+    async togglePinned() {
+      // Toggle the pinned flag and dispatch pinned-views:changed so the
+      // left-nav's pinned-views section refreshes without a reload.
+      if (!this.activeView) return;
+      const nextPinned = !this.activeView.pinned;
+      try {
+        const result = await window.apiService.setSavedViewPinned(
+          this.activeView.uuid,
+          nextPinned
+        );
+        if (result && result.success) {
+          this.activeView = result.data;
+          // Keep the local list in sync so a back-trip to the index
+          // shows the new pin state without an extra refetch.
+          const idx = this.views.findIndex(
+            (v) => v.uuid === this.activeView.uuid
+          );
+          if (idx >= 0) this.views.splice(idx, 1, this.activeView);
+          document.dispatchEvent(new CustomEvent("pinned-views:changed"));
+          this._toast(
+            nextPinned
+              ? `pinned "${this.activeView.name}" to left nav`
+              : `unpinned "${this.activeView.name}"`,
+            "success"
+          );
+        } else {
+          this._toast(
+            this._formatErrors(result && result.errors) || "pin toggle failed",
+            "error"
+          );
+        }
+      } catch (err) {
+        console.error("togglePinned failed:", err);
+        this._toast(`pin toggle failed: ${err}`, "error");
+      }
+    },
+
     async deleteActive() {
       if (!this.canDelete) return;
       const ok = await this._confirm(
@@ -810,8 +854,16 @@ const SavedViewsPage = {
 
         <template v-else>
           <div class="saved-views-header">
-            <h1>
-              {{ activeView.name }}
+            <h1 class="saved-view-title-row">
+              <button
+                type="button"
+                class="page-favorite-toggle"
+                :class="{ 'is-favorited': activeView.pinned }"
+                @click="togglePinned"
+                :title="activeView.pinned ? 'Unpin from left nav' : 'Pin to left nav'"
+                :aria-pressed="activeView.pinned"
+              >{{ activeView.pinned ? '★' : '☆' }}</button>
+              <span class="saved-view-title-text">{{ activeView.name }}</span>
               <span v-if="activeView.is_system" class="system-pill">system</span>
             </h1>
             <div class="header-actions">

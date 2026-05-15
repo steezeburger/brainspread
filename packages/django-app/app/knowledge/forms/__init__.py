@@ -1,3 +1,4 @@
+from .add_template_blocks_to_page_form import AddTemplateBlocksToPageForm
 from .bulk_cancel_reminders_form import BulkCancelRemindersForm
 from .bulk_clear_schedule_form import BulkClearScheduleForm
 from .bulk_delete_blocks_form import BulkDeleteBlocksForm
@@ -41,6 +42,7 @@ from .list_saved_views_form import ListSavedViewsForm
 from .list_scheduled_blocks_form import ListScheduledBlocksForm
 from .list_templates_form import ListTemplatesForm
 from .move_block_to_daily_form import MoveBlockToDailyForm
+from .move_block_to_page_form import MoveBlockToPageForm
 from .move_undone_todos_form import MoveUndoneTodosForm
 from .preview_saved_view_form import PreviewSavedViewForm
 from .reorder_blocks_form import ReorderBlocksForm
@@ -53,6 +55,7 @@ from .search_pages_form import SearchPagesForm
 from .send_due_reminders_form import SendDueRemindersForm
 from .set_block_type_form import SetBlockTypeForm
 from .set_page_favorited_form import SetPageFavoritedForm
+from .set_saved_view_pinned_form import SetSavedViewPinnedForm
 from .share_page_form import SharePageForm
 from .snooze_block_form import SnoozeBlockForm
 from .sync_block_tags_form import SyncBlockTagsForm

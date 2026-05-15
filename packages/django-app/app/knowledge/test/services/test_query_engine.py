@@ -680,6 +680,97 @@ class SortTests(_EngineTestBase):
         self.assertEqual([b.id for b in out], [newer.id, older.id])
 
 
+class PageTypeTests(_EngineTestBase):
+    """The ``page_type`` predicate filters by page__page_type, and its
+    presence in the spec also flips the default template-page exclusion
+    so a power user can opt template blocks back in.
+    """
+
+    def test_template_blocks_excluded_by_default(self):
+        # No page_type predicate in the filter → template blocks should
+        # be filtered out at the repository layer.
+        template_page = PageFactory(
+            user=self.user, page_type="template", title="Morning Routine"
+        )
+        regular_match = BlockFactory(user=self.user, page=self.page, block_type="todo")
+        BlockFactory(user=self.user, page=template_page, block_type="todo")
+
+        out = self.run_query({"block_type": "todo"})
+        self.assertEqual([b.id for b in out], [regular_match.id])
+
+    def test_page_type_eq_template_opts_in(self):
+        # Explicit page_type=template should DISABLE the default
+        # exclusion and surface only the template-page block.
+        template_page = PageFactory(
+            user=self.user, page_type="template", title="Morning Routine"
+        )
+        BlockFactory(user=self.user, page=self.page, block_type="todo")
+        tpl_block = BlockFactory(user=self.user, page=template_page, block_type="todo")
+
+        out = self.run_query(
+            {"all": [{"block_type": "todo"}, {"page_type": "template"}]}
+        )
+        self.assertEqual([b.id for b in out], [tpl_block.id])
+
+    def test_page_type_in_op(self):
+        daily_page = PageFactory(
+            user=self.user,
+            page_type="daily",
+            title="2026-04-24",
+            slug="2026-04-24",
+            date=self.today,
+        )
+        template_page = PageFactory(
+            user=self.user, page_type="template", title="Template"
+        )
+        daily_block = BlockFactory(user=self.user, page=daily_page)
+        tpl_block = BlockFactory(user=self.user, page=template_page)
+        BlockFactory(user=self.user, page=self.page)  # regular page
+
+        out = self.run_query({"page_type": {"in": ["daily", "template"]}})
+        self.assertEqual(
+            sorted(b.id for b in out),
+            sorted([daily_block.id, tpl_block.id]),
+        )
+
+    def test_page_type_eq_page_re_includes_default_only(self):
+        # page_type=page is the regular-page value, and mentioning the
+        # predicate at all should still flip the default exclusion off —
+        # so a user can write {"page_type": "page"} and trust that
+        # they're filtering, not accidentally double-excluding.
+        BlockFactory(user=self.user, page=self.page)
+        template_page = PageFactory(user=self.user, page_type="template", title="T")
+        BlockFactory(user=self.user, page=template_page)
+
+        out = self.run_query({"page_type": "page"})
+        self.assertEqual([b.page_id for b in out], [self.page.id])
+
+    def test_page_type_under_combinator_still_flips_default(self):
+        # A page_type predicate nested inside ``all`` / ``any`` / ``not``
+        # should still mark the spec as having mentioned page_type. The
+        # ``not`` form here means "everything not on a template" — the
+        # user explicitly asked, so it's fine that the default exclusion
+        # would have done the same thing.
+        template_page = PageFactory(user=self.user, page_type="template", title="T")
+        regular = BlockFactory(user=self.user, page=self.page)
+        BlockFactory(user=self.user, page=template_page)
+
+        compiled = query_engine.compile(
+            {"not": {"page_type": "template"}}, user=self.user
+        )
+        self.assertTrue(compiled.includes_page_type)
+        out = list(BlockRepository.run_compiled_query(self.user, compiled))
+        self.assertEqual([b.id for b in out], [regular.id])
+
+    def test_unknown_page_type_rejected(self):
+        with self.assertRaises(query_engine.QueryEngineError):
+            query_engine.compile({"page_type": "bogus"}, user=self.user)
+
+    def test_unsupported_op_rejected(self):
+        with self.assertRaises(query_engine.QueryEngineError):
+            query_engine.compile({"page_type": {"lt": "page"}}, user=self.user)
+
+
 class TopLevelTests(_EngineTestBase):
     def test_empty_filter_matches_all(self):
         BlockFactory(user=self.user, page=self.page)

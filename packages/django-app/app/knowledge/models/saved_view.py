@@ -51,6 +51,10 @@ class SavedView(UUIDModelMixin, CRUDTimestampsMixin):
         default=False,
         help_text="Bundled view — read-only for users; cloned via 'duplicate'",
     )
+    pinned = models.BooleanField(
+        default=False,
+        help_text="Pinned views surface in the left-nav for one-click access",
+    )
 
     class Meta:
         db_table = "saved_views"
@@ -72,6 +76,7 @@ class SavedView(UUIDModelMixin, CRUDTimestampsMixin):
             "filter": self.filter or {},
             "sort": self.sort or [],
             "is_system": self.is_system,
+            "pinned": self.pinned,
             "user_uuid": str(self.user.uuid),
             "created_at": self.created_at.isoformat(),
             "modified_at": self.modified_at.isoformat(),
@@ -86,6 +91,7 @@ class SavedViewData(TypedDict):
     filter: Dict[str, Any]
     sort: List[Dict[str, Any]]
     is_system: bool
+    pinned: bool
     user_uuid: str
     created_at: str
     modified_at: str

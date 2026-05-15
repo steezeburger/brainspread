@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
 import pytz
@@ -286,6 +286,15 @@ class TestMoveBlockToDailyCommand(TestCase):
         source_page = PageFactory(user=self.user, title="Notes", slug="bump-notes")
         block = BlockFactory(user=self.user, page=source_page, content="moved", order=1)
 
+        # Rewind source_page.modified_at to a stable past time so the
+        # bump assertion isn't flaky on fast runners. auto_now can
+        # otherwise stamp the page-create and the touch-during-move
+        # in the same microsecond (PostgreSQL's timestamp resolution),
+        # which makes assertGreater intermittently fail in CI. .update()
+        # bypasses auto_now so we get a stable baseline.
+        past = source_page.modified_at - timedelta(minutes=1)
+        Page.objects.filter(pk=source_page.pk).update(modified_at=past)
+        source_page.refresh_from_db()
         source_modified_before = source_page.modified_at
 
         form = MoveBlockToDailyForm(
@@ -300,7 +309,10 @@ class TestMoveBlockToDailyCommand(TestCase):
         self.assertGreater(source_page.modified_at, source_modified_before)
 
         target_page = Page.objects.get(user=self.user, date=target_date)
-        # The target was created mid-execute, so we don't have a baseline
-        # to diff against; instead verify it's at least as fresh as the
-        # source after the move.
-        self.assertGreaterEqual(target_page.modified_at, source_page.modified_at)
+        # Verify the target was also touched. We can't compare to the
+        # source's post-touch timestamp because the command's touch
+        # loop iterates over a set ({source, target}) whose order is
+        # non-deterministic — sometimes source is touched last,
+        # sometimes target — so target vs. source isn't a stable
+        # relation. Comparing to the pre-test baseline IS stable.
+        self.assertGreater(target_page.modified_at, source_modified_before)

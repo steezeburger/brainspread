@@ -164,6 +164,11 @@ window.AppModals = {
       // (uuid, slug, title, page_type) or null on dismiss. The caller
       // doesn't have to wire search — we use the existing
       // /api/pages/search/ endpoint via window.apiService.
+      //
+      // Pass ``pageType`` (e.g. "template") to constrain the results
+      // to a single page_type. Both the empty-query "recent" list and
+      // the typed-query search honor the filter, so the user only sees
+      // candidates the caller actually wants.
       const normalized = opts || {};
       return new Promise((resolve) => {
         this.queue.push({
@@ -175,6 +180,7 @@ window.AppModals = {
             placeholder: normalized.placeholder || "search pages…",
             confirmLabel: normalized.confirmLabel || "select",
             cancelLabel: normalized.cancelLabel || "cancel",
+            pageType: normalized.pageType || null,
           },
           resolve,
         });
@@ -207,14 +213,15 @@ window.AppModals = {
     async _runPickerSearch(query) {
       const requestId = ++this._pickerRequestId;
       this.pickerLoading = true;
+      const pageType = this.active?.opts?.pageType || null;
       try {
         // Empty query → server defaults to recent pages, which is the
         // friendliest landing state. The endpoint accepts an empty
         // query string and falls back to a chronological page list.
         const result =
           query.trim() === ""
-            ? await window.apiService.getPages(true, 15, 0)
-            : await window.apiService.searchPages(query.trim(), 15);
+            ? await window.apiService.getPages(true, 15, 0, pageType)
+            : await window.apiService.searchPages(query.trim(), 15, pageType);
         if (requestId !== this._pickerRequestId) return; // stale
         const pages = (result && result.data && result.data.pages) || [];
         this.pickerResults = pages;

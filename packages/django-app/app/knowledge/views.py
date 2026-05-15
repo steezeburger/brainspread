@@ -11,6 +11,7 @@ from rest_framework.response import Response
 
 from assets.models import Asset
 from knowledge.commands import (
+    AddTemplateBlocksToPageCommand,
     BulkDeleteBlocksCommand,
     BulkMoveBlocksCommand,
     ConsumeReminderActionCommand,
@@ -34,6 +35,7 @@ from knowledge.commands import (
     ListSavedViewsCommand,
     ListTemplatesCommand,
     MoveBlockToDailyCommand,
+    MoveBlockToPageCommand,
     MoveUndoneTodosCommand,
     PreviewSavedViewCommand,
     ReorderBlocksCommand,
@@ -44,6 +46,7 @@ from knowledge.commands import (
     SearchNotesCommand,
     SearchPagesCommand,
     SetPageFavoritedCommand,
+    SetSavedViewPinnedCommand,
     SharePageCommand,
     ToggleBlockTodoCommand,
     UpdateBlockCommand,
@@ -51,14 +54,19 @@ from knowledge.commands import (
     UpdatePageEmbeddedViewCommand,
     UpdateSavedViewCommand,
 )
+from knowledge.commands.add_template_blocks_to_page_command import (
+    AddTemplateBlocksToPageData,
+)
 from knowledge.commands.bulk_delete_blocks_command import BulkDeleteBlocksData
 from knowledge.commands.bulk_move_blocks_command import BulkMoveBlocksData
 from knowledge.commands.get_graph_data_command import GraphData
 from knowledge.commands.get_historical_data_command import HistoricalData
 from knowledge.commands.get_tag_content_command import TagContentData
 from knowledge.commands.move_block_to_daily_command import MoveBlockToDailyData
+from knowledge.commands.move_block_to_page_command import MoveBlockToPageData
 from knowledge.commands.move_undone_todos_command import MoveUndoneTodosData
 from knowledge.forms import (
+    AddTemplateBlocksToPageForm,
     BulkDeleteBlocksForm,
     BulkMoveBlocksForm,
     ConsumeReminderActionForm,
@@ -82,6 +90,7 @@ from knowledge.forms import (
     ListSavedViewsForm,
     ListTemplatesForm,
     MoveBlockToDailyForm,
+    MoveBlockToPageForm,
     MoveUndoneTodosForm,
     PreviewSavedViewForm,
     ReorderBlocksForm,
@@ -92,6 +101,7 @@ from knowledge.forms import (
     SearchNotesForm,
     SearchPagesForm,
     SetPageFavoritedForm,
+    SetSavedViewPinnedForm,
     SharePageForm,
     ToggleBlockTodoForm,
     UpdateBlockForm,
@@ -101,7 +111,7 @@ from knowledge.forms import (
 )
 from knowledge.models import BlockData, Page, PageData, PagesData
 from knowledge.models.page import PageWithBlocksData
-from knowledge.repositories import BlockRepository
+from knowledge.repositories import BlockRepository, SavedViewRepository
 
 
 # API Response Types with specific data types
@@ -156,6 +166,18 @@ class MoveUndoneTodosResponse(TypedDict):
 class MoveBlockToDailyResponse(TypedDict):
     success: bool
     data: Optional[MoveBlockToDailyData]
+    errors: Optional[Dict[str, List[str]]]
+
+
+class MoveBlockToPageResponse(TypedDict):
+    success: bool
+    data: Optional[MoveBlockToPageData]
+    errors: Optional[Dict[str, List[str]]]
+
+
+class AddTemplateBlocksToPageResponse(TypedDict):
+    success: bool
+    data: Optional[AddTemplateBlocksToPageData]
     errors: Optional[Dict[str, List[str]]]
 
 
@@ -1241,6 +1263,88 @@ def move_block_to_daily(request):
         return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def move_block_to_page(request):
+    """Move a single block (and its descendants) to an arbitrary target page."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+
+        form = MoveBlockToPageForm(data)
+
+        if not form.is_valid():
+            response: MoveBlockToPageResponse = {
+                "success": False,
+                "data": None,
+                "errors": form.errors,
+            }
+            return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+        result = MoveBlockToPageCommand(form).execute()
+
+        response: MoveBlockToPageResponse = {
+            "success": True,
+            "data": result,
+            "errors": None,
+        }
+        return Response(response)
+
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    except Exception as e:
+        response: MoveBlockToPageResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def add_template_blocks_to_page(request):
+    """Append a template's block tree to an existing target page."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+
+        form = AddTemplateBlocksToPageForm(data)
+        if not form.is_valid():
+            response: AddTemplateBlocksToPageResponse = {
+                "success": False,
+                "data": None,
+                "errors": form.errors,
+            }
+            return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+        result = AddTemplateBlocksToPageCommand(form).execute()
+        response: AddTemplateBlocksToPageResponse = {
+            "success": True,
+            "data": result,
+            "errors": None,
+        }
+        return Response(response)
+
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    except Exception as e:
+        response: AddTemplateBlocksToPageResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_graph_data(request):
@@ -1672,6 +1776,30 @@ def duplicate_saved_view(request):
     return _saved_view_response(
         True, data=view.to_dict(), http_status=status.HTTP_201_CREATED
     )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def set_saved_view_pinned(request):
+    """Pin or unpin a saved view so it appears in the left-nav."""
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = SetSavedViewPinnedForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        view = SetSavedViewPinnedCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
+    return _saved_view_response(True, data=view.to_dict())
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def list_pinned_saved_views(request):
+    """List the user's pinned saved views, for the left-nav."""
+    views = SavedViewRepository.list_pinned_for_user(request.user)
+    return _saved_view_response(True, data={"views": [v.to_dict() for v in views]})
 
 
 # ---------------------------------------------------------------------------

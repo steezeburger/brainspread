@@ -47,6 +47,18 @@ window.LeftNav = {
     } catch (_) {
       // ignore localStorage failures
     }
+    let pinnedViewsExpanded = true;
+    try {
+      const savedPinnedExpanded =
+        typeof window !== "undefined" && window.localStorage
+          ? window.localStorage.getItem(
+              "brainspread.leftNavPinnedViewsExpanded"
+            )
+          : null;
+      if (savedPinnedExpanded === "0") pinnedViewsExpanded = false;
+    } catch (_) {
+      // ignore localStorage failures
+    }
     let templatesExpanded = true;
     try {
       const savedTplExpanded =
@@ -78,6 +90,12 @@ window.LeftNav = {
       // both reset to null on dragend / drop / dragleave-of-the-list.
       favoriteDragIndex: null,
       favoriteDropIndex: null,
+      // Pinned saved views — loaded alongside favorites and refreshed
+      // when SavedViewsPage dispatches "pinned-views:changed".
+      pinnedViews: [],
+      pinnedViewsLoading: false,
+      pinnedViewsError: null,
+      pinnedViewsExpanded,
       // Page templates (issue #106) — populated by loadTemplates(), shown
       // in their own collapsible section. Each row is clickable to open
       // the template page; the inline "+" button instantiates a new
@@ -111,12 +129,20 @@ window.LeftNav = {
   mounted() {
     this.loadHistoricalData();
     this.loadFavorites();
+    this.loadPinnedViews();
     this.loadTemplates();
     this.setupResizeListener();
     // The page header dispatches this when a user stars/unstars the
     // current page so the Favorites list refreshes without a reload.
     this.handleFavoritesChanged = () => this.loadFavorites();
     document.addEventListener("favorites:changed", this.handleFavoritesChanged);
+    // SavedViewsPage dispatches this when the user pins or unpins a
+    // view so the pinned-views section refreshes without a reload.
+    this.handlePinnedViewsChanged = () => this.loadPinnedViews();
+    document.addEventListener(
+      "pinned-views:changed",
+      this.handlePinnedViewsChanged
+    );
     // Same pattern for templates (issue #106): "save as template" /
     // delete-template dispatch this so the sidebar list stays fresh.
     this.handleTemplatesChanged = () => this.loadTemplates();
@@ -144,6 +170,12 @@ window.LeftNav = {
       document.removeEventListener(
         "favorites:changed",
         this.handleFavoritesChanged
+      );
+    }
+    if (this.handlePinnedViewsChanged) {
+      document.removeEventListener(
+        "pinned-views:changed",
+        this.handlePinnedViewsChanged
       );
     }
     if (this.handleTemplatesChanged) {
@@ -296,6 +328,48 @@ window.LeftNav = {
       } finally {
         this.favoritesLoading = false;
       }
+    },
+
+    async loadPinnedViews() {
+      this.pinnedViewsLoading = true;
+      this.pinnedViewsError = null;
+      try {
+        const result = await window.apiService.listPinnedSavedViews();
+        if (result && result.success) {
+          this.pinnedViews = result.data?.views || [];
+        } else {
+          this.pinnedViewsError = "failed to load pinned views";
+        }
+      } catch (error) {
+        console.error("error loading pinned views:", error);
+        this.pinnedViewsError = error.message || "failed to load pinned views";
+      } finally {
+        this.pinnedViewsLoading = false;
+      }
+    },
+
+    togglePinnedViews() {
+      this.pinnedViewsExpanded = !this.pinnedViewsExpanded;
+      try {
+        if (typeof window !== "undefined" && window.localStorage) {
+          window.localStorage.setItem(
+            "brainspread.leftNavPinnedViewsExpanded",
+            this.pinnedViewsExpanded ? "1" : "0"
+          );
+        }
+      } catch (_) {
+        // localStorage can throw in private mode
+      }
+    },
+
+    onPinnedViewClick(event, slug) {
+      // Defer to the browser on middle / cmd-click so "open in new tab"
+      // still works. Otherwise hard-navigate, matching the rest of the
+      // left-nav's link affordances (the app re-mounts on /knowledge/
+      // path changes).
+      if (this.shouldDeferToBrowser(event)) return;
+      event.preventDefault();
+      window.location.href = `/knowledge/views/${encodeURIComponent(slug)}/`;
     },
 
     toggleTemplates() {
@@ -502,6 +576,10 @@ window.LeftNav = {
       return `/knowledge/page/${encodeURIComponent(slug)}/`;
     },
 
+    viewUrl(slug) {
+      return `/knowledge/views/${encodeURIComponent(slug)}/`;
+    },
+
     shouldDeferToBrowser(event) {
       if (!event) return false;
       if (event.defaultPrevented) return true;
@@ -578,23 +656,6 @@ window.LeftNav = {
           event.preventDefault();
           items[Math.max(currentIndex - 1, 0)].focus();
           break;
-      }
-    },
-
-    async toggleBlockTodo(block, event) {
-      if (event) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-
-      try {
-        const result = await window.apiService.toggleBlockTodo(block.uuid);
-        if (result.success) {
-          block.block_type = result.data.block_type;
-          block.content = result.data.content;
-        }
-      } catch (error) {
-        console.error("error toggling todo:", error);
       }
     },
 
@@ -986,6 +1047,46 @@ window.LeftNav = {
             </div>
           </section>
 
+          <!-- Pinned saved views (collapsible) -->
+          <section class="leftnav-section leftnav-pinned-views" aria-label="Pinned views">
+            <button
+              type="button"
+              class="leftnav-section-toggle"
+              @click="togglePinnedViews"
+              :aria-expanded="pinnedViewsExpanded"
+            >
+              <span class="leftnav-chevron" :class="{ open: pinnedViewsExpanded }" aria-hidden="true">▸</span>
+              <span>pinned views</span>
+              <span v-if="pinnedViews.length" class="leftnav-section-count">{{ pinnedViews.length }}</span>
+            </button>
+
+            <div v-if="pinnedViewsExpanded" class="leftnav-pinned-views-body">
+              <div v-if="pinnedViewsLoading" class="sidebar-loading">
+                Loading...
+              </div>
+              <div v-else-if="pinnedViewsError" class="sidebar-error">
+                {{ pinnedViewsError }}
+              </div>
+              <div v-else-if="!pinnedViews.length" class="leftnav-empty">
+                No pinned views. Pin a view from its detail page.
+              </div>
+              <div v-else class="leftnav-pinned-views-list">
+                <a
+                  v-for="view in pinnedViews"
+                  :key="view.uuid"
+                  :href="viewUrl(view.slug)"
+                  class="leftnav-item leftnav-pinned-view-item"
+                  @click="onPinnedViewClick($event, view.slug)"
+                  @auxclick="onPinnedViewClick($event, view.slug)"
+                  :title="view.description || view.name"
+                >
+                  <span class="leftnav-icon" aria-hidden="true">≡</span>
+                  <span class="leftnav-label">{{ view.name }}</span>
+                </a>
+              </div>
+            </div>
+          </section>
+
           <!-- Templates (collapsible). Issue #106: clicking a row
                instantiates a new page from the template; the open-link
                next to it goes to the template page itself for editing. -->
@@ -1117,38 +1218,6 @@ window.LeftNav = {
                   </div>
                 </div>
 
-                <!-- Recent Blocks -->
-                <div v-if="historicalData.blocks && historicalData.blocks.length" class="sidebar-section">
-                  <h4>Recent Blocks ({{ historicalData.blocks.length }})</h4>
-                  <div class="sidebar-items">
-                    <a
-                      v-for="block in historicalData.blocks"
-                      :key="block.uuid"
-                      :href="pageUrl(block.page_slug)"
-                      class="sidebar-item block-item clickable"
-                      @click="handleNavClick($event, block.page_slug)"
-                      @auxclick="handleNavClick($event, block.page_slug)"
-                      :title="'Click to open ' + block.page_title + ' (Cmd/Ctrl-click for new tab)'"
-                    >
-                      <div class="item-header">
-                        <span class="item-page">{{ block.page_title }}</span>
-                      </div>
-                      <div class="item-meta">{{ formatTime(block.modified_at || block.created_at) }}</div>
-                      <div class="item-content-row" @click="handleTagClick">
-                        <span
-                          v-if="block.block_type === 'todo' || block.block_type === 'doing' || block.block_type === 'done'"
-                          @click="toggleBlockTodo(block, $event)"
-                          :class="['block-bullet', block.block_type]"
-                          :title="'Toggle ' + (block.block_type === 'done' ? 'undone' : 'done')"
-                        >
-                          <span v-if="block.block_type === 'doing'">◐</span>
-                          <span v-else>{{ block.block_type === 'done' ? '☑' : '☐' }}</span>
-                        </span>
-                        <span class="item-content" :class="{ 'completed': block.block_type === 'done' }" v-html="formatContentWithTags(truncateContent(block.content, 100), block.block_type)"></span>
-                      </div>
-                    </a>
-                  </div>
-                </div>
               </div>
             </div>
           </section>

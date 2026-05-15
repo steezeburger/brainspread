@@ -37,6 +37,7 @@ const Page = {
     Whiteboard: window.Whiteboard || {},
     ScheduleBlockPopover: window.ScheduleBlockPopover || {},
     BlockChatPopover: window.BlockChatPopover || {},
+    BlockInfoModal: window.BlockInfoModal || {},
     QueryEmbedBlock: window.QueryEmbedBlock || {},
   },
   props: {
@@ -72,6 +73,8 @@ const Page = {
       schedulePopoverInitialTime: "",
       blockChatPopoverOpen: false,
       blockChatPopoverBlock: null,
+      blockInfoModalOpen: false,
+      blockInfoModalBlock: null,
       loading: false,
       error: null,
       // Page title editing
@@ -1041,6 +1044,69 @@ const Page = {
         console.error("failed to move block to today:", error);
         this.error = "failed to move block to today";
         this.$parent?.addToast?.("failed to move block to today", "error");
+      }
+    },
+
+    openBlockInfoModal(block) {
+      this.blockInfoModalBlock = block;
+      this.blockInfoModalOpen = true;
+    },
+
+    closeBlockInfoModal() {
+      this.blockInfoModalOpen = false;
+      this.blockInfoModalBlock = null;
+    },
+
+    async openMovePagePicker(block) {
+      // Defer the picker UI to the shared AppModals.pickPage typeahead
+      // (added for the saved-view embed flow) so we don't ship two
+      // page-pickers. Open the modal, wait for a selection, then call
+      // the move API for the chosen target.
+      if (!window.appModals?.pickPage) {
+        console.error("appModals.pickPage is not available");
+        return;
+      }
+      const targetPage = await window.appModals.pickPage({
+        title: "move block to page",
+        placeholder: "search pages…",
+        confirmLabel: "move",
+      });
+      if (!targetPage || !block) return;
+
+      try {
+        if (block.isEditing) {
+          await this.updateBlock(block, block.content, true);
+        }
+
+        const result = await window.apiService.moveBlockToPage(
+          block.uuid,
+          targetPage.uuid
+        );
+
+        if (!result.success) {
+          throw new Error(
+            result.errors?.non_field_errors?.[0] || "move failed"
+          );
+        }
+
+        const moved = result.data?.moved;
+        const targetTitle = targetPage.title || result.data?.target_page?.title;
+        if (moved) {
+          this.$parent?.addToast?.(`moved block to ${targetTitle}`, "success");
+        } else {
+          this.$parent?.addToast?.(
+            result.data?.message || `block already on ${targetTitle}`,
+            "info"
+          );
+        }
+
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("failed to move block to page:", error);
+        this.$parent?.addToast?.(
+          `failed to move block: ${error.message || error}`,
+          "error"
+        );
       }
     },
 
@@ -2187,6 +2253,49 @@ const Page = {
       } catch (error) {
         console.error("failed to save as template:", error);
         this.$parent?.addToast?.("failed to save template", "error");
+      }
+    },
+
+    async addFromTemplate() {
+      // Append a template's block tree onto this page. Picker is
+      // filtered to page_type=template so the user only sees template
+      // candidates. Cloned blocks are independent — editing them here
+      // doesn't dirty the template, and re-running the action adds
+      // another fresh copy at the bottom.
+      if (!this.page) return;
+      this.closePageMenu();
+      if (!window.appModals?.pickPage) {
+        console.error("appModals.pickPage is not available");
+        return;
+      }
+      const template = await window.appModals.pickPage({
+        title: "add from template",
+        placeholder: "search templates…",
+        confirmLabel: "add",
+        pageType: "template",
+      });
+      if (!template) return;
+
+      try {
+        const result = await window.apiService.addTemplateBlocksToPage(
+          template.uuid,
+          this.page.uuid
+        );
+        if (!result.success) {
+          throw new Error(result.errors?.non_field_errors?.[0] || "add failed");
+        }
+        const added = result.data?.added ?? 0;
+        this.$parent?.addToast?.(
+          `added ${added} block${added === 1 ? "" : "s"} from "${template.title}"`,
+          "success"
+        );
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("failed to add from template:", error);
+        this.$parent?.addToast?.(
+          `failed to add from template: ${error.message || error}`,
+          "error"
+        );
       }
     },
 
@@ -3755,6 +3864,10 @@ const Page = {
                       <span class="context-menu-icon">▤</span>
                       <span>save as template</span>
                     </button>
+                    <button v-if="!isTemplate" @click="addFromTemplate" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">+</span>
+                      <span>add from template…</span>
+                    </button>
                     <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">
                       <span v-if="isTemplate">delete template</span>
                       <span v-else>delete page</span>
@@ -3828,6 +3941,8 @@ const Page = {
                 :moveBlockUp="moveBlockUp"
                 :moveBlockDown="moveBlockDown"
                 :moveBlockToToday="moveBlockToToday"
+                :openMovePagePicker="openMovePagePicker"
+                :openBlockInfoModal="openBlockInfoModal"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"
                 :onBlockAttachPick="onBlockAttachPick"
@@ -3881,6 +3996,8 @@ const Page = {
                 :moveBlockUp="moveBlockUp"
                 :moveBlockDown="moveBlockDown"
                 :moveBlockToToday="moveBlockToToday"
+                :openMovePagePicker="openMovePagePicker"
+                :openBlockInfoModal="openBlockInfoModal"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"
                 :onBlockAttachPick="onBlockAttachPick"
@@ -3933,6 +4050,8 @@ const Page = {
                 :moveBlockUp="moveBlockUp"
                 :moveBlockDown="moveBlockDown"
                 :moveBlockToToday="moveBlockToToday"
+                :openMovePagePicker="openMovePagePicker"
+                :openBlockInfoModal="openBlockInfoModal"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"
                 :onBlockAttachPick="onBlockAttachPick"
@@ -3961,6 +4080,13 @@ const Page = {
         :is-open="blockChatPopoverOpen"
         :block="blockChatPopoverBlock"
         @close="closeBlockChatPopover"
+      />
+
+      <!-- Read-only block-info modal -->
+      <BlockInfoModal
+        :is-open="blockInfoModalOpen"
+        :block="blockInfoModalBlock"
+        @close="closeBlockInfoModal"
       />
 
       <!-- Share modal (issue #90) -->

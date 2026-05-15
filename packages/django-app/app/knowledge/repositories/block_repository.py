@@ -474,6 +474,12 @@ class BlockRepository(BaseRepository):
         most useful default for an open-ended block list; the older
         ``scheduled_for, order`` default surfaced undated items at the
         top, which felt random for views like "all #brainspread #bugs".
+
+        Template-page blocks are excluded by default — they're
+        scaffolding, not active work, so surfacing them in "Overdue" /
+        tag views is almost always noise. A filter that explicitly
+        mentions ``page_type`` flips ``compiled.includes_page_type``
+        and the exclusion is skipped, putting the spec back in control.
         """
         qs = (
             cls.get_queryset()
@@ -482,6 +488,8 @@ class BlockRepository(BaseRepository):
             .select_related("page", "user")
             .prefetch_related("reminders")
         )
+        if not compiled.includes_page_type:
+            qs = qs.exclude(page__page_type="template")
         if compiled.order_by:
             qs = qs.order_by(*compiled.order_by)
         else:
@@ -492,16 +500,26 @@ class BlockRepository(BaseRepository):
 
     @classmethod
     def clone_block_tree_to_page(
-        cls, source_page: Page, target_page: Page, target_user
+        cls,
+        source_page: Page,
+        target_page: Page,
+        target_user,
+        order_offset: int = 0,
     ) -> List[Block]:
         """Deep-copy ``source_page``'s block tree onto ``target_page``.
 
-        Used by the page-template / duplicate flows (issue #106). Each
-        cloned block gets a fresh UUID; parent/child structure, order,
-        block_type, content, properties, media_url, asset, scheduled_for,
-        and the M2M tag set are preserved. completed_at is intentionally
-        cleared on clone — a duplicated todo starts uncompleted even if
-        the source was done.
+        Used by the page-template / duplicate / add-from-template flows
+        (issue #106). Each cloned block gets a fresh UUID; parent/child
+        structure, order, block_type, content, properties, media_url,
+        asset, scheduled_for, and the M2M tag set are preserved.
+        completed_at is intentionally cleared on clone — a duplicated
+        todo starts uncompleted even if the source was done.
+
+        ``order_offset`` shifts every cloned block's ``order`` by that
+        amount, preserving relative ordering. Defaults to 0 (full
+        duplicate, target page assumed empty). Callers appending to an
+        existing target should pass ``max(target.order) + 1`` (or
+        similar) so cloned roots land after the existing rows.
 
         Returns the list of newly-created blocks.
         """
@@ -526,7 +544,7 @@ class BlockRepository(BaseRepository):
                     content=src.content,
                     content_type=src.content_type,
                     block_type=src.block_type,
-                    order=src.order,
+                    order=src.order + order_offset,
                     media_url=src.media_url,
                     media_metadata=src.media_metadata,
                     properties=dict(src.properties or {}),

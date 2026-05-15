@@ -95,3 +95,12 @@ class SavedViewRepository(BaseRepository):
     @classmethod
     def list_system_views_for_user(cls, user) -> List[SavedView]:
         return list(cls.get_queryset().filter(user=user, is_system=True))
+
+    @classmethod
+    def list_pinned_for_user(cls, user) -> List[SavedView]:
+        """Pinned views for the left-nav, ordered by name within is_system."""
+        return list(
+            cls.get_queryset()
+            .filter(user=user, pinned=True)
+            .order_by("-is_system", "name")
+        )
