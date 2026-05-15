@@ -143,6 +143,19 @@
       });
   }
 
+  // Mermaid's render mutates a single shared scaffolding host and isn't
+  // safe to call concurrently — two overlapping renders interleave their
+  // DOM writes and one or both finish with an empty SVG, leaving the
+  // user with a blank placeholder until the block re-renders (e.g. on
+  // edit-out). Funnel every render through this chain so calls from
+  // sibling BlockComponents' mounted hooks queue instead of racing.
+  let renderChain = Promise.resolve();
+  function serialize(fn) {
+    const next = renderChain.then(fn, fn);
+    renderChain = next.catch(() => {});
+    return next;
+  }
+
   async function renderOne(el) {
     const source = el.dataset.mermaidSource || "";
     if (!source.trim()) {
@@ -151,7 +164,9 @@
     }
     const id = `mermaid-${Math.random().toString(36).slice(2, 11)}`;
     try {
-      const { svg } = await window.mermaid.render(id, source, getRenderHost());
+      const { svg } = await serialize(() =>
+        window.mermaid.render(id, source, getRenderHost())
+      );
       // Mermaid v11 can resolve with an empty `svg` string instead of
       // throwing when the diagram's labels trip strict-mode sanitization
       // (e.g. literal "<...>" / "<br/>" content inside Note labels).
