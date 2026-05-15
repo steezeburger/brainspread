@@ -812,6 +812,13 @@ class ApiService {
     return await this.request(`/knowledge/api/views/run/?${params.toString()}`);
   }
 
+  async previewSavedView({ filter, sort, limit = 100 } = {}) {
+    return await this.request("/knowledge/api/views/preview/", {
+      method: "POST",
+      body: JSON.stringify({ filter, sort: sort || [], limit }),
+    });
+  }
+
   async createSavedView(payload) {
     return await this.request("/knowledge/api/views/create/", {
       method: "POST",

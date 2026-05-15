@@ -35,6 +35,7 @@ from knowledge.commands import (
     ListTemplatesCommand,
     MoveBlockToDailyCommand,
     MoveUndoneTodosCommand,
+    PreviewSavedViewCommand,
     ReorderBlocksCommand,
     ReorderFavoritedPagesCommand,
     ReorderPageEmbeddedViewsCommand,
@@ -82,6 +83,7 @@ from knowledge.forms import (
     ListTemplatesForm,
     MoveBlockToDailyForm,
     MoveUndoneTodosForm,
+    PreviewSavedViewForm,
     ReorderBlocksForm,
     ReorderFavoritedPagesForm,
     ReorderPageEmbeddedViewsForm,
@@ -1581,6 +1583,26 @@ def run_saved_view(request):
         return _saved_view_response(False, errors=form.errors)
     try:
         result = RunSavedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
+    return _saved_view_response(True, data=result)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def preview_saved_view(request):
+    """Run an ad-hoc filter + sort spec without persisting (issue #106
+    follow-up). The editor's Run button uses this so a draft can be
+    previewed before save — otherwise the Run button would silently
+    execute the old persisted spec while the user stared at fresh edits.
+    """
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = PreviewSavedViewForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        result = PreviewSavedViewCommand(form).execute()
     except ValidationError as exc:
         return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
     return _saved_view_response(True, data=result)

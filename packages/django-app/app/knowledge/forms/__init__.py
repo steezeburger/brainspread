@@ -42,6 +42,7 @@ from .list_scheduled_blocks_form import ListScheduledBlocksForm
 from .list_templates_form import ListTemplatesForm
 from .move_block_to_daily_form import MoveBlockToDailyForm
 from .move_undone_todos_form import MoveUndoneTodosForm
+from .preview_saved_view_form import PreviewSavedViewForm
 from .reorder_blocks_form import ReorderBlocksForm
 from .reorder_favorited_pages_form import ReorderFavoritedPagesForm
 from .reorder_page_embedded_views_form import ReorderPageEmbeddedViewsForm

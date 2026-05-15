@@ -87,6 +87,7 @@ urlpatterns = [
     path("api/views/", views.list_saved_views, name="list_saved_views"),
     path("api/views/get/", views.get_saved_view, name="get_saved_view"),
     path("api/views/run/", views.run_saved_view, name="run_saved_view"),
+    path("api/views/preview/", views.preview_saved_view, name="preview_saved_view"),
     path("api/views/create/", views.create_saved_view, name="create_saved_view"),
     path("api/views/update/", views.update_saved_view, name="update_saved_view"),
     path("api/views/delete/", views.delete_saved_view, name="delete_saved_view"),

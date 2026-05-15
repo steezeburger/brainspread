@@ -301,6 +301,13 @@ const SavedViewsPage = {
 
     async runActive() {
       if (!this.activeView) return;
+      // While editing, "Run" should show results for the draft spec
+      // the user is currently typing — not the spec last persisted.
+      // The draft path goes through the preview endpoint so we don't
+      // have to save first.
+      if (this.editing) {
+        return this._previewEditorDraft();
+      }
       this.running = true;
       this.runError = null;
       try {
@@ -317,6 +324,41 @@ const SavedViewsPage = {
         }
       } catch (err) {
         console.error("runSavedView failed:", err);
+        this.runError = String(err);
+      } finally {
+        this.running = false;
+      }
+    },
+
+    async _previewEditorDraft() {
+      // Validate the editor JSON first so the user gets the same inline
+      // error feedback as Save (rather than a generic API error). When
+      // the draft is invalid we bail without clobbering the previous
+      // run results.
+      const parsed = this._validateEditorJson();
+      if (!parsed) return;
+      this.running = true;
+      this.runError = null;
+      try {
+        const result = await window.apiService.previewSavedView({
+          filter: parsed.filter,
+          sort: parsed.sort,
+        });
+        if (result && result.success) {
+          // Preview response lacks a 'view' field (no view to preview
+          // against); the results UI only needs count / results /
+          // truncated, which preview supplies.
+          this.runResult = result.data;
+        } else {
+          const errs = (result && result.errors) || {};
+          this.runError =
+            (errs.non_field_errors && errs.non_field_errors[0]) ||
+            (errs.filter && errs.filter[0]) ||
+            (errs.sort && errs.sort[0]) ||
+            "Failed to preview view";
+        }
+      } catch (err) {
+        console.error("previewSavedView failed:", err);
         this.runError = String(err);
       } finally {
         this.running = false;
@@ -777,8 +819,8 @@ const SavedViewsPage = {
               <span v-if="activeView.is_system" class="system-pill">system</span>
             </h1>
             <div class="header-actions">
-              <button class="btn" @click="runActive" :disabled="running">
-                {{ running ? "Running…" : "Run" }}
+              <button class="btn" @click="runActive" :disabled="running" :title="editing ? 'Preview the current editor draft (does not save)' : 'Run the saved view'">
+                {{ running ? "Running…" : editing ? "Preview" : "Run" }}
               </button>
               <button class="btn" @click="duplicateActive">Duplicate</button>
               <button class="btn" @click="embedOnPage" title="Embed this view on a page (defaults to today's daily note)">Embed…</button>

@@ -42,6 +42,7 @@ from .list_scheduled_blocks_command import ListScheduledBlocksCommand
 from .list_templates_command import ListTemplatesCommand
 from .move_block_to_daily_command import MoveBlockToDailyCommand
 from .move_undone_todos_command import MoveUndoneTodosCommand
+from .preview_saved_view_command import PreviewSavedViewCommand
 from .reorder_blocks_command import ReorderBlocksCommand
 from .reorder_favorited_pages_command import ReorderFavoritedPagesCommand
 from .reorder_page_embedded_views_command import ReorderPageEmbeddedViewsCommand
