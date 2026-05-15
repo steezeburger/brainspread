@@ -2893,31 +2893,31 @@ kbd {
 .date-range {
   color: var(--text-muted);
   font-size: 0.7rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
   text-align: center;
 }
 
 .sidebar-section {
-  margin-bottom: 2rem;
+  margin-bottom: 1rem;
 }
 
 .sidebar-section h4 {
   color: var(--text-primary);
-  font-size: 0.9rem;
-  margin: 0 0 0.8rem 0;
+  font-size: 0.85rem;
+  margin: 0 0 0.4rem 0;
   border-bottom: 1px solid var(--border-secondary);
-  padding-bottom: 0.3rem;
+  padding-bottom: 0.2rem;
 }
 
 .sidebar-items {
   display: flex;
   flex-direction: column;
-  gap: 0.8rem;
+  gap: 0.35rem;
 }
 
 .sidebar-item {
   border: 1px solid var(--border-secondary);
-  padding: 0.8rem;
+  padding: 0.35rem 0.5rem;
   background: var(--bg-primary);
 }
 
@@ -2955,7 +2955,7 @@ a.sidebar-item:visited {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 0.3rem;
+  margin-bottom: 0.15rem;
   gap: 0.5rem;
 }
 
@@ -2982,14 +2982,14 @@ a.sidebar-item:visited {
 .item-meta {
   color: var(--text-muted);
   font-size: 0.7rem;
-  margin-bottom: 0.3rem;
+  margin-bottom: 0.15rem;
 }
 
 .item-content {
   color: var(--text-secondary);
   font-size: 0.8rem;
   line-height: 1.3;
-  margin-bottom: 0.3rem;
+  margin-bottom: 0.15rem;
 }
 
 .item-tags {
@@ -3035,22 +3035,22 @@ a.sidebar-item:visited {
 }
 
 .recent-blocks-preview {
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
+  margin-top: 0.3rem;
+  padding-top: 0.3rem;
 }
 
 .preview-label {
   color: var(--text-secondary);
   font-size: 0.7rem;
   display: block;
-  margin-bottom: 0.3rem;
+  margin-bottom: 0.15rem;
 }
 
 /* Vertical layout for left nav recent page cards */
 .page-card-vertical {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.15rem;
   width: 100%;
 }
 
