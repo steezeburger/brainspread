@@ -22,6 +22,7 @@ from knowledge.commands import (
     DeletePageCommand,
     DeletePageEmbeddedViewCommand,
     DeleteSavedViewCommand,
+    DuplicatePageCommand,
     DuplicateSavedViewCommand,
     GetFavoritedPagesCommand,
     GetGraphDataCommand,
@@ -31,9 +32,11 @@ from knowledge.commands import (
     GetTagContentCommand,
     GetUserPagesCommand,
     ListSavedViewsCommand,
+    ListTemplatesCommand,
     MoveBlockToDailyCommand,
     MoveBlockToPageCommand,
     MoveUndoneTodosCommand,
+    PreviewSavedViewCommand,
     ReorderBlocksCommand,
     ReorderFavoritedPagesCommand,
     ReorderPageEmbeddedViewsCommand,
@@ -70,6 +73,7 @@ from knowledge.forms import (
     DeletePageEmbeddedViewForm,
     DeletePageForm,
     DeleteSavedViewForm,
+    DuplicatePageForm,
     DuplicateSavedViewForm,
     GetFavoritedPagesForm,
     GetGraphDataForm,
@@ -79,9 +83,11 @@ from knowledge.forms import (
     GetTagContentForm,
     GetUserPagesForm,
     ListSavedViewsForm,
+    ListTemplatesForm,
     MoveBlockToDailyForm,
     MoveBlockToPageForm,
     MoveUndoneTodosForm,
+    PreviewSavedViewForm,
     ReorderBlocksForm,
     ReorderFavoritedPagesForm,
     ReorderPageEmbeddedViewsForm,
@@ -1637,6 +1643,26 @@ def run_saved_view(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+def preview_saved_view(request):
+    """Run an ad-hoc filter + sort spec without persisting (issue #106
+    follow-up). The editor's Run button uses this so a draft can be
+    previewed before save — otherwise the Run button would silently
+    execute the old persisted spec while the user stared at fresh edits.
+    """
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = PreviewSavedViewForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        result = PreviewSavedViewCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
+    return _saved_view_response(True, data=result)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def create_saved_view(request):
     data = request.data.copy()
     data["user"] = request.user.id
@@ -1723,6 +1749,72 @@ def list_pinned_saved_views(request):
     """List the user's pinned saved views, for the left-nav."""
     views = SavedViewRepository.list_pinned_for_user(request.user)
     return _saved_view_response(True, data={"views": [v.to_dict() for v in views]})
+
+
+# ---------------------------------------------------------------------------
+# Page templates (issue #106). A template is just a Page with
+# page_type='template'; instantiating one duplicates its block tree into
+# a new regular page. "Save as template" / "Duplicate page" share the
+# same DuplicatePageCommand — only the target page_type differs.
+# ---------------------------------------------------------------------------
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def duplicate_page(request):
+    """Clone a page into a new page (issue #106).
+
+    Body: {source_page_uuid, new_title?, new_page_type?}
+      - omit new_page_type to duplicate as the same type (or 'page' when
+        the source is a daily/template; see DuplicatePageCommand).
+      - pass new_page_type='template' to "save as template".
+      - pass new_page_type='page' on a template source to "use template".
+    """
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = DuplicatePageForm(data)
+    if not form.is_valid():
+        response: PageResponse = {
+            "success": False,
+            "data": None,
+            "errors": form.errors,
+        }
+        return Response(response, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        new_page = DuplicatePageCommand(form).execute()
+    except ValidationError as exc:
+        response: PageResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(exc)]},
+        }
+        return Response(response, status=status.HTTP_400_BAD_REQUEST)
+    response: PageResponse = {
+        "success": True,
+        "data": new_page.to_dict(),
+        "errors": None,
+    }
+    return Response(response, status=status.HTTP_201_CREATED)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def list_templates(request):
+    """List the user's template pages, alphabetical (issue #106)."""
+    form = ListTemplatesForm({"user": request.user.id})
+    if not form.is_valid():
+        return Response(
+            {"success": False, "data": None, "errors": form.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    templates = ListTemplatesCommand(form).execute()
+    return Response(
+        {
+            "success": True,
+            "data": {"templates": [p.to_dict() for p in templates]},
+            "errors": None,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------

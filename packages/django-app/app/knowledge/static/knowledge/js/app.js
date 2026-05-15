@@ -487,6 +487,42 @@ const KnowledgeApp = createApp({
       return this.createNewPage(prefilledTitle, "whiteboard");
     },
 
+    async useTemplate(template) {
+      // Issue #106: instantiate a new page from a template. The
+      // backend duplicate command clones the template's block tree
+      // into the new page; we just need a target title from the user.
+      if (!template?.uuid) return;
+      const title = await window.appModals.prompt({
+        title: `new page from "${template.title}"`,
+        message: "enter a title for the new page:",
+        placeholder: "title",
+        defaultValue: template.title,
+        confirmLabel: "create",
+      });
+      if (title == null) return;
+      const trimmed = title.trim();
+      if (!trimmed) return;
+
+      try {
+        const result = await window.apiService.duplicatePage(template.uuid, {
+          newTitle: trimmed,
+          newPageType: "page",
+        });
+        if (result.success && result.data?.slug) {
+          window.location.href = `/knowledge/page/${result.data.slug}/`;
+        } else {
+          this.addToast(
+            "failed to create page from template: " +
+              (result.errors?.non_field_errors?.[0] || "unknown error"),
+            "error"
+          );
+        }
+      } catch (error) {
+        console.error("Failed to use template:", error);
+        this.addToast("failed to create page from template", "error");
+      }
+    },
+
     navigateToGraph() {
       window.location.href = "/knowledge/graph/";
     },
@@ -1048,6 +1084,7 @@ const KnowledgeApp = createApp({
                             @open-search="openSpotlight"
                             @create-page="createNewPage"
                             @create-whiteboard="createNewWhiteboard"
+                            @use-template="useTemplate"
                             @open-settings="openSettings"
                             @open-help="openHelp"
                             @logout="requestLogout" />
@@ -1064,6 +1101,7 @@ const KnowledgeApp = createApp({
                             @open-search="openSpotlight"
                             @create-page="createNewPage"
                             @create-whiteboard="createNewWhiteboard"
+                            @use-template="useTemplate"
                             @open-settings="openSettings"
                             @open-help="openHelp"
                             @logout="requestLogout" />
@@ -1082,6 +1120,7 @@ const KnowledgeApp = createApp({
                             @open-search="openSpotlight"
                             @create-page="createNewPage"
                             @create-whiteboard="createNewWhiteboard"
+                            @use-template="useTemplate"
                             @open-settings="openSettings"
                             @open-help="openHelp"
                             @logout="requestLogout" />

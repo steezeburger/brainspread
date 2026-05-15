@@ -11,6 +11,7 @@ window.LeftNav = {
     "open-search",
     "create-page",
     "create-whiteboard",
+    "use-template",
     "navigate-graph",
     "navigate-views",
     "navigate-today",
@@ -58,6 +59,16 @@ window.LeftNav = {
     } catch (_) {
       // ignore localStorage failures
     }
+    let templatesExpanded = true;
+    try {
+      const savedTplExpanded =
+        typeof window !== "undefined" && window.localStorage
+          ? window.localStorage.getItem("brainspread.leftNavTemplatesExpanded")
+          : null;
+      if (savedTplExpanded === "0") templatesExpanded = false;
+    } catch (_) {
+      // ignore localStorage failures
+    }
     return {
       historicalData: null,
       loading: false,
@@ -85,6 +96,14 @@ window.LeftNav = {
       pinnedViewsLoading: false,
       pinnedViewsError: null,
       pinnedViewsExpanded,
+      // Page templates (issue #106) — populated by loadTemplates(), shown
+      // in their own collapsible section. Each row is clickable to open
+      // the template page; the inline "+" button instantiates a new
+      // page from it.
+      templates: [],
+      templatesLoading: false,
+      templatesError: null,
+      templatesExpanded,
     };
   },
 
@@ -111,6 +130,7 @@ window.LeftNav = {
     this.loadHistoricalData();
     this.loadFavorites();
     this.loadPinnedViews();
+    this.loadTemplates();
     this.setupResizeListener();
     // The page header dispatches this when a user stars/unstars the
     // current page so the Favorites list refreshes without a reload.
@@ -123,6 +143,10 @@ window.LeftNav = {
       "pinned-views:changed",
       this.handlePinnedViewsChanged
     );
+    // Same pattern for templates (issue #106): "save as template" /
+    // delete-template dispatch this so the sidebar list stays fresh.
+    this.handleTemplatesChanged = () => this.loadTemplates();
+    document.addEventListener("templates:changed", this.handleTemplatesChanged);
     // Close the nav when the user clicks outside it on mobile only.
     // On desktop the rail and panel sit in their own real-estate column
     // and never overlap content, so an outside click shouldn't dismiss
@@ -152,6 +176,12 @@ window.LeftNav = {
       document.removeEventListener(
         "pinned-views:changed",
         this.handlePinnedViewsChanged
+      );
+    }
+    if (this.handleTemplatesChanged) {
+      document.removeEventListener(
+        "templates:changed",
+        this.handleTemplatesChanged
       );
     }
     this.detachOutsideClickHandler();
@@ -340,6 +370,48 @@ window.LeftNav = {
       if (this.shouldDeferToBrowser(event)) return;
       event.preventDefault();
       window.location.href = `/knowledge/views/${encodeURIComponent(slug)}/`;
+    },
+
+    toggleTemplates() {
+      this.templatesExpanded = !this.templatesExpanded;
+      try {
+        if (typeof window !== "undefined" && window.localStorage) {
+          window.localStorage.setItem(
+            "brainspread.leftNavTemplatesExpanded",
+            this.templatesExpanded ? "1" : "0"
+          );
+        }
+      } catch (_) {
+        // localStorage can throw in private mode; toggle still works.
+      }
+    },
+
+    async loadTemplates() {
+      this.templatesLoading = true;
+      this.templatesError = null;
+      try {
+        const result = await window.apiService.getTemplates();
+        if (result.success) {
+          this.templates = result.data?.templates || [];
+        } else {
+          this.templatesError = "failed to load templates";
+        }
+      } catch (error) {
+        console.error("error loading templates:", error);
+        this.templatesError = error.message || "failed to load templates";
+      } finally {
+        this.templatesLoading = false;
+      }
+    },
+
+    onUseTemplate(event, template) {
+      // Stop the row's anchor from also navigating to the template page
+      // when the user clicks the inline "+" button.
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      this.$emit("use-template", template);
     },
 
     onFavoriteDragStart(event, index) {
@@ -1028,6 +1100,59 @@ window.LeftNav = {
                   <span class="leftnav-icon" aria-hidden="true">≡</span>
                   <span class="leftnav-label">{{ view.name }}</span>
                 </a>
+              </div>
+            </div>
+          </section>
+
+          <!-- Templates (collapsible). Issue #106: clicking a row
+               instantiates a new page from the template; the open-link
+               next to it goes to the template page itself for editing. -->
+          <section class="leftnav-section leftnav-templates" aria-label="Templates">
+            <button
+              type="button"
+              class="leftnav-section-toggle"
+              @click="toggleTemplates"
+              :aria-expanded="templatesExpanded"
+            >
+              <span class="leftnav-chevron" :class="{ open: templatesExpanded }" aria-hidden="true">▸</span>
+              <span>templates</span>
+              <span v-if="templates.length" class="leftnav-section-count">{{ templates.length }}</span>
+            </button>
+
+            <div v-if="templatesExpanded" class="leftnav-templates-body">
+              <div v-if="templatesLoading" class="sidebar-loading">
+                Loading...
+              </div>
+              <div v-else-if="templatesError" class="sidebar-error">
+                {{ templatesError }}
+              </div>
+              <div v-else-if="!templates.length" class="leftnav-empty">
+                No templates yet. Use "save as template" from a page menu.
+              </div>
+              <div v-else class="leftnav-templates-list">
+                <div
+                  v-for="template in templates"
+                  :key="template.uuid"
+                  class="leftnav-template-row"
+                >
+                  <button
+                    type="button"
+                    class="leftnav-item leftnav-template-use"
+                    @click="onUseTemplate($event, template)"
+                    :title="'Create a new page from ' + template.title"
+                  >
+                    <span class="leftnav-icon" aria-hidden="true">+</span>
+                    <span class="leftnav-label">{{ template.title }}</span>
+                  </button>
+                  <a
+                    :href="pageUrl(template.slug)"
+                    class="leftnav-template-edit"
+                    @click="handleNavClick($event, template.slug)"
+                    @auxclick="handleNavClick($event, template.slug)"
+                    :title="'Edit template: ' + template.title"
+                    aria-label="Edit template"
+                  >→</a>
+                </div>
               </div>
             </div>
           </section>

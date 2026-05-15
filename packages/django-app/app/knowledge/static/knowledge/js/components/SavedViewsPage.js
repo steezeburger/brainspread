@@ -71,6 +71,182 @@ const SavedViewsPage = {
         return "";
       }
     },
+    // In-app cheatsheet, rendered next to both the create-view and
+    // edit-view forms. Content is fully static — v-html is safe here
+    // and lets us share one definition between the two editor sites
+    // without dragging in a sub-component.
+    cheatsheetHtml() {
+      return `
+<details class="saved-view-cheatsheet">
+  <summary>Filter &amp; sort cheatsheet (click to expand)</summary>
+
+  <h4>Predicates</h4>
+  <table class="cheat-table">
+    <tr><th><code>block_type</code></th><td>
+      Shorthand <code>"todo"</code> or op-dict <code>{"eq": "todo"}</code> /
+      <code>{"in": ["todo","doing","later"]}</code>.
+    </td></tr>
+    <tr><th><code>has_tag</code></th><td>
+      Slug string (no <code>#</code>). Matches blocks tagged with that
+      page <em>or</em> living on it. To require two tags, list both
+      under <code>all</code>.
+    </td></tr>
+    <tr><th><code>scheduled_for</code></th><td>
+      Date predicate. Ops: <code>is_null</code> (bool), <code>eq</code>,
+      <code>lt</code>, <code>lte</code>, <code>gt</code>, <code>gte</code>,
+      <code>between</code> (<code>[start, end]</code>). Values are date
+      tokens or <code>YYYY-MM-DD</code>.
+    </td></tr>
+    <tr><th><code>completed_at</code></th><td>
+      Same ops as <code>scheduled_for</code> — compares the moment a
+      block transitioned to done / wontdo.
+    </td></tr>
+    <tr><th><code>has_property</code></th><td>
+      Key string. Matches blocks with that <code>key:: value</code>
+      property set (any value).
+    </td></tr>
+    <tr><th><code>property_eq</code></th><td>
+      <code>{"key": "&lt;k&gt;", &lt;op&gt;: &lt;arg&gt;, ...}</code>.
+      Ops: <code>eq</code>, <code>ne</code>, <code>in</code>,
+      <code>not_in</code>, <code>contains</code>, <code>starts_with</code>,
+      <code>ends_with</code>. Multiple ops on one predicate AND together.
+      Property values are stored as strings.
+    </td></tr>
+    <tr><th><code>content_contains</code></th><td>
+      Substring match on the block's text content (case-insensitive).
+    </td></tr>
+  </table>
+
+  <h4>Combinators</h4>
+  <p>
+    <code>all</code> / <code>any</code> take a non-empty array of
+    sub-specs (AND / OR). <code>not</code> takes a single sub-spec.
+    Combinators nest freely.
+  </p>
+
+  <h4>Date tokens</h4>
+  <p>
+    <code>today</code>, <code>tomorrow</code>, <code>yesterday</code>,
+    <code>"N days ago"</code>, <code>"N days from now"</code>,
+    <code>today+Nd</code>, <code>today-Nd</code>, or a literal
+    <code>YYYY-MM-DD</code>. Tokens resolve at compile time against
+    your timezone.
+  </p>
+
+  <h4>Sort</h4>
+  <p>
+    Array of <code>{"field": "...", "dir": "asc"|"desc"}</code>.
+    <strong>Use <code>dir</code>, not <code>direction</code></strong>
+    — unknown keys are silently ignored.
+  </p>
+  <p>
+    Fields: <code>scheduled_for</code>, <code>completed_at</code>,
+    <code>created_at</code>, <code>modified_at</code>, <code>order</code>,
+    <code>block_type</code>, or <code>properties.&lt;key&gt;</code>.
+    Property sort is lexicographic — works naturally for ISO dates
+    stored as properties.
+  </p>
+  <p>
+    Default sort (when the array is empty / omitted) is
+    <code>created_at desc</code> — newest first.
+  </p>
+
+  <h4>Examples</h4>
+
+  <p>Open <code>#brainspread</code> bugs, newest first:</p>
+  <pre>{
+  "all": [
+    { "has_tag": "brainspread" },
+    { "has_tag": "bugs" },
+    { "block_type": { "in": ["todo", "doing", "later"] } }
+  ]
+}</pre>
+  <pre>[{ "field": "created_at", "dir": "desc" }]</pre>
+
+  <p>High-priority work items, by due date then creation:</p>
+  <pre>{
+  "all": [
+    { "has_tag": "work" },
+    { "property_eq": { "key": "priority", "eq": "high" } }
+  ]
+}</pre>
+  <pre>[
+  { "field": "scheduled_for", "dir": "asc" },
+  { "field": "created_at",   "dir": "asc" }
+]</pre>
+
+  <p>Overdue, but not snoozed:</p>
+  <pre>{
+  "all": [
+    { "block_type": { "in": ["todo", "doing", "later"] } },
+    { "scheduled_for": { "lt": "today" } },
+    { "completed_at": { "is_null": true } },
+    { "not": { "has_tag": "snoozed" } }
+  ]
+}</pre>
+
+  <h4>Examples with OR (<code>any</code>)</h4>
+
+  <p>Anything tagged either project, due in the next 7 days:</p>
+  <pre>{
+  "all": [
+    { "any": [
+        { "has_tag": "brainspread" },
+        { "has_tag": "homelab" }
+      ] },
+    { "scheduled_for": { "between": ["today", "today+7d"] } }
+  ]
+}</pre>
+
+  <p>Needs attention — high priority <em>or</em> overdue <em>or</em>
+  flagged as a blocker:</p>
+  <pre>{
+  "all": [
+    { "block_type": { "in": ["todo", "doing", "later"] } },
+    { "any": [
+        { "property_eq": { "key": "priority", "in": ["high", "critical"] } },
+        { "scheduled_for": { "lt": "today" } },
+        { "has_tag": "blocker" }
+      ] }
+  ]
+}</pre>
+
+  <p>"Anything finished this week" — done <em>or</em> wontdo:</p>
+  <pre>{
+  "all": [
+    { "block_type": { "in": ["done", "wontdo"] } },
+    { "completed_at": { "gte": "7 days ago" } }
+  ]
+}</pre>
+  <pre>[{ "field": "completed_at", "dir": "desc" }]</pre>
+
+  <p>Inbox-style triage list — open blocks with no tag <em>and</em> no
+  due date. Uses two <code>not</code>s under <code>all</code>:</p>
+  <pre>{
+  "all": [
+    { "block_type": { "in": ["todo", "doing", "later"] } },
+    { "scheduled_for": { "is_null": true } },
+    { "not": { "any": [
+        { "has_tag": "work" },
+        { "has_tag": "personal" },
+        { "has_tag": "errand" }
+      ] } }
+  ]
+}</pre>
+
+  <p>Search-style view — any block whose content or tag mentions
+  "deploy", that's still open:</p>
+  <pre>{
+  "all": [
+    { "block_type": { "in": ["todo", "doing", "later"] } },
+    { "any": [
+        { "content_contains": "deploy" },
+        { "has_tag": "deploy" }
+      ] }
+  ]
+}</pre>
+</details>`;
+    },
   },
 
   watch: {
@@ -110,7 +286,10 @@ const SavedViewsPage = {
         slug: "",
         description: "",
         filter: '{\n  "block_type": "todo"\n}',
-        sort: "[]",
+        // Pre-fill with newest-first sort so a freshly-created view
+        // is immediately useful — matches the backend's empty-sort
+        // default and saves the user a copy-paste from the cheatsheet.
+        sort: '[\n  { "field": "created_at", "dir": "desc" }\n]',
       };
     },
 
@@ -175,6 +354,13 @@ const SavedViewsPage = {
 
     async runActive() {
       if (!this.activeView) return;
+      // While editing, "Run" should show results for the draft spec
+      // the user is currently typing — not the spec last persisted.
+      // The draft path goes through the preview endpoint so we don't
+      // have to save first.
+      if (this.editing) {
+        return this._previewEditorDraft();
+      }
       this.running = true;
       this.runError = null;
       try {
@@ -191,6 +377,41 @@ const SavedViewsPage = {
         }
       } catch (err) {
         console.error("runSavedView failed:", err);
+        this.runError = String(err);
+      } finally {
+        this.running = false;
+      }
+    },
+
+    async _previewEditorDraft() {
+      // Validate the editor JSON first so the user gets the same inline
+      // error feedback as Save (rather than a generic API error). When
+      // the draft is invalid we bail without clobbering the previous
+      // run results.
+      const parsed = this._validateEditorJson();
+      if (!parsed) return;
+      this.running = true;
+      this.runError = null;
+      try {
+        const result = await window.apiService.previewSavedView({
+          filter: parsed.filter,
+          sort: parsed.sort,
+        });
+        if (result && result.success) {
+          // Preview response lacks a 'view' field (no view to preview
+          // against); the results UI only needs count / results /
+          // truncated, which preview supplies.
+          this.runResult = result.data;
+        } else {
+          const errs = (result && result.errors) || {};
+          this.runError =
+            (errs.non_field_errors && errs.non_field_errors[0]) ||
+            (errs.filter && errs.filter[0]) ||
+            (errs.sort && errs.sort[0]) ||
+            "Failed to preview view";
+        }
+      } catch (err) {
+        console.error("previewSavedView failed:", err);
         this.runError = String(err);
       } finally {
         this.running = false;
@@ -399,39 +620,25 @@ const SavedViewsPage = {
       }
     },
 
-    async embedOnToday() {
-      // Pin this saved view to today's daily page as a PageEmbeddedView.
+    async embedOnPage() {
+      // Pin this saved view onto a user-chosen page as a
+      // PageEmbeddedView. Opens the typeahead page picker; the user
+      // sees their recent pages by default and can search by title.
       // The backend command is idempotent on (page, saved_view) — a
-      // second click returns the existing embed rather than creating a
-      // duplicate. We surface that with a "Already embedded" toast so
-      // the user knows their click landed somewhere.
+      // second click returns the existing embed rather than creating
+      // a duplicate.
       if (!this.activeView) return;
+
+      const page = await window.appModals.pickPage({
+        title: `embed "${this.activeView.name}" on a page`,
+        message: "search by page title, or pick from recent:",
+        placeholder: "page title…",
+        confirmLabel: "embed",
+      });
+      // null = user dismissed the dialog
+      if (!page || !page.uuid) return;
+
       try {
-        const pageResult = await window.apiService.getPageWithBlocks();
-        const page =
-          pageResult && pageResult.data && pageResult.data.page
-            ? pageResult.data.page
-            : null;
-        if (!page || !page.uuid) {
-          this._toast(
-            this._formatErrors(pageResult && pageResult.errors) ||
-              "Could not resolve today's daily page",
-            "error"
-          );
-          return;
-        }
-
-        // Frontend short-circuit: if today already has an embed for
-        // this view in the response we just fetched, skip the POST.
-        const existing = (pageResult.data.embedded_views || []).find(
-          (e) => e.saved_view && e.saved_view.uuid === this.activeView.uuid
-        );
-        if (existing) {
-          this._toast("Already embedded on today — jumping to it.", "info");
-          window.location.href = `/knowledge/page/${page.slug}/`;
-          return;
-        }
-
         const r = await window.apiService.createPageEmbeddedView(
           page.uuid,
           this.activeView.uuid
@@ -440,12 +647,15 @@ const SavedViewsPage = {
           window.location.href = `/knowledge/page/${page.slug}/`;
           return;
         }
+        // The create command short-circuits to the existing embed on
+        // duplicate (idempotent), so a non-success here is a real
+        // failure, not the "already embedded" case.
         this._toast(
           this._formatErrors(r && r.errors) || "Embed failed",
           "error"
         );
       } catch (err) {
-        console.error("embedOnToday failed:", err);
+        console.error("embedOnPage failed:", err);
         this._toast(`Embed failed: ${err}`, "error");
       }
     },
@@ -609,24 +819,7 @@ const SavedViewsPage = {
             <button class="btn" @click="cancelCreate">Cancel</button>
           </div>
           <div v-if="saveError" class="form-error">{{ saveError }}</div>
-          <div class="saved-view-help">
-            <p>Filter spec is JSON. Examples:</p>
-            <pre>{
-  "all": [
-    { "block_type": { "in": ["todo", "doing"] } },
-    { "scheduled_for": { "lt": "today" } },
-    { "completed_at": { "is_null": true } }
-  ]
-}</pre>
-            <p>Querying <code>key:: value</code> properties — match high or critical priority:</p>
-            <pre>{ "property_eq": { "key": "priority", "in": ["high", "critical"] } }</pre>
-            <p>String comparison is lexicographic, which works for ISO dates stored as properties (e.g. <code>due:: 2026-05-01</code>):</p>
-            <pre>{ "property_eq": { "key": "due", "lt": "2026-05-01" } }</pre>
-            <p>Predicates: block_type, scheduled_for, completed_at, has_tag, has_property, property_eq, content_contains. Combinators: all, any, not. Date tokens: today, tomorrow, yesterday, "N days ago", "N days from now", or YYYY-MM-DD.</p>
-            <p><strong>property_eq</strong> ops: eq, ne, in, not_in, contains, starts_with, ends_with, lt, lte, gt, gte. Multiple ops on one predicate AND together. Values are stringly-typed (the parser stores everything as strings), so comparisons are string-vs-string.</p>
-            <p><strong>has_tag</strong> matches blocks that live on a page with that slug <em>or</em> blocks that explicitly link to that page with #tag / [[link]].</p>
-            <p>Sort by a property: <code>[{ "field": "properties.priority", "dir": "asc" }]</code>. Blocks without the key sort last in asc, first in desc.</p>
-          </div>
+          <div class="saved-view-help" v-html="cheatsheetHtml"></div>
         </div>
 
         <div v-else class="saved-view-list">
@@ -659,8 +852,8 @@ const SavedViewsPage = {
               <span v-if="activeView.is_system" class="system-pill">system</span>
             </h1>
             <div class="header-actions">
-              <button class="btn" @click="runActive" :disabled="running">
-                {{ running ? "Running…" : "Run" }}
+              <button class="btn" @click="runActive" :disabled="running" :title="editing ? 'Preview the current editor draft (does not save)' : 'Run the saved view'">
+                {{ running ? "Running…" : editing ? "Preview" : "Run" }}
               </button>
               <button class="btn" @click="duplicateActive">Duplicate</button>
               <button
@@ -669,7 +862,7 @@ const SavedViewsPage = {
                 @click="togglePinned"
                 :title="activeView.pinned ? 'Unpin from left nav' : 'Pin to left nav'"
               >{{ activeView.pinned ? '★ Pinned' : '☆ Pin' }}</button>
-              <button class="btn" @click="embedOnToday" title="Add this view to today's daily page as a block">Embed on today</button>
+              <button class="btn" @click="embedOnPage" title="Embed this view on a page (defaults to today's daily note)">Embed…</button>
               <button class="btn" v-if="canEdit && !editing" @click="startEditing">Edit</button>
               <button class="btn btn-danger" v-if="canDelete" @click="deleteActive">Delete</button>
             </div>
@@ -715,6 +908,7 @@ const SavedViewsPage = {
               <button class="btn" @click="cancelEditing">Cancel</button>
             </div>
             <div v-if="saveError" class="form-error">{{ saveError }}</div>
+            <div class="saved-view-help" v-html="cheatsheetHtml"></div>
           </div>
 
           <div class="saved-view-results">

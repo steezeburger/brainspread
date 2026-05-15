@@ -38,7 +38,6 @@ const Page = {
     ScheduleBlockPopover: window.ScheduleBlockPopover || {},
     BlockChatPopover: window.BlockChatPopover || {},
     BlockInfoModal: window.BlockInfoModal || {},
-    MoveBlockPagePicker: window.MoveBlockPagePicker || {},
     QueryEmbedBlock: window.QueryEmbedBlock || {},
   },
   props: {
@@ -76,8 +75,6 @@ const Page = {
       blockChatPopoverBlock: null,
       blockInfoModalOpen: false,
       blockInfoModalBlock: null,
-      movePagePickerOpen: false,
-      movePagePickerBlock: null,
       loading: false,
       error: null,
       // Page title editing
@@ -242,6 +239,10 @@ const Page = {
 
     isFavorited() {
       return !!this.page?.favorited;
+    },
+
+    isTemplate() {
+      return this.page?.page_type === "template";
     },
 
     shareUrl() {
@@ -1056,24 +1057,21 @@ const Page = {
       this.blockInfoModalBlock = null;
     },
 
-    openMovePagePicker(block) {
-      // Open the page-picker modal for "move to page..." from the
-      // block context menu. We hold a reference to the block so the
-      // picker's select handler can call the move API for the right one.
-      this.movePagePickerBlock = block;
-      this.movePagePickerOpen = true;
-    },
-
-    cancelMovePagePicker() {
-      this.movePagePickerOpen = false;
-      this.movePagePickerBlock = null;
-    },
-
-    async handleMovePagePickerSelect(targetPage) {
-      const block = this.movePagePickerBlock;
-      this.movePagePickerOpen = false;
-      this.movePagePickerBlock = null;
-      if (!block || !targetPage) return;
+    async openMovePagePicker(block) {
+      // Defer the picker UI to the shared AppModals.pickPage typeahead
+      // (added for the saved-view embed flow) so we don't ship two
+      // page-pickers. Open the modal, wait for a selection, then call
+      // the move API for the chosen target.
+      if (!window.appModals?.pickPage) {
+        console.error("appModals.pickPage is not available");
+        return;
+      }
+      const targetPage = await window.appModals.pickPage({
+        title: "move block to page",
+        placeholder: "search pages…",
+        confirmLabel: "move",
+      });
+      if (!targetPage || !block) return;
 
       try {
         if (block.isEditing) {
@@ -2149,6 +2147,115 @@ const Page = {
       this.closePageMenu();
     },
 
+    async duplicatePage() {
+      // Issue #106 — clone the current page (and its block tree) into
+      // a new page. Same flow whether we land on a regular page or a
+      // template; the backend command picks a sensible default
+      // page_type when one isn't specified.
+      if (!this.page) return;
+      this.closePageMenu();
+      try {
+        const result = await window.apiService.duplicatePage(this.page.uuid);
+        if (result.success && result.data?.slug) {
+          this.$parent?.addToast?.("page duplicated", "success");
+          window.location.href = `/knowledge/page/${result.data.slug}/`;
+        } else {
+          this.$parent?.addToast?.(
+            "failed to duplicate page: " +
+              (result.errors?.non_field_errors?.[0] || "unknown error"),
+            "error"
+          );
+        }
+      } catch (error) {
+        console.error("failed to duplicate page:", error);
+        this.$parent?.addToast?.("failed to duplicate page", "error");
+      }
+    },
+
+    async useThisTemplate() {
+      // Issue #106: when the user is sitting on a template page, this
+      // is the one-click "instantiate me" affordance — analogous to
+      // clicking the template's "+" in the LeftNav, but reachable
+      // straight from the page menu so they don't have to navigate
+      // back out.
+      if (!this.page) return;
+      const title = await window.appModals.prompt({
+        title: `new page from "${this.page.title}"`,
+        message: "enter a title for the new page:",
+        placeholder: "title",
+        defaultValue: this.page.title,
+        confirmLabel: "create",
+      });
+      this.closePageMenu();
+      if (title == null) return;
+      const trimmed = title.trim();
+      if (!trimmed) return;
+
+      try {
+        const result = await window.apiService.duplicatePage(this.page.uuid, {
+          newTitle: trimmed,
+          newPageType: "page",
+        });
+        if (result.success && result.data?.slug) {
+          window.location.href = `/knowledge/page/${result.data.slug}/`;
+        } else {
+          this.$parent?.addToast?.(
+            "failed to create page: " +
+              (result.errors?.non_field_errors?.[0] || "unknown error"),
+            "error"
+          );
+        }
+      } catch (error) {
+        console.error("failed to use template:", error);
+        this.$parent?.addToast?.(
+          "failed to create page from template",
+          "error"
+        );
+      }
+    },
+
+    async saveAsTemplate() {
+      // Issue #106 — clone the page as page_type='template'. We leave
+      // the user on the original page and surface the new template via
+      // a toast + the LeftNav refresh event.
+      if (!this.page) return;
+      const defaultName = `${this.page.title} template`;
+      const name = await window.appModals.prompt({
+        title: "save as template",
+        message: "name your template:",
+        placeholder: "template name",
+        defaultValue: defaultName,
+        confirmLabel: "save",
+      });
+      this.closePageMenu();
+      if (name == null) return;
+      const trimmed = name.trim();
+      if (!trimmed) return;
+
+      try {
+        const result = await window.apiService.duplicatePage(this.page.uuid, {
+          newTitle: trimmed,
+          newPageType: "template",
+        });
+        if (result.success) {
+          this.$parent?.addToast?.(
+            `saved "${trimmed}" as a template`,
+            "success"
+          );
+          document.dispatchEvent(new CustomEvent("templates:changed"));
+        } else {
+          this.$parent?.addToast?.(
+            "failed to save template: " +
+              (result.errors?.non_field_errors?.[0] || "unknown error"),
+            "error"
+          );
+        }
+      } catch (error) {
+        console.error("failed to save as template:", error);
+        this.$parent?.addToast?.("failed to save template", "error");
+      }
+    },
+
     async toggleFavorited() {
       if (!this.page) return;
       const next = !this.isFavorited;
@@ -2263,9 +2370,14 @@ const Page = {
       if (!confirmed) return;
 
       try {
+        const wasTemplate = this.page.page_type === "template";
         const result = await window.apiService.deletePage(this.page.uuid);
         if (result.success) {
           this.closePageMenu();
+          if (wasTemplate) {
+            // The LeftNav templates list listens for this and refetches.
+            document.dispatchEvent(new CustomEvent("templates:changed"));
+          }
           // Navigate to today's page after deletion
           const today = new Date();
           const year = today.getFullYear();
@@ -3659,6 +3771,7 @@ const Page = {
                     ✗
                   </button>
                 </div>
+                <span v-if="isTemplate" class="page-type-badge" title="This page is a template — use it from the sidebar or the page menu to create a new page from it.">template</span>
               </div>
               <div class="page-actions">
                 <div class="context-menu-container page-sort-container">
@@ -3684,6 +3797,10 @@ const Page = {
                     <button @click="startEditingTitle" class="context-menu-item" role="menuitem">
                       edit title
                     </button>
+                    <button v-if="isTemplate" @click="useThisTemplate" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">+</span>
+                      <span>use this template</span>
+                    </button>
                     <button @click="enterSelectionMode" class="context-menu-item" role="menuitem">
                       <span class="context-menu-icon">◉</span>
                       <span>select multiple</span>
@@ -3696,8 +3813,17 @@ const Page = {
                       <span class="context-menu-icon">→</span>
                       <span>share<span v-if="isShared" class="context-menu-badge">on</span></span>
                     </button>
+                    <button @click="duplicatePage" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">⧉</span>
+                      <span>duplicate page</span>
+                    </button>
+                    <button v-if="!isTemplate" @click="saveAsTemplate" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">▤</span>
+                      <span>save as template</span>
+                    </button>
                     <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">
-                      delete page
+                      <span v-if="isTemplate">delete template</span>
+                      <span v-else>delete page</span>
                     </button>
                   </div>
                 </div>
@@ -3907,14 +4033,6 @@ const Page = {
         :is-open="blockChatPopoverOpen"
         :block="blockChatPopoverBlock"
         @close="closeBlockChatPopover"
-      />
-
-      <!-- Page-picker for "move to page..." -->
-      <MoveBlockPagePicker
-        :is-open="movePagePickerOpen"
-        :exclude-page-uuids="page ? [page.uuid] : []"
-        @select="handleMovePagePickerSelect"
-        @cancel="cancelMovePagePicker"
       />
 
       <!-- Read-only block-info modal -->

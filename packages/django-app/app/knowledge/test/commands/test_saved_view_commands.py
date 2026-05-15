@@ -19,6 +19,7 @@ from knowledge.commands import (
     DuplicateSavedViewCommand,
     GetSavedViewCommand,
     ListSavedViewsCommand,
+    PreviewSavedViewCommand,
     RunSavedViewCommand,
     UpdateSavedViewCommand,
 )
@@ -28,6 +29,7 @@ from knowledge.forms import (
     DuplicateSavedViewForm,
     GetSavedViewForm,
     ListSavedViewsForm,
+    PreviewSavedViewForm,
     RunSavedViewForm,
     UpdateSavedViewForm,
 )
@@ -273,3 +275,73 @@ class ListGetSavedViewTests(_SavedViewTestBase):
     def test_get_requires_uuid_or_slug(self):
         form = GetSavedViewForm({"user": self.user.id})
         self.assertFalse(form.is_valid())
+
+
+class PreviewSavedViewTests(_SavedViewTestBase):
+    """The editor's Run button uses preview while editing so the user
+    sees results for what they're typing, not the persisted spec.
+    These pin: (a) preview runs ad-hoc filter+sort without touching the
+    DB, (b) it scopes to the user, (c) bad specs surface as
+    ValidationError just like run does."""
+
+    def test_preview_runs_ad_hoc_filter(self):
+        match = BlockFactory(
+            user=self.user,
+            page=self.page,
+            block_type="todo",
+            scheduled_for=date(2026, 4, 23),
+        )
+        BlockFactory(
+            user=self.user,
+            page=self.page,
+            block_type="done",
+            scheduled_for=date(2026, 4, 23),
+            completed_at=_utc_noon(self.today),
+        )
+        form = PreviewSavedViewForm(
+            {
+                "user": self.user.id,
+                "filter": {"block_type": "todo"},
+                "sort": [{"field": "created_at", "dir": "desc"}],
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        result = PreviewSavedViewCommand(form).execute()
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["results"][0]["uuid"], str(match.uuid))
+        self.assertFalse(result["truncated"])
+
+    def test_preview_does_not_persist_anything(self):
+        before_count = SavedView.objects.count()
+        form = PreviewSavedViewForm(
+            {
+                "user": self.user.id,
+                "filter": {"block_type": "todo"},
+            }
+        )
+        self.assertTrue(form.is_valid())
+        PreviewSavedViewCommand(form).execute()
+        self.assertEqual(SavedView.objects.count(), before_count)
+
+    def test_preview_user_scoped(self):
+        other_page = PageFactory(user=UserFactory(), page_type="page", title="OP")
+        BlockFactory(
+            user=other_page.user,
+            page=other_page,
+            block_type="todo",
+        )
+        BlockFactory(user=self.user, page=self.page, block_type="todo")
+        form = PreviewSavedViewForm(
+            {"user": self.user.id, "filter": {"block_type": "todo"}}
+        )
+        self.assertTrue(form.is_valid())
+        result = PreviewSavedViewCommand(form).execute()
+        self.assertEqual(result["count"], 1)
+
+    def test_preview_invalid_spec_raises(self):
+        form = PreviewSavedViewForm(
+            {"user": self.user.id, "filter": {"never_heard_of_it": 1}}
+        )
+        self.assertTrue(form.is_valid())
+        with self.assertRaises(ValidationError):
+            PreviewSavedViewCommand(form).execute()

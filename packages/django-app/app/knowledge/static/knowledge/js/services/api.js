@@ -168,6 +168,23 @@ class ApiService {
     );
   }
 
+  // Page templates (issue #106). Templates are pages with
+  // page_type="template"; instantiating one duplicates its block tree
+  // into a new regular page via the same /pages/duplicate/ endpoint.
+  async getTemplates() {
+    return await this.request("/knowledge/api/pages/templates/");
+  }
+
+  async duplicatePage(sourcePageUuid, { newTitle, newPageType } = {}) {
+    const body = { source_page_uuid: sourcePageUuid };
+    if (newTitle) body.new_title = newTitle;
+    if (newPageType) body.new_page_type = newPageType;
+    return await this.request("/knowledge/api/pages/duplicate/", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
   async searchPages(query, limit = 10) {
     return await this.request(
       `/knowledge/api/pages/search/?query=${encodeURIComponent(query)}&limit=${limit}`
@@ -803,6 +820,13 @@ class ApiService {
     if (slug) params.set("view_slug", slug);
     params.set("limit", String(limit));
     return await this.request(`/knowledge/api/views/run/?${params.toString()}`);
+  }
+
+  async previewSavedView({ filter, sort, limit = 100 } = {}) {
+    return await this.request("/knowledge/api/views/preview/", {
+      method: "POST",
+      body: JSON.stringify({ filter, sort: sort || [], limit }),
+    });
   }
 
   async createSavedView(payload) {

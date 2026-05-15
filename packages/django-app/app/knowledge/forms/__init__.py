@@ -16,6 +16,7 @@ from .delete_block_form import DeleteBlockForm
 from .delete_page_embedded_view_form import DeletePageEmbeddedViewForm
 from .delete_page_form import DeletePageForm
 from .delete_saved_view_form import DeleteSavedViewForm
+from .duplicate_page_form import DuplicatePageForm
 from .duplicate_saved_view_form import DuplicateSavedViewForm
 from .find_stale_todos_form import FindStaleTodosForm
 from .get_backlinks_form import GetBacklinksForm
@@ -38,9 +39,11 @@ from .list_overdue_blocks_form import ListOverdueBlocksForm
 from .list_pending_reminders_form import ListPendingRemindersForm
 from .list_saved_views_form import ListSavedViewsForm
 from .list_scheduled_blocks_form import ListScheduledBlocksForm
+from .list_templates_form import ListTemplatesForm
 from .move_block_to_daily_form import MoveBlockToDailyForm
 from .move_block_to_page_form import MoveBlockToPageForm
 from .move_undone_todos_form import MoveUndoneTodosForm
+from .preview_saved_view_form import PreviewSavedViewForm
 from .reorder_blocks_form import ReorderBlocksForm
 from .reorder_favorited_pages_form import ReorderFavoritedPagesForm
 from .reorder_page_embedded_views_form import ReorderPageEmbeddedViewsForm

@@ -78,6 +78,11 @@ urlpatterns = [
     path("api/pages/delete/", views.delete_page, name="delete_page"),
     path("api/pages/list/", views.get_pages, name="list_pages"),
     path("api/pages/search/", views.search_pages, name="search_pages"),
+    # Page templates (issue #106) — templates live as Pages with
+    # page_type='template'; ``duplicate`` powers both "Save as template"
+    # and "Use template" by varying the target page_type.
+    path("api/pages/duplicate/", views.duplicate_page, name="duplicate_page"),
+    path("api/pages/templates/", views.list_templates, name="list_templates"),
     path("api/blocks/search/", views.search_blocks, name="search_blocks"),
     path("api/page/", views.get_page_with_blocks, name="get_page_with_blocks"),
     path("api/historical/", views.get_historical_data, name="get_historical_data"),
@@ -87,6 +92,7 @@ urlpatterns = [
     path("api/views/", views.list_saved_views, name="list_saved_views"),
     path("api/views/get/", views.get_saved_view, name="get_saved_view"),
     path("api/views/run/", views.run_saved_view, name="run_saved_view"),
+    path("api/views/preview/", views.preview_saved_view, name="preview_saved_view"),
     path("api/views/create/", views.create_saved_view, name="create_saved_view"),
     path("api/views/update/", views.update_saved_view, name="update_saved_view"),
     path("api/views/delete/", views.delete_saved_view, name="delete_saved_view"),

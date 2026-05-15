@@ -860,6 +860,82 @@ body {
   overflow-y: auto;
 }
 
+/* Page picker modal (window.appModals.pickPage). Wider than the
+   prompt/confirm modals so longer page titles fit on one line, and
+   wraps a scrollable result list under the input. */
+.app-modal-picker {
+  max-width: 560px;
+}
+
+.app-modal-picker-results {
+  display: flex;
+  flex-direction: column;
+  max-height: 18rem;
+  overflow-y: auto;
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  background: var(--bg-primary);
+}
+
+.app-modal-picker-empty {
+  padding: 0.75rem 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.app-modal-picker-result {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-primary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-modal-picker-result:last-child {
+  border-bottom: none;
+}
+
+.app-modal-picker-result.is-selected,
+.app-modal-picker-result:hover {
+  background: var(--hover-bg);
+}
+
+.app-modal-picker-result-title {
+  flex: 1;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-modal-picker-result-type {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--tag-bg);
+  padding: 1px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+}
+
+.app-modal-picker-result-slug {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 14rem;
+}
+
 .confirm-modal-content {
   background: var(--bg-primary);
   border: 1px solid var(--border-primary);
@@ -2696,6 +2772,56 @@ kbd {
 
 .leftnav-pinned-view-item .leftnav-icon {
   color: var(--text-muted);
+}
+
+/* Templates list (issue #106). Each row pairs a "use this template"
+   button (which takes most of the row) with a small arrow link to
+   open the template page itself for editing. */
+.leftnav-templates-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0.1rem 0 0.4rem;
+}
+
+.leftnav-templates-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.leftnav-template-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.leftnav-template-row .leftnav-template-use {
+  flex: 1;
+  text-align: left;
+}
+
+.leftnav-template-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-right: 0.2rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  border-radius: 3px;
+  font-size: 0.85rem;
+  opacity: 0;
+  transition: opacity 80ms linear;
+}
+
+.leftnav-template-row:hover .leftnav-template-edit,
+.leftnav-template-edit:focus-visible {
+  opacity: 1;
+}
+
+.leftnav-template-edit:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
 }
 
 .leftnav-recent {
@@ -7436,6 +7562,51 @@ a.hashtag-mention:hover,
   border-radius: 3px;
   font-size: 0.8rem;
   overflow-x: auto;
+}
+
+.saved-view-cheatsheet > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding: 0.3rem 0;
+}
+
+.saved-view-cheatsheet h4 {
+  margin: 1rem 0 0.35rem;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.saved-view-cheatsheet p {
+  margin: 0.35rem 0;
+}
+
+.saved-view-cheatsheet code {
+  background: var(--bg-primary);
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid var(--border-primary);
+  font-size: 0.78rem;
+}
+
+.saved-view-cheatsheet .cheat-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.saved-view-cheatsheet .cheat-table th,
+.saved-view-cheatsheet .cheat-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--border-primary);
+  font-weight: normal;
+}
+
+.saved-view-cheatsheet .cheat-table th {
+  white-space: nowrap;
+  width: 10rem;
 }
 
 .saved-view-spec details {
