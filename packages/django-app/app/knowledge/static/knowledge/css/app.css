@@ -7375,6 +7375,51 @@ a.hashtag-mention:hover,
   overflow-x: auto;
 }
 
+.saved-view-cheatsheet > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding: 0.3rem 0;
+}
+
+.saved-view-cheatsheet h4 {
+  margin: 1rem 0 0.35rem;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.saved-view-cheatsheet p {
+  margin: 0.35rem 0;
+}
+
+.saved-view-cheatsheet code {
+  background: var(--bg-primary);
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid var(--border-primary);
+  font-size: 0.78rem;
+}
+
+.saved-view-cheatsheet .cheat-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.saved-view-cheatsheet .cheat-table th,
+.saved-view-cheatsheet .cheat-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--border-primary);
+  font-weight: normal;
+}
+
+.saved-view-cheatsheet .cheat-table th {
+  white-space: nowrap;
+  width: 10rem;
+}
+
 .saved-view-spec details {
   border: 1px solid var(--border-primary);
   border-radius: 3px;

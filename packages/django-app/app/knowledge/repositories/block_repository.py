@@ -469,9 +469,11 @@ class BlockRepository(BaseRepository):
     ) -> QuerySet:
         """Execute a CompiledQuery (from knowledge.services.query_engine) for
         the user. Always scoped to ``user`` — saved views can never reach
-        across users. The default ordering is by ``scheduled_for``-then-
-        ``order`` so list-shaped views fall back to a stable, useful sort
-        when the spec doesn't supply one.
+        across users. When the spec doesn't supply a sort we fall back to
+        ``-created_at`` (newest first) — "what did I add lately" is the
+        most useful default for an open-ended block list; the older
+        ``scheduled_for, order`` default surfaced undated items at the
+        top, which felt random for views like "all #brainspread #bugs".
         """
         qs = (
             cls.get_queryset()
@@ -483,7 +485,7 @@ class BlockRepository(BaseRepository):
         if compiled.order_by:
             qs = qs.order_by(*compiled.order_by)
         else:
-            qs = qs.order_by("scheduled_for", "order")
+            qs = qs.order_by("-created_at")
         if limit is not None:
             qs = qs[:limit]
         return qs

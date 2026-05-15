@@ -71,6 +71,132 @@ const SavedViewsPage = {
         return "";
       }
     },
+    // In-app cheatsheet, rendered next to both the create-view and
+    // edit-view forms. Content is fully static — v-html is safe here
+    // and lets us share one definition between the two editor sites
+    // without dragging in a sub-component.
+    cheatsheetHtml() {
+      return `
+<details class="saved-view-cheatsheet">
+  <summary>Filter &amp; sort cheatsheet (click to expand)</summary>
+
+  <h4>Predicates</h4>
+  <table class="cheat-table">
+    <tr><th><code>block_type</code></th><td>
+      Shorthand <code>"todo"</code> or op-dict <code>{"eq": "todo"}</code> /
+      <code>{"in": ["todo","doing","later"]}</code>.
+    </td></tr>
+    <tr><th><code>has_tag</code></th><td>
+      Slug string (no <code>#</code>). Matches blocks tagged with that
+      page <em>or</em> living on it. To require two tags, list both
+      under <code>all</code>.
+    </td></tr>
+    <tr><th><code>scheduled_for</code></th><td>
+      Date predicate. Ops: <code>is_null</code> (bool), <code>eq</code>,
+      <code>lt</code>, <code>lte</code>, <code>gt</code>, <code>gte</code>,
+      <code>between</code> (<code>[start, end]</code>). Values are date
+      tokens or <code>YYYY-MM-DD</code>.
+    </td></tr>
+    <tr><th><code>completed_at</code></th><td>
+      Same ops as <code>scheduled_for</code> — compares the moment a
+      block transitioned to done / wontdo.
+    </td></tr>
+    <tr><th><code>has_property</code></th><td>
+      Key string. Matches blocks with that <code>key:: value</code>
+      property set (any value).
+    </td></tr>
+    <tr><th><code>property_eq</code></th><td>
+      <code>{"key": "&lt;k&gt;", &lt;op&gt;: &lt;arg&gt;, ...}</code>.
+      Ops: <code>eq</code>, <code>ne</code>, <code>in</code>,
+      <code>not_in</code>, <code>contains</code>, <code>starts_with</code>,
+      <code>ends_with</code>. Multiple ops on one predicate AND together.
+      Property values are stored as strings.
+    </td></tr>
+    <tr><th><code>content_contains</code></th><td>
+      Substring match on the block's text content (case-insensitive).
+    </td></tr>
+  </table>
+
+  <h4>Combinators</h4>
+  <p>
+    <code>all</code> / <code>any</code> take a non-empty array of
+    sub-specs (AND / OR). <code>not</code> takes a single sub-spec.
+    Combinators nest freely.
+  </p>
+
+  <h4>Date tokens</h4>
+  <p>
+    <code>today</code>, <code>tomorrow</code>, <code>yesterday</code>,
+    <code>"N days ago"</code>, <code>"N days from now"</code>,
+    <code>today+Nd</code>, <code>today-Nd</code>, or a literal
+    <code>YYYY-MM-DD</code>. Tokens resolve at compile time against
+    your timezone.
+  </p>
+
+  <h4>Sort</h4>
+  <p>
+    Array of <code>{"field": "...", "dir": "asc"|"desc"}</code>.
+    <strong>Use <code>dir</code>, not <code>direction</code></strong>
+    — unknown keys are silently ignored.
+  </p>
+  <p>
+    Fields: <code>scheduled_for</code>, <code>completed_at</code>,
+    <code>created_at</code>, <code>modified_at</code>, <code>order</code>,
+    <code>block_type</code>, or <code>properties.&lt;key&gt;</code>.
+    Property sort is lexicographic — works naturally for ISO dates
+    stored as properties.
+  </p>
+  <p>
+    Default sort (when the array is empty / omitted) is
+    <code>created_at desc</code> — newest first.
+  </p>
+
+  <h4>Examples</h4>
+
+  <p>Open <code>#brainspread</code> bugs, newest first:</p>
+  <pre>{
+  "all": [
+    { "has_tag": "brainspread" },
+    { "has_tag": "bugs" },
+    { "block_type": { "in": ["todo", "doing", "later"] } }
+  ]
+}</pre>
+  <pre>[{ "field": "created_at", "dir": "desc" }]</pre>
+
+  <p>High-priority work items, by due date then creation:</p>
+  <pre>{
+  "all": [
+    { "has_tag": "work" },
+    { "property_eq": { "key": "priority", "eq": "high" } }
+  ]
+}</pre>
+  <pre>[
+  { "field": "scheduled_for", "dir": "asc" },
+  { "field": "created_at",   "dir": "asc" }
+]</pre>
+
+  <p>Overdue, but not snoozed:</p>
+  <pre>{
+  "all": [
+    { "block_type": { "in": ["todo", "doing", "later"] } },
+    { "scheduled_for": { "lt": "today" } },
+    { "completed_at": { "is_null": true } },
+    { "not": { "has_tag": "snoozed" } }
+  ]
+}</pre>
+
+  <p>Anything tagged either project, due in the next 7 days:</p>
+  <pre>{
+  "all": [
+    { "any": [
+        { "has_tag": "brainspread" },
+        { "has_tag": "homelab" }
+      ] },
+    { "scheduled_for": { "between": ["today", "today+7d"] } }
+  ]
+}</pre>
+</details>`;
+    },
   },
 
   watch: {
@@ -618,24 +744,7 @@ const SavedViewsPage = {
             <button class="btn" @click="cancelCreate">Cancel</button>
           </div>
           <div v-if="saveError" class="form-error">{{ saveError }}</div>
-          <div class="saved-view-help">
-            <p>Filter spec is JSON. Examples:</p>
-            <pre>{
-  "all": [
-    { "block_type": { "in": ["todo", "doing"] } },
-    { "scheduled_for": { "lt": "today" } },
-    { "completed_at": { "is_null": true } }
-  ]
-}</pre>
-            <p>Querying <code>key:: value</code> properties — match high or critical priority:</p>
-            <pre>{ "property_eq": { "key": "priority", "in": ["high", "critical"] } }</pre>
-            <p>String comparison is lexicographic, which works for ISO dates stored as properties (e.g. <code>due:: 2026-05-01</code>):</p>
-            <pre>{ "property_eq": { "key": "due", "lt": "2026-05-01" } }</pre>
-            <p>Predicates: block_type, scheduled_for, completed_at, has_tag, has_property, property_eq, content_contains. Combinators: all, any, not. Date tokens: today, tomorrow, yesterday, "N days ago", "N days from now", or YYYY-MM-DD.</p>
-            <p><strong>property_eq</strong> ops: eq, ne, in, not_in, contains, starts_with, ends_with, lt, lte, gt, gte. Multiple ops on one predicate AND together. Values are stringly-typed (the parser stores everything as strings), so comparisons are string-vs-string.</p>
-            <p><strong>has_tag</strong> matches blocks that live on a page with that slug <em>or</em> blocks that explicitly link to that page with #tag / [[link]].</p>
-            <p>Sort by a property: <code>[{ "field": "properties.priority", "dir": "asc" }]</code>. Blocks without the key sort last in asc, first in desc.</p>
-          </div>
+          <div class="saved-view-help" v-html="cheatsheetHtml"></div>
         </div>
 
         <div v-else class="saved-view-list">
@@ -718,6 +827,7 @@ const SavedViewsPage = {
               <button class="btn" @click="cancelEditing">Cancel</button>
             </div>
             <div v-if="saveError" class="form-error">{{ saveError }}</div>
+            <div class="saved-view-help" v-html="cheatsheetHtml"></div>
           </div>
 
           <div class="saved-view-results">
