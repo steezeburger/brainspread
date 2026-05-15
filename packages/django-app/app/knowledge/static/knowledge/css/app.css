@@ -6261,6 +6261,32 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   margin-top: 0.5rem;
 }
 
+/* Mobile: the desktop popover lays the date/reminder controls out in a
+ * single row, which overflows below ~420px-wide viewports. Stack the
+ * rows vertically and clamp the modal width to the viewport so the
+ * popover stays usable in portrait mobile. */
+@media (max-width: 480px) {
+  .schedule-popover {
+    min-width: 0;
+    width: calc(100vw - 1.5rem);
+    max-width: 22rem;
+    padding: 1rem;
+  }
+  .schedule-popover-row {
+    flex-wrap: wrap;
+    row-gap: 0.4rem;
+  }
+  .schedule-popover-label {
+    min-width: 4rem;
+  }
+  .schedule-popover-row-reminder .schedule-popover-input,
+  .schedule-popover-row-reminder .schedule-popover-label-narrow {
+    /* Let the select claim the full row width once the row wraps so it
+     * isn't squeezed to a sliver next to the time input. */
+    flex-basis: 100%;
+  }
+}
+
 /* Asset attachment rendering inside a block. Image renders inline so the
  * block reads like a richtext note; non-image renders as a chip linking
  * to the access-controlled serve endpoint. */
