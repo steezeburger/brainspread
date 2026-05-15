@@ -2529,15 +2529,15 @@ kbd {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 0.75rem;
-  gap: 0.75rem;
+  padding: 0.5rem;
+  gap: 0.4rem;
 }
 
 .leftnav-brand {
-  font-size: 1.15rem;
+  font-size: 1.05rem;
   color: var(--text-primary);
   text-decoration: none;
-  padding: 0.25rem 0.4rem 0.5rem;
+  padding: 0.1rem 0.4rem 0.3rem;
   border-bottom: 1px solid var(--border-secondary);
 }
 
@@ -2555,7 +2555,7 @@ kbd {
   background: transparent;
   color: var(--text-primary);
   border: 2px solid var(--border-secondary);
-  padding: 0.3rem 0.5rem;
+  padding: 0.2rem 0.45rem;
   font-family: inherit;
   font-size: 0.85rem;
   font-weight: bold;
@@ -2577,7 +2577,7 @@ kbd {
   background: var(--bg-primary);
   color: var(--text-secondary);
   border: 2px solid var(--border-secondary);
-  padding: 0.4rem 0.6rem;
+  padding: 0.25rem 0.55rem;
   font-family: inherit;
   font-size: 0.85rem;
   cursor: pointer;
@@ -2606,12 +2606,12 @@ kbd {
 .leftnav-section {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.05rem;
 }
 
 .leftnav-section + .leftnav-section {
   border-top: 1px solid var(--border-secondary);
-  padding-top: 0.5rem;
+  padding-top: 0.25rem;
 }
 
 .leftnav-primary .leftnav-item {
@@ -2621,12 +2621,12 @@ kbd {
 .leftnav-item {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.5rem;
   width: 100%;
   background: transparent;
   color: var(--text-primary);
   border: none;
-  padding: 0.45rem 0.6rem;
+  padding: 0.25rem 0.55rem;
   font-family: inherit;
   font-size: 0.9rem;
   text-align: left;
@@ -2666,9 +2666,9 @@ kbd {
   background: transparent;
   color: var(--text-secondary);
   border: none;
-  padding: 0.35rem 0.4rem;
+  padding: 0.15rem 0.4rem;
   font-family: inherit;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: bold;
   letter-spacing: 0.5px;
   text-transform: uppercase;
@@ -2700,7 +2700,7 @@ kbd {
 .leftnav-favorites-body {
   display: flex;
   flex-direction: column;
-  padding: 0.1rem 0 0.4rem;
+  padding: 0 0 0.2rem;
 }
 
 .leftnav-favorites-list {
@@ -2753,7 +2753,7 @@ kbd {
 }
 
 .leftnav-empty {
-  padding: 0.4rem 0.6rem 0.5rem;
+  padding: 0.25rem 0.6rem 0.3rem;
   color: var(--text-muted);
   font-size: 0.78rem;
   font-style: italic;
@@ -2762,7 +2762,7 @@ kbd {
 .leftnav-pinned-views-body {
   display: flex;
   flex-direction: column;
-  padding: 0.1rem 0 0.4rem;
+  padding: 0 0 0.2rem;
 }
 
 .leftnav-pinned-views-list {
@@ -2780,7 +2780,7 @@ kbd {
 .leftnav-templates-body {
   display: flex;
   flex-direction: column;
-  padding: 0.1rem 0 0.4rem;
+  padding: 0 0 0.2rem;
 }
 
 .leftnav-templates-list {
@@ -2833,14 +2833,14 @@ kbd {
 .leftnav-recent-body {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
-  padding: 0.25rem 0.1rem 0.5rem;
+  gap: 0.35rem;
+  padding: 0.1rem 0.1rem 0.25rem;
 }
 
 .leftnav-recent-body .filter-controls {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.25rem;
 }
 
 .leftnav-recent-body .filter-controls label {
@@ -2864,15 +2864,15 @@ kbd {
 .leftnav-footer {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.05rem;
   border-top: 1px solid var(--border-secondary);
-  padding-top: 0.5rem;
+  padding-top: 0.3rem;
 }
 
 .leftnav-user {
   color: var(--text-secondary);
-  font-size: 0.75rem;
-  padding: 0.25rem 0.6rem;
+  font-size: 0.72rem;
+  padding: 0.1rem 0.55rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
