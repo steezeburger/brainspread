@@ -362,36 +362,34 @@ const SavedViewsPage = {
       }
     },
 
-    async embedOnToday() {
-      // Pin this saved view to today's daily page as a PageEmbeddedView.
-      // The backend command is idempotent on (page, saved_view) — a
-      // second click returns the existing embed rather than creating a
-      // duplicate. We surface that with a "Already embedded" toast so
-      // the user knows their click landed somewhere.
+    async embedOnPage() {
+      // Pin this saved view onto a user-chosen page as a
+      // PageEmbeddedView. Prompts for a target page slug or title;
+      // empty input falls back to today's daily note (the historical
+      // default). The backend command is idempotent on
+      // (page, saved_view) — a second click returns the existing
+      // embed rather than creating a duplicate, surfaced as a toast
+      // so the user knows their click landed somewhere.
       if (!this.activeView) return;
+
+      const todaySlug = this._todaySlug();
+      const target = await window.appModals.prompt({
+        title: "embed view on a page",
+        message: "page title or slug (leave blank for today's daily note):",
+        placeholder: todaySlug,
+        defaultValue: todaySlug,
+        confirmLabel: "embed",
+      });
+      // null = user dismissed the dialog
+      if (target == null) return;
+
       try {
-        const pageResult = await window.apiService.getPageWithBlocks();
-        const page =
-          pageResult && pageResult.data && pageResult.data.page
-            ? pageResult.data.page
-            : null;
+        const page = await this._resolveTargetPage(target.trim() || todaySlug);
         if (!page || !page.uuid) {
           this._toast(
-            this._formatErrors(pageResult && pageResult.errors) ||
-              "Could not resolve today's daily page",
+            `No page found matching "${target.trim() || todaySlug}".`,
             "error"
           );
-          return;
-        }
-
-        // Frontend short-circuit: if today already has an embed for
-        // this view in the response we just fetched, skip the POST.
-        const existing = (pageResult.data.embedded_views || []).find(
-          (e) => e.saved_view && e.saved_view.uuid === this.activeView.uuid
-        );
-        if (existing) {
-          this._toast("Already embedded on today — jumping to it.", "info");
-          window.location.href = `/knowledge/page/${page.slug}/`;
           return;
         }
 
@@ -403,13 +401,61 @@ const SavedViewsPage = {
           window.location.href = `/knowledge/page/${page.slug}/`;
           return;
         }
+        // The create command short-circuits to the existing embed on
+        // duplicate (idempotent), so a non-success here is a real
+        // failure, not the "already embedded" case.
         this._toast(
           this._formatErrors(r && r.errors) || "Embed failed",
           "error"
         );
       } catch (err) {
-        console.error("embedOnToday failed:", err);
+        console.error("embedOnPage failed:", err);
         this._toast(`Embed failed: ${err}`, "error");
+      }
+    },
+
+    _todaySlug() {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    },
+
+    async _resolveTargetPage(query) {
+      // Resolve the user's freeform "where to embed" input into a
+      // concrete Page. Strategy:
+      //   1. Try slug exact-match via getPageWithBlocks(slug=...).
+      //      Cheapest path; covers daily slugs (YYYY-MM-DD) and any
+      //      user who pastes the slug from the URL.
+      //   2. Fall back to title search, prefer exact title match,
+      //      otherwise first hit. Tolerates the user typing the
+      //      page's display name instead of its URL slug.
+      try {
+        const slugRes = await window.apiService.getPageWithBlocks(
+          null,
+          null,
+          query
+        );
+        if (slugRes && slugRes.success && slugRes.data && slugRes.data.page) {
+          return slugRes.data.page;
+        }
+      } catch (_) {
+        // getPageWithBlocks returns a structured error for "not found";
+        // network failures fall through to the title search.
+      }
+      try {
+        const searchRes = await window.apiService.searchPages(query, 10);
+        const pages =
+          (searchRes && searchRes.data && searchRes.data.pages) || [];
+        if (!pages.length) return null;
+        const lower = query.toLowerCase();
+        return (
+          pages.find((p) => p.title && p.title.toLowerCase() === lower) ||
+          pages[0]
+        );
+      } catch (_) {
+        return null;
       }
     },
 
@@ -626,7 +672,7 @@ const SavedViewsPage = {
                 {{ running ? "Running…" : "Run" }}
               </button>
               <button class="btn" @click="duplicateActive">Duplicate</button>
-              <button class="btn" @click="embedOnToday" title="Add this view to today's daily page as a block">Embed on today</button>
+              <button class="btn" @click="embedOnPage" title="Embed this view on a page (defaults to today's daily note)">Embed…</button>
               <button class="btn" v-if="canEdit && !editing" @click="startEditing">Edit</button>
               <button class="btn btn-danger" v-if="canDelete" @click="deleteActive">Delete</button>
             </div>

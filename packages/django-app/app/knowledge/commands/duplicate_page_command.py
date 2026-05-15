@@ -6,7 +6,7 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.duplicate_page_form import DuplicatePageForm
 from ..models import Page
-from ..repositories import BlockRepository, PageRepository
+from ..repositories import BlockRepository, PageEmbeddedViewRepository, PageRepository
 
 
 class DuplicatePageCommand(AbstractBaseCommand):
@@ -69,6 +69,16 @@ class DuplicatePageCommand(AbstractBaseCommand):
             # whiteboard_snapshot, copied above.
             if page_type != "whiteboard" and source.page_type != "whiteboard":
                 BlockRepository.clone_block_tree_to_page(
+                    source_page=source,
+                    target_page=new_page,
+                    target_user=user,
+                )
+                # Carry over embedded saved views (issue #106 follow-up).
+                # A template with a "today's overdue todos" embed is the
+                # killer use case — instantiating it has to bring the
+                # embed along or the template loses half its purpose.
+                # SavedView refs are preserved (views aren't page-scoped).
+                PageEmbeddedViewRepository.clone_to_page(
                     source_page=source,
                     target_page=new_page,
                     target_user=user,

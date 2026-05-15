@@ -3,7 +3,8 @@ from django.test import TestCase
 
 from knowledge.commands import DuplicatePageCommand
 from knowledge.forms import DuplicatePageForm
-from knowledge.repositories import BlockRepository
+from knowledge.models import PageEmbeddedView, SavedView
+from knowledge.repositories import BlockRepository, PageEmbeddedViewRepository
 
 from ..helpers import BlockFactory, PageFactory, UserFactory
 
@@ -215,6 +216,72 @@ class TestDuplicatePageCommand(TestCase):
         self.assertTrue(form.is_valid())
         with self.assertRaises(ValidationError):
             DuplicatePageCommand(form).execute()
+
+    def test_duplicate_clones_embedded_views(self):
+        # Templates with embedded saved views are the key use case: a
+        # "morning routine" template that includes an "open todos"
+        # embed should carry both the blocks AND the embed forward.
+        template = PageFactory(
+            user=self.user,
+            title="Morning routine",
+            slug="morning-routine-tpl",
+            page_type="template",
+        )
+        BlockFactory(user=self.user, page=template, content="meditate")
+        view = SavedView.objects.create(
+            user=self.user, name="Open todos", slug="open-todos-tpl", filter={}
+        )
+        other_view = SavedView.objects.create(
+            user=self.user, name="Due today", slug="due-today-tpl", filter={}
+        )
+        PageEmbeddedView.objects.create(
+            user=self.user, page=template, saved_view=view, order=0
+        )
+        PageEmbeddedView.objects.create(
+            user=self.user,
+            page=template,
+            saved_view=other_view,
+            order=1,
+            collapsed=True,
+        )
+
+        form = DuplicatePageForm(
+            {
+                "user": self.user.id,
+                "source_page_uuid": str(template.uuid),
+                "new_title": "Today's routine",
+            }
+        )
+        self.assertTrue(form.is_valid())
+        clone = DuplicatePageCommand(form).execute()
+
+        cloned_embeds = list(PageEmbeddedViewRepository.list_for_page(clone))
+        self.assertEqual(len(cloned_embeds), 2)
+        # Saved-view refs and per-embed flags (order, collapsed) survive
+        # the clone; UUIDs are fresh so the new page owns its own rows.
+        by_view = {e.saved_view_id: e for e in cloned_embeds}
+        self.assertIn(view.id, by_view)
+        self.assertIn(other_view.id, by_view)
+        self.assertEqual(by_view[view.id].order, 0)
+        self.assertEqual(by_view[view.id].collapsed, False)
+        self.assertEqual(by_view[other_view.id].order, 1)
+        self.assertEqual(by_view[other_view.id].collapsed, True)
+        for e in cloned_embeds:
+            self.assertEqual(e.user, self.user)
+            self.assertEqual(e.page, clone)
+
+    def test_duplicate_handles_page_without_embeds(self):
+        # Sanity check that the embed-clone path is a no-op when the
+        # source has no embeds (every existing template predates this
+        # feature).
+        page = PageFactory(user=self.user, title="Empty", slug="empty-tpl")
+        BlockFactory(user=self.user, page=page, content="x")
+        form = DuplicatePageForm(
+            {"user": self.user.id, "source_page_uuid": str(page.uuid)}
+        )
+        self.assertTrue(form.is_valid())
+        clone = DuplicatePageCommand(form).execute()
+        self.assertEqual(PageEmbeddedViewRepository.list_for_page(clone).count(), 0)
 
     def test_duplicate_preserves_tag_pages_m2m(self):
         # Tag pages are how blocks reference other pages via #hashtag —
