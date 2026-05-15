@@ -115,6 +115,13 @@ const SavedViewsPage = {
     <tr><th><code>content_contains</code></th><td>
       Substring match on the block's text content (case-insensitive).
     </td></tr>
+    <tr><th><code>page_type</code></th><td>
+      Shorthand <code>"page"</code> / <code>"daily"</code> /
+      <code>"template"</code> / <code>"whiteboard"</code>, or op-dict
+      <code>{"in": ["daily", "page"]}</code>. Template-page blocks are
+      excluded by default (treated as scaffolding); mention
+      <code>page_type</code> anywhere in the filter to opt them back in.
+    </td></tr>
   </table>
 
   <h4>Combinators</h4>

@@ -474,6 +474,12 @@ class BlockRepository(BaseRepository):
         most useful default for an open-ended block list; the older
         ``scheduled_for, order`` default surfaced undated items at the
         top, which felt random for views like "all #brainspread #bugs".
+
+        Template-page blocks are excluded by default — they're
+        scaffolding, not active work, so surfacing them in "Overdue" /
+        tag views is almost always noise. A filter that explicitly
+        mentions ``page_type`` flips ``compiled.includes_page_type``
+        and the exclusion is skipped, putting the spec back in control.
         """
         qs = (
             cls.get_queryset()
@@ -482,6 +488,8 @@ class BlockRepository(BaseRepository):
             .select_related("page", "user")
             .prefetch_related("reminders")
         )
+        if not compiled.includes_page_type:
+            qs = qs.exclude(page__page_type="template")
         if compiled.order_by:
             qs = qs.order_by(*compiled.order_by)
         else:
