@@ -1,3 +1,4 @@
+from .add_template_blocks_to_page_form import AddTemplateBlocksToPageForm
 from .bulk_cancel_reminders_form import BulkCancelRemindersForm
 from .bulk_clear_schedule_form import BulkClearScheduleForm
 from .bulk_delete_blocks_form import BulkDeleteBlocksForm

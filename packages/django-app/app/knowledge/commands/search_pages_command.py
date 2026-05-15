@@ -19,6 +19,7 @@ class SearchPagesCommand(AbstractBaseCommand):
         user = self.form.cleaned_data.get("user")
         query = self.form.cleaned_data.get("query")
         limit = self.form.cleaned_data.get("limit", 10)
+        page_type = self.form.cleaned_data.get("page_type") or None
 
         # For single-character queries we match by prefix only — a bare "c"
         # matching "roam research" is more noise than signal. Multi-character
@@ -37,6 +38,8 @@ class SearchPagesCommand(AbstractBaseCommand):
             )  # Order by most recently updated first, then by title
             .select_related("user")  # Optimize query
         )
+        if page_type:
+            queryset = queryset.filter(page_type=page_type)
 
         pages = list(queryset[:limit])
 

@@ -500,16 +500,26 @@ class BlockRepository(BaseRepository):
 
     @classmethod
     def clone_block_tree_to_page(
-        cls, source_page: Page, target_page: Page, target_user
+        cls,
+        source_page: Page,
+        target_page: Page,
+        target_user,
+        order_offset: int = 0,
     ) -> List[Block]:
         """Deep-copy ``source_page``'s block tree onto ``target_page``.
 
-        Used by the page-template / duplicate flows (issue #106). Each
-        cloned block gets a fresh UUID; parent/child structure, order,
-        block_type, content, properties, media_url, asset, scheduled_for,
-        and the M2M tag set are preserved. completed_at is intentionally
-        cleared on clone — a duplicated todo starts uncompleted even if
-        the source was done.
+        Used by the page-template / duplicate / add-from-template flows
+        (issue #106). Each cloned block gets a fresh UUID; parent/child
+        structure, order, block_type, content, properties, media_url,
+        asset, scheduled_for, and the M2M tag set are preserved.
+        completed_at is intentionally cleared on clone — a duplicated
+        todo starts uncompleted even if the source was done.
+
+        ``order_offset`` shifts every cloned block's ``order`` by that
+        amount, preserving relative ordering. Defaults to 0 (full
+        duplicate, target page assumed empty). Callers appending to an
+        existing target should pass ``max(target.order) + 1`` (or
+        similar) so cloned roots land after the existing rows.
 
         Returns the list of newly-created blocks.
         """
@@ -534,7 +544,7 @@ class BlockRepository(BaseRepository):
                     content=src.content,
                     content_type=src.content_type,
                     block_type=src.block_type,
-                    order=src.order,
+                    order=src.order + order_offset,
                     media_url=src.media_url,
                     media_metadata=src.media_metadata,
                     properties=dict(src.properties or {}),

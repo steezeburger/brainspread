@@ -2256,6 +2256,49 @@ const Page = {
       }
     },
 
+    async addFromTemplate() {
+      // Append a template's block tree onto this page. Picker is
+      // filtered to page_type=template so the user only sees template
+      // candidates. Cloned blocks are independent — editing them here
+      // doesn't dirty the template, and re-running the action adds
+      // another fresh copy at the bottom.
+      if (!this.page) return;
+      this.closePageMenu();
+      if (!window.appModals?.pickPage) {
+        console.error("appModals.pickPage is not available");
+        return;
+      }
+      const template = await window.appModals.pickPage({
+        title: "add from template",
+        placeholder: "search templates…",
+        confirmLabel: "add",
+        pageType: "template",
+      });
+      if (!template) return;
+
+      try {
+        const result = await window.apiService.addTemplateBlocksToPage(
+          template.uuid,
+          this.page.uuid
+        );
+        if (!result.success) {
+          throw new Error(result.errors?.non_field_errors?.[0] || "add failed");
+        }
+        const added = result.data?.added ?? 0;
+        this.$parent?.addToast?.(
+          `added ${added} block${added === 1 ? "" : "s"} from "${template.title}"`,
+          "success"
+        );
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("failed to add from template:", error);
+        this.$parent?.addToast?.(
+          `failed to add from template: ${error.message || error}`,
+          "error"
+        );
+      }
+    },
+
     async toggleFavorited() {
       if (!this.page) return;
       const next = !this.isFavorited;
@@ -3820,6 +3863,10 @@ const Page = {
                     <button v-if="!isTemplate" @click="saveAsTemplate" class="context-menu-item" role="menuitem">
                       <span class="context-menu-icon">▤</span>
                       <span>save as template</span>
+                    </button>
+                    <button v-if="!isTemplate" @click="addFromTemplate" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">+</span>
+                      <span>add from template…</span>
                     </button>
                     <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">
                       <span v-if="isTemplate">delete template</span>

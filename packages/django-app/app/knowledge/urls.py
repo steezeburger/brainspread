@@ -51,6 +51,11 @@ urlpatterns = [
         name="move_block_to_page",
     ),
     path(
+        "api/pages/add-template-blocks/",
+        views.add_template_blocks_to_page,
+        name="add_template_blocks_to_page",
+    ),
+    path(
         "api/blocks/bulk-delete/",
         views.bulk_delete_blocks,
         name="bulk_delete_blocks",

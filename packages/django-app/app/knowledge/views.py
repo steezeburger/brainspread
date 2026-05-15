@@ -11,6 +11,7 @@ from rest_framework.response import Response
 
 from assets.models import Asset
 from knowledge.commands import (
+    AddTemplateBlocksToPageCommand,
     BulkDeleteBlocksCommand,
     BulkMoveBlocksCommand,
     ConsumeReminderActionCommand,
@@ -53,6 +54,9 @@ from knowledge.commands import (
     UpdatePageEmbeddedViewCommand,
     UpdateSavedViewCommand,
 )
+from knowledge.commands.add_template_blocks_to_page_command import (
+    AddTemplateBlocksToPageData,
+)
 from knowledge.commands.bulk_delete_blocks_command import BulkDeleteBlocksData
 from knowledge.commands.bulk_move_blocks_command import BulkMoveBlocksData
 from knowledge.commands.get_graph_data_command import GraphData
@@ -62,6 +66,7 @@ from knowledge.commands.move_block_to_daily_command import MoveBlockToDailyData
 from knowledge.commands.move_block_to_page_command import MoveBlockToPageData
 from knowledge.commands.move_undone_todos_command import MoveUndoneTodosData
 from knowledge.forms import (
+    AddTemplateBlocksToPageForm,
     BulkDeleteBlocksForm,
     BulkMoveBlocksForm,
     ConsumeReminderActionForm,
@@ -167,6 +172,12 @@ class MoveBlockToDailyResponse(TypedDict):
 class MoveBlockToPageResponse(TypedDict):
     success: bool
     data: Optional[MoveBlockToPageData]
+    errors: Optional[Dict[str, List[str]]]
+
+
+class AddTemplateBlocksToPageResponse(TypedDict):
+    success: bool
+    data: Optional[AddTemplateBlocksToPageData]
     errors: Optional[Dict[str, List[str]]]
 
 
@@ -1287,6 +1298,46 @@ def move_block_to_page(request):
 
     except Exception as e:
         response: MoveBlockToPageResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def add_template_blocks_to_page(request):
+    """Append a template's block tree to an existing target page."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+
+        form = AddTemplateBlocksToPageForm(data)
+        if not form.is_valid():
+            response: AddTemplateBlocksToPageResponse = {
+                "success": False,
+                "data": None,
+                "errors": form.errors,
+            }
+            return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+        result = AddTemplateBlocksToPageCommand(form).execute()
+        response: AddTemplateBlocksToPageResponse = {
+            "success": True,
+            "data": result,
+            "errors": None,
+        }
+        return Response(response)
+
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    except Exception as e:
+        response: AddTemplateBlocksToPageResponse = {
             "success": False,
             "data": None,
             "errors": {"non_field_errors": [str(e)]},

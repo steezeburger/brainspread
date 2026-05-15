@@ -1,3 +1,4 @@
+from .add_template_blocks_to_page_command import AddTemplateBlocksToPageCommand
 from .bulk_cancel_reminders_command import BulkCancelRemindersCommand
 from .bulk_clear_schedule_command import BulkClearScheduleCommand
 from .bulk_delete_blocks_command import BulkDeleteBlocksCommand
