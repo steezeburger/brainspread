@@ -772,7 +772,8 @@ const ChatPanel = {
       // up smoothly from wherever the area is sitting, whether the
       // user has resized before or not.
       this.inputAreaStartHeight =
-        this.inputAreaHeight || (el ? el.offsetHeight : this.minInputAreaHeight);
+        this.inputAreaHeight ||
+        (el ? el.offsetHeight : this.minInputAreaHeight);
       this.inputAreaResizeMove = this.handleInputAreaResize.bind(this);
       this.inputAreaResizeStop = this.stopInputAreaResize.bind(this);
       document.addEventListener("mousemove", this.inputAreaResizeMove);
