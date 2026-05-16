@@ -3551,9 +3551,12 @@ a.sidebar-item:visited {
   color: var(--text-primary);
   border: 1px solid var(--border-secondary);
   padding: 0.75rem;
-  resize: vertical;
+  resize: none;
+  width: 100%;
+  /* min-height sets the natural-state floor (matches the pre-resize
+     look). The textarea stretches above this via the flex chain when
+     the user drags the input area taller. */
   min-height: 60px;
-  max-height: 60vh;
   font-family: inherit;
   font-size: 0.9rem;
   line-height: 1.4;
@@ -4043,6 +4046,30 @@ a.sidebar-item:visited {
   border-top: 1px solid var(--border-secondary);
   display: flex;
   flex-direction: column;
+  /* Hosts .chat-input-resize-handle which is positioned absolutely
+     against this stacking context, and contains .message-input which
+     flexes to fill any extra height when the user drags the area
+     taller. */
+  position: relative;
+}
+
+/* Grab strip along the input-area's top edge. Drag up to grow the
+   input-area (and shrink the messages list above), drag down to
+   shrink it. The textarea inside stretches to fit. */
+.chat-input-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: transparent;
+  cursor: ns-resize;
+  z-index: 2;
+}
+
+.chat-input-resize-handle:hover,
+.chat-input-resize-handle.resizing {
+  background: var(--border-primary);
 }
 
 /* Chat Panel Controls Row */
@@ -4087,6 +4114,14 @@ a.sidebar-item:visited {
   display: flex;
   gap: 0.5rem;
   order: 2;
+  /* flex-grow (not flex: 1) is intentional. We want this row to
+     consume extra height inside .input-area when the user drags it
+     taller, but in the natural (un-resized) state we want the row to
+     keep its content-based height — flex: 1 would set flex-basis: 0%
+     and collapse the textarea to the bare minimum even though the
+     parent has no extra space to distribute. */
+  flex-grow: 1;
+  min-height: 0;
   /* Fix for Android navigation bar covering input */
   padding: 0.5rem 0.5rem calc(0.5rem + env(safe-area-inset-bottom, 60px));
 }
