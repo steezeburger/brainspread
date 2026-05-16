@@ -3551,9 +3551,9 @@ a.sidebar-item:visited {
   color: var(--text-primary);
   border: 1px solid var(--border-secondary);
   padding: 0.75rem;
-  resize: none;
+  resize: vertical;
   min-height: 60px;
-  max-height: 120px;
+  max-height: 60vh;
   font-family: inherit;
   font-size: 0.9rem;
   line-height: 1.4;
@@ -5293,7 +5293,10 @@ a.sidebar-item:visited {
   bottom: 0;
   background: rgba(0, 0, 0, 0.8);
   backdrop-filter: blur(4px);
-  z-index: 1000;
+  /* Above the mobile left-nav drawer (1100) and its backdrop (1099)
+   * so the search modal isn't trapped behind them when opened from
+   * the drawer's "search" button. */
+  z-index: 1200;
   display: flex;
   align-items: flex-start;
   justify-content: center;
