@@ -2624,6 +2624,22 @@ const Page = {
       }
     },
 
+    openDatePicker(event) {
+      // We hide ::-webkit-calendar-picker-indicator so we can paint a
+      // themed calendar glyph via .title-left::after. Chrome stopped
+      // opening the picker on input click once the indicator is
+      // display: none, so trigger it explicitly. showPicker requires a
+      // user-activation gesture, which @click satisfies.
+      const input = event?.currentTarget;
+      if (input && typeof input.showPicker === "function") {
+        try {
+          input.showPicker();
+        } catch (_) {
+          // showPicker throws on disabled/detached inputs; harmless.
+        }
+      }
+    },
+
     initializeDateSelector() {
       if (this.isDaily && this.page?.date) {
         this.selectedDate = this.page.date;
@@ -3739,6 +3755,7 @@ const Page = {
                   type="date"
                   v-model="selectedDate"
                   @change="onDateChange"
+                  @click="openDatePicker"
                   class="date-picker"
                   title="Navigate to date"
                 />
