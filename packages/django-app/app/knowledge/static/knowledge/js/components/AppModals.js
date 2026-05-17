@@ -215,15 +215,41 @@ window.AppModals = {
       this.pickerLoading = true;
       const pageType = this.active?.opts?.pageType || null;
       try {
-        // Empty query → server defaults to recent pages, which is the
-        // friendliest landing state. The endpoint accepts an empty
-        // query string and falls back to a chronological page list.
-        const result =
-          query.trim() === ""
-            ? await window.apiService.getPages(true, 15, 0, pageType)
-            : await window.apiService.searchPages(query.trim(), 15, pageType);
-        if (requestId !== this._pickerRequestId) return; // stale
-        const pages = (result && result.data && result.data.pages) || [];
+        let pages;
+        if (query.trim() === "") {
+          // Empty query → server returns pages ordered by most-recently
+          // modified. Today's daily note is pinned to the top whenever
+          // it's a sensible candidate for the active picker (the
+          // typical pickPage use case is embedding views or moving
+          // blocks, and the active daily is the overwhelming target).
+          // Skipped when the caller has filtered to a non-daily
+          // page_type (e.g. the template picker) since today's daily
+          // wouldn't match that filter anyway.
+          const todayLookup =
+            pageType && pageType !== "daily"
+              ? Promise.resolve(null)
+              : this._fetchTodayDailyPage();
+          const [recentResult, todayPage] = await Promise.all([
+            window.apiService.getPages(true, 15, 0, pageType),
+            todayLookup,
+          ]);
+          if (requestId !== this._pickerRequestId) return; // stale
+          pages =
+            (recentResult && recentResult.data && recentResult.data.pages) ||
+            [];
+          if (todayPage) {
+            pages = pages.filter((p) => p.uuid !== todayPage.uuid);
+            pages.unshift(todayPage);
+          }
+        } else {
+          const result = await window.apiService.searchPages(
+            query.trim(),
+            15,
+            pageType
+          );
+          if (requestId !== this._pickerRequestId) return; // stale
+          pages = (result && result.data && result.data.pages) || [];
+        }
         this.pickerResults = pages;
         // Clamp selectedIndex into range — keep highlight on the first
         // result by default so Enter picks the obvious choice.
@@ -237,6 +263,29 @@ window.AppModals = {
         if (requestId === this._pickerRequestId) {
           this.pickerLoading = false;
         }
+      }
+    },
+
+    async _fetchTodayDailyPage() {
+      // Locate the user's daily note for today's date so the picker can
+      // pin it to the top of the empty-query list. Goes through the
+      // existing search endpoint (constrained to page_type=daily) and
+      // verifies an exact slug match, since searchPages does substring
+      // matching — a page titled "notes from 2026-05-17" shouldn't be
+      // mistaken for the actual daily.
+      const now = new Date();
+      const slug =
+        now.getFullYear() +
+        "-" +
+        String(now.getMonth() + 1).padStart(2, "0") +
+        "-" +
+        String(now.getDate()).padStart(2, "0");
+      try {
+        const result = await window.apiService.searchPages(slug, 5, "daily");
+        const pages = (result && result.data && result.data.pages) || [];
+        return pages.find((p) => p.slug === slug) || null;
+      } catch (_) {
+        return null;
       }
     },
 

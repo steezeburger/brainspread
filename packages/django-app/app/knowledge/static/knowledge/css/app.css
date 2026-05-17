@@ -2654,6 +2654,25 @@ kbd {
   font-size: 0.9rem;
 }
 
+/* The today nav item swaps the static "▤" planner glyph for a small
+   calendar SVG with today's day-of-month painted inside. Sizing it
+   against the icon slot in both the rail (font-size 1rem) and the
+   expanded sidebar item (font-size 0.9rem) means an em-based width
+   keeps it in step with neighbouring glyphs and inherits currentColor
+   from the active leftnav-item / rail-btn state. */
+.leftnav-today-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.leftnav-today-svg {
+  width: 1.1em;
+  height: 1.1em;
+  display: block;
+}
+
 .leftnav-label {
   flex: 1;
   min-width: 0;

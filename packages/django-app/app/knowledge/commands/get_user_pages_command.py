@@ -22,7 +22,13 @@ class GetUserPagesCommand(AbstractBaseCommand):
         offset = self.form.cleaned_data.get("offset", 0)
         page_type = self.form.cleaned_data.get("page_type") or None
 
-        queryset = Page.objects.filter(user=user)
+        # Order by most-recently-modified first so the page picker's
+        # empty-query landing state surfaces what the user has been
+        # touching lately. Title is a stable tiebreaker for pages
+        # modified at the same instant (e.g. bulk imports). This is the
+        # only caller today; if a future caller wants alphabetical it
+        # should pass an explicit order_by once that's plumbed through.
+        queryset = Page.objects.filter(user=user).order_by("-modified_at", "title")
         if published_only:
             queryset = queryset.filter(is_published=True)
         if page_type:

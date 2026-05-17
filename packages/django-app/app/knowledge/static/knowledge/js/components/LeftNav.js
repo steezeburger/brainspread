@@ -124,6 +124,12 @@ window.LeftNav = {
     todayHref() {
       return this.pageUrl(this.todaySlug);
     },
+    // Current day-of-month, drawn inside the today nav icon so the
+    // glyph reads as "today" at a glance (instead of the generic
+    // planner block it used to be).
+    todayDayNumber() {
+      return new Date().getDate();
+    },
   },
 
   mounted() {
@@ -849,7 +855,32 @@ window.LeftNav = {
           @auxclick="onTodayClick"
           title="Today"
           aria-label="Today"
-        >▤</a>
+        >
+          <svg
+            class="leftnav-today-svg"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="2" y="3.5" width="12" height="10.5" rx="0.5"/>
+            <line x1="2" y1="7" x2="14" y2="7"/>
+            <line x1="5" y1="2" x2="5" y2="5"/>
+            <line x1="11" y1="2" x2="11" y2="5"/>
+            <text
+              x="8"
+              y="12.6"
+              font-size="6"
+              font-weight="700"
+              text-anchor="middle"
+              stroke="none"
+              fill="currentColor"
+            >{{ todayDayNumber }}</text>
+          </svg>
+        </a>
         <button
           type="button"
           class="leftnav-rail-btn leftnav-rail-action"
@@ -943,7 +974,31 @@ window.LeftNav = {
               @auxclick="onTodayClick"
               title="Go to today's daily note"
             >
-              <span class="leftnav-icon" aria-hidden="true">▤</span>
+              <span class="leftnav-icon leftnav-today-icon" aria-hidden="true">
+                <svg
+                  class="leftnav-today-svg"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="2" y="3.5" width="12" height="10.5" rx="0.5"/>
+                  <line x1="2" y1="7" x2="14" y2="7"/>
+                  <line x1="5" y1="2" x2="5" y2="5"/>
+                  <line x1="11" y1="2" x2="11" y2="5"/>
+                  <text
+                    x="8"
+                    y="12.6"
+                    font-size="6"
+                    font-weight="700"
+                    text-anchor="middle"
+                    stroke="none"
+                    fill="currentColor"
+                  >{{ todayDayNumber }}</text>
+                </svg>
+              </span>
               <span class="leftnav-label">today</span>
             </a>
             <button
