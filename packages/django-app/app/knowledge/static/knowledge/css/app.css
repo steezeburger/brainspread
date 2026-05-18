@@ -6558,6 +6558,50 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   margin-top: 0.5rem;
 }
 
+/* Quick-pick chip rows — date chips below the "due" input, time chips
+ * below the reminder row. Indented to line up with the inputs (past
+ * the 5rem .schedule-popover-label gutter) so they read as belonging
+ * to the field above. */
+.schedule-popover-quick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  margin-left: 5.5rem;
+  margin-top: -0.35rem;
+}
+
+.schedule-popover-quick-btn {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  padding: 0.2rem 0.55rem;
+  font-family: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.schedule-popover-quick-btn:hover {
+  background: var(--hover-bg);
+  border-color: var(--border-primary);
+}
+
+.schedule-popover-quick-btn.is-active {
+  background: var(--selected-bg);
+  border-color: var(--border-primary);
+}
+
+/* Visual separator between the relative-time chips ("in 30m" / "in 1h")
+ * and the fixed-time chunk chips so the row reads as two intents. */
+.schedule-popover-quick-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border-secondary);
+  margin: 0.1rem 0.15rem;
+}
+
 /* Mobile: the desktop popover lays the date/reminder controls out in a
  * single row, which overflows below ~420px-wide viewports. Stack the
  * rows vertically and clamp the modal width to the viewport so the
@@ -6581,6 +6625,12 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
     /* Let the select claim the full row width once the row wraps so it
      * isn't squeezed to a sliver next to the time input. */
     flex-basis: 100%;
+  }
+  /* The mobile label gutter shrinks from 5rem to 4rem; pull the quick
+   * chip rows in to match so the chips still line up under the inputs
+   * instead of floating off-center. */
+  .schedule-popover-quick-row {
+    margin-left: 0;
   }
 }
 
