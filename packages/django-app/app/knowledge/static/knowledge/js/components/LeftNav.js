@@ -24,18 +24,24 @@ window.LeftNav = {
     const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
     // Persist the open/closed pref so a refresh doesn't blow away the
     // user's choice. First visit (no saved value) still defaults to
-    // open on desktop, closed on mobile.
+    // open on desktop, closed on mobile. The saved pref is desktop-only
+    // — on mobile the drawer is a transient overlay that we always
+    // start closed and auto-close after each navigation, so a "saved
+    // open" pref from a desktop session shouldn't blanket-open the
+    // drawer every time the user lands on a mobile page.
     let isOpen = !isMobile;
-    try {
-      const saved =
-        typeof window !== "undefined" && window.localStorage
-          ? window.localStorage.getItem("brainspread.leftNavOpen")
-          : null;
-      if (saved === "1") isOpen = true;
-      else if (saved === "0") isOpen = false;
-    } catch (_) {
-      // localStorage can throw in private mode / disabled-cookie setups.
-      // Fall back to the viewport default.
+    if (!isMobile) {
+      try {
+        const saved =
+          typeof window !== "undefined" && window.localStorage
+            ? window.localStorage.getItem("brainspread.leftNavOpen")
+            : null;
+        if (saved === "1") isOpen = true;
+        else if (saved === "0") isOpen = false;
+      } catch (_) {
+        // localStorage can throw in private mode / disabled-cookie setups.
+        // Fall back to the viewport default.
+      }
     }
     let favoritesExpanded = true;
     try {
@@ -123,6 +129,12 @@ window.LeftNav = {
     },
     todayHref() {
       return this.pageUrl(this.todaySlug);
+    },
+    // Current day-of-month, drawn inside the today nav icon so the
+    // glyph reads as "today" at a glance (instead of the generic
+    // planner block it used to be).
+    todayDayNumber() {
+      return new Date().getDate();
     },
   },
 
@@ -231,6 +243,10 @@ window.LeftNav = {
 
     toggleSidebar() {
       this.isOpen = !this.isOpen;
+      // Mobile state is transient (see data()'s init comment) — don't
+      // persist a mobile-only toggle as the user's saved preference,
+      // or their next desktop session will inherit it.
+      if (this.isMobileViewport()) return;
       try {
         if (typeof window !== "undefined" && window.localStorage) {
           window.localStorage.setItem(
@@ -241,6 +257,16 @@ window.LeftNav = {
       } catch (_) {
         // localStorage can throw in private mode; the toggle still
         // works for the current session, just won't persist.
+      }
+    },
+
+    closeOnMobile() {
+      // Auto-dismiss the mobile drawer after a navigation or action
+      // click — once the user has picked something the drawer's job is
+      // done and leaving it open just obscures whatever they navigated
+      // to. No-op on desktop where the sidebar is pinned.
+      if (this.isMobileViewport()) {
+        this.isOpen = false;
       }
     },
 
@@ -369,6 +395,7 @@ window.LeftNav = {
       // path changes).
       if (this.shouldDeferToBrowser(event)) return;
       event.preventDefault();
+      this.closeOnMobile();
       window.location.href = `/knowledge/views/${encodeURIComponent(slug)}/`;
     },
 
@@ -412,6 +439,7 @@ window.LeftNav = {
         event.stopPropagation();
       }
       this.$emit("use-template", template);
+      this.closeOnMobile();
     },
 
     onFavoriteDragStart(event, index) {
@@ -596,48 +624,58 @@ window.LeftNav = {
       if (this.shouldDeferToBrowser(event)) return;
       event.preventDefault();
       this.$emit("navigate-to-slug", slug);
+      this.closeOnMobile();
     },
 
     onTodayClick(event) {
       if (this.shouldDeferToBrowser(event)) return;
       event.preventDefault();
       this.$emit("navigate-today");
+      this.closeOnMobile();
     },
 
     onGraphClick(event) {
       if (this.shouldDeferToBrowser(event)) return;
       event.preventDefault();
       this.$emit("navigate-graph");
+      this.closeOnMobile();
     },
 
     onViewsClick(event) {
       if (this.shouldDeferToBrowser(event)) return;
       event.preventDefault();
       this.$emit("navigate-views");
+      this.closeOnMobile();
     },
 
     onSearchClick() {
       this.$emit("open-search");
+      this.closeOnMobile();
     },
 
     onCreatePageClick() {
       this.$emit("create-page");
+      this.closeOnMobile();
     },
 
     onCreateWhiteboardClick() {
       this.$emit("create-whiteboard");
+      this.closeOnMobile();
     },
 
     onSettingsClick() {
       this.$emit("open-settings");
+      this.closeOnMobile();
     },
 
     onHelpClick() {
       this.$emit("open-help");
+      this.closeOnMobile();
     },
 
     onLogoutClick() {
       this.$emit("logout");
+      this.closeOnMobile();
     },
 
     handleFooterKeydown(event) {
@@ -808,6 +846,7 @@ window.LeftNav = {
       if (this.shouldDeferToBrowser(event)) return;
       event.preventDefault();
       this.$emit("navigate-to-slug", tagName);
+      this.closeOnMobile();
     },
   },
 
@@ -849,7 +888,32 @@ window.LeftNav = {
           @auxclick="onTodayClick"
           title="Today"
           aria-label="Today"
-        >▤</a>
+        >
+          <svg
+            class="leftnav-today-svg"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="2" y="3.5" width="12" height="10.5" rx="0.5"/>
+            <line x1="2" y1="7" x2="14" y2="7"/>
+            <line x1="5" y1="2" x2="5" y2="5"/>
+            <line x1="11" y1="2" x2="11" y2="5"/>
+            <text
+              x="8"
+              y="12.6"
+              font-size="6"
+              font-weight="700"
+              text-anchor="middle"
+              stroke="none"
+              fill="currentColor"
+            >{{ todayDayNumber }}</text>
+          </svg>
+        </a>
         <button
           type="button"
           class="leftnav-rail-btn leftnav-rail-action"
@@ -943,7 +1007,31 @@ window.LeftNav = {
               @auxclick="onTodayClick"
               title="Go to today's daily note"
             >
-              <span class="leftnav-icon" aria-hidden="true">▤</span>
+              <span class="leftnav-icon leftnav-today-icon" aria-hidden="true">
+                <svg
+                  class="leftnav-today-svg"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="2" y="3.5" width="12" height="10.5" rx="0.5"/>
+                  <line x1="2" y1="7" x2="14" y2="7"/>
+                  <line x1="5" y1="2" x2="5" y2="5"/>
+                  <line x1="11" y1="2" x2="11" y2="5"/>
+                  <text
+                    x="8"
+                    y="12.6"
+                    font-size="6"
+                    font-weight="700"
+                    text-anchor="middle"
+                    stroke="none"
+                    fill="currentColor"
+                  >{{ todayDayNumber }}</text>
+                </svg>
+              </span>
               <span class="leftnav-label">today</span>
             </a>
             <button

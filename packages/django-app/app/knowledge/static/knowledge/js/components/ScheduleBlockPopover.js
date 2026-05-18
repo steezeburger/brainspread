@@ -10,7 +10,13 @@
 //
 // Emits: save({ scheduledFor, reminderDate, reminderTime }) and cancel.
 
-const SCHEDULE_TIME_CHUNKS = ["09:00", "12:00", "15:00", "17:00", "20:00"];
+const SCHEDULE_TIME_CHUNKS = [
+  { time: "09:00", label: "9am" },
+  { time: "12:00", label: "noon" },
+  { time: "15:00", label: "3pm" },
+  { time: "17:00", label: "5pm" },
+  { time: "20:00", label: "8pm" },
+];
 
 const REMINDER_OFFSETS = [
   { value: "day_of", label: "day of", days: 0 },
@@ -25,13 +31,29 @@ function todayLocalISO(now = new Date()) {
   return new Date(now.getTime() - tzOffsetMs).toISOString().slice(0, 10);
 }
 
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+// HH:MM in local time.
+function timeHHMM(date) {
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+// Both the local-date ISO and HH:MM for the given Date — used by the
+// "in 30m" / "in 1h" relative time chips so they can roll the schedule
+// date over to tomorrow if "now + offset" crosses midnight.
+function localDateTimeISO(date) {
+  return { date: todayLocalISO(date), time: timeHHMM(date) };
+}
+
 function defaultReminderTimeFor(scheduledFor, now = new Date()) {
   if (!scheduledFor) return "";
   if (scheduledFor !== todayLocalISO(now)) return "09:00";
   const nowMins = now.getHours() * 60 + now.getMinutes();
   for (const chunk of SCHEDULE_TIME_CHUNKS) {
-    const [h, m] = chunk.split(":").map(Number);
-    if (h * 60 + m > nowMins) return chunk;
+    const [h, m] = chunk.time.split(":").map(Number);
+    if (h * 60 + m > nowMins) return chunk.time;
   }
   return "";
 }
@@ -80,6 +102,11 @@ window.ScheduleBlockPopover = {
       reminderTime: "",
       timeManuallyEdited: false,
       offsets: REMINDER_OFFSETS,
+      // Refreshed when the popover opens so the relative-time chips
+      // ("in 30m", "in 1h") and the past-chunk filter are anchored to
+      // when the user actually started looking at the popover, not
+      // page-load time.
+      nowMs: Date.now(),
     };
   },
   computed: {
@@ -95,11 +122,52 @@ window.ScheduleBlockPopover = {
       );
       return subtractDaysISO(this.scheduledFor, offset?.days ?? 0);
     },
+    todayIso() {
+      return todayLocalISO(new Date(this.nowMs));
+    },
+    tomorrowIso() {
+      const t = new Date(this.nowMs);
+      t.setDate(t.getDate() + 1);
+      return todayLocalISO(t);
+    },
+    // Relative time chips ("in 30m" / "in 1h"). Each preset carries both
+    // the target date and target time so the chip can correctly roll
+    // the schedule to tomorrow if "now + offset" crosses midnight.
+    relativeTimePresets() {
+      return [30, 60].map((minutes) => {
+        const target = new Date(this.nowMs + minutes * 60_000);
+        const { date, time } = localDateTimeISO(target);
+        return {
+          key: `rel-${minutes}`,
+          label: minutes === 60 ? "in 1h" : `in ${minutes}m`,
+          date,
+          time,
+        };
+      });
+    },
+    // Fixed chunk-time chips. When the user is scheduling for today,
+    // hide chunks that have already passed so the chip row stays
+    // useful instead of offering reminder times that would fire in the
+    // past. Future dates show every chunk.
+    chunkTimePresets() {
+      const isToday = this.scheduledFor === this.todayIso;
+      const now = new Date(this.nowMs);
+      const nowMins = now.getHours() * 60 + now.getMinutes();
+      return SCHEDULE_TIME_CHUNKS.filter(({ time }) => {
+        if (!isToday) return true;
+        const [h, m] = time.split(":").map(Number);
+        return h * 60 + m > nowMins;
+      }).map((c) => ({ key: `chunk-${c.time}`, label: c.label, time: c.time }));
+    },
   },
   watch: {
     isOpen: {
       handler(open) {
         if (!open) return;
+        // Anchor relative-time chips and past-chunk filtering to the
+        // moment the popover was opened so they don't drift while
+        // the user deliberates.
+        this.nowMs = Date.now();
         this.scheduledFor = this.initialDate || todayLocalISO();
         this.reminderEnabled = !!this.initialTime;
         this.reminderTime =
@@ -137,6 +205,18 @@ window.ScheduleBlockPopover = {
         this.reminderTime =
           defaultReminderTimeFor(this.scheduledFor) || "09:00";
       }
+    },
+    setScheduledFor(iso) {
+      this.scheduledFor = iso;
+    },
+    // Quick-pick chip: jump straight to a specific reminder time. Also
+    // enables the reminder so the user doesn't have to tick the box
+    // first — tapping a time chip clearly signals they want one.
+    pickReminderTime(time, date) {
+      if (date) this.scheduledFor = date;
+      this.reminderTime = time;
+      this.timeManuallyEdited = true;
+      this.reminderEnabled = true;
     },
     onOffsetChange() {
       // When switching to custom, seed the input with the due date so the
@@ -188,6 +268,21 @@ window.ScheduleBlockPopover = {
           />
         </label>
 
+        <div class="schedule-popover-quick-row schedule-popover-quick-row-date">
+          <button
+            type="button"
+            class="schedule-popover-quick-btn"
+            :class="{ 'is-active': scheduledFor === todayIso }"
+            @click="setScheduledFor(todayIso)"
+          >today</button>
+          <button
+            type="button"
+            class="schedule-popover-quick-btn"
+            :class="{ 'is-active': scheduledFor === tomorrowIso }"
+            @click="setScheduledFor(tomorrowIso)"
+          >tomorrow</button>
+        </div>
+
         <label class="schedule-popover-row schedule-popover-row-reminder">
           <input
             type="checkbox"
@@ -213,6 +308,32 @@ window.ScheduleBlockPopover = {
             :disabled="!reminderEnabled || !scheduledFor"
           />
         </label>
+
+        <div
+          v-if="scheduledFor"
+          class="schedule-popover-quick-row schedule-popover-quick-row-time"
+        >
+          <button
+            v-for="preset in relativeTimePresets"
+            :key="preset.key"
+            type="button"
+            class="schedule-popover-quick-btn schedule-popover-quick-btn-relative"
+            @click="pickReminderTime(preset.time, preset.date)"
+          >{{ preset.label }}</button>
+          <span
+            v-if="relativeTimePresets.length && chunkTimePresets.length"
+            class="schedule-popover-quick-divider"
+            aria-hidden="true"
+          ></span>
+          <button
+            v-for="preset in chunkTimePresets"
+            :key="preset.key"
+            type="button"
+            class="schedule-popover-quick-btn"
+            :class="{ 'is-active': reminderEnabled && reminderTime === preset.time }"
+            @click="pickReminderTime(preset.time)"
+          >{{ preset.label }}</button>
+        </div>
 
         <label v-if="showCustomDate" class="schedule-popover-row">
           <span class="schedule-popover-label">on</span>

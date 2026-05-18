@@ -40,6 +40,14 @@ const ChatPanel = {
       isResizing: false,
       minWidth: 300,
       maxWidth: 800,
+      // User-set height of the chat input area (the bottom strip with
+      // attachments, controls, and the textarea). null = let it use
+      // the natural content height; a number locks it to that pixel
+      // height and the textarea inside stretches to fit. See
+      // .chat-input-resize-handle.
+      inputAreaHeight: this.loadInputAreaHeight(),
+      isResizingInputArea: false,
+      minInputAreaHeight: 120,
       currentSessionId: null,
       showModelSelector: false,
       aiSettings: null,
@@ -253,6 +261,20 @@ const ChatPanel = {
     },
     saveWidth() {
       localStorage.setItem("chatPanel.width", this.width.toString());
+    },
+    loadInputAreaHeight() {
+      const saved = localStorage.getItem("chatPanel.inputAreaHeight");
+      if (!saved) return null;
+      const value = parseInt(saved, 10);
+      return Number.isFinite(value) && value > 0 ? value : null;
+    },
+    saveInputAreaHeight() {
+      if (this.inputAreaHeight) {
+        localStorage.setItem(
+          "chatPanel.inputAreaHeight",
+          String(this.inputAreaHeight)
+        );
+      }
     },
     togglePanel() {
       if (this.isOpen) {
@@ -741,6 +763,48 @@ const ChatPanel = {
       document.removeEventListener("mousemove", this.resizeHandler);
       document.removeEventListener("mouseup", this.stopResizeHandler);
       this.saveWidth(); // Save width when resize is finished
+    },
+    startInputAreaResize(e) {
+      this.isResizingInputArea = true;
+      this.inputAreaStartY = e.clientY;
+      const el = this.$refs.inputArea;
+      // Anchor to the current rendered height so the first drag picks
+      // up smoothly from wherever the area is sitting, whether the
+      // user has resized before or not.
+      this.inputAreaStartHeight =
+        this.inputAreaHeight ||
+        (el ? el.offsetHeight : this.minInputAreaHeight);
+      this.inputAreaResizeMove = this.handleInputAreaResize.bind(this);
+      this.inputAreaResizeStop = this.stopInputAreaResize.bind(this);
+      document.addEventListener("mousemove", this.inputAreaResizeMove);
+      document.addEventListener("mouseup", this.inputAreaResizeStop);
+      e.preventDefault();
+    },
+    handleInputAreaResize(e) {
+      if (!this.isResizingInputArea) return;
+      // Dragging the handle up grows the input area; dragging it down
+      // shrinks it. Mirrors the width-resize handler's reversed delta.
+      const deltaY = this.inputAreaStartY - e.clientY;
+      const newHeight = this.inputAreaStartHeight + deltaY;
+      // Cap to a slice of the viewport so the messages list can't be
+      // squeezed away entirely.
+      const maxHeight = Math.max(
+        this.minInputAreaHeight,
+        window.innerHeight - 120
+      );
+      if (newHeight < this.minInputAreaHeight) {
+        this.inputAreaHeight = this.minInputAreaHeight;
+      } else if (newHeight > maxHeight) {
+        this.inputAreaHeight = maxHeight;
+      } else {
+        this.inputAreaHeight = newHeight;
+      }
+    },
+    stopInputAreaResize() {
+      this.isResizingInputArea = false;
+      document.removeEventListener("mousemove", this.inputAreaResizeMove);
+      document.removeEventListener("mouseup", this.inputAreaResizeStop);
+      this.saveInputAreaHeight();
     },
     handleKeydown(e) {
       // Tag autocomplete keys take precedence when the popover is open.
@@ -2010,7 +2074,16 @@ const ChatPanel = {
           </div>
         </div>
         
-        <div class="input-area">
+        <div
+          class="input-area"
+          ref="inputArea"
+          :style="inputAreaHeight ? { height: inputAreaHeight + 'px' } : {}"
+        >
+          <div
+            class="chat-input-resize-handle"
+            :class="{ resizing: isResizingInputArea }"
+            @mousedown="startInputAreaResize"
+          ></div>
           <div v-if="hasSessionStats" class="session-stats" title="Session token usage">
             <span>{{ sessionStats.turns }} turn{{ sessionStats.turns === 1 ? '' : 's' }}</span>
             <span class="session-stats-sep">·</span>

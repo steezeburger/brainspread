@@ -2654,6 +2654,25 @@ kbd {
   font-size: 0.9rem;
 }
 
+/* The today nav item swaps the static "▤" planner glyph for a small
+   calendar SVG with today's day-of-month painted inside. Sizing it
+   against the icon slot in both the rail (font-size 1rem) and the
+   expanded sidebar item (font-size 0.9rem) means an em-based width
+   keeps it in step with neighbouring glyphs and inherits currentColor
+   from the active leftnav-item / rail-btn state. */
+.leftnav-today-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.leftnav-today-svg {
+  width: 1.1em;
+  height: 1.1em;
+  display: block;
+}
+
 .leftnav-label {
   flex: 1;
   min-width: 0;
@@ -3552,8 +3571,11 @@ a.sidebar-item:visited {
   border: 1px solid var(--border-secondary);
   padding: 0.75rem;
   resize: none;
+  width: 100%;
+  /* min-height sets the natural-state floor (matches the pre-resize
+     look). The textarea stretches above this via the flex chain when
+     the user drags the input area taller. */
   min-height: 60px;
-  max-height: 120px;
   font-family: inherit;
   font-size: 0.9rem;
   line-height: 1.4;
@@ -4043,6 +4065,30 @@ a.sidebar-item:visited {
   border-top: 1px solid var(--border-secondary);
   display: flex;
   flex-direction: column;
+  /* Hosts .chat-input-resize-handle which is positioned absolutely
+     against this stacking context, and contains .message-input which
+     flexes to fill any extra height when the user drags the area
+     taller. */
+  position: relative;
+}
+
+/* Grab strip along the input-area's top edge. Drag up to grow the
+   input-area (and shrink the messages list above), drag down to
+   shrink it. The textarea inside stretches to fit. */
+.chat-input-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: transparent;
+  cursor: ns-resize;
+  z-index: 2;
+}
+
+.chat-input-resize-handle:hover,
+.chat-input-resize-handle.resizing {
+  background: var(--border-primary);
 }
 
 /* Chat Panel Controls Row */
@@ -4087,6 +4133,14 @@ a.sidebar-item:visited {
   display: flex;
   gap: 0.5rem;
   order: 2;
+  /* flex-grow (not flex: 1) is intentional. We want this row to
+     consume extra height inside .input-area when the user drags it
+     taller, but in the natural (un-resized) state we want the row to
+     keep its content-based height — flex: 1 would set flex-basis: 0%
+     and collapse the textarea to the bare minimum even though the
+     parent has no extra space to distribute. */
+  flex-grow: 1;
+  min-height: 0;
   /* Fix for Android navigation bar covering input */
   padding: 0.5rem 0.5rem calc(0.5rem + env(safe-area-inset-bottom, 60px));
 }
@@ -5293,7 +5347,10 @@ a.sidebar-item:visited {
   bottom: 0;
   background: rgba(0, 0, 0, 0.8);
   backdrop-filter: blur(4px);
-  z-index: 1000;
+  /* Above the mobile left-nav drawer (1100) and its backdrop (1099)
+   * so the search modal isn't trapped behind them when opened from
+   * the drawer's "search" button. */
+  z-index: 1200;
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -6501,6 +6558,50 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   margin-top: 0.5rem;
 }
 
+/* Quick-pick chip rows — date chips below the "due" input, time chips
+ * below the reminder row. Indented to line up with the inputs (past
+ * the 5rem .schedule-popover-label gutter) so they read as belonging
+ * to the field above. */
+.schedule-popover-quick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  margin-left: 5.5rem;
+  margin-top: -0.35rem;
+}
+
+.schedule-popover-quick-btn {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  padding: 0.2rem 0.55rem;
+  font-family: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.schedule-popover-quick-btn:hover {
+  background: var(--hover-bg);
+  border-color: var(--border-primary);
+}
+
+.schedule-popover-quick-btn.is-active {
+  background: var(--selected-bg);
+  border-color: var(--border-primary);
+}
+
+/* Visual separator between the relative-time chips ("in 30m" / "in 1h")
+ * and the fixed-time chunk chips so the row reads as two intents. */
+.schedule-popover-quick-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border-secondary);
+  margin: 0.1rem 0.15rem;
+}
+
 /* Mobile: the desktop popover lays the date/reminder controls out in a
  * single row, which overflows below ~420px-wide viewports. Stack the
  * rows vertically and clamp the modal width to the viewport so the
@@ -6524,6 +6625,12 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
     /* Let the select claim the full row width once the row wraps so it
      * isn't squeezed to a sliver next to the time input. */
     flex-basis: 100%;
+  }
+  /* The mobile label gutter shrinks from 5rem to 4rem; pull the quick
+   * chip rows in to match so the chips still line up under the inputs
+   * instead of floating off-center. */
+  .schedule-popover-quick-row {
+    margin-left: 0;
   }
 }
 
