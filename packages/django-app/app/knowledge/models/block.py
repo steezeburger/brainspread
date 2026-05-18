@@ -152,6 +152,14 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             current = current.parent
         return depth
 
+    # Property keys that are managed by the UI (the resize handle and
+    # the "show as raw" / "reset size" entries in the block context
+    # menu) rather than by the user typing `key:: value` into block
+    # content. Kept out of the content-driven property sync below so a
+    # routine block edit doesn't clobber them — see
+    # `extract_properties_from_content`.
+    _UI_MANAGED_PROPERTY_KEYS = frozenset({"size", "render"})
+
     def extract_properties_from_content(self):
         """Extract key:: value properties from content and sync with properties field"""
         if not self.content:
@@ -186,9 +194,22 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
                 if key not in extracted_properties:
                     extracted_properties[key] = value.strip()
 
-        # Sync with properties field
-        if extracted_properties != self.properties:
-            self.properties = extracted_properties
+        # Merge with UI-managed keys preserved. Replacing the whole dict
+        # would nuke `size` (image resize handle) and `render` ("show as
+        # raw" toggle) on every content edit, which previously made both
+        # features look broken in practice — drag to resize, then type
+        # anywhere in the block, and the persisted width vanishes on the
+        # next page load.
+        current = self.properties or {}
+        preserved = {
+            k: current[k]
+            for k in self._UI_MANAGED_PROPERTY_KEYS
+            if k in current
+        }
+        merged = {**extracted_properties, **preserved}
+
+        if merged != self.properties:
+            self.properties = merged
             self.save(update_fields=["properties"])
 
         return extracted_properties

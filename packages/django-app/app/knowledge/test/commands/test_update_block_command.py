@@ -519,3 +519,50 @@ class TestUpdateBlockCommand(TestCase):
 
         block.refresh_from_db()
         self.assertEqual(block.asset_id, asset.id)
+
+    def test_should_preserve_ui_managed_properties_on_content_edit(self):
+        """A content edit must not clobber UI-managed properties (image
+        resize width, "show as raw" render flag). Both live in the same
+        JSON blob as content-derived `key:: value` properties, but they
+        aren't represented in text, so the content-driven extractor that
+        runs on every UpdateBlock has to leave them alone."""
+        self.block.properties = {
+            "size": {"width": 240},
+            "render": "raw",
+        }
+        self.block.save()
+
+        form = UpdateBlockForm(
+            {
+                "user": self.user.id,
+                "block": str(self.block.uuid),
+                "content": "now with words but no key:: value syntax",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        UpdateBlockCommand(form).execute()
+
+        self.block.refresh_from_db()
+        self.assertEqual(self.block.properties.get("size"), {"width": 240})
+        self.assertEqual(self.block.properties.get("render"), "raw")
+
+    def test_should_merge_content_properties_with_ui_managed_ones(self):
+        """When the user adds a `priority:: high` line to content, the
+        extractor should add that key without dropping a previously
+        set image width."""
+        self.block.properties = {"size": {"width": 180}}
+        self.block.save()
+
+        form = UpdateBlockForm(
+            {
+                "user": self.user.id,
+                "block": str(self.block.uuid),
+                "content": "rework intro\npriority:: high",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        UpdateBlockCommand(form).execute()
+
+        self.block.refresh_from_db()
+        self.assertEqual(self.block.properties.get("priority"), "high")
+        self.assertEqual(self.block.properties.get("size"), {"width": 180})
