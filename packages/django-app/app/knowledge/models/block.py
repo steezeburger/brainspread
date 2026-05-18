@@ -202,9 +202,7 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
         # next page load.
         current = self.properties or {}
         preserved = {
-            k: current[k]
-            for k in self._UI_MANAGED_PROPERTY_KEYS
-            if k in current
+            k: current[k] for k in self._UI_MANAGED_PROPERTY_KEYS if k in current
         }
         merged = {**extracted_properties, **preserved}
 
