@@ -405,17 +405,19 @@ class TestSendDueRemindersCommand(TestCase):
         description = embed["description"]
         self.assertIn("[Open block →]", description)
         self.assertIn("[Mark done]", description)
+        self.assertIn("[Mark doing]", description)
         self.assertIn("[Snooze 1h]", description)
         self.assertIn("[Snooze 1d]", description)
 
-        # Three action rows minted, all linked to this reminder, none
+        # Four action rows minted, all linked to this reminder, none
         # consumed yet.
         actions = list(ReminderAction.objects.filter(reminder=reminder))
-        self.assertEqual(len(actions), 3)
+        self.assertEqual(len(actions), 4)
         self.assertEqual(
             {a.action for a in actions},
             {
                 ReminderAction.ACTION_COMPLETE,
+                ReminderAction.ACTION_MARK_DOING,
                 ReminderAction.ACTION_SNOOZE_1H,
                 ReminderAction.ACTION_SNOOZE_1D,
             },

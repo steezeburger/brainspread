@@ -281,8 +281,13 @@ def _author_block(environment: str, pr_number: str, pr_url: str) -> dict:
     return author
 
 
+# Order matters: this is the order the links appear in the embed.
+# "Mark doing" sits between "Mark done" and the snoozes so the two
+# status-change actions cluster together on the left and the deferrals
+# cluster on the right.
 _ACTION_LABELS = [
     (ReminderAction.ACTION_COMPLETE, "Mark done"),
+    (ReminderAction.ACTION_MARK_DOING, "Mark doing"),
     (ReminderAction.ACTION_SNOOZE_1H, "Snooze 1h"),
     (ReminderAction.ACTION_SNOOZE_1D, "Snooze 1d"),
 ]
