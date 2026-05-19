@@ -195,3 +195,105 @@ class ReorderEmbedTests(_EmbedTestBase):
         self.assertTrue(form.is_valid())
         with self.assertRaises(ValidationError):
             ReorderPageEmbeddedViewsCommand(form).execute()
+
+
+class DailyScopeTests(_EmbedTestBase):
+    """Embeds created on a daily page are stored daily-scoped so they
+    render on whichever daily page the user opens, not just the one
+    they happened to be on when they clicked Embed.
+    """
+
+    def _make_daily(self, d: date):
+        return PageFactory(
+            user=self.user,
+            page_type="daily",
+            date=d,
+            title=d.isoformat(),
+            slug=d.isoformat(),
+        )
+
+    def _make_embed(self, page, view):
+        form = CreatePageEmbeddedViewForm(
+            {
+                "user": self.user.id,
+                "page_uuid": str(page.uuid),
+                "saved_view_uuid": str(view.uuid),
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return CreatePageEmbeddedViewCommand(form).execute()
+
+    def test_embed_on_daily_is_daily_scoped_with_null_page(self):
+        yesterday = self._make_daily(date(2026, 4, 23))
+        embed = self._make_embed(yesterday, self.view)
+        self.assertEqual(embed.scope, "daily")
+        self.assertIsNone(embed.page_id)
+
+    def test_embed_on_yesterdays_daily_shows_on_todays_daily(self):
+        from knowledge.repositories import PageEmbeddedViewRepository
+
+        yesterday = self._make_daily(date(2026, 4, 23))
+        today = self._make_daily(date(2026, 4, 24))
+        self._make_embed(yesterday, self.view)
+
+        on_today = list(PageEmbeddedViewRepository.list_for_page(today))
+        self.assertEqual(len(on_today), 1)
+        self.assertEqual(on_today[0].saved_view, self.view)
+
+    def test_re_embedding_same_view_from_different_daily_is_idempotent(self):
+        yesterday = self._make_daily(date(2026, 4, 23))
+        today = self._make_daily(date(2026, 4, 24))
+        first = self._make_embed(yesterday, self.view)
+        again = self._make_embed(today, self.view)
+        self.assertEqual(first.uuid, again.uuid)
+        self.assertEqual(
+            PageEmbeddedView.objects.filter(user=self.user, scope="daily").count(),
+            1,
+        )
+
+    def test_regular_page_embed_is_not_daily_scoped(self):
+        embed = self._make_embed(self.page, self.view)
+        self.assertEqual(embed.scope, "page")
+        self.assertEqual(embed.page_id, self.page.id)
+
+    def test_daily_scoped_embed_does_not_show_on_regular_page(self):
+        from knowledge.repositories import PageEmbeddedViewRepository
+
+        yesterday = self._make_daily(date(2026, 4, 23))
+        self._make_embed(yesterday, self.view)
+        on_regular = list(PageEmbeddedViewRepository.list_for_page(self.page))
+        self.assertEqual(on_regular, [])
+
+    def test_reorder_operates_on_daily_bucket(self):
+        from knowledge.repositories import PageEmbeddedViewRepository
+
+        yesterday = self._make_daily(date(2026, 4, 23))
+        today = self._make_daily(date(2026, 4, 24))
+        view_a = SavedView.objects.create(
+            user=self.user, name="A", slug="va", filter={}
+        )
+        view_b = SavedView.objects.create(
+            user=self.user, name="B", slug="vb", filter={}
+        )
+        a = self._make_embed(yesterday, view_a)
+        b = self._make_embed(yesterday, view_b)
+        self.assertEqual(a.order, 0)
+        self.assertEqual(b.order, 1)
+
+        form = ReorderPageEmbeddedViewsForm(
+            {
+                "user": self.user.id,
+                "page_uuid": str(today.uuid),
+                "ordered_uuids": [str(b.uuid), str(a.uuid)],
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        ReorderPageEmbeddedViewsCommand(form).execute()
+
+        a.refresh_from_db()
+        b.refresh_from_db()
+        self.assertEqual(b.order, 0)
+        self.assertEqual(a.order, 1)
+
+        on_today = list(PageEmbeddedViewRepository.list_for_page(today))
+        self.assertEqual([e.uuid for e in on_today], [b.uuid, a.uuid])

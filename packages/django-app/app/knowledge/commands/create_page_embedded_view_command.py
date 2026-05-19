@@ -4,6 +4,7 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.create_page_embedded_view_form import CreatePageEmbeddedViewForm
 from ..models import PageEmbeddedView
+from ..models.page_embedded_view import SCOPE_DAILY, SCOPE_PAGE
 from ..repositories import (
     PageEmbeddedViewRepository,
     PageRepository,
@@ -14,11 +15,15 @@ from ..repositories import (
 class CreatePageEmbeddedViewCommand(AbstractBaseCommand):
     """Embed a SavedView on a Page.
 
-    Idempotent on (page, saved_view) — if an embed already exists for
-    that pair, the existing one is returned (the API is "ensure
-    embedded," not "always create"). Both the page and the saved view
-    must belong to the requesting user; cross-user UUID guesses raise
-    ValidationError, never IntegrityError.
+    On a daily page the embed is stored daily-scoped (``scope='daily'``,
+    no page FK) so it follows the daily-page concept and renders on
+    whichever daily the user opens — not just the date that was current
+    when they clicked Embed. On any other page type the embed is tied
+    to the specific page.
+
+    Idempotent within its scope bucket: re-embedding the same view on
+    any daily returns the existing daily-scoped row; re-embedding on a
+    specific page returns the existing per-page row.
     """
 
     def __init__(self, form: CreatePageEmbeddedViewForm) -> None:
@@ -43,10 +48,12 @@ class CreatePageEmbeddedViewCommand(AbstractBaseCommand):
         if existing is not None:
             return existing
 
+        is_daily = page.page_type == "daily"
         next_order = PageEmbeddedViewRepository.next_order_for_page(page)
         return PageEmbeddedViewRepository.create(
             user=user,
-            page=page,
+            page=None if is_daily else page,
             saved_view=view,
             order=next_order,
+            scope=SCOPE_DAILY if is_daily else SCOPE_PAGE,
         )
