@@ -1,4 +1,6 @@
 from .list_chat_sessions_command import ListChatSessionsCommand
 from .resume_approval_command import ResumeApprovalCommand
 from .send_message_command import SendMessageCommand
+from .set_chat_session_favorited_command import SetChatSessionFavoritedCommand
 from .stream_send_message_command import StreamSendMessageCommand
+from .update_chat_session_title_command import UpdateChatSessionTitleCommand

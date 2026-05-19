@@ -715,16 +715,32 @@ class ApiService {
     }
   }
 
-  async getChatSessions(search) {
+  async getChatSessions(search, favoritesOnly) {
     const trimmed = (search || "").trim();
-    const path = trimmed
-      ? `/api/ai-chat/sessions/?search=${encodeURIComponent(trimmed)}`
-      : "/api/ai-chat/sessions/";
+    const params = new URLSearchParams();
+    if (trimmed) params.set("search", trimmed);
+    if (favoritesOnly) params.set("favorites_only", "true");
+    const qs = params.toString();
+    const path = qs ? `/api/ai-chat/sessions/?${qs}` : "/api/ai-chat/sessions/";
     return await this.request(path);
   }
 
   async getChatSessionDetail(sessionId) {
     return await this.request(`/api/ai-chat/sessions/${sessionId}/`);
+  }
+
+  async setChatSessionFavorited(sessionId, isFavorited) {
+    return await this.request(`/api/ai-chat/sessions/${sessionId}/favorite/`, {
+      method: "POST",
+      body: JSON.stringify({ is_favorited: !!isFavorited }),
+    });
+  }
+
+  async updateChatSessionTitle(sessionId, title) {
+    return await this.request(`/api/ai-chat/sessions/${sessionId}/title/`, {
+      method: "POST",
+      body: JSON.stringify({ title }),
+    });
   }
 
   async getAISettings() {

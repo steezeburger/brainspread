@@ -22,6 +22,12 @@ logger = logging.getLogger(__name__)
 
 # A stable system prompt gives providers that support prompt caching something
 # worth caching. Keep it short but concrete.
+# Cap auto-generated titles at a length that comfortably fits on a
+# history-row line. The DB allows up to 200, but anything over ~80 looks
+# truncated in the dropdown anyway.
+AUTO_TITLE_MAX_LEN = 80
+
+
 BRAINSPREAD_SYSTEM_PROMPT = (
     "You are the assistant embedded in brainspread, a personal note-taking app"
     " where users capture thoughts as hierarchical blocks on daily pages."
@@ -79,6 +85,15 @@ class SendMessageCommand(AbstractBaseCommand):
                 "user",
                 formatted_message,
                 attachments=SendMessageCommand._serialize_attachments(attached_assets),
+            )
+
+            # Auto-label brand-new sessions from the user's raw message
+            # (not formatted_message — we don't want the context bullets
+            # in the title). set_title_if_blank is idempotent, so this
+            # is a no-op on follow-up turns and on sessions the user
+            # already renamed.
+            ChatSessionRepository.set_title_if_blank(
+                session, SendMessageCommand._derive_auto_title(message)
             )
 
             messages = SendMessageCommand._build_messages_with_images(session)
@@ -267,6 +282,25 @@ class SendMessageCommand(AbstractBaseCommand):
                 entry["images"] = images
             out.append(entry)
         return out
+
+    @staticmethod
+    def _derive_auto_title(message: str) -> str:
+        """Squash newlines and clip to a one-line display length so the
+        title sits cleanly on a chat-history row. Returns empty string
+        for empty messages (image-only turns) — the repo helper
+        no-ops on those."""
+        if not message:
+            return ""
+        collapsed = " ".join(message.split())
+        if len(collapsed) <= AUTO_TITLE_MAX_LEN:
+            return collapsed
+        # Trim to a word boundary so the title doesn't cut a word in
+        # half, with an ellipsis to signal truncation.
+        clip = collapsed[: AUTO_TITLE_MAX_LEN - 1]
+        space = clip.rfind(" ")
+        if space > AUTO_TITLE_MAX_LEN // 2:
+            clip = clip[:space]
+        return clip.rstrip() + "…"
 
     @staticmethod
     def _format_message_with_context(message: str, context_blocks: List[Dict]) -> str:
