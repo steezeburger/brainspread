@@ -14,6 +14,7 @@ from knowledge.commands import (
     AddTemplateBlocksToPageCommand,
     BulkDeleteBlocksCommand,
     BulkMoveBlocksCommand,
+    BulkMoveBlocksToPageCommand,
     ConsumeReminderActionCommand,
     CreateBlockCommand,
     CreatePageCommand,
@@ -59,6 +60,9 @@ from knowledge.commands.add_template_blocks_to_page_command import (
 )
 from knowledge.commands.bulk_delete_blocks_command import BulkDeleteBlocksData
 from knowledge.commands.bulk_move_blocks_command import BulkMoveBlocksData
+from knowledge.commands.bulk_move_blocks_to_page_command import (
+    BulkMoveBlocksToPageData,
+)
 from knowledge.commands.get_graph_data_command import GraphData
 from knowledge.commands.get_historical_data_command import HistoricalData
 from knowledge.commands.get_tag_content_command import TagContentData
@@ -69,6 +73,7 @@ from knowledge.forms import (
     AddTemplateBlocksToPageForm,
     BulkDeleteBlocksForm,
     BulkMoveBlocksForm,
+    BulkMoveBlocksToPageForm,
     ConsumeReminderActionForm,
     CreateBlockForm,
     CreatePageEmbeddedViewForm,
@@ -196,6 +201,12 @@ class BulkDeleteBlocksResponse(TypedDict):
 class BulkMoveBlocksResponse(TypedDict):
     success: bool
     data: Optional[BulkMoveBlocksData]
+    errors: Optional[Dict[str, List[str]]]
+
+
+class BulkMoveBlocksToPageResponse(TypedDict):
+    success: bool
+    data: Optional[BulkMoveBlocksToPageData]
     errors: Optional[Dict[str, List[str]]]
 
 
@@ -1623,6 +1634,49 @@ def bulk_move_blocks(request):
 
     except Exception as e:
         response: BulkMoveBlocksResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def bulk_move_blocks_to_page(request):
+    """Move a list of blocks to an arbitrary target page as siblings."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+
+        form = BulkMoveBlocksToPageForm(data)
+
+        if not form.is_valid():
+            response: BulkMoveBlocksToPageResponse = {
+                "success": False,
+                "data": None,
+                "errors": form.errors,
+            }
+            return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+        command = BulkMoveBlocksToPageCommand(form)
+        result = command.execute()
+
+        response: BulkMoveBlocksToPageResponse = {
+            "success": True,
+            "data": result,
+            "errors": None,
+        }
+        return Response(response)
+
+    except ValidationError as e:
+        return Response(
+            {"success": False, "data": None, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    except Exception as e:
+        response: BulkMoveBlocksToPageResponse = {
             "success": False,
             "data": None,
             "errors": {"non_field_errors": [str(e)]},

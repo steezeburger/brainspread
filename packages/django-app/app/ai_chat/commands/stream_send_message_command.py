@@ -111,6 +111,12 @@ class StreamSendMessageCommand(AbstractBaseCommand):
                 attachments=SendMessageCommand._serialize_attachments(attached_assets),
             )
 
+            # Auto-label brand-new sessions from the user's raw message.
+            # Idempotent: follow-up turns and renamed sessions no-op.
+            ChatSessionRepository.set_title_if_blank(
+                session, SendMessageCommand._derive_auto_title(message)
+            )
+
             messages = SendMessageCommand._build_messages_with_images(session)
 
             service = AIServiceFactory.create_service(

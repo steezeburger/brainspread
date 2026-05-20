@@ -14,10 +14,18 @@ from .commands import (
     ListChatSessionsCommand,
     ResumeApprovalCommand,
     SendMessageCommand,
+    SetChatSessionFavoritedCommand,
     StreamSendMessageCommand,
+    UpdateChatSessionTitleCommand,
 )
 from .commands.send_message_command import SendMessageCommandError
-from .forms import ListChatSessionsForm, ResumeApprovalForm, SendMessageForm
+from .forms import (
+    ListChatSessionsForm,
+    ResumeApprovalForm,
+    SendMessageForm,
+    SetChatSessionFavoritedForm,
+    UpdateChatSessionTitleForm,
+)
 from .models import (
     AIModel,
     AIProvider,
@@ -283,8 +291,14 @@ def chat_sessions(request):
     matching session.
     """
     try:
+        favorites_param = request.GET.get("favorites_only", "")
+        favorites_only = favorites_param.lower() in ("1", "true", "yes")
         form = ListChatSessionsForm(
-            {"user": request.user.id, "search": request.GET.get("search", "")}
+            {
+                "user": request.user.id,
+                "search": request.GET.get("search", ""),
+                "favorites_only": favorites_only,
+            }
         )
         if not form.is_valid():
             return Response(
@@ -351,6 +365,8 @@ def chat_session_detail(request, session_id):
         session_data = {
             "uuid": str(session.uuid),
             "title": session.title,
+            "has_title": bool(session.title),
+            "is_favorited": bool(session.is_favorited),
             "created_at": session.created_at.isoformat(),
             "modified_at": session.modified_at.isoformat(),
             "messages": messages_data,
@@ -369,6 +385,73 @@ def chat_session_detail(request, session_id):
         )
         return Response(
             {"success": False, "error": "Failed to fetch chat session"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def set_chat_session_favorited(request, session_id):
+    """Pin or unpin a chat session in the history list.
+
+    Body: {"is_favorited": bool}. The form rejects requests that don't
+    own the session, so a 404 here means either the session is gone or
+    the requester is not its owner.
+    """
+    try:
+        form = SetChatSessionFavoritedForm(
+            {
+                "user": request.user.id,
+                "session_id": session_id,
+                "is_favorited": bool(request.data.get("is_favorited")),
+            }
+        )
+        if not form.is_valid():
+            return Response(
+                {"success": False, "errors": form.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        data = SetChatSessionFavoritedCommand(form).execute()
+        return Response({"success": True, "data": data})
+    except Exception as e:
+        logger.error(
+            f"Error favoriting session {session_id} for user {request.user.id}: {e}"
+        )
+        return Response(
+            {"success": False, "error": "Failed to update favorite state"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def update_chat_session_title(request, session_id):
+    """Rename a chat session.
+
+    Body: {"title": str}. Blank / whitespace-only titles are rejected
+    by the form.
+    """
+    try:
+        form = UpdateChatSessionTitleForm(
+            {
+                "user": request.user.id,
+                "session_id": session_id,
+                "title": request.data.get("title", ""),
+            }
+        )
+        if not form.is_valid():
+            return Response(
+                {"success": False, "errors": form.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        data = UpdateChatSessionTitleCommand(form).execute()
+        return Response({"success": True, "data": data})
+    except Exception as e:
+        logger.error(
+            f"Error renaming session {session_id} for user {request.user.id}: {e}"
+        )
+        return Response(
+            {"success": False, "error": "Failed to rename chat session"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 

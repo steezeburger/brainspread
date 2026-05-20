@@ -93,6 +93,54 @@ class ConsumeReminderActionCommandTests(TestCase):
             (pinned + timedelta(days=1)).replace(microsecond=0),
         )
 
+    def test_mark_doing_flips_block_to_doing_and_consumes_token(self) -> None:
+        # The block starts as "todo"; clicking Mark doing should land
+        # it in the "doing" state with the content prefix swapped and
+        # the token marked used. The reminder itself is left alone —
+        # marking doing isn't a deferral, the same reminder may fire
+        # follow-ups or the user may want to mark done later.
+        action = self._make_action(ReminderAction.ACTION_MARK_DOING)
+
+        result = self._run(action.token)
+
+        self.assertEqual(result["status"], "executed")
+        self.assertEqual(result["action"], ReminderAction.ACTION_MARK_DOING)
+        self.assertEqual(result["detail"], "Marked the block as doing.")
+        self.assertEqual(result["block_uuid"], str(self.block.uuid))
+
+        self.block.refresh_from_db()
+        self.assertEqual(self.block.block_type, "doing")
+        # "Mark doing" is not a terminal state — completed_at stays
+        # empty so the in-app pending-reminder lookup keeps working.
+        self.assertIsNone(self.block.completed_at)
+        # SetBlockTypeCommand swaps the leading "TODO" prefix to "DOING".
+        self.assertTrue(self.block.content.startswith("DOING"))
+
+        action.refresh_from_db()
+        self.assertIsNotNone(action.used_at)
+
+        self.reminder.refresh_from_db()
+        # Reminder is untouched — its sent state from setUp persists.
+        self.assertEqual(self.reminder.status, Reminder.STATUS_SENT)
+
+    def test_mark_doing_on_already_doing_block_is_idempotent(self) -> None:
+        # If the user clicks "Mark doing" twice (different tokens) or
+        # the block was already moved to doing in another channel,
+        # the second consume just marks the token used.
+        self.block.block_type = "doing"
+        self.block.content = "DOING ship"
+        self.block.save(update_fields=["block_type", "content", "modified_at"])
+
+        action = self._make_action(ReminderAction.ACTION_MARK_DOING)
+
+        result = self._run(action.token)
+
+        self.assertEqual(result["status"], "executed")
+        self.block.refresh_from_db()
+        self.assertEqual(self.block.block_type, "doing")
+        action.refresh_from_db()
+        self.assertIsNotNone(action.used_at)
+
     def test_unknown_token_returns_not_found(self) -> None:
         result = self._run("definitely-not-a-real-token-value")
         self.assertEqual(result["status"], "not_found")
