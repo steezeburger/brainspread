@@ -3675,6 +3675,63 @@ const Page = {
         this.$parent?.addToast?.("failed to move selected blocks", "error");
       }
     },
+
+    async bulkMoveSelectedToPage() {
+      // Reuse the shared page-picker (same one openMovePagePicker uses
+      // for single-block moves) so users only have to learn one page
+      // typeahead. Bail out gracefully if it isn't mounted.
+      const uuids = [...this.selectedBlockUuids];
+      if (uuids.length === 0) {
+        this.$parent?.addToast?.("no blocks selected", "info");
+        return;
+      }
+      if (!window.appModals?.pickPage) {
+        console.error("appModals.pickPage is not available");
+        return;
+      }
+
+      const targetPage = await window.appModals.pickPage({
+        title: "move selected blocks to page",
+        placeholder: "search pages…",
+        confirmLabel: "move",
+      });
+      if (!targetPage) return;
+
+      try {
+        const result = await window.apiService.bulkMoveBlocksToPage(
+          uuids,
+          targetPage.uuid
+        );
+        if (!result || !result.success) {
+          throw new Error(
+            result?.errors?.non_field_errors?.[0] || "bulk move failed"
+          );
+        }
+        const moved = result.data?.moved_count ?? 0;
+        const targetTitle =
+          targetPage.title || result.data?.target_page?.title || "page";
+        if (moved > 0) {
+          this.$parent?.addToast?.(
+            `moved ${moved} block${moved === 1 ? "" : "s"} to ${targetTitle}`,
+            "success"
+          );
+        } else {
+          this.$parent?.addToast?.(
+            "selected blocks already on the target page",
+            "info"
+          );
+        }
+        this.clearBlockSelection();
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("failed to bulk-move blocks to page:", error);
+        this.error = "failed to move selected blocks";
+        this.$parent?.addToast?.(
+          `failed to move selected blocks: ${error.message || error}`,
+          "error"
+        );
+      }
+    },
   },
 
   template: `
@@ -3912,6 +3969,13 @@ const Page = {
               @click="bulkMoveSelectedToToday"
               title="Move selected blocks to today's daily note"
             >move to today</button>
+            <button
+              type="button"
+              class="btn btn-outline selection-toolbar-action"
+              :disabled="selectedBlockCount === 0"
+              @click="bulkMoveSelectedToPage"
+              title="Move selected blocks to any page…"
+            >move to page…</button>
             <button
               type="button"
               class="btn btn-outline selection-toolbar-action selection-toolbar-danger"

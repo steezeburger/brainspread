@@ -355,6 +355,19 @@ class ApiService {
     });
   }
 
+  async bulkMoveBlocksToPage(blockUuids, targetPageUuid) {
+    return await this.request("/knowledge/api/blocks/bulk-move-to-page/", {
+      method: "POST",
+      body: JSON.stringify({
+        blocks: blockUuids,
+        target_page: targetPageUuid,
+      }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
   async getHistoricalData(daysBack = 30, limit = 50) {
     return await this.request(
       `/knowledge/api/historical/?days_back=${daysBack}&limit=${limit}`
