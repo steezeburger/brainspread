@@ -2,6 +2,7 @@ import json
 import logging
 from typing import TypedDict
 
+from django.core.exceptions import ValidationError
 from django.http import StreamingHttpResponse
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -12,6 +13,7 @@ from rest_framework.views import APIView
 
 from .commands import (
     ListChatSessionsCommand,
+    ReorderFavoritedChatSessionsCommand,
     ResumeApprovalCommand,
     SendMessageCommand,
     SetChatSessionFavoritedCommand,
@@ -21,6 +23,7 @@ from .commands import (
 from .commands.send_message_command import SendMessageCommandError
 from .forms import (
     ListChatSessionsForm,
+    ReorderFavoritedChatSessionsForm,
     ResumeApprovalForm,
     SendMessageForm,
     SetChatSessionFavoritedForm,
@@ -419,6 +422,45 @@ def set_chat_session_favorited(request, session_id):
         )
         return Response(
             {"success": False, "error": "Failed to update favorite state"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def reorder_favorited_chat_sessions(request):
+    """Persist a new drag-sorted order on the Pinned section.
+
+    Body: {"session_uuids": [uuid, uuid, ...]} — the desired full
+    ordering of the user's favorited chats.
+    """
+    try:
+        form = ReorderFavoritedChatSessionsForm(
+            {
+                "user": request.user.id,
+                "session_uuids": request.data.get("session_uuids", []),
+            }
+        )
+        if not form.is_valid():
+            return Response(
+                {"success": False, "errors": form.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        data = ReorderFavoritedChatSessionsCommand(form).execute()
+        return Response({"success": True, "data": data})
+    except ValidationError as e:
+        # Raised by the command when the payload mentions chats the
+        # user doesn't own / isn't currently favoriting.
+        return Response(
+            {"success": False, "error": str(e)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        logger.error(
+            f"Error reordering favorited chats for user {request.user.id}: {e}"
+        )
+        return Response(
+            {"success": False, "error": "Failed to reorder favorited chats"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 

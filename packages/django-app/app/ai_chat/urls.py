@@ -18,6 +18,11 @@ urlpatterns = [
     ),
     path("sessions/", views.chat_sessions, name="chat_sessions"),
     path(
+        "sessions/reorder-favorites/",
+        views.reorder_favorited_chat_sessions,
+        name="reorder_favorited_chat_sessions",
+    ),
+    path(
         "sessions/<str:session_id>/",
         views.chat_session_detail,
         name="chat_session_detail",

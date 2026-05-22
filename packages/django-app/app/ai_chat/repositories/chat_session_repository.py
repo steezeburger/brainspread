@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from django.db.models import Count, Q, QuerySet
+from django.db.models import Count, Max, Q, QuerySet
 
 from common.repositories.base_repository import BaseRepository
 from core.models import User
@@ -60,7 +60,11 @@ class ChatSessionRepository(BaseRepository):
             ).distinct()
         # Favorites pin to the top so the "Pinned" section in the UI
         # can be built off the same query without a second round-trip.
-        return qs.order_by("-is_favorited", "-modified_at")
+        # Within favorites: user-curated favorite_position wins, then
+        # -modified_at as a tiebreaker. Non-favorites fall through to
+        # -modified_at (favorite_position is 0 for all non-favorites,
+        # so it's a no-op on that side).
+        return qs.order_by("-is_favorited", "favorite_position", "-modified_at")
 
     @classmethod
     def set_favorited(
@@ -69,9 +73,39 @@ class ChatSessionRepository(BaseRepository):
         session = cls.get_for_user(uuid=uuid, user=user)
         if session is None:
             return None
+        update_fields = ["is_favorited", "modified_at"]
         session.is_favorited = is_favorited
-        session.save(update_fields=["is_favorited", "modified_at"])
+        if is_favorited:
+            # Append to the end of the Pinned section. Without this,
+            # newly-favorited chats would all share favorite_position=0
+            # and tiebreak only on -modified_at, which would shuffle
+            # the older pinned items every time a new one was added.
+            session.favorite_position = cls.next_favorite_position(user)
+            update_fields.append("favorite_position")
+        session.save(update_fields=update_fields)
         return session
+
+    @classmethod
+    def list_favorited(cls, user: User) -> List[ChatSession]:
+        """Favorited sessions in their curated order, for the reorder
+        command and the post-reorder response."""
+        return list(
+            cls.get_queryset()
+            .filter(user=user, is_favorited=True)
+            .order_by("favorite_position", "-modified_at")
+        )
+
+    @classmethod
+    def next_favorite_position(cls, user: User) -> int:
+        """Next-highest favorite_position so a newly-pinned chat lands
+        at the end of the Pinned section rather than racing with the
+        existing 0-positioned rows."""
+        current_max = (
+            cls.get_queryset()
+            .filter(user=user, is_favorited=True)
+            .aggregate(max_pos=Max("favorite_position"))["max_pos"]
+        )
+        return 0 if current_max is None else current_max + 1
 
     @classmethod
     def update_title(cls, uuid: str, user: User, title: str) -> Optional[ChatSession]:

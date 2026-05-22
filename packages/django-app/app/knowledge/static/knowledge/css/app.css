@@ -4013,6 +4013,48 @@ a.sidebar-item:visited {
   background: var(--hover-bg);
 }
 
+/* Drag-to-reorder affordances for the Pinned section in the chat
+   history dropdown. The grip glyph sits to the left of the favorite
+   star so the row reads "drag · pin · title". */
+
+.session-pinned-list {
+  position: relative;
+}
+
+.session-item[draggable="true"] {
+  cursor: grab;
+}
+
+.session-item[draggable="true"].is-dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.session-pinned-grip {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: grab;
+  user-select: none;
+}
+
+.session-item:hover .session-pinned-grip {
+  color: var(--text-secondary);
+}
+
+.session-pinned-drop-indicator {
+  height: 2px;
+  margin: 0 0.5rem;
+  background: var(--text-primary);
+  pointer-events: none;
+}
+
 /* Settings Modal Tabs */
 .settings-tabs {
   display: flex;

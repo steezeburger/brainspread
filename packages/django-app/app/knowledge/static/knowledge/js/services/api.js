@@ -756,6 +756,13 @@ class ApiService {
     });
   }
 
+  async reorderFavoritedChatSessions(sessionUuids) {
+    return await this.request("/api/ai-chat/sessions/reorder-favorites/", {
+      method: "POST",
+      body: JSON.stringify({ session_uuids: sessionUuids }),
+    });
+  }
+
   async getAISettings() {
     return await this.request("/api/ai-chat/settings/");
   }

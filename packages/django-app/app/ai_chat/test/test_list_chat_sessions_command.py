@@ -129,6 +129,23 @@ class TestListChatSessionsCommand(TestCase):
         # Favorite is now first regardless of -modified_at.
         self.assertEqual(ordered_uuids[0], str(self.session_titled.uuid))
 
+    def test_favorites_respect_favorite_position_within_pinned(self):
+        # Two pinned chats: the one with the lower favorite_position
+        # sorts above the other, even though -modified_at would have
+        # ordered them differently.
+        self.session_titled.is_favorited = True
+        self.session_titled.favorite_position = 1
+        self.session_titled.save(update_fields=["is_favorited", "favorite_position"])
+        self.session_unrelated.is_favorited = True
+        self.session_unrelated.favorite_position = 0
+        self.session_unrelated.save(update_fields=["is_favorited", "favorite_position"])
+        result = self._run(self.user)
+        favorited = [entry["uuid"] for entry in result if entry["is_favorited"]]
+        self.assertEqual(
+            favorited,
+            [str(self.session_unrelated.uuid), str(self.session_titled.uuid)],
+        )
+
     def test_favorites_only_filter(self):
         self.session_titled.is_favorited = True
         self.session_titled.save(update_fields=["is_favorited"])

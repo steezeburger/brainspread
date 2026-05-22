@@ -22,6 +22,13 @@ const ChatHistory = {
       editingUuid: null,
       editingTitle: "",
       savingTitle: false,
+      // Drag-to-reorder state for the Pinned section. Mirrors the
+      // LeftNav favorites pattern: dragIndex is the row being dragged,
+      // dropIndex is the gap the cursor is hovering between. Both are
+      // null when no drag is active. We always operate against the
+      // favoritedSessions slice — chronological rows are not draggable.
+      favoriteDragIndex: null,
+      favoriteDropIndex: null,
     };
   },
   computed: {
@@ -200,6 +207,82 @@ const ChatHistory = {
     formatDate(dateString) {
       return new Date(dateString).toLocaleDateString();
     },
+    onFavoriteDragStart(event, index) {
+      this.favoriteDragIndex = index;
+      this.favoriteDropIndex = index;
+      // Firefox needs setData to actually fire the drag. Payload is
+      // irrelevant — the reorder is local component state.
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+        try {
+          event.dataTransfer.setData("text/plain", String(index));
+        } catch (_) {
+          // Some sandboxed contexts throw on setData; the drag still
+          // works without the payload.
+        }
+      }
+    },
+    onFavoriteDragOver(event, index) {
+      if (this.favoriteDragIndex === null) return;
+      event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "move";
+      }
+      // Halve the row to decide before/after — same feel as the
+      // LeftNav favorites list.
+      const rect = event.currentTarget.getBoundingClientRect();
+      const before = event.clientY < rect.top + rect.height / 2;
+      this.favoriteDropIndex = before ? index : index + 1;
+    },
+    onFavoriteDragLeaveList() {
+      this.favoriteDropIndex = null;
+    },
+    async onFavoriteDrop(event) {
+      event.preventDefault();
+      const fromIndex = this.favoriteDragIndex;
+      let toIndex = this.favoriteDropIndex;
+      this.favoriteDragIndex = null;
+      this.favoriteDropIndex = null;
+      if (fromIndex === null || toIndex === null) return;
+      if (toIndex > fromIndex) toIndex -= 1;
+      if (toIndex === fromIndex) return;
+
+      // Work off the favorited slice — chronological rows aren't
+      // drag sources, so a successful drop only ever reorders within
+      // the Pinned section.
+      const current = this.favoritedSessions;
+      const next = current.slice();
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+
+      // Optimistic: rebuild this.sessions so the UI snaps before the
+      // round-trip. Favorites first (in the new order), then the
+      // unchanged chronological tail.
+      const previous = this.sessions.slice();
+      this.sessions = [...next, ...this.chronologicalSessions];
+
+      try {
+        const result = await window.apiService.reorderFavoritedChatSessions(
+          next.map((s) => s.uuid)
+        );
+        if (!result || !result.success) {
+          this.sessions = previous;
+          this.error = "failed to reorder favorites";
+          return;
+        }
+        // Trust the server's canonical ordering — refetch with current
+        // filters so chronological rows / search snippets stay accurate.
+        this.loadSessions(this.searchQuery);
+      } catch (err) {
+        console.error("failed to reorder favorited chats:", err);
+        this.sessions = previous;
+        this.error = "failed to reorder favorites";
+      }
+    },
+    onFavoriteDragEnd() {
+      this.favoriteDragIndex = null;
+      this.favoriteDropIndex = null;
+    },
     favoriteLabel(session) {
       return session.is_favorited ? "Unpin chat" : "Pin chat";
     },
@@ -263,20 +346,39 @@ const ChatHistory = {
               <div v-if="showPinnedSection" class="session-group-header">Pinned</div>
               <template v-if="showPinnedSection">
                 <div
-                  v-for="session in favoritedSessions"
-                  :key="'fav-' + session.uuid"
-                  class="session-item"
-                  :class="{ favorited: session.is_favorited, renaming: editingUuid === session.uuid }"
-                  @click="selectSession(session)"
+                  class="session-pinned-list"
+                  @dragleave.self="onFavoriteDragLeaveList"
+                  @drop="onFavoriteDrop"
+                  @dragover.prevent
                 >
-                  <div class="session-row">
-                    <button
-                      type="button"
-                      class="session-favorite-btn favorited"
-                      @click.stop="toggleFavorite(session)"
-                      :title="favoriteLabel(session)"
-                      :aria-label="favoriteLabel(session)"
-                    >{{ favoriteGlyph(session) }}</button>
+                  <template v-for="(session, index) in favoritedSessions" :key="'fav-' + session.uuid">
+                    <div
+                      v-if="favoriteDropIndex === index && favoriteDragIndex !== null"
+                      class="session-pinned-drop-indicator"
+                      aria-hidden="true"
+                    ></div>
+                    <div
+                      class="session-item"
+                      :class="{
+                        favorited: session.is_favorited,
+                        renaming: editingUuid === session.uuid,
+                        'is-dragging': favoriteDragIndex === index,
+                      }"
+                      draggable="true"
+                      @dragstart="onFavoriteDragStart($event, index)"
+                      @dragover="onFavoriteDragOver($event, index)"
+                      @dragend="onFavoriteDragEnd"
+                      @click="selectSession(session)"
+                    >
+                      <div class="session-row">
+                        <span class="session-pinned-grip" aria-hidden="true" title="Drag to reorder">⋮⋮</span>
+                        <button
+                          type="button"
+                          class="session-favorite-btn favorited"
+                          @click.stop="toggleFavorite(session)"
+                          :title="favoriteLabel(session)"
+                          :aria-label="favoriteLabel(session)"
+                        >{{ favoriteGlyph(session) }}</button>
                     <div class="session-main">
                       <div
                         v-if="editingUuid === session.uuid"
@@ -315,15 +417,22 @@ const ChatHistory = {
                         <span class="session-count">{{ session.message_count }} messages</span>
                       </div>
                     </div>
-                    <button
-                      v-if="editingUuid !== session.uuid"
-                      type="button"
-                      class="session-rename-btn"
-                      @click.stop="startRename(session)"
-                      title="Rename chat"
-                      aria-label="Rename chat"
-                    >✎</button>
-                  </div>
+                        <button
+                          v-if="editingUuid !== session.uuid"
+                          type="button"
+                          class="session-rename-btn"
+                          @click.stop="startRename(session)"
+                          title="Rename chat"
+                          aria-label="Rename chat"
+                        >✎</button>
+                      </div>
+                    </div>
+                  </template>
+                  <div
+                    v-if="favoriteDropIndex === favoritedSessions.length && favoriteDragIndex !== null"
+                    class="session-pinned-drop-indicator"
+                    aria-hidden="true"
+                  ></div>
                 </div>
                 <div v-if="chronologicalSessions.length > 0" class="session-group-header">
                   All chats

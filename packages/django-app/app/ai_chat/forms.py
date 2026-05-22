@@ -1,3 +1,4 @@
+import uuid as uuid_lib
 from typing import Dict, List, Optional
 
 from django import forms
@@ -344,6 +345,46 @@ class SetChatSessionFavoritedForm(_ChatSessionLookupMixin, BaseForm):
 
     def clean_is_favorited(self) -> bool:
         return bool(self.cleaned_data.get("is_favorited"))
+
+
+class ReorderFavoritedChatSessionsForm(BaseForm):
+    """Inputs for persisting a new drag-sorted order on the Pinned section.
+
+    `session_uuids` is the desired full ordering of the user's
+    favorited chats. Cross-user uuids are rejected by the command's
+    membership check (not here) so the error message can name the
+    offending rows.
+    """
+
+    user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
+    session_uuids = forms.JSONField()
+
+    def clean_user(self) -> User:
+        user = self.cleaned_data.get("user")
+        if not user:
+            raise ValidationError("User is required")
+        return user
+
+    def clean_session_uuids(self) -> List[str]:
+        raw = self.cleaned_data.get("session_uuids")
+        if not isinstance(raw, list):
+            raise ValidationError("session_uuids must be a list")
+
+        normalized: List[str] = []
+        seen = set()
+        for i, item in enumerate(raw):
+            try:
+                parsed = uuid_lib.UUID(str(item))
+            except (ValueError, AttributeError, TypeError):
+                raise ValidationError(
+                    f"Item at index {i} has an invalid UUID: {item!r}"
+                )
+            s = str(parsed)
+            if s in seen:
+                raise ValidationError(f"Duplicate chat session UUID: {s}")
+            seen.add(s)
+            normalized.append(s)
+        return normalized
 
 
 class UpdateChatSessionTitleForm(_ChatSessionLookupMixin, BaseForm):
