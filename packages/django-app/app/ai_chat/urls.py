@@ -18,9 +18,24 @@ urlpatterns = [
     ),
     path("sessions/", views.chat_sessions, name="chat_sessions"),
     path(
+        "sessions/reorder-favorites/",
+        views.reorder_favorited_chat_sessions,
+        name="reorder_favorited_chat_sessions",
+    ),
+    path(
         "sessions/<str:session_id>/",
         views.chat_session_detail,
         name="chat_session_detail",
+    ),
+    path(
+        "sessions/<str:session_id>/favorite/",
+        views.set_chat_session_favorited,
+        name="set_chat_session_favorited",
+    ),
+    path(
+        "sessions/<str:session_id>/title/",
+        views.update_chat_session_title,
+        name="update_chat_session_title",
     ),
     path(
         "messages/<str:message_uuid>/follow/",

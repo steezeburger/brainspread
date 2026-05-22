@@ -108,7 +108,16 @@ class ConsumeReminderActionCommand(AbstractBaseCommand):
         now,
     ) -> None:
         if action == ReminderAction.ACTION_COMPLETE:
-            self._mark_block_done(block)
+            self._set_block_type(block, "done")
+            return
+
+        if action == ReminderAction.ACTION_MARK_DOING:
+            # The block-completed guard upstream already short-circuited
+            # done/wontdo, so a "mark doing" click here can safely flip
+            # the block to the doing state regardless of its prior type
+            # (todo, bullet, later, etc.). SetBlockTypeCommand no-ops if
+            # it's already doing.
+            self._set_block_type(block, "doing")
             return
 
         delta = _SNOOZE_DELTAS.get(action)
@@ -120,12 +129,17 @@ class ConsumeReminderActionCommand(AbstractBaseCommand):
         self._snooze_reminder(reminder, delta, now)
 
     @staticmethod
-    def _mark_block_done(block: Block) -> None:
-        # Routing through SetBlockTypeCommand keeps the completion
+    def _set_block_type(block: Block, block_type: str) -> None:
+        # Routing through SetBlockTypeCommand keeps the transition
         # behavior consistent with toggle-todo / chat tools — including
-        # the side-effect that flips any pending reminders to skipped.
+        # the content-prefix swap and the side-effect that flips any
+        # pending reminders to skipped on entering a terminal state.
         set_form = SetBlockTypeForm(
-            {"user": block.user_id, "block": str(block.uuid), "block_type": "done"}
+            {
+                "user": block.user_id,
+                "block": str(block.uuid),
+                "block_type": block_type,
+            }
         )
         if not set_form.is_valid():
             raise AssertionError(f"SetBlockTypeForm invalid: {set_form.errors}")
@@ -161,6 +175,8 @@ _SNOOZE_DELTAS = {
 def _executed_detail(action: str) -> str:
     if action == ReminderAction.ACTION_COMPLETE:
         return "Marked the block as done."
+    if action == ReminderAction.ACTION_MARK_DOING:
+        return "Marked the block as doing."
     if action == ReminderAction.ACTION_SNOOZE_1H:
         return "Snoozed for 1 hour."
     if action == ReminderAction.ACTION_SNOOZE_1D:

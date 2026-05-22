@@ -1,3 +1,4 @@
+import uuid as uuid_lib
 from typing import Dict, List, Optional
 
 from django import forms
@@ -290,11 +291,14 @@ class ListChatSessionsForm(BaseForm):
 
     The search field is matched (case-insensitive) against session
     titles and the content of any message in the session. Empty /
-    blank search returns the user's full session list.
+    blank search returns the user's full session list. When
+    favorites_only is true, the response is restricted to favorited
+    sessions.
     """
 
     user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
     search = forms.CharField(required=False, max_length=200)
+    favorites_only = forms.NullBooleanField(required=False)
 
     def clean_user(self) -> User:
         user = self.cleaned_data.get("user")
@@ -304,6 +308,109 @@ class ListChatSessionsForm(BaseForm):
 
     def clean_search(self) -> str:
         return (self.cleaned_data.get("search") or "").strip()
+
+    def clean_favorites_only(self) -> bool:
+        return bool(self.cleaned_data.get("favorites_only"))
+
+
+class _ChatSessionLookupMixin:
+    """Resolve session_id → ChatSession, scoped to the user."""
+
+    def clean(self):
+        cleaned_data = super().clean()
+        user = cleaned_data.get("user")
+        session_id = cleaned_data.get("session_id")
+        if user is None or not session_id:
+            return cleaned_data
+        try:
+            session = ChatSession.objects.get(uuid=session_id, user=user)
+        except ChatSession.DoesNotExist:
+            raise ValidationError("Chat session not found")
+        cleaned_data["session"] = session
+        return cleaned_data
+
+
+class SetChatSessionFavoritedForm(_ChatSessionLookupMixin, BaseForm):
+    """Inputs for toggling a chat session's favorited flag."""
+
+    user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
+    session_id = forms.CharField(required=True, max_length=64)
+    is_favorited = forms.BooleanField(required=False)
+
+    def clean_user(self) -> User:
+        user = self.cleaned_data.get("user")
+        if not user:
+            raise ValidationError("User is required")
+        return user
+
+    def clean_is_favorited(self) -> bool:
+        return bool(self.cleaned_data.get("is_favorited"))
+
+
+class ReorderFavoritedChatSessionsForm(BaseForm):
+    """Inputs for persisting a new drag-sorted order on the Pinned section.
+
+    `session_uuids` is the desired full ordering of the user's
+    favorited chats. Cross-user uuids are rejected by the command's
+    membership check (not here) so the error message can name the
+    offending rows.
+    """
+
+    user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
+    session_uuids = forms.JSONField()
+
+    def clean_user(self) -> User:
+        user = self.cleaned_data.get("user")
+        if not user:
+            raise ValidationError("User is required")
+        return user
+
+    def clean_session_uuids(self) -> List[str]:
+        raw = self.cleaned_data.get("session_uuids")
+        if not isinstance(raw, list):
+            raise ValidationError("session_uuids must be a list")
+
+        normalized: List[str] = []
+        seen = set()
+        for i, item in enumerate(raw):
+            try:
+                parsed = uuid_lib.UUID(str(item))
+            except (ValueError, AttributeError, TypeError):
+                raise ValidationError(
+                    f"Item at index {i} has an invalid UUID: {item!r}"
+                )
+            s = str(parsed)
+            if s in seen:
+                raise ValidationError(f"Duplicate chat session UUID: {s}")
+            seen.add(s)
+            normalized.append(s)
+        return normalized
+
+
+class UpdateChatSessionTitleForm(_ChatSessionLookupMixin, BaseForm):
+    """Inputs for renaming a chat session.
+
+    Empty / whitespace-only titles are rejected: a renamed chat is the
+    user opting into a label, so silently falling back to the
+    auto-generated preview would be surprising. To "clear" a title
+    they can rename to something meaningful instead.
+    """
+
+    user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
+    session_id = forms.CharField(required=True, max_length=64)
+    title = forms.CharField(required=True, max_length=200)
+
+    def clean_user(self) -> User:
+        user = self.cleaned_data.get("user")
+        if not user:
+            raise ValidationError("User is required")
+        return user
+
+    def clean_title(self) -> str:
+        title = (self.cleaned_data.get("title") or "").strip()
+        if not title:
+            raise ValidationError("Title cannot be blank")
+        return title
 
 
 class GetChatHistorySummaryForm(BaseForm):

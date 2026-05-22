@@ -8,6 +8,14 @@ from common.models.uuid_mixin import UUIDModelMixin
 class ChatSession(UUIDModelMixin, CRUDTimestampsMixin):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     title = models.CharField(max_length=200, blank=True)
+    # Pinned chats sort to the top of the history list and can be filtered
+    # to via the "favorites only" toggle. db_index so the favorites-only
+    # query stays cheap as the session table grows.
+    is_favorited = models.BooleanField(default=False, db_index=True)
+    # Order within the user's Pinned section. Lower values appear first;
+    # ties fall back to -modified_at so freshly-touched chats lead. The
+    # field is only meaningful for is_favorited=True rows.
+    favorite_position = models.IntegerField(default=0)
 
     class Meta:
         db_table = "ai_chat_sessions"

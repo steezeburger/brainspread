@@ -29,13 +29,14 @@ class CreateActionTokensTests(TestCase):
             set(rows.keys()),
             {
                 ReminderAction.ACTION_COMPLETE,
+                ReminderAction.ACTION_MARK_DOING,
                 ReminderAction.ACTION_SNOOZE_1H,
                 ReminderAction.ACTION_SNOOZE_1D,
             },
         )
         # Tokens are unique per row — collisions would break the
         # uniqueness constraint at write time, but assert here too.
-        self.assertEqual(len({r.token for r in rows.values()}), 3)
+        self.assertEqual(len({r.token for r in rows.values()}), 4)
 
     def test_tokens_default_expiry_uses_model_ttl(self) -> None:
         pinned = timezone.now()

@@ -97,3 +97,84 @@ class TestListChatSessionsCommand(TestCase):
         result = self._run(self.user, "pinecone")
         uuids = [entry["uuid"] for entry in result]
         self.assertEqual(len(uuids), len(set(uuids)))
+
+    def test_includes_is_favorited_flag(self):
+        result = self._run(self.user)
+        for entry in result:
+            self.assertIn("is_favorited", entry)
+            self.assertFalse(entry["is_favorited"])
+
+    def test_has_title_flag_reflects_curated_titles(self):
+        # Untitled sessions surface has_title=False so the UI can fall
+        # back to the context preview as the visible label.
+        untitled = ChatSessionFactory(user=self.user, title="")
+        ChatMessageFactory(
+            session=untitled,
+            role="user",
+            content="A bare question without a title",
+        )
+        result = self._run(self.user)
+        by_uuid = {e["uuid"]: e for e in result}
+        self.assertTrue(by_uuid[str(self.session_titled.uuid)]["has_title"])
+        self.assertFalse(by_uuid[str(untitled.uuid)]["has_title"])
+
+    def test_favorites_sort_to_top(self):
+        # The chronological ordering puts session_unrelated first
+        # (most-recently created in setUp); favoriting an earlier
+        # session should bump it above the unrelated one.
+        self.session_titled.is_favorited = True
+        self.session_titled.save(update_fields=["is_favorited"])
+        result = self._run(self.user)
+        ordered_uuids = [entry["uuid"] for entry in result]
+        # Favorite is now first regardless of -modified_at.
+        self.assertEqual(ordered_uuids[0], str(self.session_titled.uuid))
+
+    def test_favorites_respect_favorite_position_within_pinned(self):
+        # Two pinned chats: the one with the lower favorite_position
+        # sorts above the other, even though -modified_at would have
+        # ordered them differently.
+        self.session_titled.is_favorited = True
+        self.session_titled.favorite_position = 1
+        self.session_titled.save(update_fields=["is_favorited", "favorite_position"])
+        self.session_unrelated.is_favorited = True
+        self.session_unrelated.favorite_position = 0
+        self.session_unrelated.save(update_fields=["is_favorited", "favorite_position"])
+        result = self._run(self.user)
+        favorited = [entry["uuid"] for entry in result if entry["is_favorited"]]
+        self.assertEqual(
+            favorited,
+            [str(self.session_unrelated.uuid), str(self.session_titled.uuid)],
+        )
+
+    def test_favorites_only_filter(self):
+        self.session_titled.is_favorited = True
+        self.session_titled.save(update_fields=["is_favorited"])
+        form = ListChatSessionsForm(
+            {"user": self.user.id, "search": "", "favorites_only": True}
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        result = ListChatSessionsCommand(form).execute()
+        uuids = [entry["uuid"] for entry in result]
+        self.assertEqual(uuids, [str(self.session_titled.uuid)])
+
+    def test_preview_strips_context_wrapper(self):
+        # First user messages that include the context wrapper added
+        # by SendMessageCommand shouldn't blast that wrapper into the
+        # preview. The UI uses the preview as the label fallback for
+        # untitled chats, so a clean question is what we want.
+        wrapped = ChatSessionFactory(user=self.user, title="")
+        ChatMessageFactory(
+            session=wrapped,
+            role="user",
+            content=(
+                "**Context from my notes:**\n"
+                "• [block abc on page def] some context\n\n"
+                "**My question:**\n"
+                "Help me plan dinner"
+            ),
+        )
+        result = self._run(self.user)
+        by_uuid = {e["uuid"]: e for e in result}
+        preview = by_uuid[str(wrapped.uuid)]["preview"]
+        self.assertEqual(preview, "Help me plan dinner")
+        self.assertNotIn("Context from my notes", preview)
