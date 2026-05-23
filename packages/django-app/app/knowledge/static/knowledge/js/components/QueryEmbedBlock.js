@@ -15,6 +15,13 @@
 window.QueryEmbedBlock = {
   props: {
     embed: { type: Object, required: true },
+    // ISO YYYY-MM-DD when the embed renders inside a daily page; null
+    // otherwise. Forwarded to /api/views/run/ as ``context_date`` so a
+    // saved view with ``dates_relative_to_daily`` rebases its date
+    // tokens to the daily in view rather than the live current date.
+    // The server gates on the view's flag, so this is a safe no-op for
+    // saved views that haven't opted in.
+    contextDate: { type: String, default: null },
     // All optional so the embed can also render outside the page
     // surface (e.g. preview) without forcing a caller to wire them up.
     onDelete: { type: Function, default: null },
@@ -59,9 +66,32 @@ window.QueryEmbedBlock = {
       // load.
       if (prev && !now && !this.result) this.fetch();
     },
+    contextDate(now, prev) {
+      // ``scope="daily"`` embeds are the same DB row across every daily,
+      // so navigating between dailies can reuse this component instance
+      // rather than remount it. Refetch so the results rebase to the
+      // new daily — but only when the view actually cares about
+      // context_date. Without the dates_relative_to_daily check we'd
+      // re-run every "live today" embed on every daily nav for no
+      // visible reason.
+      if (now !== prev && !this.collapsed && this._viewRebases()) {
+        this.fetch();
+      }
+    },
   },
 
   methods: {
+    _viewRebases() {
+      // The saved view payload includes ``dates_relative_to_daily`` once
+      // the embed has been fetched at least once; before then we'd have
+      // nothing to gate on, but the initial fetch ran in mounted() so
+      // contextDate changes only matter after that.
+      return !!(
+        this.result &&
+        this.result.view &&
+        this.result.view.dates_relative_to_daily
+      );
+    },
     async fetch() {
       if (!this.savedView || !this.savedView.uuid) {
         this.loading = false;
@@ -73,6 +103,7 @@ window.QueryEmbedBlock = {
         const r = await window.apiService.runSavedView({
           uuid: this.savedView.uuid,
           limit: 25,
+          contextDate: this.contextDate || null,
         });
         if (r && r.success) {
           this.result = r.data;

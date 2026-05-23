@@ -297,6 +297,7 @@ const SavedViewsPage = {
         // is immediately useful — matches the backend's empty-sort
         // default and saves the user a copy-paste from the cheatsheet.
         sort: '[\n  { "field": "created_at", "dir": "desc" }\n]',
+        dates_relative_to_daily: false,
       };
     },
 
@@ -354,6 +355,7 @@ const SavedViewsPage = {
         description: view.description || "",
         filter: JSON.stringify(view.filter || {}, null, 2),
         sort: JSON.stringify(view.sort || [], null, 2),
+        dates_relative_to_daily: !!view.dates_relative_to_daily,
       };
       this.editorErrors = {};
       this.saveError = null;
@@ -501,6 +503,7 @@ const SavedViewsPage = {
           description: this.editor.description.trim(),
           filter: parsed.filter,
           sort: parsed.sort,
+          dates_relative_to_daily: !!this.editor.dates_relative_to_daily,
         };
         if (this.editor.slug.trim()) {
           payload.slug = this.editor.slug.trim();
@@ -537,6 +540,7 @@ const SavedViewsPage = {
           description: this.editor.description.trim(),
           filter: parsed.filter,
           sort: parsed.sort,
+          dates_relative_to_daily: !!this.editor.dates_relative_to_daily,
         };
         if (this.editor.slug.trim()) {
           payload.slug = this.editor.slug.trim();
@@ -819,6 +823,15 @@ const SavedViewsPage = {
             <textarea v-model="editor.sort" rows="4" spellcheck="false"></textarea>
             <div v-if="editorErrors.sort" class="form-error">{{ editorErrors.sort }}</div>
           </div>
+          <div class="form-row">
+            <label class="checkbox-label">
+              <input v-model="editor.dates_relative_to_daily" type="checkbox" />
+              <span>Dates relative to daily</span>
+            </label>
+            <div class="form-hint">
+              When embedded on a daily page, "today" / "yesterday" / "N days ago" resolve to that daily's date instead of the actual current date. Useful for views like "Done today" so past dailies show what was done on that day, not zero. Leave off for live views like a current grocery list.
+            </div>
+          </div>
           <div class="form-row form-actions">
             <button class="btn btn-primary" @click="createView" :disabled="saving">
               {{ saving ? "Saving…" : "Create view" }}
@@ -909,6 +922,15 @@ const SavedViewsPage = {
               <label>Sort (JSON)</label>
               <textarea v-model="editor.sort" rows="4" spellcheck="false"></textarea>
               <div v-if="editorErrors.sort" class="form-error">{{ editorErrors.sort }}</div>
+            </div>
+            <div class="form-row">
+              <label class="checkbox-label">
+                <input v-model="editor.dates_relative_to_daily" type="checkbox" />
+                <span>Dates relative to daily</span>
+              </label>
+              <div class="form-hint">
+                When embedded on a daily page, "today" / "yesterday" / "N days ago" resolve to that daily's date instead of the actual current date. Useful for views like "Done today" so past dailies show what was done on that day, not zero. Leave off for live views like a current grocery list.
+              </div>
             </div>
             <div class="form-row form-actions">
               <button class="btn btn-primary" @click="saveEdits" :disabled="saving">

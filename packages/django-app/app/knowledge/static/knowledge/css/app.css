@@ -7820,6 +7820,26 @@ a.hashtag-mention:hover,
   margin-top: 0.5rem;
 }
 
+.saved-view-editor .checkbox-label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.saved-view-editor .checkbox-label input[type="checkbox"] {
+  margin: 0;
+}
+
+.saved-view-editor .form-hint {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
 .saved-view-editor .form-error {
   color: var(--error-text, #d24);
   font-size: 0.85rem;

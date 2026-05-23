@@ -29,6 +29,9 @@ class CreateSavedViewCommand(AbstractBaseCommand):
         description = self.form.cleaned_data.get("description", "") or ""
         filter_spec = self.form.cleaned_data["filter"]
         sort = self.form.cleaned_data.get("sort") or []
+        dates_relative_to_daily = bool(
+            self.form.cleaned_data.get("dates_relative_to_daily")
+        )
 
         if not slug:
             raise ValidationError("slug is required (or supply a name to auto-slug)")
@@ -49,4 +52,5 @@ class CreateSavedViewCommand(AbstractBaseCommand):
             filter_spec=filter_spec,
             sort=sort,
             is_system=False,
+            dates_relative_to_daily=dates_relative_to_daily,
         )

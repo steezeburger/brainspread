@@ -28,6 +28,7 @@ class RunSavedViewCommand(AbstractBaseCommand):
         limit = self.form.cleaned_data.get("limit") or 100
         view_uuid = self.form.cleaned_data.get("view_uuid")
         view_slug = self.form.cleaned_data.get("view_slug")
+        context_date = self.form.cleaned_data.get("context_date")
 
         view = (
             SavedViewRepository.get_by_uuid(str(view_uuid), user=user)
@@ -37,8 +38,21 @@ class RunSavedViewCommand(AbstractBaseCommand):
         if not view:
             raise ValidationError("Saved view not found")
 
+        # Only honor ``context_date`` when the view opts in via
+        # ``dates_relative_to_daily``. Without the gate a stray
+        # ``context_date`` from a daily-page embed would rebase
+        # date tokens on every view — defeating the explicit toggle
+        # the user picked. When the toggle is off the engine falls
+        # back to ``user.today()`` regardless of what the caller sent.
+        effective_context_date = context_date if view.dates_relative_to_daily else None
+
         try:
-            compiled = query_engine.compile(view.filter, user=user, sort=view.sort)
+            compiled = query_engine.compile(
+                view.filter,
+                user=user,
+                sort=view.sort,
+                context_date=effective_context_date,
+            )
         except query_engine.QueryEngineError as exc:
             raise ValidationError(str(exc)) from exc
 
