@@ -174,7 +174,7 @@ MEDIA_ROOT = os.environ.get("MEDIA_ROOT", os.path.join(BASE_DIR, "media"))
 # inconsistent about whether a .py uploads as text/x-python, text/plain,
 # or application/octet-stream depending on OS/file association.
 ASSET_UPLOAD_MAX_BYTES = int(
-    os.environ.get("ASSET_UPLOAD_MAX_BYTES", str(25 * 1024 * 1024))
+    os.environ.get("ASSET_UPLOAD_MAX_BYTES", str(100 * 1024 * 1024))
 )
 ASSET_UPLOAD_MIME_WHITELIST = [
     mime.strip()
