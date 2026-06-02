@@ -8067,15 +8067,12 @@ a.hashtag-mention:hover,
   gap: 0.25rem;
   font-size: 0.75rem;
   font-family: var(--font-mono, monospace);
-  color: var(--text-secondary);
+  color: var(--tag-text);
   background: var(--tag-bg, var(--bg-primary));
   border: 1px solid var(--border-primary);
   border-radius: 3px;
   padding: 0.05rem 0.35rem;
   cursor: help;
-}
-.block-query-embed-anchor.is-anchored {
-  color: var(--text-primary);
 }
 .block-query-embed-anchor.is-unanchored {
   opacity: 0.7;
