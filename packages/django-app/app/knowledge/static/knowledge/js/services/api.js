@@ -865,11 +865,21 @@ class ApiService {
     return await this.request(`/knowledge/api/views/get/?${qs}`);
   }
 
-  async runSavedView({ uuid = null, slug = null, limit = 100 } = {}) {
+  async runSavedView({
+    uuid = null,
+    slug = null,
+    limit = 100,
+    contextDate = null,
+  } = {}) {
     const params = new URLSearchParams();
     if (uuid) params.set("view_uuid", uuid);
     if (slug) params.set("view_slug", slug);
     params.set("limit", String(limit));
+    // contextDate (ISO YYYY-MM-DD) is sent when the embed is rendered
+    // inside a daily page. The server only honors it when the saved
+    // view's ``dates_relative_to_daily`` flag is on; otherwise it's a
+    // no-op. Pass null for non-daily surfaces.
+    if (contextDate) params.set("context_date", contextDate);
     return await this.request(`/knowledge/api/views/run/?${params.toString()}`);
   }
 

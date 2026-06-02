@@ -48,6 +48,10 @@ class UpdateSavedViewCommand(AbstractBaseCommand):
             updates["filter"] = cleaned["filter"]
         if "sort" in cleaned and cleaned["sort"] is not None:
             updates["sort"] = cleaned["sort"]
+        if "dates_relative_to_daily" in cleaned:
+            updates["dates_relative_to_daily"] = bool(
+                cleaned["dates_relative_to_daily"]
+            )
 
         # Re-compile against the proposed filter/sort to catch broken
         # specs before they hit the DB. We pull the merged values so a

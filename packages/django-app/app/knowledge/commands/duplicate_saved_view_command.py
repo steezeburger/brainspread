@@ -39,6 +39,7 @@ class DuplicateSavedViewCommand(AbstractBaseCommand):
             filter_spec=original.filter,
             sort=original.sort,
             is_system=False,
+            dates_relative_to_daily=original.dates_relative_to_daily,
         )
 
     @staticmethod

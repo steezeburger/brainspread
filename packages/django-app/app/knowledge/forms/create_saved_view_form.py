@@ -19,6 +19,7 @@ class CreateSavedViewForm(UserForm):
     description = forms.CharField(max_length=500, required=False)
     filter = forms.JSONField()
     sort = forms.JSONField(required=False)
+    dates_relative_to_daily = forms.BooleanField(required=False)
 
     def clean_filter(self):
         v = self.cleaned_data.get("filter")

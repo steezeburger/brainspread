@@ -68,6 +68,7 @@ class SavedViewRepository(BaseRepository):
         sort: list,
         description: str = "",
         is_system: bool = False,
+        dates_relative_to_daily: bool = False,
     ) -> SavedView:
         return cls.model.objects.create(
             user=user,
@@ -77,6 +78,7 @@ class SavedViewRepository(BaseRepository):
             filter=filter_spec,
             sort=sort,
             is_system=is_system,
+            dates_relative_to_daily=dates_relative_to_daily,
         )
 
     @classmethod

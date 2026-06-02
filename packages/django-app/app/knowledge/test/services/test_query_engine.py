@@ -797,3 +797,94 @@ class TopLevelTests(_EngineTestBase):
     def test_combinator_empty_list_rejected(self):
         with self.assertRaises(query_engine.QueryEngineError):
             query_engine.compile({"all": []}, user=self.user)
+
+
+class ContextDateTests(_EngineTestBase):
+    """``compile(context_date=...)`` rebases relative date tokens.
+
+    The Run command passes the daily-page's date through as context_date
+    when a SavedView has ``dates_relative_to_daily=True``. Tokens that
+    are absolute by construction (ISO ``YYYY-MM-DD``) ignore it.
+    """
+
+    def _run_with_context(self, spec, context_date):
+        compiled = query_engine.compile(spec, user=self.user, context_date=context_date)
+        return list(BlockRepository.run_compiled_query(self.user, compiled))
+
+    def test_today_resolves_to_context_date(self):
+        # ``self.today`` (pinned via the base class) is 2026-04-24. A
+        # context_date of 2026-04-20 should make ``today`` resolve to
+        # that date instead.
+        match = BlockFactory(
+            user=self.user, page=self.page, scheduled_for=date(2026, 4, 20)
+        )
+        BlockFactory(user=self.user, page=self.page, scheduled_for=date(2026, 4, 24))
+        out = self._run_with_context(
+            {"scheduled_for": "today"}, context_date=date(2026, 4, 20)
+        )
+        self.assertEqual([b.id for b in out], [match.id])
+
+    def test_yesterday_rebases_off_context_date(self):
+        # context_date=2026-04-20 → yesterday=2026-04-19
+        match = BlockFactory(
+            user=self.user, page=self.page, scheduled_for=date(2026, 4, 19)
+        )
+        BlockFactory(user=self.user, page=self.page, scheduled_for=date(2026, 4, 23))
+        out = self._run_with_context(
+            {"scheduled_for": "yesterday"}, context_date=date(2026, 4, 20)
+        )
+        self.assertEqual([b.id for b in out], [match.id])
+
+    def test_n_days_ago_rebases_off_context_date(self):
+        # context_date=2026-04-20, "3 days ago" → 2026-04-17
+        match = BlockFactory(
+            user=self.user, page=self.page, scheduled_for=date(2026, 4, 17)
+        )
+        BlockFactory(user=self.user, page=self.page, scheduled_for=date(2026, 4, 21))
+        out = self._run_with_context(
+            {"scheduled_for": {"eq": "3 days ago"}}, context_date=date(2026, 4, 20)
+        )
+        self.assertEqual([b.id for b in out], [match.id])
+
+    def test_iso_date_is_absolute_and_ignores_context(self):
+        match = BlockFactory(
+            user=self.user, page=self.page, scheduled_for=date(2026, 5, 1)
+        )
+        BlockFactory(user=self.user, page=self.page, scheduled_for=date(2026, 4, 20))
+        out = self._run_with_context(
+            {"scheduled_for": "2026-05-01"}, context_date=date(2026, 4, 20)
+        )
+        self.assertEqual([b.id for b in out], [match.id])
+
+    def test_completed_at_today_rebases_to_context_local_day(self):
+        # ``completed_at`` is a DateTimeField — the engine compares
+        # against user-local day boundaries. With context_date=2026-04-20
+        # and user.timezone=UTC, ``completed_at eq today`` should match
+        # the block completed during 2026-04-20 UTC and exclude one
+        # completed on 2026-04-24 (the live today).
+        rebased_match = BlockFactory(
+            user=self.user,
+            page=self.page,
+            completed_at=_utc_noon(date(2026, 4, 20)),
+        )
+        BlockFactory(
+            user=self.user,
+            page=self.page,
+            completed_at=_utc_noon(self.today),  # 2026-04-24
+        )
+        out = self._run_with_context(
+            {"completed_at": "today"}, context_date=date(2026, 4, 20)
+        )
+        self.assertEqual([b.id for b in out], [rebased_match.id])
+
+    def test_none_context_falls_back_to_user_today(self):
+        # Sanity: passing context_date=None (or omitting it) keeps the
+        # existing "live today" semantics, so non-rebased views still
+        # behave as before.
+        match = BlockFactory(user=self.user, page=self.page, scheduled_for=self.today)
+        BlockFactory(user=self.user, page=self.page, scheduled_for=date(2026, 4, 20))
+        compiled = query_engine.compile(
+            {"scheduled_for": "today"}, user=self.user, context_date=None
+        )
+        out = list(BlockRepository.run_compiled_query(self.user, compiled))
+        self.assertEqual([b.id for b in out], [match.id])

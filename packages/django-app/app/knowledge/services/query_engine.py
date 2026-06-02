@@ -80,9 +80,17 @@ _DAYS_AGO_RE = re.compile(r"^(\d+)\s+days?\s+ago$")
 _DAYS_FROM_NOW_RE = re.compile(r"^(?:in\s+(\d+)\s+days?|(\d+)\s+days?\s+from\s+now)$")
 
 
-def _resolve_date_token(raw: Any, user) -> date:
+def _resolve_date_token(raw: Any, user, context_date: "date | None" = None) -> date:
     """Turn a token (``"today"``, ``"3 days ago"``, ``"2026-05-01"``, or a
-    ``date``/``datetime``) into a concrete date in the user's timezone."""
+    ``date``/``datetime``) into a concrete date in the user's timezone.
+
+    When ``context_date`` is provided it's used as the anchor for relative
+    tokens (``today`` / ``yesterday`` / ``N days ago`` / ``N days from
+    now``) instead of ``user.today()``. The "Dates relative to daily"
+    flag on SavedView drives this — embedded views on a daily page pass
+    that daily's date so date filters rebase to the page in view.
+    ISO date strings ignore ``context_date`` (they're absolute by
+    construction)."""
     if isinstance(raw, datetime):
         return raw.date()
     if isinstance(raw, date):
@@ -93,7 +101,7 @@ def _resolve_date_token(raw: Any, user) -> date:
         )
 
     s = raw.strip().lower()
-    today = user.today()
+    today = context_date if context_date is not None else user.today()
 
     if s == "today":
         return today
@@ -131,7 +139,7 @@ def _start_of_local_day(d: date, user) -> datetime:
 _BLOCK_TYPES = {choice[0] for choice in Block._meta.get_field("block_type").choices}
 
 
-def _block_type_q(value: Any, user) -> Q:
+def _block_type_q(value: Any, user, context_date: "date | None" = None) -> Q:
     if isinstance(value, str):
         value = {"eq": value}
     if not isinstance(value, dict):
@@ -157,7 +165,13 @@ def _block_type_q(value: Any, user) -> Q:
     return q
 
 
-def _date_field_q(field_name: str, value: Any, user, is_datetime: bool) -> Q:
+def _date_field_q(
+    field_name: str,
+    value: Any,
+    user,
+    is_datetime: bool,
+    context_date: "date | None" = None,
+) -> Q:
     """Shared compiler for date / datetime predicates.
 
     DateField predicates compare directly. DateTimeField predicates
@@ -179,30 +193,30 @@ def _date_field_q(field_name: str, value: Any, user, is_datetime: bool) -> Q:
                 raise QueryEngineError(f"is_null must be bool: {arg!r}")
             q &= Q(**{f"{field_name}__isnull": arg})
         elif op == "eq":
-            d = _resolve_date_token(arg, user)
+            d = _resolve_date_token(arg, user, context_date)
             q &= _date_eq_q(field_name, d, user, is_datetime)
         elif op == "lt":
-            d = _resolve_date_token(arg, user)
+            d = _resolve_date_token(arg, user, context_date)
             if is_datetime:
                 q &= Q(**{f"{field_name}__lt": _start_of_local_day(d, user)})
             else:
                 q &= Q(**{f"{field_name}__lt": d})
         elif op == "lte":
-            d = _resolve_date_token(arg, user)
+            d = _resolve_date_token(arg, user, context_date)
             if is_datetime:
                 next_day = _start_of_local_day(d + timedelta(days=1), user)
                 q &= Q(**{f"{field_name}__lt": next_day})
             else:
                 q &= Q(**{f"{field_name}__lte": d})
         elif op == "gt":
-            d = _resolve_date_token(arg, user)
+            d = _resolve_date_token(arg, user, context_date)
             if is_datetime:
                 next_day = _start_of_local_day(d + timedelta(days=1), user)
                 q &= Q(**{f"{field_name}__gte": next_day})
             else:
                 q &= Q(**{f"{field_name}__gt": d})
         elif op == "gte":
-            d = _resolve_date_token(arg, user)
+            d = _resolve_date_token(arg, user, context_date)
             if is_datetime:
                 q &= Q(**{f"{field_name}__gte": _start_of_local_day(d, user)})
             else:
@@ -210,8 +224,8 @@ def _date_field_q(field_name: str, value: Any, user, is_datetime: bool) -> Q:
         elif op == "between":
             if not isinstance(arg, list) or len(arg) != 2:
                 raise QueryEngineError(f"between must be [start, end] (got {arg!r})")
-            start_d = _resolve_date_token(arg[0], user)
-            end_d = _resolve_date_token(arg[1], user)
+            start_d = _resolve_date_token(arg[0], user, context_date)
+            end_d = _resolve_date_token(arg[1], user, context_date)
             if is_datetime:
                 q &= Q(
                     **{
@@ -241,15 +255,19 @@ def _date_eq_q(field_name: str, d: date, user, is_datetime: bool) -> Q:
     return Q(**{field_name: d})
 
 
-def _scheduled_for_q(value: Any, user) -> Q:
-    return _date_field_q("scheduled_for", value, user, is_datetime=False)
+def _scheduled_for_q(value: Any, user, context_date: "date | None" = None) -> Q:
+    return _date_field_q(
+        "scheduled_for", value, user, is_datetime=False, context_date=context_date
+    )
 
 
-def _completed_at_q(value: Any, user) -> Q:
-    return _date_field_q("completed_at", value, user, is_datetime=True)
+def _completed_at_q(value: Any, user, context_date: "date | None" = None) -> Q:
+    return _date_field_q(
+        "completed_at", value, user, is_datetime=True, context_date=context_date
+    )
 
 
-def _has_tag_q(value: Any, user) -> Q:
+def _has_tag_q(value: Any, user, context_date: "date | None" = None) -> Q:
     """Compose-friendly tag predicate.
 
     Matches a block when *either*:
@@ -320,14 +338,14 @@ def _validate_property_key(key: Any, predicate: str) -> str:
     return key
 
 
-def _has_property_q(value: Any, user) -> Q:
+def _has_property_q(value: Any, user, context_date: "date | None" = None) -> Q:
     if isinstance(value, dict):
         value = value.get("eq")
     key = _validate_property_key(value, "has_property")
     return Q(properties__has_key=key)
 
 
-def _property_eq_q(value: Any, user) -> Q:
+def _property_eq_q(value: Any, user, context_date: "date | None" = None) -> Q:
     """Op-dict predicate against ``Block.properties[key]``.
 
     Shorthand ``{"key": K, "value": V}`` is treated as ``{"key": K,
@@ -417,7 +435,7 @@ def _property_eq_q(value: Any, user) -> Q:
     return q
 
 
-def _content_contains_q(value: Any, user) -> Q:
+def _content_contains_q(value: Any, user, context_date: "date | None" = None) -> Q:
     if isinstance(value, dict):
         value = value.get("eq")
     if not isinstance(value, str) or not value:
@@ -435,7 +453,7 @@ def _page_types() -> "set[str]":
     return {choice[0] for choice in Page._meta.get_field("page_type").choices}
 
 
-def _page_type_q(value: Any, user) -> Q:
+def _page_type_q(value: Any, user, context_date: "date | None" = None) -> Q:
     """Filter blocks by their page's ``page_type``.
 
     Shorthand ``"template"`` is treated as ``{"eq": "template"}``. The
@@ -472,7 +490,7 @@ def _page_type_q(value: Any, user) -> Q:
     return q
 
 
-PREDICATE_HANDLERS: Dict[str, Callable[[Any, Any], Q]] = {
+PREDICATE_HANDLERS: Dict[str, Callable[..., Q]] = {
     "block_type": _block_type_q,
     "scheduled_for": _scheduled_for_q,
     "completed_at": _completed_at_q,
@@ -491,7 +509,7 @@ COMBINATORS = ("all", "any", "not")
 # ---------------------------------------------------------------------------
 
 
-def _compile_node(spec: Any, user) -> Q:
+def _compile_node(spec: Any, user, context_date: "date | None" = None) -> Q:
     if not isinstance(spec, dict):
         raise QueryEngineError(
             f"Filter node must be a dict, got {type(spec).__name__}: {spec!r}"
@@ -518,13 +536,13 @@ def _compile_node(spec: Any, user) -> Q:
                     "'not' combinator requires a single non-empty filter "
                     "node as its value"
                 )
-            return ~_compile_node(value, user)
+            return ~_compile_node(value, user, context_date)
 
         if not isinstance(value, list) or not value:
             raise QueryEngineError(
                 f"{key!r} combinator requires a non-empty list of children"
             )
-        children = [_compile_node(child, user) for child in value]
+        children = [_compile_node(child, user, context_date) for child in value]
         if key == "all":
             combined = Q()
             for child_q in children:
@@ -539,7 +557,7 @@ def _compile_node(spec: Any, user) -> Q:
     handler = PREDICATE_HANDLERS.get(key)
     if handler is None:
         raise QueryEngineError(f"Unknown filter field/combinator: {key!r}")
-    return handler(value, user)
+    return handler(value, user, context_date)
 
 
 _SORT_FIELDS = {
@@ -612,16 +630,27 @@ def _spec_mentions_page_type(spec: Any) -> bool:
     return False
 
 
-def compile(spec: Any, user, sort: Any = None) -> CompiledQuery:
+def compile(
+    spec: Any,
+    user,
+    sort: Any = None,
+    context_date: "date | None" = None,
+) -> CompiledQuery:
     """Compile a filter spec (and optional sort spec) into a CompiledQuery.
 
     Resolution of relative date tokens happens here against
-    ``user.today()`` — meaning "today" snaps at compile time, not at
-    queryset evaluation, so a freshly-compiled query is always evaluated
-    against a stable today.
+    ``user.today()`` (or ``context_date`` if provided) — meaning "today"
+    snaps at compile time, not at queryset evaluation, so a freshly-
+    compiled query is always evaluated against a stable today.
+
+    ``context_date`` is the "Dates relative to daily" plumbing: when a
+    saved view is rendered as an embed on a daily page, the caller (the
+    Run command) passes that daily's date so date tokens rebase to the
+    page in view instead of the live current date. Pass ``None`` (the
+    default) to keep the live-today semantics.
     """
     return CompiledQuery(
-        filter_q=_compile_node(spec, user),
+        filter_q=_compile_node(spec, user, context_date),
         order_by=_compile_sort(sort),
         includes_page_type=_spec_mentions_page_type(spec),
     )

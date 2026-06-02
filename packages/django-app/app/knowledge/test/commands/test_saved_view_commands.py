@@ -89,6 +89,16 @@ class CreateSavedViewTests(_SavedViewTestBase):
         with self.assertRaises(ValidationError):
             self._make(filter={"never_heard_of_it": 1})
 
+    def test_dates_relative_to_daily_defaults_off(self):
+        view = self._make()
+        self.assertFalse(view.dates_relative_to_daily)
+
+    def test_dates_relative_to_daily_persists_when_set(self):
+        view = self._make(dates_relative_to_daily=True)
+        self.assertTrue(view.dates_relative_to_daily)
+        # Round-trip through to_dict so the API payload matches.
+        self.assertTrue(view.to_dict()["dates_relative_to_daily"])
+
 
 class UpdateSavedViewTests(_SavedViewTestBase):
     def _create_user_view(self):
@@ -116,6 +126,32 @@ class UpdateSavedViewTests(_SavedViewTestBase):
         updated = UpdateSavedViewCommand(form).execute()
         self.assertEqual(updated.name, "Renamed")
         self.assertEqual(updated.filter, {"block_type": "doing"})
+
+    def test_can_toggle_dates_relative_to_daily(self):
+        view = self._create_user_view()
+        self.assertFalse(view.dates_relative_to_daily)
+        form = UpdateSavedViewForm(
+            {
+                "user": self.user.id,
+                "view_uuid": str(view.uuid),
+                "dates_relative_to_daily": True,
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        updated = UpdateSavedViewCommand(form).execute()
+        self.assertTrue(updated.dates_relative_to_daily)
+
+        # And it can be turned back off.
+        off_form = UpdateSavedViewForm(
+            {
+                "user": self.user.id,
+                "view_uuid": str(view.uuid),
+                "dates_relative_to_daily": False,
+            }
+        )
+        self.assertTrue(off_form.is_valid())
+        off = UpdateSavedViewCommand(off_form).execute()
+        self.assertFalse(off.dates_relative_to_daily)
 
     def test_cannot_edit_system_view(self):
         sys_view = SavedView.objects.get(
@@ -249,6 +285,120 @@ class RunSavedViewTests(_SavedViewTestBase):
         self.assertTrue(form.is_valid())
         with self.assertRaises(ValidationError):
             RunSavedViewCommand(form).execute()
+
+    def test_context_date_rebases_today_when_view_opts_in(self):
+        # "Done today" with dates_relative_to_daily=True, run with
+        # context_date=2026-04-20 → counts blocks completed on that day,
+        # not on the live today (2026-04-24).
+        view = SavedView.objects.create(
+            user=self.user,
+            name="Done today",
+            slug="done-today",
+            filter={
+                "all": [
+                    {"block_type": {"in": ["done", "wontdo"]}},
+                    {"completed_at": "today"},
+                ]
+            },
+            dates_relative_to_daily=True,
+        )
+        rebased_match = BlockFactory(
+            user=self.user,
+            page=self.page,
+            block_type="done",
+            completed_at=_utc_noon(date(2026, 4, 20)),
+        )
+        BlockFactory(
+            user=self.user,
+            page=self.page,
+            block_type="done",
+            completed_at=_utc_noon(self.today),
+        )
+        form = RunSavedViewForm(
+            {
+                "user": self.user.id,
+                "view_uuid": str(view.uuid),
+                "context_date": "2026-04-20",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        result = RunSavedViewCommand(form).execute()
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["results"][0]["uuid"], str(rebased_match.uuid))
+
+    def test_context_date_ignored_when_view_does_not_opt_in(self):
+        # Same view but without the flag — context_date is sent by the
+        # client (every daily-page embed sends it) but the command must
+        # ignore it, leaving "today" resolved to the live current date.
+        view = SavedView.objects.create(
+            user=self.user,
+            name="Done today (live)",
+            slug="done-today-live",
+            filter={
+                "all": [
+                    {"block_type": {"in": ["done", "wontdo"]}},
+                    {"completed_at": "today"},
+                ]
+            },
+            dates_relative_to_daily=False,
+        )
+        BlockFactory(
+            user=self.user,
+            page=self.page,
+            block_type="done",
+            completed_at=_utc_noon(date(2026, 4, 20)),
+        )
+        live_match = BlockFactory(
+            user=self.user,
+            page=self.page,
+            block_type="done",
+            completed_at=_utc_noon(self.today),
+        )
+        form = RunSavedViewForm(
+            {
+                "user": self.user.id,
+                "view_uuid": str(view.uuid),
+                "context_date": "2026-04-20",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        result = RunSavedViewCommand(form).execute()
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["results"][0]["uuid"], str(live_match.uuid))
+
+    def test_no_context_date_with_flag_falls_back_to_today(self):
+        # The toggle is on but no context_date is sent (the standalone
+        # /views runner has no daily context). Should resolve to today
+        # like normal — the flag without a date is harmless.
+        view = SavedView.objects.create(
+            user=self.user,
+            name="Done today (rebases)",
+            slug="done-today-rebases",
+            filter={
+                "all": [
+                    {"block_type": {"in": ["done", "wontdo"]}},
+                    {"completed_at": "today"},
+                ]
+            },
+            dates_relative_to_daily=True,
+        )
+        live_match = BlockFactory(
+            user=self.user,
+            page=self.page,
+            block_type="done",
+            completed_at=_utc_noon(self.today),
+        )
+        BlockFactory(
+            user=self.user,
+            page=self.page,
+            block_type="done",
+            completed_at=_utc_noon(date(2026, 4, 20)),
+        )
+        form = RunSavedViewForm({"user": self.user.id, "view_uuid": str(view.uuid)})
+        self.assertTrue(form.is_valid(), form.errors)
+        result = RunSavedViewCommand(form).execute()
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["results"][0]["uuid"], str(live_match.uuid))
 
 
 class ListGetSavedViewTests(_SavedViewTestBase):

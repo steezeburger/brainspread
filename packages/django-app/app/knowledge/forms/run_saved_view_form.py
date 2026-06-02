@@ -9,6 +9,10 @@ class RunSavedViewForm(UserForm):
     view_uuid = forms.UUIDField(required=False)
     view_slug = forms.SlugField(required=False, max_length=200)
     limit = forms.IntegerField(min_value=1, max_value=500, required=False, initial=100)
+    # ISO YYYY-MM-DD. Only honored when the view has
+    # ``dates_relative_to_daily=True``; otherwise the command ignores it
+    # so a stray context_date can't shift a "live today" view.
+    context_date = forms.DateField(required=False)
 
     def clean(self):
         cleaned = super().clean()

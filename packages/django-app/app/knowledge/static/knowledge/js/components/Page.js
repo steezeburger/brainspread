@@ -4043,6 +4043,7 @@ const Page = {
             v-for="(embed, idx) in embeddedViews"
             :key="embed.uuid"
             :embed="embed"
+            :context-date="currentDate"
             :on-delete="deleteEmbed"
             :on-toggle-collapsed="toggleEmbedCollapsed"
             :on-move-up="idx > 0 ? moveEmbedUp : null"

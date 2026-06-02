@@ -55,6 +55,15 @@ class SavedView(UUIDModelMixin, CRUDTimestampsMixin):
         default=False,
         help_text="Pinned views surface in the left-nav for one-click access",
     )
+    dates_relative_to_daily = models.BooleanField(
+        default=False,
+        help_text=(
+            "When True, date tokens (today/yesterday/N days ago) in this "
+            "view's filter resolve against the daily page the embed is "
+            "rendered on, rather than the actual current date. No-op when "
+            "the view is rendered outside a daily page context."
+        ),
+    )
 
     class Meta:
         db_table = "saved_views"
@@ -77,6 +86,7 @@ class SavedView(UUIDModelMixin, CRUDTimestampsMixin):
             "sort": self.sort or [],
             "is_system": self.is_system,
             "pinned": self.pinned,
+            "dates_relative_to_daily": self.dates_relative_to_daily,
             "user_uuid": str(self.user.uuid),
             "created_at": self.created_at.isoformat(),
             "modified_at": self.modified_at.isoformat(),
@@ -92,6 +102,7 @@ class SavedViewData(TypedDict):
     sort: List[Dict[str, Any]]
     is_system: bool
     pinned: bool
+    dates_relative_to_daily: bool
     user_uuid: str
     created_at: str
     modified_at: str
