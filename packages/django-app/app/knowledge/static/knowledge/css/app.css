@@ -8061,6 +8061,33 @@ a.hashtag-mention:hover,
   color: var(--text-secondary);
   font-family: var(--font-mono, monospace);
 }
+.block-query-embed-anchor {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-secondary);
+  background: var(--tag-bg, var(--bg-primary));
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  padding: 0.05rem 0.35rem;
+  cursor: help;
+}
+.block-query-embed-anchor.is-anchored {
+  color: var(--text-primary);
+}
+.block-query-embed-anchor.is-unanchored {
+  opacity: 0.7;
+  font-style: italic;
+}
+.block-query-embed-anchor-icon {
+  flex: none;
+  display: block;
+}
+.block-query-embed-anchor-label {
+  white-space: nowrap;
+}
 .block-query-embed-actions {
   display: inline-flex;
   gap: 0.25rem;

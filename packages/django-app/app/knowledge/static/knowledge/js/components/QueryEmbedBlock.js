@@ -53,6 +53,44 @@ window.QueryEmbedBlock = {
     collapsed() {
       return !!(this.embed && this.embed.collapsed);
     },
+    // The date-anchor badge: tells the reader whether this embed's date
+    // tokens resolved against the daily it's on, or against live today.
+    // Falls back to ``null`` until the first fetch lands, since we need
+    // the view payload's ``dates_relative_to_daily`` to know which mode
+    // we're in. Until then there's nothing to show, which is fine —
+    // the header loads in milliseconds and the badge appears with the
+    // results.
+    dateAnchor() {
+      if (!this.result || !this.result.view) return null;
+      const rebases = !!this.result.view.dates_relative_to_daily;
+      if (rebases && this.contextDate) {
+        return {
+          kind: "anchored",
+          label: this.contextDate,
+          tooltip:
+            `Date tokens (today / yesterday / N days ago) resolve to ` +
+            `${this.contextDate} for this embed — the daily page's date.`,
+        };
+      }
+      if (rebases) {
+        return {
+          kind: "unanchored",
+          label: "today",
+          tooltip:
+            `This view is set to "Dates relative to daily", but there's ` +
+            `no daily page in scope — date tokens fall back to the ` +
+            `current date.`,
+        };
+      }
+      return {
+        kind: "live",
+        label: "live",
+        tooltip:
+          `Date tokens (today / yesterday / N days ago) resolve to the ` +
+          `current date. Turn on "Dates relative to daily" in the saved ` +
+          `view editor to anchor them to the daily page instead.`,
+      };
+    },
   },
 
   mounted() {
@@ -162,6 +200,23 @@ window.QueryEmbedBlock = {
           :aria-label="collapsed ? 'Expand embed' : 'Collapse embed'"
         >{{ collapsed ? '▶' : '▼' }}</button>
         <a class="block-query-embed-title" :href="viewLink">≡ {{ title }}</a>
+        <span
+          v-if="dateAnchor && !collapsed"
+          class="block-query-embed-anchor"
+          :class="'is-' + dateAnchor.kind"
+          :title="dateAnchor.tooltip"
+        >
+          <svg
+            v-if="dateAnchor.kind !== 'live'"
+            class="block-query-embed-anchor-icon"
+            viewBox="0 0 16 16"
+            width="11"
+            height="11"
+            aria-hidden="true"
+            focusable="false"
+          ><path fill="currentColor" d="M8 1.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3ZM7.25 5.92V7.5H5.5a.5.5 0 0 0 0 1h1.75v4.97c-1.49-.18-2.62-1.07-3.13-1.91l.72-.43a.4.4 0 0 0-.15-.74L2.5 9.85a.4.4 0 0 0-.5.4v2.34a.4.4 0 0 0 .65.31l.7-.55C4.05 13.55 5.83 14.5 8 14.5s3.95-.95 4.65-2.15l.7.55a.4.4 0 0 0 .65-.31v-2.34a.4.4 0 0 0-.5-.4l-2.19.54a.4.4 0 0 0-.15.74l.72.43c-.51.84-1.64 1.73-3.13 1.91V8.5h1.75a.5.5 0 0 0 0-1H8.75V5.92a2.5 2.5 0 1 0-1.5 0Z"/></svg>
+          <span class="block-query-embed-anchor-label">{{ dateAnchor.label }}</span>
+        </span>
         <span v-if="result && !collapsed" class="block-query-embed-meta">
           {{ result.count }}<span v-if="result.truncated">+ truncated</span>
         </span>
