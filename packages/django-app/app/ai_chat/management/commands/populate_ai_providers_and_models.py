@@ -47,15 +47,21 @@ class Command(BaseCommand):
             # Anthropic models
             (
                 "Anthropic",
+                "claude-opus-4-8",
+                "Claude Opus 4.8",
+                "Most capable Claude model; adaptive thinking, 1M context",
+            ),
+            (
+                "Anthropic",
                 "claude-opus-4-7",
                 "Claude Opus 4.7",
-                "Most capable Claude model; adaptive thinking, 1M context",
+                "Previous-generation Opus; adaptive thinking, 1M context",
             ),
             (
                 "Anthropic",
                 "claude-opus-4-6",
                 "Claude Opus 4.6",
-                "Previous-generation Opus; adaptive thinking, 1M context",
+                "Older Opus; adaptive thinking, 1M context",
             ),
             (
                 "Anthropic",

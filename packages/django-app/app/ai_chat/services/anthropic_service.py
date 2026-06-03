@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 # Claude models that support extended thinking. Keep this list conservative —
 # enabling `thinking` on a model that doesn't support it raises at the API.
 THINKING_CAPABLE_MODEL_PREFIXES = (
+    "claude-opus-4-8",
     "claude-opus-4-7",
     "claude-opus-4-6",
     "claude-sonnet-4-6",
@@ -29,6 +30,7 @@ THINKING_CAPABLE_MODEL_PREFIXES = (
 # Subset that accepts `thinking: {type: "adaptive"}`. Haiku 4.5 supports
 # extended thinking but only in `enabled` mode — adaptive returns a 400.
 ADAPTIVE_THINKING_CAPABLE_MODEL_PREFIXES = (
+    "claude-opus-4-8",
     "claude-opus-4-7",
     "claude-opus-4-6",
     "claude-sonnet-4-6",
@@ -41,6 +43,7 @@ ENABLED_THINKING_BUDGET_TOKENS = 4096
 # Models that accept `output_config.effort`. Sending it to Haiku 4.5 (or older
 # non-4.6 models) returns a 400.
 EFFORT_CAPABLE_MODEL_PREFIXES = (
+    "claude-opus-4-8",
     "claude-opus-4-7",
     "claude-opus-4-6",
     "claude-sonnet-4-6",
