@@ -774,6 +774,49 @@ const SavedViewsPage = {
         return content.length > 200 ? content.slice(0, 200) + "…" : content;
       return "(empty block)";
     },
+
+    isTodoType(b) {
+      return ["todo", "doing", "done", "later", "wontdo"].includes(
+        b && b.block_type
+      );
+    },
+
+    bulletSymbol(b) {
+      switch (b && b.block_type) {
+        case "todo":
+        case "later":
+          return "☐";
+        case "doing":
+          return "◐";
+        case "done":
+          return "☑";
+        case "wontdo":
+          return "⊘";
+        default:
+          return "•";
+      }
+    },
+
+    async toggleResultTodo(b) {
+      if (!this.isTodoType(b)) return;
+      try {
+        const r = await window.apiService.toggleBlockTodo(b.uuid);
+        if (r && r.success && r.data) {
+          // Update in place — see QueryEmbedBlock for rationale.
+          b.block_type = r.data.block_type;
+          b.completed_at = r.data.completed_at;
+          b.content = r.data.content;
+        } else {
+          const errs = (r && r.errors) || {};
+          this.runError =
+            (errs.non_field_errors && errs.non_field_errors[0]) ||
+            "Failed to toggle todo";
+        }
+      } catch (err) {
+        console.error("toggleBlockTodo failed:", err);
+        this.runError = "failed to toggle todo. please try again.";
+      }
+    },
   },
 
   template: `
@@ -929,15 +972,31 @@ const SavedViewsPage = {
             <div v-else-if="!runResult.results.length" class="empty-state">No matches.</div>
             <ul v-else class="result-list">
               <li v-for="b in runResult.results" :key="b.uuid">
-                <a :href="blockHref(b)" class="result-row">
-                  <span class="result-content">{{ blockLabel(b) }}</span>
-                  <span class="result-meta">
-                    <span v-if="b.block_type" class="result-block-type">{{ b.block_type }}</span>
-                    <span v-if="b.scheduled_for"> · due {{ b.scheduled_for }}</span>
-                    <span v-if="b.completed_at"> · done {{ b.completed_at.split('T')[0] }}</span>
-                    <span v-if="b.page_title"> · {{ b.page_title }}</span>
-                  </span>
-                </a>
+                <div class="result-row">
+                  <div
+                    class="block-bullet"
+                    :class="{
+                      'todo': b.block_type === 'todo',
+                      'doing': b.block_type === 'doing',
+                      'done': b.block_type === 'done',
+                      'later': b.block_type === 'later',
+                      'wontdo': b.block_type === 'wontdo'
+                    }"
+                    @click.stop="isTodoType(b) ? toggleResultTodo(b) : null"
+                    :title="isTodoType(b) ? 'Cycle todo state' : ''"
+                    :role="isTodoType(b) ? 'button' : null"
+                    :aria-label="isTodoType(b) ? 'Cycle todo state' : null"
+                  >{{ bulletSymbol(b) }}</div>
+                  <a :href="blockHref(b)" class="result-row-link">
+                    <span class="result-content">{{ blockLabel(b) }}</span>
+                    <span class="result-meta">
+                      <span v-if="b.block_type" class="result-block-type">{{ b.block_type }}</span>
+                      <span v-if="b.scheduled_for"> · due {{ b.scheduled_for }}</span>
+                      <span v-if="b.completed_at"> · done {{ b.completed_at.split('T')[0] }}</span>
+                      <span v-if="b.page_title"> · {{ b.page_title }}</span>
+                    </span>
+                  </a>
+                </div>
               </li>
             </ul>
           </div>

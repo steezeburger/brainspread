@@ -9,8 +9,11 @@
  * handles persistence (POST/DELETE/PUT to /api/embeds/) and refreshes
  * its own embedded_views state after each call.
  *
- * The result list itself is read-only — clicking a row jumps to that
- * block on its source page so the user can interact with it there.
+ * Result rows surface the block's todo-state bullet; clicking the
+ * bullet cycles the block's state in place via the same endpoint
+ * BlockComponent uses. The text portion remains a navigation link to
+ * the source page — inline content edits still require clicking
+ * through to the block on its home page.
  */
 window.QueryEmbedBlock = {
   props: {
@@ -101,6 +104,50 @@ window.QueryEmbedBlock = {
       if (!c) return "(empty block)";
       return c.length > 200 ? c.slice(0, 200) + "…" : c;
     },
+    isTodoType(b) {
+      return ["todo", "doing", "done", "later", "wontdo"].includes(
+        b && b.block_type
+      );
+    },
+    bulletSymbol(b) {
+      switch (b && b.block_type) {
+        case "todo":
+        case "later":
+          return "☐";
+        case "doing":
+          return "◐";
+        case "done":
+          return "☑";
+        case "wontdo":
+          return "⊘";
+        default:
+          return "•";
+      }
+    },
+    async toggleTodo(b) {
+      if (!this.isTodoType(b)) return;
+      try {
+        const r = await window.apiService.toggleBlockTodo(b.uuid);
+        if (r && r.success && r.data) {
+          // Mutate in place so the bullet + meta update without
+          // refetching the whole embed. The row stays visible even
+          // when the new state falls outside the saved view's filter
+          // — gives the user immediate "yes that worked" feedback;
+          // a real refresh happens on the next fetch.
+          b.block_type = r.data.block_type;
+          b.completed_at = r.data.completed_at;
+          b.content = r.data.content;
+        } else {
+          const errs = (r && r.errors) || {};
+          this.error =
+            (errs.non_field_errors && errs.non_field_errors[0]) ||
+            "Failed to toggle todo";
+        }
+      } catch (err) {
+        console.error("toggleBlockTodo failed:", err);
+        this.error = "failed to toggle todo. please try again.";
+      }
+    },
     onRemoveClick() {
       if (!this.onDelete) return;
       this.onDelete(this.embed);
@@ -169,15 +216,31 @@ window.QueryEmbedBlock = {
         </div>
         <ul v-else class="result-list">
           <li v-for="b in result.results" :key="b.uuid">
-            <a :href="blockHref(b)" class="result-row">
-              <span class="result-content">{{ blockLabel(b) }}</span>
-              <span class="result-meta">
-                <span v-if="b.block_type" class="result-block-type">{{ b.block_type }}</span>
-                <span v-if="b.scheduled_for"> · due {{ b.scheduled_for }}</span>
-                <span v-if="b.completed_at"> · done {{ b.completed_at.split('T')[0] }}</span>
-                <span v-if="b.page_title"> · {{ b.page_title }}</span>
-              </span>
-            </a>
+            <div class="result-row">
+              <div
+                class="block-bullet"
+                :class="{
+                  'todo': b.block_type === 'todo',
+                  'doing': b.block_type === 'doing',
+                  'done': b.block_type === 'done',
+                  'later': b.block_type === 'later',
+                  'wontdo': b.block_type === 'wontdo'
+                }"
+                @click.stop="isTodoType(b) ? toggleTodo(b) : null"
+                :title="isTodoType(b) ? 'Cycle todo state' : ''"
+                :role="isTodoType(b) ? 'button' : null"
+                :aria-label="isTodoType(b) ? 'Cycle todo state' : null"
+              >{{ bulletSymbol(b) }}</div>
+              <a :href="blockHref(b)" class="result-row-link">
+                <span class="result-content">{{ blockLabel(b) }}</span>
+                <span class="result-meta">
+                  <span v-if="b.block_type" class="result-block-type">{{ b.block_type }}</span>
+                  <span v-if="b.scheduled_for"> · due {{ b.scheduled_for }}</span>
+                  <span v-if="b.completed_at"> · done {{ b.completed_at.split('T')[0] }}</span>
+                  <span v-if="b.page_title"> · {{ b.page_title }}</span>
+                </span>
+              </a>
+            </div>
           </li>
         </ul>
       </template>
