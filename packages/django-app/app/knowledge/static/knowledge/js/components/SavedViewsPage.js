@@ -18,6 +18,8 @@ const SavedViewsPage = {
 
   components: {
     ScheduleBlockPopover: window.ScheduleBlockPopover || {},
+    BlockInfoModal: window.BlockInfoModal || {},
+    EmbedContextMenu: window.EmbedContextMenu || {},
   },
 
   data() {
@@ -47,12 +49,6 @@ const SavedViewsPage = {
       // "you already have a view for this" banner above the editor.
       prefillMatch: null,
 
-      // Per-row context menu — one menu is rendered for the whole
-      // results list and positioned at the click point; `menuBlock`
-      // is the row it was opened for.
-      menuBlock: null,
-      menuPosition: { x: 0, y: 0 },
-
       // Schedule popover state — mirrors Page.js. SavedViewsPage owns
       // its own popover so the schedule action works on this surface
       // without depending on a host page.
@@ -61,6 +57,10 @@ const SavedViewsPage = {
       schedulePopoverInitialDate: "",
       schedulePopoverInitialReminderDate: "",
       schedulePopoverInitialTime: "",
+
+      // Block info modal — same rationale as the schedule popover.
+      blockInfoModalOpen: false,
+      blockInfoModalBlock: null,
     };
   },
 
@@ -325,7 +325,6 @@ const SavedViewsPage = {
         this._onBlocksChanged
       );
     }
-    this.closeRowMenu();
   },
 
   methods: {
@@ -872,74 +871,32 @@ const SavedViewsPage = {
     },
 
     openRowMenu(b, event) {
-      if (!b) return;
-      event.preventDefault();
-      event.stopPropagation();
-
-      // Position math mirrors BlockComponent.showContextMenuAt so the
-      // menu clamps to the viewport on mobile / narrow windows.
-      const menuWidth = 200;
-      const shadowOffset = 4;
-      const isMobile = window.innerWidth <= 768;
-      const edgePadding = isMobile ? 20 : 10;
-      const bottomPadding = isMobile ? 60 : 10;
-
-      let x = event.clientX;
-      let y = event.clientY;
-      const vw = window.innerWidth;
-
-      if (x + menuWidth + shadowOffset > vw - edgePadding) {
-        x = vw - menuWidth - shadowOffset - edgePadding;
-      }
-      x = Math.max(edgePadding, x);
-
-      this.menuPosition = { x, y };
-      this.menuBlock = b;
-
-      this.$nextTick(() => {
-        const el = this.$el?.querySelector(".block-context-menu");
-        if (!el) return;
-        const h = el.offsetHeight;
-        const vh = window.innerHeight;
-        let ny = y;
-        if (ny + h + shadowOffset > vh - bottomPadding) {
-          ny = vh - h - shadowOffset - bottomPadding;
-        }
-        ny = Math.max(edgePadding, ny);
-        if (ny !== this.menuPosition.y) {
-          this.menuPosition = { x, y: ny };
-        }
-      });
-
-      setTimeout(() => {
-        document.addEventListener("click", this.closeRowMenu);
-      }, 10);
+      this.$refs.rowMenu?.openAt(b, event);
     },
 
-    closeRowMenu() {
-      this.menuBlock = null;
-      document.removeEventListener("click", this.closeRowMenu);
-    },
-
-    async menuAction(action) {
-      const b = this.menuBlock;
-      this.closeRowMenu();
-      if (!b) return;
+    async onMenuAction({ action, block }) {
+      if (!block) return;
       switch (action) {
         case "moveToToday":
-          await this.actionMoveToToday(b);
+          await this.actionMoveToToday(block);
           break;
         case "moveToPage":
-          await this.actionMoveToPage(b);
+          await this.actionMoveToPage(block);
+          break;
+        case "copyLink":
+          await this.actionCopyLink(block);
           break;
         case "schedule":
-          this.actionSchedule(b, { clear: false });
+          this.actionSchedule(block, { clear: false });
           break;
         case "unschedule":
-          this.actionSchedule(b, { clear: true });
+          this.actionSchedule(block, { clear: true });
+          break;
+        case "blockInfo":
+          this.actionBlockInfo(block);
           break;
         case "delete":
-          await this.actionDelete(b);
+          await this.actionDelete(block);
           break;
       }
     },
@@ -1001,6 +958,45 @@ const SavedViewsPage = {
         console.error("moveBlockToPage failed:", err);
         this.runError = `failed to move block: ${err.message || err}`;
       }
+    },
+
+    async actionCopyLink(b) {
+      if (!b.page_slug) {
+        this.runError = "could not build block link";
+        return;
+      }
+      const url = `${window.location.origin}/knowledge/page/${encodeURIComponent(b.page_slug)}/#block-${b.uuid}`;
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(url);
+          return;
+        }
+      } catch (err) {
+        console.warn("clipboard API failed, falling back:", err);
+      }
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = url;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch (err) {
+        console.error("clipboard fallback failed:", err);
+        this.runError = "could not copy link";
+      }
+    },
+
+    actionBlockInfo(b) {
+      this.blockInfoModalBlock = b;
+      this.blockInfoModalOpen = true;
+    },
+
+    closeBlockInfoModal() {
+      this.blockInfoModalOpen = false;
+      this.blockInfoModalBlock = null;
     },
 
     actionSchedule(b, { clear = false } = {}) {
@@ -1263,37 +1259,12 @@ const SavedViewsPage = {
         </template>
       </div>
 
-      <!-- Row context menu (shared across all result rows) -->
-      <div
-        v-if="menuBlock"
-        class="block-context-menu"
-        :style="{ left: menuPosition.x + 'px', top: menuPosition.y + 'px' }"
-        @click.stop
-        role="menu"
-      >
-        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="menuAction('moveToToday')">
-          <span class="context-menu-icon">⇨</span>
-          <span>move to today's daily</span>
-        </button>
-        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="menuAction('moveToPage')">
-          <span class="context-menu-icon">→</span>
-          <span>move to page…</span>
-        </button>
-        <div class="context-menu-separator"></div>
-        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="menuAction('schedule')">
-          <span class="context-menu-icon">◷</span>
-          <span>{{ menuBlock.scheduled_for ? 'reschedule…' : 'schedule…' }}</span>
-        </button>
-        <button v-if="menuBlock.scheduled_for" class="context-menu-item" role="menuitem" tabindex="-1" @click="menuAction('unschedule')">
-          <span class="context-menu-icon">×</span>
-          <span>clear schedule</span>
-        </button>
-        <div class="context-menu-separator"></div>
-        <button class="context-menu-item context-menu-danger" role="menuitem" tabindex="-1" @click="menuAction('delete')">
-          <span class="context-menu-icon">×</span>
-          <span>delete</span>
-        </button>
-      </div>
+      <EmbedContextMenu
+        ref="rowMenu"
+        :can-schedule="true"
+        :can-block-info="true"
+        @action="onMenuAction"
+      />
 
       <ScheduleBlockPopover
         :is-open="schedulePopoverOpen"
@@ -1302,6 +1273,12 @@ const SavedViewsPage = {
         :initial-time="schedulePopoverInitialTime"
         @save="onSchedulePopoverSave"
         @cancel="onSchedulePopoverCancel"
+      />
+
+      <BlockInfoModal
+        :is-open="blockInfoModalOpen"
+        :block="blockInfoModalBlock"
+        @close="closeBlockInfoModal"
       />
     </div>
   `,

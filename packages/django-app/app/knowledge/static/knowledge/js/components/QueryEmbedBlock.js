@@ -11,11 +11,15 @@
  *
  * Result rows surface the block's todo-state bullet; clicking the
  * bullet cycles the block's state in place via the same endpoint
- * BlockComponent uses. The text portion remains a navigation link to
- * the source page — inline content edits still require clicking
- * through to the block on its home page.
+ * BlockComponent uses. Right-click (or the hover ⋮) opens an
+ * EmbedContextMenu — see that component for the action list. Inline
+ * content edits still require clicking through to the source page.
  */
 window.QueryEmbedBlock = {
+  components: {
+    EmbedContextMenu: window.EmbedContextMenu || {},
+  },
+
   props: {
     embed: { type: Object, required: true },
     // All optional so the embed can also render outside the page
@@ -24,11 +28,13 @@ window.QueryEmbedBlock = {
     onToggleCollapsed: { type: Function, default: null },
     onMoveUp: { type: Function, default: null },
     onMoveDown: { type: Function, default: null },
-    // Schedule needs the ScheduleBlockPopover, which lives on the host
-    // page (Page.js). Caller wires this to open its popover for the
-    // given block; the embed hides the schedule action when the
+    // Schedule + Block info both need a modal that lives on the host
+    // page (Page.js owns the ScheduleBlockPopover / BlockInfoModal
+    // instances). Caller wires these to open its modal for the given
+    // block; the embed hides the matching menu items when the
     // callback isn't provided.
     onScheduleBlock: { type: Function, default: null },
+    onOpenBlockInfo: { type: Function, default: null },
   },
 
   data() {
@@ -36,11 +42,6 @@ window.QueryEmbedBlock = {
       loading: true,
       error: null,
       result: null, // {view, count, results, truncated}
-      // Per-row context menu — one menu is rendered for the whole
-      // embed and positioned at the click point; `menuBlock` is the
-      // result row it was opened for.
-      menuBlock: null,
-      menuPosition: { x: 0, y: 0 },
     };
   },
 
@@ -90,7 +91,6 @@ window.QueryEmbedBlock = {
         this._onBlocksChanged
       );
     }
-    this.closeRowMenu();
   },
 
   watch: {
@@ -187,57 +187,9 @@ window.QueryEmbedBlock = {
         this.error = "failed to toggle todo. please try again.";
       }
     },
+
     openRowMenu(b, event) {
-      if (!b) return;
-      event.preventDefault();
-      event.stopPropagation();
-
-      // Match BlockComponent.showContextMenuAt — fixed-positioned at
-      // the click point, clamped to viewport with mobile padding so
-      // the menu never hides under the soft keyboard / browser chrome.
-      const menuWidth = 200;
-      const shadowOffset = 4;
-      const isMobile = window.innerWidth <= 768;
-      const edgePadding = isMobile ? 20 : 10;
-      const bottomPadding = isMobile ? 60 : 10;
-
-      let x = event.clientX;
-      let y = event.clientY;
-      const vw = window.innerWidth;
-
-      if (x + menuWidth + shadowOffset > vw - edgePadding) {
-        x = vw - menuWidth - shadowOffset - edgePadding;
-      }
-      x = Math.max(edgePadding, x);
-
-      this.menuPosition = { x, y };
-      this.menuBlock = b;
-
-      this.$nextTick(() => {
-        const el = this.$el?.querySelector(".block-context-menu");
-        if (!el) return;
-        const h = el.offsetHeight;
-        const vh = window.innerHeight;
-        let ny = y;
-        if (ny + h + shadowOffset > vh - bottomPadding) {
-          ny = vh - h - shadowOffset - bottomPadding;
-        }
-        ny = Math.max(edgePadding, ny);
-        if (ny !== this.menuPosition.y) {
-          this.menuPosition = { x, y: ny };
-        }
-      });
-
-      // Same delayed listener BlockComponent uses so this click
-      // doesn't immediately close its own menu.
-      setTimeout(() => {
-        document.addEventListener("click", this.closeRowMenu);
-      }, 10);
-    },
-
-    closeRowMenu() {
-      this.menuBlock = null;
-      document.removeEventListener("click", this.closeRowMenu);
+      this.$refs.rowMenu?.openAt(b, event);
     },
 
     broadcastChange(uuid) {
@@ -249,25 +201,29 @@ window.QueryEmbedBlock = {
       );
     },
 
-    async menuAction(action) {
-      const b = this.menuBlock;
-      this.closeRowMenu();
-      if (!b) return;
+    async onMenuAction({ action, block }) {
+      if (!block) return;
       switch (action) {
         case "moveToToday":
-          await this.actionMoveToToday(b);
+          await this.actionMoveToToday(block);
           break;
         case "moveToPage":
-          await this.actionMoveToPage(b);
+          await this.actionMoveToPage(block);
+          break;
+        case "copyLink":
+          await this.actionCopyLink(block);
           break;
         case "schedule":
-          this.actionSchedule(b, { clear: false });
+          this.actionSchedule(block, { clear: false });
           break;
         case "unschedule":
-          this.actionSchedule(b, { clear: true });
+          this.actionSchedule(block, { clear: true });
+          break;
+        case "blockInfo":
+          this.actionBlockInfo(block);
           break;
         case "delete":
-          await this.actionDelete(b);
+          await this.actionDelete(block);
           break;
       }
     },
@@ -312,12 +268,49 @@ window.QueryEmbedBlock = {
       }
     },
 
+    async actionCopyLink(b) {
+      if (!b.page_slug) {
+        this.error = "could not build block link";
+        return;
+      }
+      const url = `${window.location.origin}/knowledge/page/${encodeURIComponent(b.page_slug)}/#block-${b.uuid}`;
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(url);
+          return;
+        }
+      } catch (err) {
+        console.warn("clipboard API failed, falling back:", err);
+      }
+      // execCommand fallback for http:// contexts where the async
+      // clipboard API is gated. Mirrors Page.js copyBlockLink.
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = url;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch (err) {
+        console.error("clipboard fallback failed:", err);
+        this.error = "could not copy link";
+      }
+    },
+
     actionSchedule(b, opts) {
-      // The schedule UX needs the ScheduleBlockPopover — that lives on
-      // the host page (Page.js), so defer to its handler if wired.
-      // We refresh on the broadcast event after the host's save path.
+      // ScheduleBlockPopover lives on the host page (Page.js); defer
+      // to its handler when wired. The host dispatches the block-
+      // changed event after save, which routes us back through the
+      // shared listener for refresh.
       if (!this.onScheduleBlock) return;
       this.onScheduleBlock(b, opts || {});
+    },
+
+    actionBlockInfo(b) {
+      if (!this.onOpenBlockInfo) return;
+      this.onOpenBlockInfo(b);
     },
 
     async actionDelete(b) {
@@ -445,38 +438,12 @@ window.QueryEmbedBlock = {
           </li>
         </ul>
       </template>
-      <div
-        v-if="menuBlock"
-        class="block-context-menu"
-        :style="{ left: menuPosition.x + 'px', top: menuPosition.y + 'px' }"
-        @click.stop
-        role="menu"
-      >
-        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="menuAction('moveToToday')">
-          <span class="context-menu-icon">⇨</span>
-          <span>move to today's daily</span>
-        </button>
-        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="menuAction('moveToPage')">
-          <span class="context-menu-icon">→</span>
-          <span>move to page…</span>
-        </button>
-        <template v-if="onScheduleBlock">
-          <div class="context-menu-separator"></div>
-          <button class="context-menu-item" role="menuitem" tabindex="-1" @click="menuAction('schedule')">
-            <span class="context-menu-icon">◷</span>
-            <span>{{ menuBlock.scheduled_for ? 'reschedule…' : 'schedule…' }}</span>
-          </button>
-          <button v-if="menuBlock.scheduled_for" class="context-menu-item" role="menuitem" tabindex="-1" @click="menuAction('unschedule')">
-            <span class="context-menu-icon">×</span>
-            <span>clear schedule</span>
-          </button>
-        </template>
-        <div class="context-menu-separator"></div>
-        <button class="context-menu-item context-menu-danger" role="menuitem" tabindex="-1" @click="menuAction('delete')">
-          <span class="context-menu-icon">×</span>
-          <span>delete</span>
-        </button>
-      </div>
+      <EmbedContextMenu
+        ref="rowMenu"
+        :can-schedule="!!onScheduleBlock"
+        :can-block-info="!!onOpenBlockInfo"
+        @action="onMenuAction"
+      />
     </div>
   `,
 };

@@ -4057,6 +4057,7 @@ const Page = {
             :on-move-up="idx > 0 ? moveEmbedUp : null"
             :on-move-down="idx < embeddedViews.length - 1 ? moveEmbedDown : null"
             :on-schedule-block="scheduleBlock"
+            :on-open-block-info="openBlockInfoModal"
           />
         </div>
 
