@@ -41,24 +41,7 @@
               {{ ref.source_page_date }} {% else %} {{ ref.source_page_title }}
               {% endif %}
             </div>
-            {% if ref.asset_is_image and ref.asset_url %}
-            <img
-              class="public-block-image"
-              src="{{ ref.asset_url }}"
-              alt=""
-              loading="lazy"
-            />
-            {% elif ref.content_type == 'image' and ref.media_url %}
-            <img
-              class="public-block-image"
-              src="{{ ref.media_url }}"
-              alt=""
-              loading="lazy"
-            />
-            {% endif %}
-            <div class="public-block-content" data-md="{{ ref.content }}">
-              {{ ref.content }}
-            </div>
+            {% include 'knowledge/_public_block_content.html' with block=ref %}
           </li>
           {% endfor %}
         </ul>
@@ -162,6 +145,24 @@
           });
           linkifyTextNodes(el);
           decorateLinks(el);
+        } catch (e) {
+          el.textContent = raw;
+        }
+      });
+
+      // Embed-link titles render inline markdown (strikethrough, bold,
+      // etc.) inside their anchor without the block-level <p> wrapper that
+      // marked.parse adds. parseInline keeps the label on one line so the
+      // surrounding link card stays compact. The anchor already carries
+      // target/rel from the template, so no decorateLinks pass is needed.
+      document.querySelectorAll("[data-md-inline]").forEach(function (el) {
+        var raw = el.getAttribute("data-md-inline") || "";
+        if (!raw.trim()) return;
+        try {
+          var html = marked.parseInline(raw, { gfm: true });
+          el.innerHTML = DOMPurify.sanitize(html, {
+            ADD_ATTR: ["target", "rel"],
+          });
         } catch (e) {
           el.textContent = raw;
         }
