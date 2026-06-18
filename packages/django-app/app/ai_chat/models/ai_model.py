@@ -26,6 +26,21 @@ class AIModel(UUIDModelMixin, CRUDTimestampsMixin):
     is_active = models.BooleanField(
         default=True, help_text="Whether this model is available for use"
     )
+    supports_thinking = models.BooleanField(
+        default=False,
+        help_text="Model accepts the `thinking` request parameter (any mode).",
+    )
+    supports_adaptive_thinking = models.BooleanField(
+        default=False,
+        help_text=(
+            "Model accepts `thinking: {type: 'adaptive'}`. Implies "
+            "supports_thinking — Haiku 4.5 has thinking but not adaptive."
+        ),
+    )
+    supports_effort = models.BooleanField(
+        default=False,
+        help_text="Model accepts `output_config.effort` (e.g. 'high').",
+    )
 
     class Meta:
         db_table = "ai_models"
