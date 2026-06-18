@@ -1655,7 +1655,8 @@ const BlockComponent = {
               :aria-label="'Edit label: ' + embedTitle"
               @click.stop="startEditing(block)"
               @keydown="handleBlockDisplayKeydown"
-            >{{ embedTitle }}</div>
+              v-html="formatContentWithTags(embedTitle)"
+            ></div>
             <div class="block-embed-host">
               <span class="block-embed-url">{{ block.media_url }}</span>
               <span v-if="webArchive && (webArchive.status === 'pending' || webArchive.status === 'in_progress')" class="block-embed-status">· capturing…</span>

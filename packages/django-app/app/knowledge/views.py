@@ -1,5 +1,6 @@
 import re
 from typing import Dict, List, Optional, TypedDict
+from urllib.parse import urlparse
 
 from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse
@@ -247,6 +248,56 @@ def _rewrite_asset_urls(content: str, share_token: str) -> str:
     )
 
 
+# Trailing run of `#tag` tokens on an embed block's content — mirrors the
+# editor-side BlockComponent.parseEmbedContent regex so the public view peels
+# tags off the title the same way the owner sees them.
+_EMBED_TRAILING_TAGS_RE = re.compile(
+    r"(?:^|\s)#[A-Za-z0-9_-]+(?:\s+#[A-Za-z0-9_-]+)*\s*$"
+)
+_EMBED_TAG_RE = re.compile(r"#([A-Za-z0-9_-]+)")
+
+
+def _parse_embed_content(content: str) -> "tuple[str, List[str]]":
+    """Split an embed block's content into (title, tags).
+
+    Embed blocks store their label and a trailing run of `#tag` tokens in a
+    single content field; the editor splits them for display and so must the
+    public view. Mirrors BlockComponent.parseEmbedContent.
+    """
+    if not content:
+        return "", []
+    match = _EMBED_TRAILING_TAGS_RE.search(content)
+    if not match:
+        return content.strip(), []
+    tag_part = match.group(0)
+    title = content[: len(content) - len(tag_part)].strip()
+    tags: List[str] = []
+    seen = set()
+    for slug in _EMBED_TAG_RE.findall(tag_part):
+        if slug not in seen:
+            seen.add(slug)
+            tags.append(slug)
+    return title, tags
+
+
+def _embed_display_title(content: str, media_url: str) -> "tuple[str, List[str]]":
+    """Return the (title, tags) to show for an embed block, falling back to
+    the URL's hostname when there's no explicit label — same behavior as the
+    editor's embedTitle computed.
+    """
+    title, tags = _parse_embed_content(content)
+    if not title or title == media_url:
+        hostname = ""
+        try:
+            hostname = urlparse(media_url).hostname or ""
+        except ValueError:
+            hostname = ""
+        if hostname.startswith("www."):
+            hostname = hostname[len("www.") :]
+        title = hostname or media_url
+    return title, tags
+
+
 def _serialize_block_tree(block, share_token: str) -> dict:
     """Render a block + its descendants as a plain dict tree for the public
     template. Strips fields the public template doesn't need so we don't
@@ -254,12 +305,19 @@ def _serialize_block_tree(block, share_token: str) -> dict:
     """
     asset_uuid = str(block.asset.uuid) if block.asset_id else None
     asset_file_type = block.asset.file_type if block.asset_id else None
+    is_embed = block.content_type == "embed" and bool(block.media_url)
+    embed_title, embed_tags = (
+        _embed_display_title(block.content, block.media_url) if is_embed else ("", [])
+    )
     return {
         "uuid": str(block.uuid),
         "content": _rewrite_asset_urls(block.content, share_token),
         "block_type": block.block_type,
         "content_type": block.content_type,
         "media_url": block.media_url,
+        "is_embed": is_embed,
+        "embed_title": embed_title,
+        "embed_tags": embed_tags,
         "asset_url": (
             _public_asset_url(share_token, asset_uuid) if asset_uuid else None
         ),
@@ -283,12 +341,19 @@ def _serialize_referenced_block(block, share_token: str) -> dict:
     asset_uuid = str(block.asset.uuid) if block.asset_id else None
     asset_file_type = block.asset.file_type if block.asset_id else None
     source = block.page
+    is_embed = block.content_type == "embed" and bool(block.media_url)
+    embed_title, embed_tags = (
+        _embed_display_title(block.content, block.media_url) if is_embed else ("", [])
+    )
     return {
         "uuid": str(block.uuid),
         "content": _rewrite_asset_urls(block.content, share_token),
         "block_type": block.block_type,
         "content_type": block.content_type,
         "media_url": block.media_url,
+        "is_embed": is_embed,
+        "embed_title": embed_title,
+        "embed_tags": embed_tags,
         "asset_url": (
             _public_asset_url(share_token, asset_uuid) if asset_uuid else None
         ),

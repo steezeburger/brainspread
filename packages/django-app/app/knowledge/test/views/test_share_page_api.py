@@ -159,6 +159,60 @@ class PublicPageViewTestCase(TestCase):
         body = response.content.decode("utf-8")
         self.assertNotIn("secret diary entry", body)
 
+    def test_public_view_renders_embed_block_as_link(self):
+        # Embed (link) blocks must surface the original URL as a real link
+        # target on the share page — previously a labelled embed rendered
+        # only the label text and dropped the link entirely (issue #156).
+        self.page.share_token = "embed-token"
+        self.page.share_mode = "link"
+        self.page.save()
+
+        BlockFactory(
+            user=self.user,
+            page=self.page,
+            content="My ~~old~~ label #reading",
+            content_type="embed",
+            media_url="https://example.com/article",
+            order=0,
+        )
+
+        client = Client()
+        response = client.get(f"/knowledge/share/{self.page.share_token}/")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode("utf-8")
+        # The original URL is a real anchor target.
+        self.assertIn('href="https://example.com/article"', body)
+        # The label rides on data-md-inline so client-side markdown renders
+        # strikeout (~~...~~ -> <del>), with the trailing tags peeled off.
+        self.assertIn('data-md-inline="My ~~old~~ label"', body)
+        # Tags are surfaced (read-only, not as internal page links).
+        self.assertIn("#reading", body)
+
+    def test_public_view_embed_falls_back_to_hostname(self):
+        # An unlabelled embed (content mirrors the URL) shows the hostname
+        # without the www. prefix, matching the editor's embed title.
+        self.page.share_token = "embed-host-token"
+        self.page.share_mode = "link"
+        self.page.save()
+
+        url = "https://www.example.org/path"
+        BlockFactory(
+            user=self.user,
+            page=self.page,
+            content=url,
+            content_type="embed",
+            media_url=url,
+            order=0,
+        )
+
+        client = Client()
+        response = client.get(f"/knowledge/share/{self.page.share_token}/")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode("utf-8")
+        self.assertIn('data-md-inline="example.org"', body)
+
 
 class PublicAssetViewTestCase(TestCase):
     @classmethod

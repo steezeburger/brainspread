@@ -64,7 +64,7 @@ body {
 }
 
 .public-block-list .public-block-list {
-  padding-left: 24px;
+  padding-left: 0;
   border-left: 1px solid #eef0f2;
   margin-left: 6px;
 }
@@ -205,6 +205,53 @@ body {
   font-style: italic;
 }
 
+/* Embed-link card. Mirrors the editor's embed block: a labelled link to
+   the original URL with optional tag chips, rendered read-only here. */
+.public-block-embed {
+  display: inline-block;
+  vertical-align: top;
+  width: calc(100% - 12px);
+  border: 1px solid #e1e4e8;
+  border-radius: 3px;
+  padding: 8px 12px;
+  background: #ffffff;
+}
+
+.public-block-embed-title {
+  display: block;
+  font-weight: 600;
+  color: #0969da;
+  text-decoration: none;
+  word-break: break-word;
+}
+
+.public-block-embed-title:hover {
+  text-decoration: underline;
+}
+
+.public-block-embed-url {
+  display: block;
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 2px;
+  word-break: break-all;
+}
+
+.public-block-embed-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.public-block-embed-tag {
+  font-size: 12px;
+  color: #6b7280;
+  background: #eef0f2;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
 .public-references {
   margin-top: 32px;
   padding-top: 18px;
@@ -303,5 +350,19 @@ body {
   .public-references-title,
   .public-reference-source {
     color: #8b949e;
+  }
+  .public-block-embed {
+    background: #161b22;
+    border-color: #30363d;
+  }
+  .public-block-embed-title {
+    color: #2f81f7;
+  }
+  .public-block-embed-url,
+  .public-block-embed-tag {
+    color: #8b949e;
+  }
+  .public-block-embed-tag {
+    background: #1f242b;
   }
 }

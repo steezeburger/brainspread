@@ -1,0 +1,25 @@
+{% comment %}
+  Renders the media + body of a single public block. Shared by the block
+  tree (_public_block_list.html) and the linked-references list so embed
+  links, images, and markdown text all render the same way in both places.
+  Expects `block` to expose: asset_is_image, asset_url, content_type,
+  media_url, is_embed, embed_title, embed_tags, content.
+{% endcomment %}
+{% if block.asset_is_image and block.asset_url %}
+  <img class="public-block-image" src="{{ block.asset_url }}" alt="" loading="lazy" />
+{% elif block.content_type == 'image' and block.media_url %}
+  <img class="public-block-image" src="{{ block.media_url }}" alt="" loading="lazy" />
+{% endif %}
+{% if block.is_embed %}
+  <div class="public-block-embed">
+    <a class="public-block-embed-title" href="{{ block.media_url }}" target="_blank" rel="noopener noreferrer nofollow" data-md-inline="{{ block.embed_title }}">{{ block.embed_title }}</a>
+    <span class="public-block-embed-url">{{ block.media_url }}</span>
+    {% if block.embed_tags %}
+      <span class="public-block-embed-tags">
+        {% for tag in block.embed_tags %}<span class="public-block-embed-tag">#{{ tag }}</span>{% endfor %}
+      </span>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="public-block-content" data-md="{{ block.content }}">{{ block.content }}</div>
+{% endif %}
