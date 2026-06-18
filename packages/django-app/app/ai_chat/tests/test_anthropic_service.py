@@ -3,11 +3,34 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from ai_chat.models import AIModel, AIProvider
 from ai_chat.services.anthropic_service import (
     AnthropicService,
     AnthropicServiceError,
 )
 from ai_chat.services.base_ai_service import AIServiceResult
+
+
+def _seed_ai_model(
+    name: str,
+    *,
+    supports_thinking: bool,
+    supports_adaptive_thinking: bool,
+    supports_effort: bool,
+) -> AIModel:
+    """Create the AIModel row the service looks up to read capabilities."""
+    provider, _ = AIProvider.objects.get_or_create(
+        name="Anthropic",
+        defaults={"base_url": "https://api.anthropic.com"},
+    )
+    return AIModel.objects.create(
+        name=name,
+        provider=provider,
+        display_name=name,
+        supports_thinking=supports_thinking,
+        supports_adaptive_thinking=supports_adaptive_thinking,
+        supports_effort=supports_effort,
+    )
 
 
 def _build_response(
@@ -32,9 +55,16 @@ def _build_response(
     return SimpleNamespace(content=blocks, usage=usage)
 
 
+@pytest.mark.django_db
 class TestAnthropicServiceThinking:
     @patch("anthropic.Anthropic")
     def test_enables_thinking_on_supported_model(self, mock_anthropic_cls):
+        _seed_ai_model(
+            "claude-opus-4-7",
+            supports_thinking=True,
+            supports_adaptive_thinking=True,
+            supports_effort=True,
+        )
         mock_client = Mock()
         mock_client.messages.create.return_value = _build_response(
             text="answer", thinking="reasoning trace"
@@ -69,7 +99,8 @@ class TestAnthropicServiceThinking:
         ]
 
     @patch("anthropic.Anthropic")
-    def test_skips_thinking_on_non_4x_model(self, mock_anthropic_cls):
+    def test_skips_thinking_on_unknown_model(self, mock_anthropic_cls):
+        # No AIModel row → all capabilities False → no thinking kwarg.
         mock_client = Mock()
         mock_client.messages.create.return_value = _build_response()
         mock_anthropic_cls.return_value = mock_client
@@ -100,6 +131,12 @@ class TestAnthropicServiceThinking:
         # returns a 400 ("adaptive thinking is not supported on this model")
         # if we send `type: "adaptive"`. It needs `type: "enabled"` with an
         # explicit budget smaller than max_tokens.
+        _seed_ai_model(
+            "claude-haiku-4-5",
+            supports_thinking=True,
+            supports_adaptive_thinking=False,
+            supports_effort=False,
+        )
         mock_client = Mock()
         mock_client.messages.create.return_value = _build_response()
         mock_anthropic_cls.return_value = mock_client
@@ -122,12 +159,19 @@ class TestAnthropicServiceThinking:
             service.send_message([{"role": "user"}])
 
 
+@pytest.mark.django_db
 class TestAnthropicResponseFormat:
     @patch("anthropic.Anthropic")
     def test_passes_json_schema_via_output_config_format(self, mock_anthropic_cls):
         # Anthropic's structured-output knob lives at output_config.format —
         # when the caller asks for json_schema, the schema must arrive in
         # that nested shape, alongside any pre-existing effort knob.
+        _seed_ai_model(
+            "claude-opus-4-7",
+            supports_thinking=True,
+            supports_adaptive_thinking=True,
+            supports_effort=True,
+        )
         mock_client = Mock()
         mock_client.messages.create.return_value = _build_response(text='{"a":1}')
         mock_anthropic_cls.return_value = mock_client
@@ -153,6 +197,12 @@ class TestAnthropicResponseFormat:
 
     @patch("anthropic.Anthropic")
     def test_omits_format_when_no_response_format(self, mock_anthropic_cls):
+        _seed_ai_model(
+            "claude-opus-4-7",
+            supports_thinking=True,
+            supports_adaptive_thinking=True,
+            supports_effort=True,
+        )
         mock_client = Mock()
         mock_client.messages.create.return_value = _build_response()
         mock_anthropic_cls.return_value = mock_client
@@ -166,12 +216,12 @@ class TestAnthropicResponseFormat:
         assert kwargs["output_config"] == {"effort": "high"}
 
     @patch("anthropic.Anthropic")
-    def test_skips_output_config_on_unsupported_model_without_format(
+    def test_skips_output_config_on_unknown_model_without_format(
         self, mock_anthropic_cls
     ):
-        # Older models don't accept output_config.effort. With no
-        # response_format requested either, the kwarg should be omitted
-        # entirely so the API doesn't 400.
+        # No AIModel row → service treats every capability as False, so
+        # output_config (which only gets populated for effort or format)
+        # is omitted entirely and the API doesn't 400.
         mock_client = Mock()
         mock_client.messages.create.return_value = _build_response()
         mock_anthropic_cls.return_value = mock_client
@@ -187,6 +237,12 @@ class TestAnthropicResponseFormat:
         # If the model doesn't support effort but the caller asked for
         # a json_schema, output_config should still go out — just
         # without the effort knob.
+        _seed_ai_model(
+            "claude-haiku-4-5",
+            supports_thinking=True,
+            supports_adaptive_thinking=False,
+            supports_effort=False,
+        )
         mock_client = Mock()
         mock_client.messages.create.return_value = _build_response(text="{}")
         mock_anthropic_cls.return_value = mock_client

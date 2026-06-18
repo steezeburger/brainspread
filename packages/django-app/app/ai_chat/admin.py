@@ -39,15 +39,39 @@ class AIModelAdmin(admin.ModelAdmin):
         "provider",
         "display_name",
         "is_active",
+        "supports_thinking",
+        "supports_adaptive_thinking",
+        "supports_effort",
         "created_at",
     ]
-    list_filter = ["provider", "is_active", "created_at"]
+    list_filter = [
+        "provider",
+        "is_active",
+        "supports_thinking",
+        "supports_adaptive_thinking",
+        "supports_effort",
+        "created_at",
+    ]
     search_fields = ["name", "display_name", "description"]
     readonly_fields = ["id", "uuid", "created_at", "modified_at"]
     raw_id_fields = ["provider"]
 
     fieldsets = (
         (None, {"fields": ("name", "provider", "display_name", "is_active")}),
+        (
+            "Capabilities",
+            {
+                "fields": (
+                    "supports_thinking",
+                    "supports_adaptive_thinking",
+                    "supports_effort",
+                ),
+                "description": (
+                    "Provider-specific request knobs the model accepts. "
+                    "Default to off — only check what's confirmed supported."
+                ),
+            },
+        ),
         (
             "Description",
             {"fields": ("description",), "classes": ("wide",)},

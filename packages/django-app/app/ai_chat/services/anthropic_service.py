@@ -5,6 +5,8 @@ from typing import Any, Dict, Iterator, List, Optional
 
 import anthropic
 
+from ..models import AIModel
+from ..repositories.ai_model_repository import AIModelRepository
 from .base_ai_service import (
     AIServiceError,
     AIServiceResult,
@@ -17,37 +19,9 @@ from .base_ai_service import (
 logger = logging.getLogger(__name__)
 
 
-# Claude models that support extended thinking. Keep this list conservative —
-# enabling `thinking` on a model that doesn't support it raises at the API.
-THINKING_CAPABLE_MODEL_PREFIXES = (
-    "claude-opus-4-8",
-    "claude-opus-4-7",
-    "claude-opus-4-6",
-    "claude-sonnet-4-6",
-    "claude-haiku-4-5",
-)
-
-# Subset that accepts `thinking: {type: "adaptive"}`. Haiku 4.5 supports
-# extended thinking but only in `enabled` mode — adaptive returns a 400.
-ADAPTIVE_THINKING_CAPABLE_MODEL_PREFIXES = (
-    "claude-opus-4-8",
-    "claude-opus-4-7",
-    "claude-opus-4-6",
-    "claude-sonnet-4-6",
-)
-
 # Budget for `thinking: {type: "enabled"}` — must be strictly less than
 # max_tokens on the request.
 ENABLED_THINKING_BUDGET_TOKENS = 4096
-
-# Models that accept `output_config.effort`. Sending it to Haiku 4.5 (or older
-# non-4.6 models) returns a 400.
-EFFORT_CAPABLE_MODEL_PREFIXES = (
-    "claude-opus-4-8",
-    "claude-opus-4-7",
-    "claude-opus-4-6",
-    "claude-sonnet-4-6",
-)
 
 DEFAULT_MAX_TOKENS = 8192
 
@@ -120,6 +94,8 @@ def _serialize_web_search_content(content: Any) -> Any:
 class AnthropicService(BaseAIService):
     def __init__(self, api_key: str, model: str = "claude-opus-4-7") -> None:
         super().__init__(api_key, model)
+        self._ai_model: Optional[AIModel] = None
+        self._ai_model_loaded: bool = False
         try:
             self.client = anthropic.Anthropic(api_key=api_key)
         except Exception as e:
@@ -128,14 +104,29 @@ class AnthropicService(BaseAIService):
                 f"Failed to initialize Anthropic client: {e}"
             ) from e
 
+    def _get_ai_model(self) -> Optional[AIModel]:
+        # Cache the lookup so repeated capability checks on the same
+        # send_message call don't re-query the DB. Missing rows are
+        # cached as None — capabilities then read False (fail closed),
+        # matching the legacy prefix-tuple behaviour for unknown models.
+        # `getattr` guards against callsites that bypass __init__ (e.g.
+        # tests using AnthropicService.__new__ to skip client init).
+        if not getattr(self, "_ai_model_loaded", False):
+            self._ai_model = AIModelRepository.get_by_name(self.model)
+            self._ai_model_loaded = True
+        return self._ai_model
+
     def _supports_thinking(self) -> bool:
-        return self.model.startswith(THINKING_CAPABLE_MODEL_PREFIXES)
+        ai_model = self._get_ai_model()
+        return bool(ai_model and ai_model.supports_thinking)
 
     def _supports_adaptive_thinking(self) -> bool:
-        return self.model.startswith(ADAPTIVE_THINKING_CAPABLE_MODEL_PREFIXES)
+        ai_model = self._get_ai_model()
+        return bool(ai_model and ai_model.supports_adaptive_thinking)
 
     def _supports_effort(self) -> bool:
-        return self.model.startswith(EFFORT_CAPABLE_MODEL_PREFIXES)
+        ai_model = self._get_ai_model()
+        return bool(ai_model and ai_model.supports_effort)
 
     def send_message(
         self,
