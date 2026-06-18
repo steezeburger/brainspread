@@ -64,7 +64,7 @@ body {
 }
 
 .public-block-list .public-block-list {
-  padding-left: 8px;
+  padding-left: 0;
   border-left: 1px solid #eef0f2;
   margin-left: 6px;
 }
