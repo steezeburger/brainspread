@@ -7980,6 +7980,14 @@ a.hashtag-mention:hover,
   color: var(--text-primary);
   text-decoration: none;
 }
+.result-row .result-row-menu-btn {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+.result-row:hover .result-row-menu-btn,
+.result-row .result-row-menu-btn:focus {
+  opacity: 1;
+}
 .result-content {
   font-size: 0.95rem;
 }

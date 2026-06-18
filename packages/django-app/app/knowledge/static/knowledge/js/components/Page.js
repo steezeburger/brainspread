@@ -2513,6 +2513,15 @@ const Page = {
             msg = `scheduled for ${scheduledFor}`;
           }
           this.$parent?.addToast?.(msg, "success");
+          // Notify any embeds on the page that show this block so
+          // they re-run their saved view — keeps the displayed
+          // scheduled_for / due meta in sync without a manual
+          // collapse-expand.
+          document.dispatchEvent(
+            new CustomEvent("brainspread:block-changed", {
+              detail: { uuid: block.uuid },
+            })
+          );
           await this.loadPage({ silent: true });
         } else {
           this.$parent?.addToast?.("failed to schedule block", "error");
@@ -4047,6 +4056,7 @@ const Page = {
             :on-toggle-collapsed="toggleEmbedCollapsed"
             :on-move-up="idx > 0 ? moveEmbedUp : null"
             :on-move-down="idx < embeddedViews.length - 1 ? moveEmbedDown : null"
+            :on-schedule-block="scheduleBlock"
           />
         </div>
 

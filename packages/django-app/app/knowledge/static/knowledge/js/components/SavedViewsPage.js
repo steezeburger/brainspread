@@ -16,6 +16,10 @@ const SavedViewsPage = {
     initialSlug: { type: String, default: null },
   },
 
+  components: {
+    ScheduleBlockPopover: window.ScheduleBlockPopover || {},
+  },
+
   data() {
     return {
       loading: true,
@@ -42,6 +46,21 @@ const SavedViewsPage = {
       // filter matches the clicked property — drives the dismissible
       // "you already have a view for this" banner above the editor.
       prefillMatch: null,
+
+      // Per-row context menu — one menu is rendered for the whole
+      // results list and positioned at the click point; `menuBlock`
+      // is the row it was opened for.
+      menuBlock: null,
+      menuPosition: { x: 0, y: 0 },
+
+      // Schedule popover state — mirrors Page.js. SavedViewsPage owns
+      // its own popover so the schedule action works on this surface
+      // without depending on a host page.
+      schedulePopoverOpen: false,
+      schedulePopoverBlock: null,
+      schedulePopoverInitialDate: "",
+      schedulePopoverInitialReminderDate: "",
+      schedulePopoverInitialTime: "",
     };
   },
 
@@ -279,10 +298,34 @@ const SavedViewsPage = {
       this._maybePrefillFromQuery();
     }
     window.addEventListener("popstate", this.onPopState);
+
+    // Refresh the visible saved-view when a block displayed in it is
+    // mutated from elsewhere (e.g. an embed on another tab fired the
+    // same event). Skips refresh if the changed block isn't in our
+    // current results to avoid pointless re-runs.
+    this._onBlocksChanged = (ev) => {
+      const uuid = ev?.detail?.uuid;
+      if (!uuid || ev?.detail?.source === this) return;
+      if (!this.runResult?.results) return;
+      if (this.runResult.results.some((b) => b.uuid === uuid)) {
+        this.refreshResults();
+      }
+    };
+    document.addEventListener(
+      "brainspread:block-changed",
+      this._onBlocksChanged
+    );
   },
 
   beforeUnmount() {
     window.removeEventListener("popstate", this.onPopState);
+    if (this._onBlocksChanged) {
+      document.removeEventListener(
+        "brainspread:block-changed",
+        this._onBlocksChanged
+      );
+    }
+    this.closeRowMenu();
   },
 
   methods: {
@@ -806,6 +849,7 @@ const SavedViewsPage = {
           b.block_type = r.data.block_type;
           b.completed_at = r.data.completed_at;
           b.content = r.data.content;
+          this.broadcastChange(b.uuid);
         } else {
           const errs = (r && r.errors) || {};
           this.runError =
@@ -815,6 +859,214 @@ const SavedViewsPage = {
       } catch (err) {
         console.error("toggleBlockTodo failed:", err);
         this.runError = "failed to toggle todo. please try again.";
+      }
+    },
+
+    broadcastChange(uuid) {
+      if (!uuid) return;
+      document.dispatchEvent(
+        new CustomEvent("brainspread:block-changed", {
+          detail: { uuid, source: this },
+        })
+      );
+    },
+
+    openRowMenu(b, event) {
+      if (!b) return;
+      event.preventDefault();
+      event.stopPropagation();
+
+      // Position math mirrors BlockComponent.showContextMenuAt so the
+      // menu clamps to the viewport on mobile / narrow windows.
+      const menuWidth = 200;
+      const shadowOffset = 4;
+      const isMobile = window.innerWidth <= 768;
+      const edgePadding = isMobile ? 20 : 10;
+      const bottomPadding = isMobile ? 60 : 10;
+
+      let x = event.clientX;
+      let y = event.clientY;
+      const vw = window.innerWidth;
+
+      if (x + menuWidth + shadowOffset > vw - edgePadding) {
+        x = vw - menuWidth - shadowOffset - edgePadding;
+      }
+      x = Math.max(edgePadding, x);
+
+      this.menuPosition = { x, y };
+      this.menuBlock = b;
+
+      this.$nextTick(() => {
+        const el = this.$el?.querySelector(".block-context-menu");
+        if (!el) return;
+        const h = el.offsetHeight;
+        const vh = window.innerHeight;
+        let ny = y;
+        if (ny + h + shadowOffset > vh - bottomPadding) {
+          ny = vh - h - shadowOffset - bottomPadding;
+        }
+        ny = Math.max(edgePadding, ny);
+        if (ny !== this.menuPosition.y) {
+          this.menuPosition = { x, y: ny };
+        }
+      });
+
+      setTimeout(() => {
+        document.addEventListener("click", this.closeRowMenu);
+      }, 10);
+    },
+
+    closeRowMenu() {
+      this.menuBlock = null;
+      document.removeEventListener("click", this.closeRowMenu);
+    },
+
+    async menuAction(action) {
+      const b = this.menuBlock;
+      this.closeRowMenu();
+      if (!b) return;
+      switch (action) {
+        case "moveToToday":
+          await this.actionMoveToToday(b);
+          break;
+        case "moveToPage":
+          await this.actionMoveToPage(b);
+          break;
+        case "schedule":
+          this.actionSchedule(b, { clear: false });
+          break;
+        case "unschedule":
+          this.actionSchedule(b, { clear: true });
+          break;
+        case "delete":
+          await this.actionDelete(b);
+          break;
+      }
+    },
+
+    async refreshResults() {
+      // Re-runs the active saved view so the results list reflects
+      // backend changes. Used by every action handler + by the
+      // brainspread:block-changed event listener.
+      if (!this.activeView || !this.activeView.uuid) return;
+      try {
+        const r = await window.apiService.runSavedView({
+          uuid: this.activeView.uuid,
+          limit: 100,
+        });
+        if (r && r.success) {
+          this.runResult = r.data;
+          this.runError = null;
+        }
+      } catch (err) {
+        console.error("runSavedView refresh failed:", err);
+      }
+    },
+
+    async actionMoveToToday(b) {
+      try {
+        const r = await window.apiService.moveBlockToDaily(b.uuid);
+        if (!r || !r.success) {
+          throw new Error(
+            r?.errors?.non_field_errors?.[0] || "move to today failed"
+          );
+        }
+        this.broadcastChange(b.uuid);
+        await this.refreshResults();
+      } catch (err) {
+        console.error("moveBlockToDaily failed:", err);
+        this.runError = "failed to move block to today";
+      }
+    },
+
+    async actionMoveToPage(b) {
+      if (!window.appModals?.pickPage) {
+        console.error("appModals.pickPage is not available");
+        return;
+      }
+      const target = await window.appModals.pickPage({
+        title: "move block to page",
+        placeholder: "search pages…",
+        confirmLabel: "move",
+      });
+      if (!target) return;
+      try {
+        const r = await window.apiService.moveBlockToPage(b.uuid, target.uuid);
+        if (!r || !r.success) {
+          throw new Error(r?.errors?.non_field_errors?.[0] || "move failed");
+        }
+        this.broadcastChange(b.uuid);
+        await this.refreshResults();
+      } catch (err) {
+        console.error("moveBlockToPage failed:", err);
+        this.runError = `failed to move block: ${err.message || err}`;
+      }
+    },
+
+    actionSchedule(b, { clear = false } = {}) {
+      if (clear) {
+        this._submitSchedule(b, "", "", "");
+        return;
+      }
+      this.schedulePopoverBlock = b;
+      this.schedulePopoverInitialDate = b.scheduled_for || "";
+      this.schedulePopoverInitialReminderDate = b.pending_reminder_date || "";
+      this.schedulePopoverInitialTime = b.pending_reminder_time || "";
+      this.schedulePopoverOpen = true;
+    },
+
+    onSchedulePopoverSave({ scheduledFor, reminderDate, reminderTime }) {
+      const b = this.schedulePopoverBlock;
+      this.schedulePopoverOpen = false;
+      this.schedulePopoverBlock = null;
+      if (!b) return;
+      this._submitSchedule(b, scheduledFor, reminderDate, reminderTime);
+    },
+
+    onSchedulePopoverCancel() {
+      this.schedulePopoverOpen = false;
+      this.schedulePopoverBlock = null;
+    },
+
+    async _submitSchedule(block, scheduledFor, reminderDate, reminderTime) {
+      try {
+        const r = await window.apiService.scheduleBlock(
+          block.uuid,
+          scheduledFor,
+          reminderDate,
+          reminderTime
+        );
+        if (!r || !r.success) {
+          throw new Error(
+            r?.errors?.non_field_errors?.[0] || "failed to schedule"
+          );
+        }
+        this.broadcastChange(block.uuid);
+        await this.refreshResults();
+      } catch (err) {
+        console.error("scheduleBlock failed:", err);
+        this.runError = `failed to schedule: ${err.message || err}`;
+      }
+    },
+
+    async actionDelete(b) {
+      const confirmed = await (window.appModals?.confirm?.({
+        title: "delete block?",
+        message: "this will also delete any child blocks and cannot be undone.",
+        confirmLabel: "delete",
+        destructive: true,
+      }) ?? Promise.resolve(window.confirm("Delete this block?")));
+      if (!confirmed) return;
+      try {
+        const r = await window.apiService.deleteBlock(b.uuid);
+        if (!r || !r.success) {
+          throw new Error(r?.errors?.non_field_errors?.[0] || "delete failed");
+        }
+        this.broadcastChange(b.uuid);
+        await this.refreshResults();
+      } catch (err) {
+        console.error("deleteBlock failed:", err);
+        this.runError = `failed to delete block: ${err.message || err}`;
       }
     },
   },
@@ -972,7 +1224,7 @@ const SavedViewsPage = {
             <div v-else-if="!runResult.results.length" class="empty-state">No matches.</div>
             <ul v-else class="result-list">
               <li v-for="b in runResult.results" :key="b.uuid">
-                <div class="result-row">
+                <div class="result-row" @contextmenu="openRowMenu(b, $event)">
                   <div
                     class="block-bullet"
                     :class="{
@@ -996,12 +1248,61 @@ const SavedViewsPage = {
                       <span v-if="b.page_title"> · {{ b.page_title }}</span>
                     </span>
                   </a>
+                  <button
+                    type="button"
+                    class="block-menu result-row-menu-btn"
+                    @click="openRowMenu(b, $event)"
+                    @contextmenu="openRowMenu(b, $event)"
+                    title="Block options"
+                    aria-label="Block options"
+                  >⋮</button>
                 </div>
               </li>
             </ul>
           </div>
         </template>
       </div>
+
+      <!-- Row context menu (shared across all result rows) -->
+      <div
+        v-if="menuBlock"
+        class="block-context-menu"
+        :style="{ left: menuPosition.x + 'px', top: menuPosition.y + 'px' }"
+        @click.stop
+        role="menu"
+      >
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="menuAction('moveToToday')">
+          <span class="context-menu-icon">⇨</span>
+          <span>move to today's daily</span>
+        </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="menuAction('moveToPage')">
+          <span class="context-menu-icon">→</span>
+          <span>move to page…</span>
+        </button>
+        <div class="context-menu-separator"></div>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="menuAction('schedule')">
+          <span class="context-menu-icon">◷</span>
+          <span>{{ menuBlock.scheduled_for ? 'reschedule…' : 'schedule…' }}</span>
+        </button>
+        <button v-if="menuBlock.scheduled_for" class="context-menu-item" role="menuitem" tabindex="-1" @click="menuAction('unschedule')">
+          <span class="context-menu-icon">×</span>
+          <span>clear schedule</span>
+        </button>
+        <div class="context-menu-separator"></div>
+        <button class="context-menu-item context-menu-danger" role="menuitem" tabindex="-1" @click="menuAction('delete')">
+          <span class="context-menu-icon">×</span>
+          <span>delete</span>
+        </button>
+      </div>
+
+      <ScheduleBlockPopover
+        :is-open="schedulePopoverOpen"
+        :initial-date="schedulePopoverInitialDate"
+        :initial-reminder-date="schedulePopoverInitialReminderDate"
+        :initial-time="schedulePopoverInitialTime"
+        @save="onSchedulePopoverSave"
+        @cancel="onSchedulePopoverCancel"
+      />
     </div>
   `,
 };
