@@ -844,14 +844,48 @@ const BlockComponent = {
         this.contextMenuPosition = { x, y };
       });
 
-      // Add click listener to close menu after a short delay
+      // Capture-phase outside-click / outside-touchend handlers so we
+      // run BEFORE the target element's own handlers. Without this:
+      // - On desktop, tapping another block both closed the menu AND
+      //   fired the block's @click → started editing.
+      // - On mobile, handleContentTouchEnd preventDefaults touchend
+      //   (to suppress iOS double-tap zoom), which also suppresses
+      //   the synthesized click — so a click-only listener never
+      //   fired and the menu was effectively undismissable except
+      //   by picking one of its items.
+      // The setTimeout keeps the same click that opened us from
+      // immediately closing us via the document handler.
       setTimeout(() => {
-        document.addEventListener("click", this.hideContextMenu);
+        document.addEventListener("click", this.handleOutsideMenuClick, true);
+        document.addEventListener(
+          "touchend",
+          this.handleOutsideMenuClick,
+          true
+        );
       }, 10);
+    },
+    handleOutsideMenuClick(event) {
+      // Skip clicks inside any context menu (this one or a sibling
+      // EmbedContextMenu / BlockComponent menu) — they need to reach
+      // their own item handlers. Capture-phase listeners fire before
+      // bubble, so the @click.stop on the menu root can't help us
+      // here; check by class instead.
+      const target = event.target;
+      if (target && target.closest && target.closest(".block-context-menu")) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      this.hideContextMenu();
     },
     hideContextMenu() {
       this.showContextMenu = false;
-      document.removeEventListener("click", this.hideContextMenu);
+      document.removeEventListener("click", this.handleOutsideMenuClick, true);
+      document.removeEventListener(
+        "touchend",
+        this.handleOutsideMenuClick,
+        true
+      );
     },
 
     hideContextMenuAndRestoreFocus() {
@@ -996,8 +1030,15 @@ const BlockComponent = {
         this.contextMenuPosition = { x, y };
       });
 
+      // Same dual-listener pattern as showContextMenuAt — see the
+      // comment block there for why click-only isn't sufficient.
       setTimeout(() => {
-        document.addEventListener("click", this.hideContextMenu);
+        document.addEventListener("click", this.handleOutsideMenuClick, true);
+        document.addEventListener(
+          "touchend",
+          this.handleOutsideMenuClick,
+          true
+        );
       }, 10);
     },
 
