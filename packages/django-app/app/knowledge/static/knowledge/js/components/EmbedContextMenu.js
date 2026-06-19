@@ -100,17 +100,39 @@ window.EmbedContextMenu = {
         }
       });
 
-      // BlockComponent's delayed-add-listener pattern — without the
-      // setTimeout the same click that opened us would immediately
-      // close us via the document handler.
+      // Capture-phase outside-click handler so we run BEFORE the
+      // target element's own click handlers. Without this, tapping
+      // a result row / regular block / link while the menu is open
+      // both closes the menu AND fires the row's click (starts
+      // editing the block, follows the link). On mobile there's
+      // often no empty space to tap "between" items, so the menu
+      // becomes effectively un-dismissable except by picking one of
+      // its own items. The setTimeout is BlockComponent's pattern —
+      // without it the same click that opened us would trigger an
+      // immediate close.
       setTimeout(() => {
-        document.addEventListener("click", this.close);
+        document.addEventListener("click", this.handleOutsideClick, true);
       }, 10);
+    },
+
+    handleOutsideClick(event) {
+      // Clicks inside the menu must reach their own handlers (those
+      // drive the action emit + the menu's own close). The
+      // @click.stop on the menu root would normally suppress the
+      // document-level close on bubble, but capture-phase listeners
+      // run before bubble, so we have to skip inside clicks ourselves.
+      const el = this.$el;
+      if (el && el.nodeType === 1 && el.contains(event.target)) return;
+      // Outside click: consume the event so the target's own click
+      // handler (block-edit, link nav, row toggle) never runs.
+      event.preventDefault();
+      event.stopPropagation();
+      this.close();
     },
 
     close() {
       this.block = null;
-      document.removeEventListener("click", this.close);
+      document.removeEventListener("click", this.handleOutsideClick, true);
     },
 
     onAction(action) {
