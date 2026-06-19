@@ -30,12 +30,15 @@ window.QueryEmbedBlock = {
     onToggleCollapsed: { type: Function, default: null },
     onMoveUp: { type: Function, default: null },
     onMoveDown: { type: Function, default: null },
-    // Schedule + Block info both need a modal that lives on the host
-    // page (Page.js owns the ScheduleBlockPopover / BlockInfoModal
-    // instances). Forwarded to each EmbedResultRow, which hides the
-    // matching menu items when the callback isn't provided.
+    // Host-page delegates forwarded straight to each EmbedResultRow.
+    // Schedule + Block info need a modal that lives on the host;
+    // Move-to-today / Move-to-page need to trigger the host's own
+    // reload so the moved block shows up on the destination page
+    // without a manual refresh. See EmbedResultRow's prop comment.
     onScheduleBlock: { type: Function, default: null },
     onOpenBlockInfo: { type: Function, default: null },
+    onMoveBlockToToday: { type: Function, default: null },
+    onMoveBlockToPage: { type: Function, default: null },
   },
 
   data() {
@@ -223,6 +226,8 @@ window.QueryEmbedBlock = {
             :block="b"
             :on-schedule-block="onScheduleBlock"
             :on-open-block-info="onOpenBlockInfo"
+            :on-move-block-to-today="onMoveBlockToToday"
+            :on-move-block-to-page="onMoveBlockToPage"
             @changed="onRowChanged"
             @error="onRowError"
           />

@@ -4058,6 +4058,8 @@ const Page = {
             :on-move-down="idx < embeddedViews.length - 1 ? moveEmbedDown : null"
             :on-schedule-block="scheduleBlock"
             :on-open-block-info="openBlockInfoModal"
+            :on-move-block-to-today="moveBlockToToday"
+            :on-move-block-to-page="openMovePagePicker"
           />
         </div>
 

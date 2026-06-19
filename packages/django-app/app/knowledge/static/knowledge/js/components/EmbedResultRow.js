@@ -28,11 +28,18 @@ window.EmbedResultRow = {
 
   props: {
     block: { type: Object, required: true },
-    // Schedule + Block info both need a modal that lives on a host
-    // surface (Page.js / SavedViewsPage own the popover instances).
-    // The menu hides the matching item when the callback is missing.
+    // Host-page delegates. Schedule + Block info both need a modal
+    // that lives on the host (Page.js / SavedViewsPage own those).
+    // Move-to-today / Move-to-page also delegate when provided so
+    // the host can reload its own block list — otherwise the moved
+    // block lands on the page silently and the user sees nothing
+    // until refresh. When a callback is missing, the row falls back
+    // to its own implementation (used by SavedViewsPage, which has
+    // no host page to update).
     onScheduleBlock: { type: Function, default: null },
     onOpenBlockInfo: { type: Function, default: null },
+    onMoveBlockToToday: { type: Function, default: null },
+    onMoveBlockToPage: { type: Function, default: null },
   },
 
   emits: ["changed", "error"],
@@ -129,6 +136,14 @@ window.EmbedResultRow = {
     },
 
     async actionMoveToToday(b) {
+      // Defer to the host when wired so the host page reloads its
+      // own block list — otherwise the moved block lands on the page
+      // silently and the user has to refresh to see it.
+      if (this.onMoveBlockToToday) {
+        await this.onMoveBlockToToday(b);
+        this.$emit("changed", b.uuid);
+        return;
+      }
       try {
         const r = await window.apiService.moveBlockToDaily(b.uuid);
         if (!r || !r.success) {
@@ -144,6 +159,13 @@ window.EmbedResultRow = {
     },
 
     async actionMoveToPage(b) {
+      // Same delegation reasoning as actionMoveToToday — host owns
+      // the picker + reload when present.
+      if (this.onMoveBlockToPage) {
+        await this.onMoveBlockToPage(b);
+        this.$emit("changed", b.uuid);
+        return;
+      }
       if (!window.appModals?.pickPage) {
         console.error("appModals.pickPage is not available");
         return;
