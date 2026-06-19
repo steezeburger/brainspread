@@ -811,6 +811,13 @@ const Page = {
       try {
         const result = await window.apiService.deleteBlock(block.uuid);
         if (result.success) {
+          // Notify embeds that may still be displaying this block —
+          // their saved view re-run will drop the now-gone row.
+          document.dispatchEvent(
+            new CustomEvent("brainspread:block-changed", {
+              detail: { uuid: block.uuid },
+            })
+          );
           await this.loadPage();
         }
       } catch (error) {
@@ -871,6 +878,14 @@ const Page = {
           block.block_type = result.data.block_type;
           block.content = result.data.content;
           this.error = null;
+          // Embeds may be showing this block — let them re-run so the
+          // bullet / DONE strikethrough reflects the new state without
+          // a manual collapse-expand.
+          document.dispatchEvent(
+            new CustomEvent("brainspread:block-changed", {
+              detail: { uuid: block.uuid },
+            })
+          );
         } else {
           this.error =
             result.errors?.non_field_errors?.[0] || "Failed to toggle todo";
@@ -1039,6 +1054,14 @@ const Page = {
           );
         }
 
+        // Let any QueryEmbedBlock on this page re-run its saved view —
+        // the moved block's page_slug just changed and embeds keep
+        // their own copy of the block until they refetch.
+        document.dispatchEvent(
+          new CustomEvent("brainspread:block-changed", {
+            detail: { uuid: block.uuid },
+          })
+        );
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to move block to today:", error);
@@ -1100,6 +1123,14 @@ const Page = {
           );
         }
 
+        // See moveBlockToToday for rationale — embeds keep their own
+        // copy of the block until they refetch, and the move just
+        // updated page_slug on the server.
+        document.dispatchEvent(
+          new CustomEvent("brainspread:block-changed", {
+            detail: { uuid: block.uuid },
+          })
+        );
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to move block to page:", error);
