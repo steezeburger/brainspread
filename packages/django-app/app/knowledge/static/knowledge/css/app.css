@@ -7978,14 +7978,35 @@ a.hashtag-mention:hover,
 }
 .result-row {
   display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.45rem;
   padding: 0.6rem 0.8rem;
   color: var(--text-primary);
-  text-decoration: none;
 }
 .result-row:hover {
   background: var(--hover-bg);
+}
+.result-row .block-bullet {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+.result-row-link {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.result-row .result-row-menu-btn {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+.result-row:hover .result-row-menu-btn,
+.result-row .result-row-menu-btn:focus {
+  opacity: 1;
 }
 .result-content {
   font-size: 0.95rem;

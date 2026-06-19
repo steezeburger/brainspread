@@ -16,6 +16,12 @@ const SavedViewsPage = {
     initialSlug: { type: String, default: null },
   },
 
+  components: {
+    ScheduleBlockPopover: window.ScheduleBlockPopover || {},
+    BlockInfoModal: window.BlockInfoModal || {},
+    EmbedResultRow: window.EmbedResultRow || {},
+  },
+
   data() {
     return {
       loading: true,
@@ -42,6 +48,19 @@ const SavedViewsPage = {
       // filter matches the clicked property — drives the dismissible
       // "you already have a view for this" banner above the editor.
       prefillMatch: null,
+
+      // Schedule popover state — mirrors Page.js. SavedViewsPage owns
+      // its own popover so the schedule action works on this surface
+      // without depending on a host page.
+      schedulePopoverOpen: false,
+      schedulePopoverBlock: null,
+      schedulePopoverInitialDate: "",
+      schedulePopoverInitialReminderDate: "",
+      schedulePopoverInitialTime: "",
+
+      // Block info modal — same rationale as the schedule popover.
+      blockInfoModalOpen: false,
+      blockInfoModalBlock: null,
     };
   },
 
@@ -279,10 +298,33 @@ const SavedViewsPage = {
       this._maybePrefillFromQuery();
     }
     window.addEventListener("popstate", this.onPopState);
+
+    // Refresh the visible saved-view when a block displayed in it is
+    // mutated from elsewhere (e.g. an embed on another tab fired the
+    // same event). Skips refresh if the changed block isn't in our
+    // current results to avoid pointless re-runs.
+    this._onBlocksChanged = (ev) => {
+      const uuid = ev?.detail?.uuid;
+      if (!uuid || ev?.detail?.source === this) return;
+      if (!this.runResult?.results) return;
+      if (this.runResult.results.some((b) => b.uuid === uuid)) {
+        this.refreshResults();
+      }
+    };
+    document.addEventListener(
+      "brainspread:block-changed",
+      this._onBlocksChanged
+    );
   },
 
   beforeUnmount() {
     window.removeEventListener("popstate", this.onPopState);
+    if (this._onBlocksChanged) {
+      document.removeEventListener(
+        "brainspread:block-changed",
+        this._onBlocksChanged
+      );
+    }
   },
 
   methods: {
@@ -764,19 +806,102 @@ const SavedViewsPage = {
       this.prefillMatch = null;
     },
 
-    blockHref(block) {
-      if (!block || !block.page_slug) return "#";
-      return `/knowledge/page/${encodeURIComponent(block.page_slug)}/#block-${
-        block.uuid
-      }`;
+    broadcastChange(uuid) {
+      if (!uuid) return;
+      document.dispatchEvent(
+        new CustomEvent("brainspread:block-changed", {
+          detail: { uuid, source: this },
+        })
+      );
     },
 
-    blockLabel(block) {
-      if (!block) return "";
-      const content = (block.content || "").trim();
-      if (content)
-        return content.length > 200 ? content.slice(0, 200) + "…" : content;
-      return "(empty block)";
+    async refreshResults() {
+      // Re-runs the active saved view so the results list reflects
+      // backend changes. Called from onRowChanged below and from the
+      // brainspread:block-changed event listener.
+      if (!this.activeView || !this.activeView.uuid) return;
+      try {
+        const r = await window.apiService.runSavedView({
+          uuid: this.activeView.uuid,
+          limit: 100,
+        });
+        if (r && r.success) {
+          this.runResult = r.data;
+          this.runError = null;
+        }
+      } catch (err) {
+        console.error("runSavedView refresh failed:", err);
+      }
+    },
+
+    async onRowChanged(uuid) {
+      this.broadcastChange(uuid);
+      await this.refreshResults();
+    },
+
+    onRowError(message) {
+      this.runError = message;
+    },
+
+    // ── Host-page modal owners (wired into EmbedResultRow as
+    // onScheduleBlock + onOpenBlockInfo). Schedule + block info
+    // both render their own popover/modal at this level so the
+    // saved-views page can stand alone without a parent surface.
+
+    openBlockInfoModal(b) {
+      this.blockInfoModalBlock = b;
+      this.blockInfoModalOpen = true;
+    },
+
+    closeBlockInfoModal() {
+      this.blockInfoModalOpen = false;
+      this.blockInfoModalBlock = null;
+    },
+
+    scheduleBlock(b, { clear = false } = {}) {
+      if (clear) {
+        this._submitSchedule(b, "", "", "");
+        return;
+      }
+      this.schedulePopoverBlock = b;
+      this.schedulePopoverInitialDate = b.scheduled_for || "";
+      this.schedulePopoverInitialReminderDate = b.pending_reminder_date || "";
+      this.schedulePopoverInitialTime = b.pending_reminder_time || "";
+      this.schedulePopoverOpen = true;
+    },
+
+    onSchedulePopoverSave({ scheduledFor, reminderDate, reminderTime }) {
+      const b = this.schedulePopoverBlock;
+      this.schedulePopoverOpen = false;
+      this.schedulePopoverBlock = null;
+      if (!b) return;
+      this._submitSchedule(b, scheduledFor, reminderDate, reminderTime);
+    },
+
+    onSchedulePopoverCancel() {
+      this.schedulePopoverOpen = false;
+      this.schedulePopoverBlock = null;
+    },
+
+    async _submitSchedule(block, scheduledFor, reminderDate, reminderTime) {
+      try {
+        const r = await window.apiService.scheduleBlock(
+          block.uuid,
+          scheduledFor,
+          reminderDate,
+          reminderTime
+        );
+        if (!r || !r.success) {
+          throw new Error(
+            r?.errors?.non_field_errors?.[0] || "failed to schedule"
+          );
+        }
+        this.broadcastChange(block.uuid);
+        await this.refreshResults();
+      } catch (err) {
+        console.error("scheduleBlock failed:", err);
+        this.runError = `failed to schedule: ${err.message || err}`;
+      }
     },
   },
 
@@ -950,21 +1075,34 @@ const SavedViewsPage = {
             <div v-else-if="!runResult" class="empty-state">Loading…</div>
             <div v-else-if="!runResult.results.length" class="empty-state">No matches.</div>
             <ul v-else class="result-list">
-              <li v-for="b in runResult.results" :key="b.uuid">
-                <a :href="blockHref(b)" class="result-row">
-                  <span class="result-content">{{ blockLabel(b) }}</span>
-                  <span class="result-meta">
-                    <span v-if="b.block_type" class="result-block-type">{{ b.block_type }}</span>
-                    <span v-if="b.scheduled_for"> · due {{ b.scheduled_for }}</span>
-                    <span v-if="b.completed_at"> · done {{ b.completed_at.split('T')[0] }}</span>
-                    <span v-if="b.page_title"> · {{ b.page_title }}</span>
-                  </span>
-                </a>
-              </li>
+              <EmbedResultRow
+                v-for="b in runResult.results"
+                :key="b.uuid"
+                :block="b"
+                :on-schedule-block="scheduleBlock"
+                :on-open-block-info="openBlockInfoModal"
+                :on-changed="onRowChanged"
+                @error="onRowError"
+              />
             </ul>
           </div>
         </template>
       </div>
+
+      <ScheduleBlockPopover
+        :is-open="schedulePopoverOpen"
+        :initial-date="schedulePopoverInitialDate"
+        :initial-reminder-date="schedulePopoverInitialReminderDate"
+        :initial-time="schedulePopoverInitialTime"
+        @save="onSchedulePopoverSave"
+        @cancel="onSchedulePopoverCancel"
+      />
+
+      <BlockInfoModal
+        :is-open="blockInfoModalOpen"
+        :block="blockInfoModalBlock"
+        @close="closeBlockInfoModal"
+      />
     </div>
   `,
 };

@@ -9,10 +9,19 @@
  * handles persistence (POST/DELETE/PUT to /api/embeds/) and refreshes
  * its own embedded_views state after each call.
  *
- * The result list itself is read-only — clicking a row jumps to that
- * block on its source page so the user can interact with it there.
+ * Each matched block renders as an EmbedResultRow — that component
+ * owns the bullet, click-to-cycle-todo, the right-click menu, and
+ * the move/schedule/copy-link/delete/info action handlers. This
+ * component's job is the embed header, the loading / error / empty
+ * states, the saved-view fetch, and listening for cross-component
+ * change events so it re-runs the view when a displayed block
+ * mutates elsewhere on the page.
  */
 window.QueryEmbedBlock = {
+  components: {
+    EmbedResultRow: window.EmbedResultRow || {},
+  },
+
   props: {
     embed: { type: Object, required: true },
     // ISO YYYY-MM-DD when the embed renders inside a daily page; null
@@ -28,6 +37,15 @@ window.QueryEmbedBlock = {
     onToggleCollapsed: { type: Function, default: null },
     onMoveUp: { type: Function, default: null },
     onMoveDown: { type: Function, default: null },
+    // Host-page delegates forwarded straight to each EmbedResultRow.
+    // Schedule + Block info need a modal that lives on the host;
+    // Move-to-today / Move-to-page need to trigger the host's own
+    // reload so the moved block shows up on the destination page
+    // without a manual refresh. See EmbedResultRow's prop comment.
+    onScheduleBlock: { type: Function, default: null },
+    onOpenBlockInfo: { type: Function, default: null },
+    onMoveBlockToToday: { type: Function, default: null },
+    onMoveBlockToPage: { type: Function, default: null },
   },
 
   data() {
@@ -95,6 +113,32 @@ window.QueryEmbedBlock = {
 
   mounted() {
     if (!this.collapsed) this.fetch();
+    // Re-run the saved view when any block we might be displaying
+    // mutates elsewhere on the page (a different embed's row, the
+    // home-page editor, etc.). Our own row actions also broadcast
+    // through onRowChanged below; tag the broadcast with
+    // `source: this` so the listener skips our own refetch loop.
+    this._onBlocksChanged = (ev) => {
+      const uuid = ev?.detail?.uuid;
+      if (!uuid || ev?.detail?.source === this) return;
+      if (this.collapsed || !this.result?.results) return;
+      if (this.result.results.some((b) => b.uuid === uuid)) {
+        this.fetch();
+      }
+    };
+    document.addEventListener(
+      "brainspread:block-changed",
+      this._onBlocksChanged
+    );
+  },
+
+  beforeUnmount() {
+    if (this._onBlocksChanged) {
+      document.removeEventListener(
+        "brainspread:block-changed",
+        this._onBlocksChanged
+      );
+    }
   },
 
   watch: {
@@ -159,17 +203,25 @@ window.QueryEmbedBlock = {
         this.loading = false;
       }
     },
-    blockHref(b) {
-      if (!b || !b.page_slug) return "#";
-      return `/knowledge/page/${encodeURIComponent(b.page_slug)}/#block-${
-        b.uuid
-      }`;
+
+    broadcastChange(uuid) {
+      if (!uuid) return;
+      document.dispatchEvent(
+        new CustomEvent("brainspread:block-changed", {
+          detail: { uuid, source: this },
+        })
+      );
     },
-    blockLabel(b) {
-      const c = (b.content || "").trim();
-      if (!c) return "(empty block)";
-      return c.length > 200 ? c.slice(0, 200) + "…" : c;
+
+    async onRowChanged(uuid) {
+      this.broadcastChange(uuid);
+      await this.fetch();
     },
+
+    onRowError(message) {
+      this.error = message;
+    },
+
     onRemoveClick() {
       if (!this.onDelete) return;
       this.onDelete(this.embed);
@@ -254,17 +306,17 @@ window.QueryEmbedBlock = {
           No matches.
         </div>
         <ul v-else class="result-list">
-          <li v-for="b in result.results" :key="b.uuid">
-            <a :href="blockHref(b)" class="result-row">
-              <span class="result-content">{{ blockLabel(b) }}</span>
-              <span class="result-meta">
-                <span v-if="b.block_type" class="result-block-type">{{ b.block_type }}</span>
-                <span v-if="b.scheduled_for"> · due {{ b.scheduled_for }}</span>
-                <span v-if="b.completed_at"> · done {{ b.completed_at.split('T')[0] }}</span>
-                <span v-if="b.page_title"> · {{ b.page_title }}</span>
-              </span>
-            </a>
-          </li>
+          <EmbedResultRow
+            v-for="b in result.results"
+            :key="b.uuid"
+            :block="b"
+            :on-schedule-block="onScheduleBlock"
+            :on-open-block-info="onOpenBlockInfo"
+            :on-move-block-to-today="onMoveBlockToToday"
+            :on-move-block-to-page="onMoveBlockToPage"
+            :on-changed="onRowChanged"
+            @error="onRowError"
+          />
         </ul>
       </template>
     </div>
