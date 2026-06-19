@@ -75,9 +75,7 @@ class MCPEndpointTestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
     def test_unknown_method_returns_jsonrpc_error(self):
-        response = self.client.post(
-            "/api/mcp/", _rpc("does/not/exist"), format="json"
-        )
+        response = self.client.post("/api/mcp/", _rpc("does/not/exist"), format="json")
         body = response.json()
         self.assertEqual(body["error"]["code"], -32601)
 
@@ -187,7 +185,9 @@ class MCPEndpointTestCase(TestCase):
         # slug=YYYY-MM-DD, not date+page_type).
         page, _ = PageRepository.get_or_create_daily_note(self.user, today)
         BlockFactory(user=self.user, page=page, content="do thing", block_type="todo")
-        BlockFactory(user=self.user, page=page, content="already done", block_type="done")
+        BlockFactory(
+            user=self.user, page=page, content="already done", block_type="done"
+        )
         BlockFactory(user=self.user, page=page, content="note", block_type="bullet")
 
         response = self.client.post(

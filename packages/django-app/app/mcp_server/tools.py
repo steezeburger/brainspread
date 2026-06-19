@@ -142,9 +142,7 @@ def _list_today_todos(user: User, _args: dict[str, Any]) -> dict[str, Any]:
     if not form.is_valid():
         raise ToolError(_form_errors_to_str(form))
     page, direct, _refs, overdue, _embeds = GetPageWithBlocksCommand(form).execute()
-    undone = [
-        b.to_dict() for b in direct if b.block_type in {"todo", "doing", "later"}
-    ]
+    undone = [b.to_dict() for b in direct if b.block_type in {"todo", "doing", "later"}]
     return {
         "page": page.to_dict(),
         "undone_today": undone,
@@ -165,9 +163,7 @@ def _get_page(user: User, args: dict[str, Any]) -> dict[str, Any]:
     return {
         "page": page.to_dict(),
         "direct_blocks": [b.to_dict_with_children() for b in direct],
-        "referenced_blocks": [
-            b.to_dict(include_page_context=True) for b in refs
-        ],
+        "referenced_blocks": [b.to_dict(include_page_context=True) for b in refs],
         "overdue_blocks": [b.to_dict(include_page_context=True) for b in overdue],
     }
 

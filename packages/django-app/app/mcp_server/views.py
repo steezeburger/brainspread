@@ -60,7 +60,9 @@ def _error(req_id: Any, code: int, message: str) -> dict[str, Any]:
 def _handle_initialize(_user, params: dict[str, Any]) -> dict[str, Any]:
     requested = params.get("protocolVersion")
     version = (
-        requested if requested in SUPPORTED_PROTOCOL_VERSIONS else LATEST_PROTOCOL_VERSION
+        requested
+        if requested in SUPPORTED_PROTOCOL_VERSIONS
+        else LATEST_PROTOCOL_VERSION
     )
     return {
         "protocolVersion": version,
@@ -125,8 +127,11 @@ METHOD_HANDLERS = {
 def _dispatch_single(user, message: dict[str, Any]) -> dict[str, Any] | None:
     """Dispatch one JSON-RPC message. Returns None for notifications."""
     if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
-        return _error(message.get("id") if isinstance(message, dict) else None,
-                      INVALID_REQUEST, "Invalid JSON-RPC envelope")
+        return _error(
+            message.get("id") if isinstance(message, dict) else None,
+            INVALID_REQUEST,
+            "Invalid JSON-RPC envelope",
+        )
     method = message.get("method")
     req_id = message.get("id")
     params = message.get("params") or {}
@@ -135,14 +140,20 @@ def _dispatch_single(user, message: dict[str, Any]) -> dict[str, Any] | None:
 
     is_notification = req_id is None
     if not method:
-        return None if is_notification else _error(req_id, INVALID_REQUEST, "Missing 'method'")
+        return (
+            None
+            if is_notification
+            else _error(req_id, INVALID_REQUEST, "Missing 'method'")
+        )
     if method.startswith("notifications/"):
         return None
 
     handler = METHOD_HANDLERS.get(method)
     if handler is None:
-        return None if is_notification else _error(
-            req_id, METHOD_NOT_FOUND, f"Method not found: {method}"
+        return (
+            None
+            if is_notification
+            else _error(req_id, METHOD_NOT_FOUND, f"Method not found: {method}")
         )
     try:
         result = handler(user, params)
@@ -171,7 +182,9 @@ def mcp_endpoint(request):
 
     if not isinstance(body, dict):
         return Response(
-            _error(None, INVALID_REQUEST, "Request body must be a JSON object or array"),
+            _error(
+                None, INVALID_REQUEST, "Request body must be a JSON object or array"
+            ),
             status=status.HTTP_400_BAD_REQUEST,
         )
 
