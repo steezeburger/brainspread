@@ -116,15 +116,23 @@ window.EmbedContextMenu = {
     },
 
     handleOutsideClick(event) {
-      // Clicks inside the menu must reach their own handlers (those
-      // drive the action emit + the menu's own close). The
-      // @click.stop on the menu root would normally suppress the
-      // document-level close on bubble, but capture-phase listeners
-      // run before bubble, so we have to skip inside clicks ourselves.
-      const el = this.$el;
-      if (el && el.nodeType === 1 && el.contains(event.target)) return;
+      // Clicks inside any context menu must reach their own
+      // handlers (item @click drives the action emit + the menu's
+      // own close). The @click.stop on the menu root only
+      // suppresses bubble, but we're in capture phase so we have
+      // to identify inside-menu clicks ourselves. Use a closest()
+      // check on the shared `.block-context-menu` class rather
+      // than `$el.contains` — $el is unreliable when v-if is at
+      // the template root (it can resolve to the comment-node
+      // placeholder), and the class check is what we actually mean
+      // semantically anyway.
+      const target = event.target;
+      if (target && target.closest && target.closest(".block-context-menu")) {
+        return;
+      }
       // Outside click: consume the event so the target's own click
-      // handler (block-edit, link nav, row toggle) never runs.
+      // handler (block-edit, link nav, row toggle) never runs, then
+      // close the menu.
       event.preventDefault();
       event.stopPropagation();
       this.close();
