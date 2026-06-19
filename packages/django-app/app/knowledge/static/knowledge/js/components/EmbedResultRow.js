@@ -7,12 +7,15 @@
  * action handlers behind the EmbedContextMenu, and the menu itself.
  *
  * Parents pass the block + optional host-page-modal callbacks
- * (`onScheduleBlock`, `onOpenBlockInfo`) and listen for `@changed`
- * (uuid) to refresh their own state + dispatch the cross-component
- * `brainspread:block-changed` event. Errors surface via `@error`
- * (message) so the parent's error banner stays the single error
- * surface — the row itself is intentionally stateless beyond the
- * shared context menu.
+ * (`onScheduleBlock`, `onOpenBlockInfo`) and an `onChanged(uuid)`
+ * async callback the row awaits after every mutation. The await
+ * matters: the parent typically refetches the saved view inside
+ * onChanged, and the row needs to wait on that before yielding —
+ * otherwise the user can re-open the menu before the prop has been
+ * replaced with the fresh block, and pick up stale page_slug etc.
+ * Errors surface via `@error` (message) so the parent's error
+ * banner stays the single error surface — the row itself is
+ * intentionally stateless beyond the shared context menu.
  *
  * This intentionally stops short of editing / tree-structural
  * behaviors (indent / outdent / add-child / drag). Those live in
@@ -40,9 +43,16 @@ window.EmbedResultRow = {
     onOpenBlockInfo: { type: Function, default: null },
     onMoveBlockToToday: { type: Function, default: null },
     onMoveBlockToPage: { type: Function, default: null },
+    // Awaitable refresh hook. Each action calls this after the
+    // backend mutation completes, and waits on the returned promise
+    // before yielding control back to the user — so by the time the
+    // user can open the menu again the row's `block` prop has been
+    // updated by the parent's refetch (otherwise a fast click would
+    // capture stale page_slug etc. from the pre-mutation block).
+    onChanged: { type: Function, default: null },
   },
 
-  emits: ["changed", "error"],
+  emits: ["error"],
 
   methods: {
     blockHref(b) {
@@ -89,7 +99,7 @@ window.EmbedResultRow = {
           b.block_type = r.data.block_type;
           b.completed_at = r.data.completed_at;
           b.content = r.data.content;
-          this.$emit("changed", b.uuid);
+          await this.notifyChanged(b.uuid);
         } else {
           const errs = (r && r.errors) || {};
           this.$emit(
@@ -106,6 +116,10 @@ window.EmbedResultRow = {
 
     openRowMenu(event) {
       this.$refs.rowMenu?.openAt(this.block, event);
+    },
+
+    async notifyChanged(uuid) {
+      if (this.onChanged) await this.onChanged(uuid);
     },
 
     async onMenuAction({ action, block }) {
@@ -141,7 +155,7 @@ window.EmbedResultRow = {
       // silently and the user has to refresh to see it.
       if (this.onMoveBlockToToday) {
         await this.onMoveBlockToToday(b);
-        this.$emit("changed", b.uuid);
+        await this.notifyChanged(b.uuid);
         return;
       }
       try {
@@ -151,7 +165,7 @@ window.EmbedResultRow = {
             r?.errors?.non_field_errors?.[0] || "move to today failed"
           );
         }
-        this.$emit("changed", b.uuid);
+        await this.notifyChanged(b.uuid);
       } catch (err) {
         console.error("moveBlockToDaily failed:", err);
         this.$emit("error", "failed to move block to today");
@@ -163,7 +177,7 @@ window.EmbedResultRow = {
       // the picker + reload when present.
       if (this.onMoveBlockToPage) {
         await this.onMoveBlockToPage(b);
-        this.$emit("changed", b.uuid);
+        await this.notifyChanged(b.uuid);
         return;
       }
       if (!window.appModals?.pickPage) {
@@ -181,7 +195,7 @@ window.EmbedResultRow = {
         if (!r || !r.success) {
           throw new Error(r?.errors?.non_field_errors?.[0] || "move failed");
         }
-        this.$emit("changed", b.uuid);
+        await this.notifyChanged(b.uuid);
       } catch (err) {
         console.error("moveBlockToPage failed:", err);
         this.$emit("error", `failed to move block: ${err.message || err}`);
@@ -245,7 +259,7 @@ window.EmbedResultRow = {
         if (!r || !r.success) {
           throw new Error(r?.errors?.non_field_errors?.[0] || "delete failed");
         }
-        this.$emit("changed", b.uuid);
+        await this.notifyChanged(b.uuid);
       } catch (err) {
         console.error("deleteBlock failed:", err);
         this.$emit("error", `failed to delete block: ${err.message || err}`);

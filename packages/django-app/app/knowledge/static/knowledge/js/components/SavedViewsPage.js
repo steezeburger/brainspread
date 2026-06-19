@@ -1059,7 +1059,7 @@ const SavedViewsPage = {
                 :block="b"
                 :on-schedule-block="scheduleBlock"
                 :on-open-block-info="openBlockInfoModal"
-                @changed="onRowChanged"
+                :on-changed="onRowChanged"
                 @error="onRowError"
               />
             </ul>

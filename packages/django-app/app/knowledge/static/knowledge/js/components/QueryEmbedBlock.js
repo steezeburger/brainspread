@@ -228,7 +228,7 @@ window.QueryEmbedBlock = {
             :on-open-block-info="onOpenBlockInfo"
             :on-move-block-to-today="onMoveBlockToToday"
             :on-move-block-to-page="onMoveBlockToPage"
-            @changed="onRowChanged"
+            :on-changed="onRowChanged"
             @error="onRowError"
           />
         </ul>
