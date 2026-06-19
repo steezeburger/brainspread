@@ -110,8 +110,17 @@ window.EmbedContextMenu = {
       // its own items. The setTimeout is BlockComponent's pattern —
       // without it the same click that opened us would trigger an
       // immediate close.
+      //
+      // touchend is wired too: BlockComponent.handleContentTouchEnd
+      // (line ~737) calls preventDefault on touchend, which stops
+      // iOS from synthesizing the follow-up click — so a click-only
+      // listener never fires on mobile and the menu can't be
+      // dismissed by tapping a block. Capturing touchend ourselves
+      // lets us consume the tap before BlockComponent's bubble
+      // handler enters the block into edit mode.
       setTimeout(() => {
         document.addEventListener("click", this.handleOutsideClick, true);
+        document.addEventListener("touchend", this.handleOutsideClick, true);
       }, 10);
     },
 
@@ -141,6 +150,7 @@ window.EmbedContextMenu = {
     close() {
       this.block = null;
       document.removeEventListener("click", this.handleOutsideClick, true);
+      document.removeEventListener("touchend", this.handleOutsideClick, true);
     },
 
     onAction(action) {
