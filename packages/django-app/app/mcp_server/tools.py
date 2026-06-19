@@ -1,19 +1,21 @@
 """MCP tool registry.
 
 Each tool is a thin adapter over a Forms + Command pair, matching the
-project convention that all business logic lives in Commands. Tools
-take the authenticated ``User`` plus the JSON args sent by the MCP
-client and return JSON-serializable data; the view layer wraps the
-return value in MCP's ``content`` envelope.
+project convention that all business logic lives in Commands. Handlers
+take a ``ToolContext`` (the authenticated user) plus the JSON args sent
+by the MCP client and return JSON-serializable data; the view layer wraps
+the return value in MCP's ``content`` envelope.
 
 The tool list is curated for an LLM caller — small surface, obvious
-names, descriptions that read as instructions to the model. Add new
-tools by appending to ``TOOLS`` at the bottom.
+names, descriptions that read as instructions to the model. This is a
+deliberately different (smaller, friendlier) surface than the in-app AI
+chat's tool set, but both build on the same ``core.llm_tools`` primitive.
+Add new tools by appending to ``REGISTRY`` at the bottom.
 """
 
-from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
+from core.llm_tools import Tool, ToolContext, ToolError, ToolRegistry
 from core.models import User
 from knowledge.commands import (
     CreateBlockCommand,
@@ -31,24 +33,6 @@ from knowledge.forms import (
     ToggleBlockTodoForm,
 )
 from knowledge.forms.search_notes_form import SearchNotesForm
-
-
-class ToolError(Exception):
-    """Raised by a tool handler to signal a tool-level (not protocol) error.
-
-    The view returns these as ``isError: true`` results rather than as
-    JSON-RPC errors, per the MCP spec — protocol errors are reserved
-    for malformed requests.
-    """
-
-
-@dataclass(frozen=True)
-class Tool:
-    name: str
-    description: str
-    input_schema: dict[str, Any]
-    handler: Callable[[User, dict[str, Any]], Any]
-
 
 # --- helpers -----------------------------------------------------------
 
@@ -86,14 +70,14 @@ def _page_for_slug_or_today(user: User, slug: str | None):
 # --- handlers ----------------------------------------------------------
 
 
-def _create_todo(user: User, args: dict[str, Any]) -> dict[str, Any]:
+def _create_todo(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     content = (args.get("content") or "").strip()
     if not content:
         raise ToolError("content is required")
-    page = _today_daily_page(user)
+    page = _today_daily_page(ctx.user)
     form = CreateBlockForm(
         data={
-            "user": user.id,
+            "user": ctx.user.id,
             "page": str(page.uuid),
             "content": content,
             "block_type": "todo",
@@ -105,14 +89,14 @@ def _create_todo(user: User, args: dict[str, Any]) -> dict[str, Any]:
     return {"block": block.to_dict(), "page": page.to_dict()}
 
 
-def _create_note(user: User, args: dict[str, Any]) -> dict[str, Any]:
+def _create_note(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     content = (args.get("content") or "").strip()
     if not content:
         raise ToolError("content is required")
-    page = _page_for_slug_or_today(user, args.get("page_slug"))
+    page = _page_for_slug_or_today(ctx.user, args.get("page_slug"))
     form = CreateBlockForm(
         data={
-            "user": user.id,
+            "user": ctx.user.id,
             "page": str(page.uuid),
             "content": content,
             "block_type": "bullet",
@@ -124,8 +108,8 @@ def _create_note(user: User, args: dict[str, Any]) -> dict[str, Any]:
     return {"block": block.to_dict(), "page": page.to_dict()}
 
 
-def _create_page(user: User, args: dict[str, Any]) -> dict[str, Any]:
-    payload: dict[str, Any] = {"user": user.id, "title": args.get("title") or ""}
+def _create_page(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    payload: dict[str, Any] = {"user": ctx.user.id, "title": args.get("title") or ""}
     if args.get("slug"):
         payload["slug"] = args["slug"]
     if args.get("page_type"):
@@ -137,8 +121,8 @@ def _create_page(user: User, args: dict[str, Any]) -> dict[str, Any]:
     return page.to_dict()
 
 
-def _list_today_todos(user: User, _args: dict[str, Any]) -> dict[str, Any]:
-    form = GetPageWithBlocksForm(data={"user": user.id})
+def _list_today_todos(ctx: ToolContext, _args: dict[str, Any]) -> dict[str, Any]:
+    form = GetPageWithBlocksForm(data={"user": ctx.user.id})
     if not form.is_valid():
         raise ToolError(_form_errors_to_str(form))
     page, direct, _refs, overdue, _embeds = GetPageWithBlocksCommand(form).execute()
@@ -150,8 +134,8 @@ def _list_today_todos(user: User, _args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _get_page(user: User, args: dict[str, Any]) -> dict[str, Any]:
-    data: dict[str, Any] = {"user": user.id}
+def _get_page(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    data: dict[str, Any] = {"user": ctx.user.id}
     if args.get("slug"):
         data["slug"] = args["slug"]
     if args.get("date"):
@@ -168,8 +152,8 @@ def _get_page(user: User, args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _search_notes(user: User, args: dict[str, Any]) -> Any:
-    payload: dict[str, Any] = {"user": user.id, "query": args.get("query") or ""}
+def _search_notes(ctx: ToolContext, args: dict[str, Any]) -> Any:
+    payload: dict[str, Any] = {"user": ctx.user.id, "query": args.get("query") or ""}
     if args.get("limit") is not None:
         payload["limit"] = args["limit"]
     form = SearchNotesForm(data=payload)
@@ -178,9 +162,9 @@ def _search_notes(user: User, args: dict[str, Any]) -> Any:
     return SearchNotesCommand(form).execute()
 
 
-def _toggle_todo(user: User, args: dict[str, Any]) -> dict[str, Any]:
+def _toggle_todo(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     form = ToggleBlockTodoForm(
-        data={"user": user.id, "block": args.get("block_uuid") or ""}
+        data={"user": ctx.user.id, "block": args.get("block_uuid") or ""}
     )
     if not form.is_valid():
         raise ToolError(_form_errors_to_str(form))
@@ -188,9 +172,9 @@ def _toggle_todo(user: User, args: dict[str, Any]) -> dict[str, Any]:
     return block.to_dict()
 
 
-def _schedule_block(user: User, args: dict[str, Any]) -> dict[str, Any]:
+def _schedule_block(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     payload: dict[str, Any] = {
-        "user": user.id,
+        "user": ctx.user.id,
         "block": args.get("block_uuid") or "",
         # ScheduleBlockForm treats empty/absent as "clear".
         "scheduled_for": args.get("scheduled_for") or "",
@@ -208,9 +192,8 @@ def _schedule_block(user: User, args: dict[str, Any]) -> dict[str, Any]:
 
 # --- registry ----------------------------------------------------------
 
-TOOLS: dict[str, Tool] = {
-    t.name: t
-    for t in [
+REGISTRY = ToolRegistry(
+    [
         Tool(
             name="create_todo",
             description=(
@@ -359,4 +342,4 @@ TOOLS: dict[str, Tool] = {
             handler=_schedule_block,
         ),
     ]
-}
+)

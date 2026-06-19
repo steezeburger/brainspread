@@ -25,7 +25,9 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .tools import TOOLS, ToolError
+from core.llm_tools import ToolContext, ToolError, to_mcp
+
+from .tools import REGISTRY
 
 logger = logging.getLogger(__name__)
 
@@ -72,29 +74,21 @@ def _handle_initialize(_user, params: dict[str, Any]) -> dict[str, Any]:
 
 
 def _handle_tools_list(_user, _params: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "tools": [
-            {
-                "name": t.name,
-                "description": t.description,
-                "inputSchema": t.input_schema,
-            }
-            for t in TOOLS.values()
-        ]
-    }
+    return {"tools": to_mcp(REGISTRY.tools())}
 
 
 def _handle_tools_call(user, params: dict[str, Any]) -> dict[str, Any]:
     name = params.get("name")
-    if not name or name not in TOOLS:
+    if not name or name not in REGISTRY:
         # MCP spec: unknown tool name is a tool error, not a protocol
         # error — surface it as isError so the model can recover.
         return _tool_error_result(f"Unknown tool: {name!r}")
     args = params.get("arguments") or {}
     if not isinstance(args, dict):
         return _tool_error_result("'arguments' must be an object")
+    ctx = ToolContext(user=user)
     try:
-        data = TOOLS[name].handler(user, args)
+        data = REGISTRY.execute(name, ctx, args)
     except ToolError as e:
         return _tool_error_result(str(e))
     except Exception as e:
