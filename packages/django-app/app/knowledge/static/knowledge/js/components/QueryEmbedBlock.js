@@ -9,15 +9,17 @@
  * handles persistence (POST/DELETE/PUT to /api/embeds/) and refreshes
  * its own embedded_views state after each call.
  *
- * Result rows surface the block's todo-state bullet; clicking the
- * bullet cycles the block's state in place via the same endpoint
- * BlockComponent uses. Right-click (or the hover ⋮) opens an
- * EmbedContextMenu — see that component for the action list. Inline
- * content edits still require clicking through to the source page.
+ * Each matched block renders as an EmbedResultRow — that component
+ * owns the bullet, click-to-cycle-todo, the right-click menu, and
+ * the move/schedule/copy-link/delete/info action handlers. This
+ * component's job is the embed header, the loading / error / empty
+ * states, the saved-view fetch, and listening for cross-component
+ * change events so it re-runs the view when a displayed block
+ * mutates elsewhere on the page.
  */
 window.QueryEmbedBlock = {
   components: {
-    EmbedContextMenu: window.EmbedContextMenu || {},
+    EmbedResultRow: window.EmbedResultRow || {},
   },
 
   props: {
@@ -30,9 +32,8 @@ window.QueryEmbedBlock = {
     onMoveDown: { type: Function, default: null },
     // Schedule + Block info both need a modal that lives on the host
     // page (Page.js owns the ScheduleBlockPopover / BlockInfoModal
-    // instances). Caller wires these to open its modal for the given
-    // block; the embed hides the matching menu items when the
-    // callback isn't provided.
+    // instances). Forwarded to each EmbedResultRow, which hides the
+    // matching menu items when the callback isn't provided.
     onScheduleBlock: { type: Function, default: null },
     onOpenBlockInfo: { type: Function, default: null },
   },
@@ -64,12 +65,11 @@ window.QueryEmbedBlock = {
 
   mounted() {
     if (!this.collapsed) this.fetch();
-    // Re-run the saved view when any embed action elsewhere on the
-    // page mutates a block we might be displaying. The toggle bullet
-    // and the row context-menu actions all broadcast this event.
-    // We tag our own broadcasts with `source: this` so the local
-    // action path (which already refetches synchronously) doesn't
-    // also trigger a redundant fetch from the listener.
+    // Re-run the saved view when any block we might be displaying
+    // mutates elsewhere on the page (a different embed's row, the
+    // home-page editor, etc.). Our own row actions also broadcast
+    // through onRowChanged below; tag the broadcast with
+    // `source: this` so the listener skips our own refetch loop.
     this._onBlocksChanged = (ev) => {
       const uuid = ev?.detail?.uuid;
       if (!uuid || ev?.detail?.source === this) return;
@@ -131,66 +131,6 @@ window.QueryEmbedBlock = {
         this.loading = false;
       }
     },
-    blockHref(b) {
-      if (!b || !b.page_slug) return "#";
-      return `/knowledge/page/${encodeURIComponent(b.page_slug)}/#block-${
-        b.uuid
-      }`;
-    },
-    blockLabel(b) {
-      const c = (b.content || "").trim();
-      if (!c) return "(empty block)";
-      return c.length > 200 ? c.slice(0, 200) + "…" : c;
-    },
-    isTodoType(b) {
-      return ["todo", "doing", "done", "later", "wontdo"].includes(
-        b && b.block_type
-      );
-    },
-    bulletSymbol(b) {
-      switch (b && b.block_type) {
-        case "todo":
-        case "later":
-          return "☐";
-        case "doing":
-          return "◐";
-        case "done":
-          return "☑";
-        case "wontdo":
-          return "⊘";
-        default:
-          return "•";
-      }
-    },
-    async toggleTodo(b) {
-      if (!this.isTodoType(b)) return;
-      try {
-        const r = await window.apiService.toggleBlockTodo(b.uuid);
-        if (r && r.success && r.data) {
-          // Mutate in place so the bullet + meta update without
-          // refetching the whole embed. The row stays visible even
-          // when the new state falls outside the saved view's filter
-          // — gives the user immediate "yes that worked" feedback;
-          // a real refresh happens on the next fetch.
-          b.block_type = r.data.block_type;
-          b.completed_at = r.data.completed_at;
-          b.content = r.data.content;
-          this.broadcastChange(b.uuid);
-        } else {
-          const errs = (r && r.errors) || {};
-          this.error =
-            (errs.non_field_errors && errs.non_field_errors[0]) ||
-            "Failed to toggle todo";
-        }
-      } catch (err) {
-        console.error("toggleBlockTodo failed:", err);
-        this.error = "failed to toggle todo. please try again.";
-      }
-    },
-
-    openRowMenu(b, event) {
-      this.$refs.rowMenu?.openAt(b, event);
-    },
 
     broadcastChange(uuid) {
       if (!uuid) return;
@@ -201,137 +141,13 @@ window.QueryEmbedBlock = {
       );
     },
 
-    async onMenuAction({ action, block }) {
-      if (!block) return;
-      switch (action) {
-        case "moveToToday":
-          await this.actionMoveToToday(block);
-          break;
-        case "moveToPage":
-          await this.actionMoveToPage(block);
-          break;
-        case "copyLink":
-          await this.actionCopyLink(block);
-          break;
-        case "schedule":
-          this.actionSchedule(block, { clear: false });
-          break;
-        case "unschedule":
-          this.actionSchedule(block, { clear: true });
-          break;
-        case "blockInfo":
-          this.actionBlockInfo(block);
-          break;
-        case "delete":
-          await this.actionDelete(block);
-          break;
-      }
+    async onRowChanged(uuid) {
+      this.broadcastChange(uuid);
+      await this.fetch();
     },
 
-    async actionMoveToToday(b) {
-      try {
-        const r = await window.apiService.moveBlockToDaily(b.uuid);
-        if (!r || !r.success) {
-          throw new Error(
-            r?.errors?.non_field_errors?.[0] || "move to today failed"
-          );
-        }
-        this.broadcastChange(b.uuid);
-        await this.fetch();
-      } catch (err) {
-        console.error("moveBlockToDaily failed:", err);
-        this.error = "failed to move block to today";
-      }
-    },
-
-    async actionMoveToPage(b) {
-      if (!window.appModals?.pickPage) {
-        console.error("appModals.pickPage is not available");
-        return;
-      }
-      const target = await window.appModals.pickPage({
-        title: "move block to page",
-        placeholder: "search pages…",
-        confirmLabel: "move",
-      });
-      if (!target) return;
-      try {
-        const r = await window.apiService.moveBlockToPage(b.uuid, target.uuid);
-        if (!r || !r.success) {
-          throw new Error(r?.errors?.non_field_errors?.[0] || "move failed");
-        }
-        this.broadcastChange(b.uuid);
-        await this.fetch();
-      } catch (err) {
-        console.error("moveBlockToPage failed:", err);
-        this.error = `failed to move block: ${err.message || err}`;
-      }
-    },
-
-    async actionCopyLink(b) {
-      if (!b.page_slug) {
-        this.error = "could not build block link";
-        return;
-      }
-      const url = `${window.location.origin}/knowledge/page/${encodeURIComponent(b.page_slug)}/#block-${b.uuid}`;
-      try {
-        if (navigator.clipboard && window.isSecureContext) {
-          await navigator.clipboard.writeText(url);
-          return;
-        }
-      } catch (err) {
-        console.warn("clipboard API failed, falling back:", err);
-      }
-      // execCommand fallback for http:// contexts where the async
-      // clipboard API is gated. Mirrors Page.js copyBlockLink.
-      try {
-        const ta = document.createElement("textarea");
-        ta.value = url;
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-      } catch (err) {
-        console.error("clipboard fallback failed:", err);
-        this.error = "could not copy link";
-      }
-    },
-
-    actionSchedule(b, opts) {
-      // ScheduleBlockPopover lives on the host page (Page.js); defer
-      // to its handler when wired. The host dispatches the block-
-      // changed event after save, which routes us back through the
-      // shared listener for refresh.
-      if (!this.onScheduleBlock) return;
-      this.onScheduleBlock(b, opts || {});
-    },
-
-    actionBlockInfo(b) {
-      if (!this.onOpenBlockInfo) return;
-      this.onOpenBlockInfo(b);
-    },
-
-    async actionDelete(b) {
-      const confirmed = await (window.appModals?.confirm?.({
-        title: "delete block?",
-        message: "this will also delete any child blocks and cannot be undone.",
-        confirmLabel: "delete",
-        destructive: true,
-      }) ?? Promise.resolve(window.confirm("Delete this block?")));
-      if (!confirmed) return;
-      try {
-        const r = await window.apiService.deleteBlock(b.uuid);
-        if (!r || !r.success) {
-          throw new Error(r?.errors?.non_field_errors?.[0] || "delete failed");
-        }
-        this.broadcastChange(b.uuid);
-        await this.fetch();
-      } catch (err) {
-        console.error("deleteBlock failed:", err);
-        this.error = `failed to delete block: ${err.message || err}`;
-      }
+    onRowError(message) {
+      this.error = message;
     },
 
     onRemoveClick() {
@@ -401,49 +217,17 @@ window.QueryEmbedBlock = {
           No matches.
         </div>
         <ul v-else class="result-list">
-          <li v-for="b in result.results" :key="b.uuid">
-            <div class="result-row" @contextmenu="openRowMenu(b, $event)">
-              <div
-                class="block-bullet"
-                :class="{
-                  'todo': b.block_type === 'todo',
-                  'doing': b.block_type === 'doing',
-                  'done': b.block_type === 'done',
-                  'later': b.block_type === 'later',
-                  'wontdo': b.block_type === 'wontdo'
-                }"
-                @click.stop="isTodoType(b) ? toggleTodo(b) : null"
-                :title="isTodoType(b) ? 'Cycle todo state' : ''"
-                :role="isTodoType(b) ? 'button' : null"
-                :aria-label="isTodoType(b) ? 'Cycle todo state' : null"
-              >{{ bulletSymbol(b) }}</div>
-              <a :href="blockHref(b)" class="result-row-link">
-                <span class="result-content">{{ blockLabel(b) }}</span>
-                <span class="result-meta">
-                  <span v-if="b.block_type" class="result-block-type">{{ b.block_type }}</span>
-                  <span v-if="b.scheduled_for"> · due {{ b.scheduled_for }}</span>
-                  <span v-if="b.completed_at"> · done {{ b.completed_at.split('T')[0] }}</span>
-                  <span v-if="b.page_title"> · {{ b.page_title }}</span>
-                </span>
-              </a>
-              <button
-                type="button"
-                class="block-menu result-row-menu-btn"
-                @click="openRowMenu(b, $event)"
-                @contextmenu="openRowMenu(b, $event)"
-                title="Block options"
-                aria-label="Block options"
-              >⋮</button>
-            </div>
-          </li>
+          <EmbedResultRow
+            v-for="b in result.results"
+            :key="b.uuid"
+            :block="b"
+            :on-schedule-block="onScheduleBlock"
+            :on-open-block-info="onOpenBlockInfo"
+            @changed="onRowChanged"
+            @error="onRowError"
+          />
         </ul>
       </template>
-      <EmbedContextMenu
-        ref="rowMenu"
-        :can-schedule="!!onScheduleBlock"
-        :can-block-info="!!onOpenBlockInfo"
-        @action="onMenuAction"
-      />
     </div>
   `,
 };

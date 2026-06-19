@@ -19,7 +19,7 @@ const SavedViewsPage = {
   components: {
     ScheduleBlockPopover: window.ScheduleBlockPopover || {},
     BlockInfoModal: window.BlockInfoModal || {},
-    EmbedContextMenu: window.EmbedContextMenu || {},
+    EmbedResultRow: window.EmbedResultRow || {},
   },
 
   data() {
@@ -802,65 +802,6 @@ const SavedViewsPage = {
       this.prefillMatch = null;
     },
 
-    blockHref(block) {
-      if (!block || !block.page_slug) return "#";
-      return `/knowledge/page/${encodeURIComponent(block.page_slug)}/#block-${
-        block.uuid
-      }`;
-    },
-
-    blockLabel(block) {
-      if (!block) return "";
-      const content = (block.content || "").trim();
-      if (content)
-        return content.length > 200 ? content.slice(0, 200) + "…" : content;
-      return "(empty block)";
-    },
-
-    isTodoType(b) {
-      return ["todo", "doing", "done", "later", "wontdo"].includes(
-        b && b.block_type
-      );
-    },
-
-    bulletSymbol(b) {
-      switch (b && b.block_type) {
-        case "todo":
-        case "later":
-          return "☐";
-        case "doing":
-          return "◐";
-        case "done":
-          return "☑";
-        case "wontdo":
-          return "⊘";
-        default:
-          return "•";
-      }
-    },
-
-    async toggleResultTodo(b) {
-      if (!this.isTodoType(b)) return;
-      try {
-        const r = await window.apiService.toggleBlockTodo(b.uuid);
-        if (r && r.success && r.data) {
-          // Update in place — see QueryEmbedBlock for rationale.
-          b.block_type = r.data.block_type;
-          b.completed_at = r.data.completed_at;
-          b.content = r.data.content;
-          this.broadcastChange(b.uuid);
-        } else {
-          const errs = (r && r.errors) || {};
-          this.runError =
-            (errs.non_field_errors && errs.non_field_errors[0]) ||
-            "Failed to toggle todo";
-        }
-      } catch (err) {
-        console.error("toggleBlockTodo failed:", err);
-        this.runError = "failed to toggle todo. please try again.";
-      }
-    },
-
     broadcastChange(uuid) {
       if (!uuid) return;
       document.dispatchEvent(
@@ -870,40 +811,9 @@ const SavedViewsPage = {
       );
     },
 
-    openRowMenu(b, event) {
-      this.$refs.rowMenu?.openAt(b, event);
-    },
-
-    async onMenuAction({ action, block }) {
-      if (!block) return;
-      switch (action) {
-        case "moveToToday":
-          await this.actionMoveToToday(block);
-          break;
-        case "moveToPage":
-          await this.actionMoveToPage(block);
-          break;
-        case "copyLink":
-          await this.actionCopyLink(block);
-          break;
-        case "schedule":
-          this.actionSchedule(block, { clear: false });
-          break;
-        case "unschedule":
-          this.actionSchedule(block, { clear: true });
-          break;
-        case "blockInfo":
-          this.actionBlockInfo(block);
-          break;
-        case "delete":
-          await this.actionDelete(block);
-          break;
-      }
-    },
-
     async refreshResults() {
       // Re-runs the active saved view so the results list reflects
-      // backend changes. Used by every action handler + by the
+      // backend changes. Called from onRowChanged below and from the
       // brainspread:block-changed event listener.
       if (!this.activeView || !this.activeView.uuid) return;
       try {
@@ -920,76 +830,21 @@ const SavedViewsPage = {
       }
     },
 
-    async actionMoveToToday(b) {
-      try {
-        const r = await window.apiService.moveBlockToDaily(b.uuid);
-        if (!r || !r.success) {
-          throw new Error(
-            r?.errors?.non_field_errors?.[0] || "move to today failed"
-          );
-        }
-        this.broadcastChange(b.uuid);
-        await this.refreshResults();
-      } catch (err) {
-        console.error("moveBlockToDaily failed:", err);
-        this.runError = "failed to move block to today";
-      }
+    async onRowChanged(uuid) {
+      this.broadcastChange(uuid);
+      await this.refreshResults();
     },
 
-    async actionMoveToPage(b) {
-      if (!window.appModals?.pickPage) {
-        console.error("appModals.pickPage is not available");
-        return;
-      }
-      const target = await window.appModals.pickPage({
-        title: "move block to page",
-        placeholder: "search pages…",
-        confirmLabel: "move",
-      });
-      if (!target) return;
-      try {
-        const r = await window.apiService.moveBlockToPage(b.uuid, target.uuid);
-        if (!r || !r.success) {
-          throw new Error(r?.errors?.non_field_errors?.[0] || "move failed");
-        }
-        this.broadcastChange(b.uuid);
-        await this.refreshResults();
-      } catch (err) {
-        console.error("moveBlockToPage failed:", err);
-        this.runError = `failed to move block: ${err.message || err}`;
-      }
+    onRowError(message) {
+      this.runError = message;
     },
 
-    async actionCopyLink(b) {
-      if (!b.page_slug) {
-        this.runError = "could not build block link";
-        return;
-      }
-      const url = `${window.location.origin}/knowledge/page/${encodeURIComponent(b.page_slug)}/#block-${b.uuid}`;
-      try {
-        if (navigator.clipboard && window.isSecureContext) {
-          await navigator.clipboard.writeText(url);
-          return;
-        }
-      } catch (err) {
-        console.warn("clipboard API failed, falling back:", err);
-      }
-      try {
-        const ta = document.createElement("textarea");
-        ta.value = url;
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-      } catch (err) {
-        console.error("clipboard fallback failed:", err);
-        this.runError = "could not copy link";
-      }
-    },
+    // ── Host-page modal owners (wired into EmbedResultRow as
+    // onScheduleBlock + onOpenBlockInfo). Schedule + block info
+    // both render their own popover/modal at this level so the
+    // saved-views page can stand alone without a parent surface.
 
-    actionBlockInfo(b) {
+    openBlockInfoModal(b) {
       this.blockInfoModalBlock = b;
       this.blockInfoModalOpen = true;
     },
@@ -999,7 +854,7 @@ const SavedViewsPage = {
       this.blockInfoModalBlock = null;
     },
 
-    actionSchedule(b, { clear = false } = {}) {
+    scheduleBlock(b, { clear = false } = {}) {
       if (clear) {
         this._submitSchedule(b, "", "", "");
         return;
@@ -1042,27 +897,6 @@ const SavedViewsPage = {
       } catch (err) {
         console.error("scheduleBlock failed:", err);
         this.runError = `failed to schedule: ${err.message || err}`;
-      }
-    },
-
-    async actionDelete(b) {
-      const confirmed = await (window.appModals?.confirm?.({
-        title: "delete block?",
-        message: "this will also delete any child blocks and cannot be undone.",
-        confirmLabel: "delete",
-        destructive: true,
-      }) ?? Promise.resolve(window.confirm("Delete this block?")));
-      if (!confirmed) return;
-      try {
-        const r = await window.apiService.deleteBlock(b.uuid);
-        if (!r || !r.success) {
-          throw new Error(r?.errors?.non_field_errors?.[0] || "delete failed");
-        }
-        this.broadcastChange(b.uuid);
-        await this.refreshResults();
-      } catch (err) {
-        console.error("deleteBlock failed:", err);
-        this.runError = `failed to delete block: ${err.message || err}`;
       }
     },
   },
@@ -1219,52 +1053,19 @@ const SavedViewsPage = {
             <div v-else-if="!runResult" class="empty-state">Loading…</div>
             <div v-else-if="!runResult.results.length" class="empty-state">No matches.</div>
             <ul v-else class="result-list">
-              <li v-for="b in runResult.results" :key="b.uuid">
-                <div class="result-row" @contextmenu="openRowMenu(b, $event)">
-                  <div
-                    class="block-bullet"
-                    :class="{
-                      'todo': b.block_type === 'todo',
-                      'doing': b.block_type === 'doing',
-                      'done': b.block_type === 'done',
-                      'later': b.block_type === 'later',
-                      'wontdo': b.block_type === 'wontdo'
-                    }"
-                    @click.stop="isTodoType(b) ? toggleResultTodo(b) : null"
-                    :title="isTodoType(b) ? 'Cycle todo state' : ''"
-                    :role="isTodoType(b) ? 'button' : null"
-                    :aria-label="isTodoType(b) ? 'Cycle todo state' : null"
-                  >{{ bulletSymbol(b) }}</div>
-                  <a :href="blockHref(b)" class="result-row-link">
-                    <span class="result-content">{{ blockLabel(b) }}</span>
-                    <span class="result-meta">
-                      <span v-if="b.block_type" class="result-block-type">{{ b.block_type }}</span>
-                      <span v-if="b.scheduled_for"> · due {{ b.scheduled_for }}</span>
-                      <span v-if="b.completed_at"> · done {{ b.completed_at.split('T')[0] }}</span>
-                      <span v-if="b.page_title"> · {{ b.page_title }}</span>
-                    </span>
-                  </a>
-                  <button
-                    type="button"
-                    class="block-menu result-row-menu-btn"
-                    @click="openRowMenu(b, $event)"
-                    @contextmenu="openRowMenu(b, $event)"
-                    title="Block options"
-                    aria-label="Block options"
-                  >⋮</button>
-                </div>
-              </li>
+              <EmbedResultRow
+                v-for="b in runResult.results"
+                :key="b.uuid"
+                :block="b"
+                :on-schedule-block="scheduleBlock"
+                :on-open-block-info="openBlockInfoModal"
+                @changed="onRowChanged"
+                @error="onRowError"
+              />
             </ul>
           </div>
         </template>
       </div>
-
-      <EmbedContextMenu
-        ref="rowMenu"
-        :can-schedule="true"
-        :can-block-info="true"
-        @action="onMenuAction"
-      />
 
       <ScheduleBlockPopover
         :is-open="schedulePopoverOpen"
