@@ -15,10 +15,16 @@ issue #82.
 
 from typing import Any, Dict, List
 
-# Anthropic expects: {name, description, input_schema: JSONSchema}.
-# OpenAI's function-calling expects: {type: "function", function: {name, ...}}.
-# We store the common shape here and adapt per provider at the call site.
-NOTES_READ_TOOLS: List[Dict[str, Any]] = [
+from core.llm_tools import Tool, ToolRegistry, to_anthropic, to_openai
+
+from .notes_handlers import READ_HANDLERS, WRITE_HANDLERS
+
+# Each tool's JSON schema (name + description + input_schema) is declared
+# here as plain data; its handler lives in notes_handlers. _build_tools()
+# joins them by name into Tool objects so this registry — and the MCP
+# server's parallel one — share a single primitive plus one set of
+# wire-format renderers (core.llm_tools).
+_READ_SCHEMAS: List[Dict[str, Any]] = [
     {
         "name": "search_notes",
         "description": (
@@ -552,7 +558,7 @@ NOTES_READ_TOOLS: List[Dict[str, Any]] = [
 ]
 
 
-NOTES_WRITE_TOOLS: List[Dict[str, Any]] = [
+_WRITE_SCHEMAS: List[Dict[str, Any]] = [
     {
         "name": "create_page",
         "description": (
@@ -1328,40 +1334,67 @@ NOTES_WRITE_TOOLS: List[Dict[str, Any]] = [
     },
 ]
 
+
+def _build_tools(
+    schemas: List[Dict[str, Any]],
+    handlers: Dict[str, Any],
+    *,
+    is_write: bool,
+) -> List[Tool]:
+    """Join each JSON schema with its handler into a Tool.
+
+    Fails loudly if a schema has no matching handler so the two halves
+    can't silently drift apart.
+    """
+    tools: List[Tool] = []
+    for schema in schemas:
+        name = schema["name"]
+        try:
+            handler = handlers[name]
+        except KeyError as exc:
+            raise RuntimeError(f"No handler registered for tool {name!r}") from exc
+        tools.append(
+            Tool(
+                name=name,
+                description=schema["description"],
+                input_schema=schema["input_schema"],
+                handler=handler,
+                is_write=is_write,
+            )
+        )
+    return tools
+
+
+NOTES_READ_TOOLS: List[Tool] = _build_tools(
+    _READ_SCHEMAS, READ_HANDLERS, is_write=False
+)
+NOTES_WRITE_TOOLS: List[Tool] = _build_tools(
+    _WRITE_SCHEMAS, WRITE_HANDLERS, is_write=True
+)
+
+# The reverse drift — a handler with no schema — would otherwise go
+# unnoticed, so check it once at import.
+_orphan_handlers = (set(READ_HANDLERS) | set(WRITE_HANDLERS)) - {
+    tool.name for tool in NOTES_READ_TOOLS + NOTES_WRITE_TOOLS
+}
+if _orphan_handlers:
+    raise RuntimeError(f"Handlers without a schema: {sorted(_orphan_handlers)}")
+
+NOTES_REGISTRY = ToolRegistry(NOTES_READ_TOOLS + NOTES_WRITE_TOOLS)
+
 # Back-compat alias — the read-only set used to be called NOTES_TOOLS.
 NOTES_TOOLS = NOTES_READ_TOOLS
 
-NOTES_READ_TOOL_NAMES = frozenset(tool["name"] for tool in NOTES_READ_TOOLS)
-NOTES_WRITE_TOOL_NAMES = frozenset(tool["name"] for tool in NOTES_WRITE_TOOLS)
+NOTES_READ_TOOL_NAMES = frozenset(tool.name for tool in NOTES_READ_TOOLS)
+NOTES_WRITE_TOOL_NAMES = frozenset(tool.name for tool in NOTES_WRITE_TOOLS)
 NOTES_TOOL_NAMES = NOTES_READ_TOOL_NAMES | NOTES_WRITE_TOOL_NAMES
-
-
-def _all_notes_tools(include_writes: bool) -> List[Dict[str, Any]]:
-    return list(NOTES_READ_TOOLS) + (list(NOTES_WRITE_TOOLS) if include_writes else [])
 
 
 def anthropic_notes_tools(include_writes: bool = False) -> List[Dict[str, Any]]:
     """Notes tools in Anthropic's tool schema."""
-    return [
-        {
-            "name": tool["name"],
-            "description": tool["description"],
-            "input_schema": tool["input_schema"],
-        }
-        for tool in _all_notes_tools(include_writes)
-    ]
+    return to_anthropic(NOTES_REGISTRY.tools(include_writes=include_writes))
 
 
 def openai_notes_tools(include_writes: bool = False) -> List[Dict[str, Any]]:
     """Notes tools in OpenAI's function-calling schema."""
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": tool["name"],
-                "description": tool["description"],
-                "parameters": tool["input_schema"],
-            },
-        }
-        for tool in _all_notes_tools(include_writes)
-    ]
+    return to_openai(NOTES_REGISTRY.tools(include_writes=include_writes))

@@ -4,11 +4,11 @@ import pytz
 from django.test import TestCase
 from django.utils import timezone
 
-from ai_chat.tools.notes_tool_executor import (
-    NotesToolExecutor,
+from ai_chat.tools.notes_handlers import (
     _parse_relative_date,
     _resolve_reminder_time,
 )
+from ai_chat.tools.notes_tool_executor import NotesToolExecutor
 from ai_chat.tools.notes_tools import (
     NOTES_READ_TOOL_NAMES,
     NOTES_WRITE_TOOL_NAMES,
