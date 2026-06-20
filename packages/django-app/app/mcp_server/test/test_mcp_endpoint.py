@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 
 from django.test import TestCase
 from rest_framework import status
@@ -88,11 +89,17 @@ class MCPEndpointTestCase(TestCase):
                 "create_todo",
                 "create_note",
                 "create_page",
+                "edit_block",
                 "list_today_todos",
+                "list_overdue",
+                "list_scheduled",
                 "get_page",
                 "search_notes",
+                "search_pages",
                 "toggle_todo",
                 "schedule_block",
+                "tag_block",
+                "untag_block",
             },
         )
 
@@ -290,3 +297,290 @@ class MCPEndpointTestCase(TestCase):
         body = response.json()
         self.assertTrue(body["result"]["isError"])
         self.assertIn("does_not_exist", body["result"]["content"][0]["text"])
+
+    # --- edit_block ---------------------------------------------------
+
+    def test_edit_block_updates_content(self):
+        page = PageFactory(user=self.user)
+        block = BlockFactory(
+            user=self.user, page=page, content="old text", block_type="bullet"
+        )
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "edit_block",
+                {"block_uuid": str(block.uuid), "content": "new text"},
+            ),
+            format="json",
+        )
+        body = response.json()
+        self.assertFalse(body["result"]["isError"], body)
+        block.refresh_from_db()
+        self.assertEqual(block.content, "new text")
+
+    def test_edit_block_updates_block_type(self):
+        page = PageFactory(user=self.user)
+        block = BlockFactory(
+            user=self.user, page=page, content="ship it", block_type="bullet"
+        )
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "edit_block",
+                {"block_uuid": str(block.uuid), "block_type": "todo"},
+            ),
+            format="json",
+        )
+        self.assertFalse(response.json()["result"]["isError"])
+        block.refresh_from_db()
+        self.assertEqual(block.block_type, "todo")
+
+    def test_edit_block_preserves_parent(self):
+        page = PageFactory(user=self.user)
+        parent = BlockFactory(user=self.user, page=page, content="parent")
+        child = BlockFactory(user=self.user, page=page, parent=parent, content="child")
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "edit_block",
+                {"block_uuid": str(child.uuid), "content": "renamed child"},
+            ),
+            format="json",
+        )
+        self.assertFalse(response.json()["result"]["isError"])
+        child.refresh_from_db()
+        # Content-only edit must NOT orphan the block to root.
+        self.assertEqual(child.parent_id, parent.id)
+
+    def test_edit_block_rejects_empty_payload(self):
+        page = PageFactory(user=self.user)
+        block = BlockFactory(user=self.user, page=page, content="x")
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call("edit_block", {"block_uuid": str(block.uuid)}),
+            format="json",
+        )
+        body = response.json()
+        self.assertTrue(body["result"]["isError"])
+        self.assertIn("content", body["result"]["content"][0]["text"])
+
+    def test_edit_block_user_isolation(self):
+        other = UserFactory(email="o2@example.com")
+        block = BlockFactory(user=other, content="theirs")
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "edit_block",
+                {"block_uuid": str(block.uuid), "content": "stolen"},
+            ),
+            format="json",
+        )
+        self.assertTrue(response.json()["result"]["isError"])
+        block.refresh_from_db()
+        self.assertEqual(block.content, "theirs")
+
+    # --- create_todo / create_note nesting ---------------------------
+
+    def test_create_todo_nests_under_parent_block(self):
+        # The daily page must already exist for the parent to live there.
+        today = self.user.today()
+        page, _ = PageRepository.get_or_create_daily_note(self.user, today)
+        parent = BlockFactory(user=self.user, page=page, content="parent")
+
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "create_todo",
+                {"content": "sub item", "parent_block_uuid": str(parent.uuid)},
+            ),
+            format="json",
+        )
+        payload = _content_json(response.json())
+        block = Block.objects.get(uuid=payload["block"]["uuid"])
+        self.assertEqual(block.parent_id, parent.id)
+
+    def test_create_note_rejects_parent_on_different_page(self):
+        target = PageFactory(user=self.user, slug="alpha", title="Alpha")
+        other_page = PageFactory(user=self.user, slug="beta", title="Beta")
+        parent = BlockFactory(user=self.user, page=other_page, content="elsewhere")
+
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "create_note",
+                {
+                    "content": "x",
+                    "page_slug": "alpha",
+                    "parent_block_uuid": str(parent.uuid),
+                },
+            ),
+            format="json",
+        )
+        body = response.json()
+        self.assertTrue(body["result"]["isError"])
+        self.assertIn("different page", body["result"]["content"][0]["text"])
+        # And nothing got created on the target page.
+        self.assertFalse(Block.objects.filter(page=target).exists())
+
+    # --- list_overdue --------------------------------------------------
+
+    def test_list_overdue_returns_overdue_blocks(self):
+        page = PageFactory(user=self.user)
+        today = self.user.today()
+        yesterday = today - timedelta(days=1)
+        overdue = BlockFactory(
+            user=self.user,
+            page=page,
+            content="overdue thing",
+            block_type="todo",
+            scheduled_for=yesterday,
+        )
+        # Future scheduled block — should not appear.
+        BlockFactory(
+            user=self.user,
+            page=page,
+            content="future thing",
+            block_type="todo",
+            scheduled_for=today + timedelta(days=3),
+        )
+
+        response = self.client.post(
+            "/api/mcp/", _tool_call("list_overdue", {}), format="json"
+        )
+        payload = _content_json(response.json())
+        contents = json.dumps(payload)
+        self.assertIn(str(overdue.uuid), contents)
+        self.assertIn("overdue thing", contents)
+        self.assertNotIn("future thing", contents)
+
+    # --- list_scheduled -----------------------------------------------
+
+    def test_list_scheduled_filters_by_date_range(self):
+        page = PageFactory(user=self.user)
+        today = self.user.today()
+        in_range = BlockFactory(
+            user=self.user,
+            page=page,
+            content="this week",
+            block_type="todo",
+            scheduled_for=today + timedelta(days=2),
+        )
+        out_of_range = BlockFactory(
+            user=self.user,
+            page=page,
+            content="next month",
+            block_type="todo",
+            scheduled_for=today + timedelta(days=30),
+        )
+
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "list_scheduled",
+                {
+                    "start_date": today.isoformat(),
+                    "end_date": (today + timedelta(days=7)).isoformat(),
+                },
+            ),
+            format="json",
+        )
+        payload_text = json.dumps(_content_json(response.json()))
+        self.assertIn(str(in_range.uuid), payload_text)
+        self.assertNotIn(str(out_of_range.uuid), payload_text)
+
+    # --- search_pages -------------------------------------------------
+
+    def test_search_pages_matches_by_title(self):
+        PageFactory(user=self.user, title="Vacation Plans", slug="vacation-plans")
+        PageFactory(user=self.user, title="Grocery List", slug="grocery-list")
+
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call("search_pages", {"query": "vacation"}),
+            format="json",
+        )
+        payload = _content_json(response.json())
+        titles = {p["title"] for p in payload["pages"]}
+        self.assertIn("Vacation Plans", titles)
+        self.assertNotIn("Grocery List", titles)
+
+    def test_search_pages_user_isolation(self):
+        other = UserFactory(email="o3@example.com")
+        PageFactory(user=other, title="Secret Plan", slug="secret-plan")
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call("search_pages", {"query": "secret"}),
+            format="json",
+        )
+        payload = _content_json(response.json())
+        self.assertEqual(payload["pages"], [])
+
+    # --- tag_block / untag_block --------------------------------------
+
+    def test_tag_block_adds_existing_tag_page(self):
+        page = PageFactory(user=self.user)
+        block = BlockFactory(user=self.user, page=page, content="task")
+        tag_page = PageFactory(user=self.user, title="#work", slug="work")
+
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "tag_block",
+                {"block_uuid": str(block.uuid), "tags": ["work"]},
+            ),
+            format="json",
+        )
+        body = response.json()
+        self.assertFalse(body["result"]["isError"], body)
+        self.assertIn(tag_page, block.pages.all())
+
+    def test_tag_block_accepts_hash_prefix(self):
+        page = PageFactory(user=self.user)
+        block = BlockFactory(user=self.user, page=page, content="task")
+        tag_page = PageFactory(user=self.user, title="#ideas", slug="ideas")
+
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "tag_block",
+                {"block_uuid": str(block.uuid), "tags": ["#ideas"]},
+            ),
+            format="json",
+        )
+        self.assertFalse(response.json()["result"]["isError"])
+        self.assertIn(tag_page, block.pages.all())
+
+    def test_tag_block_errors_on_missing_tag(self):
+        page = PageFactory(user=self.user)
+        block = BlockFactory(user=self.user, page=page, content="task")
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "tag_block",
+                {"block_uuid": str(block.uuid), "tags": ["doesnt-exist"]},
+            ),
+            format="json",
+        )
+        body = response.json()
+        self.assertTrue(body["result"]["isError"])
+        self.assertIn("doesnt-exist", body["result"]["content"][0]["text"])
+        # Nothing got tagged.
+        self.assertEqual(block.pages.count(), 0)
+
+    def test_untag_block_removes_tag(self):
+        page = PageFactory(user=self.user)
+        tag_page = PageFactory(user=self.user, title="#work", slug="work")
+        block = BlockFactory(user=self.user, page=page, content="task")
+        block.pages.add(tag_page)
+        self.assertIn(tag_page, block.pages.all())
+
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "untag_block",
+                {"block_uuid": str(block.uuid), "tags": ["work"]},
+            ),
+            format="json",
+        )
+        self.assertFalse(response.json()["result"]["isError"])
+        self.assertNotIn(tag_page, block.pages.all())
