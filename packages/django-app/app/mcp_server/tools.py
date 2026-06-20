@@ -58,15 +58,6 @@ def _form_errors_to_str(form) -> str:
     return "; ".join(parts) or "validation failed"
 
 
-def _today_daily_page(user: User):
-    """Resolve (or create) today's daily page for ``user``."""
-    form = GetPageWithBlocksForm(data={"user": user.id})
-    if not form.is_valid():
-        raise ToolError(_form_errors_to_str(form))
-    page, _direct, _refs, _overdue, _embeds = GetPageWithBlocksCommand(form).execute()
-    return page
-
-
 def _page_for_slug_or_today(user: User, slug: str | None):
     """Resolve a page by slug, or today's daily page when slug is empty."""
     data: dict[str, Any] = {"user": user.id}
@@ -121,38 +112,18 @@ def _resolve_tag_pages(user: User, tags: list[str]) -> list[str]:
 # --- handlers ----------------------------------------------------------
 
 
-def _create_todo(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
-    content = (args.get("content") or "").strip()
-    if not content:
-        raise ToolError("content is required")
-    page = _today_daily_page(ctx.user)
-    parent = _resolve_parent_block(ctx.user, page, args.get("parent_block_uuid"))
-    data: dict[str, Any] = {
-        "user": ctx.user.id,
-        "page": str(page.uuid),
-        "content": content,
-        "block_type": "todo",
-    }
-    if parent is not None:
-        data["parent"] = str(parent.uuid)
-    form = CreateBlockForm(data=data)
-    if not form.is_valid():
-        raise ToolError(_form_errors_to_str(form))
-    block = CreateBlockCommand(form).execute()
-    return {"block": block.to_dict(), "page": page.to_dict()}
-
-
-def _create_note(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+def _create_block(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     content = (args.get("content") or "").strip()
     if not content:
         raise ToolError("content is required")
     page = _page_for_slug_or_today(ctx.user, args.get("page_slug"))
     parent = _resolve_parent_block(ctx.user, page, args.get("parent_block_uuid"))
+    block_type = (args.get("block_type") or "bullet").strip() or "bullet"
     data: dict[str, Any] = {
         "user": ctx.user.id,
         "page": str(page.uuid),
         "content": content,
-        "block_type": "bullet",
+        "block_type": block_type,
     }
     if parent is not None:
         data["parent"] = str(parent.uuid)
@@ -361,61 +332,44 @@ def _untag_block(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
 REGISTRY = ToolRegistry(
     [
         Tool(
-            name="create_todo",
+            name="create_block",
             description=(
-                "Add a TODO to today's daily page. Use for quick capture: "
-                "'remind me to call the dentist', 'todo: ship the MCP server'. "
-                "Pass parent_block_uuid to nest this TODO under another block."
+                "Add a block (note / TODO / heading / etc.) to a page."
+                " Defaults to a bullet on today's daily note; pass"
+                " block_type and/or page_slug to target a different shape"
+                " or page. Use for quick capture ('remind me to call the"
+                " dentist' → block_type='todo'). Pass parent_block_uuid"
+                " to nest under another block on the same page."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
-                    "content": {
-                        "type": "string",
-                        "description": "The TODO text.",
-                    },
-                    "parent_block_uuid": {
+                    "content": {"type": "string", "description": "The block text."},
+                    "block_type": {
                         "type": "string",
                         "description": (
-                            "Optional uuid of a parent block on today's daily"
-                            " page to nest this TODO under."
+                            "One of bullet (default), todo, doing, done,"
+                            " later, wontdo, heading, code."
                         ),
                     },
-                },
-                "required": ["content"],
-            },
-            handler=_create_todo,
-        ),
-        Tool(
-            name="create_note",
-            description=(
-                "Add a free-form note (bullet block) to a page. Defaults to "
-                "today's daily note; pass page_slug to target a specific page. "
-                "Pass parent_block_uuid to nest under another block on the "
-                "same page."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "content": {"type": "string", "description": "The note text."},
                     "page_slug": {
                         "type": "string",
                         "description": (
-                            "Slug of the target page. Omit to append to today's "
-                            "daily note."
+                            "Slug of the target page. Omit to append to"
+                            " today's daily note."
                         ),
                     },
                     "parent_block_uuid": {
                         "type": "string",
                         "description": (
                             "Optional uuid of a parent block on the target"
-                            " page to nest this note under."
+                            " page to nest this block under."
                         ),
                     },
                 },
                 "required": ["content"],
             },
-            handler=_create_note,
+            handler=_create_block,
         ),
         Tool(
             name="create_page",

@@ -86,8 +86,7 @@ class MCPEndpointTestCase(TestCase):
         self.assertSetEqual(
             names,
             {
-                "create_todo",
-                "create_note",
+                "create_block",
                 "create_page",
                 "edit_block",
                 "list_today_todos",
@@ -113,55 +112,42 @@ class MCPEndpointTestCase(TestCase):
         self.assertEqual(len(body), 2)
         self.assertEqual({r["id"] for r in body}, {1, 2})
 
-    # --- create_todo ---------------------------------------------------
+    # --- create_block --------------------------------------------------
 
-    def test_create_todo_creates_block_on_today_page(self):
+    def test_create_block_defaults_to_bullet_on_today_page(self):
         response = self.client.post(
             "/api/mcp/",
-            _tool_call("create_todo", {"content": "call the dentist"}),
+            _tool_call("create_block", {"content": "random thought"}),
             format="json",
         )
         self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertFalse(body["result"]["isError"])
-
-        payload = _content_json(body)
-        self.assertEqual(payload["block"]["content"], "call the dentist")
-        self.assertEqual(payload["block"]["block_type"], "todo")
+        payload = _content_json(response.json())
+        self.assertEqual(payload["block"]["content"], "random thought")
+        self.assertEqual(payload["block"]["block_type"], "bullet")
         self.assertEqual(payload["page"]["page_type"], "daily")
 
+    def test_create_block_with_explicit_block_type(self):
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "create_block",
+                {"content": "call the dentist", "block_type": "todo"},
+            ),
+            format="json",
+        )
+        payload = _content_json(response.json())
+        self.assertEqual(payload["block"]["block_type"], "todo")
+        self.assertEqual(payload["page"]["page_type"], "daily")
         block = Block.objects.get(uuid=payload["block"]["uuid"])
         self.assertEqual(block.user, self.user)
         self.assertEqual(block.block_type, "todo")
 
-    def test_create_todo_rejects_empty_content(self):
-        response = self.client.post(
-            "/api/mcp/",
-            _tool_call("create_todo", {"content": "   "}),
-            format="json",
-        )
-        body = response.json()
-        self.assertTrue(body["result"]["isError"])
-        self.assertIn("content", body["result"]["content"][0]["text"])
-
-    # --- create_note ---------------------------------------------------
-
-    def test_create_note_appends_to_today_by_default(self):
-        response = self.client.post(
-            "/api/mcp/",
-            _tool_call("create_note", {"content": "random thought"}),
-            format="json",
-        )
-        payload = _content_json(response.json())
-        self.assertEqual(payload["block"]["block_type"], "bullet")
-        self.assertEqual(payload["page"]["page_type"], "daily")
-
-    def test_create_note_targets_explicit_page_slug(self):
+    def test_create_block_targets_explicit_page_slug(self):
         page = PageFactory(user=self.user, slug="project-foo", title="Project Foo")
         response = self.client.post(
             "/api/mcp/",
             _tool_call(
-                "create_note",
+                "create_block",
                 {"content": "design idea", "page_slug": "project-foo"},
             ),
             format="json",
@@ -169,6 +155,16 @@ class MCPEndpointTestCase(TestCase):
         payload = _content_json(response.json())
         self.assertEqual(payload["page"]["uuid"], str(page.uuid))
         self.assertEqual(payload["block"]["page_uuid"], str(page.uuid))
+
+    def test_create_block_rejects_empty_content(self):
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call("create_block", {"content": "   "}),
+            format="json",
+        )
+        body = response.json()
+        self.assertTrue(body["result"]["isError"])
+        self.assertIn("content", body["result"]["content"][0]["text"])
 
     # --- create_page ---------------------------------------------------
 
@@ -379,9 +375,9 @@ class MCPEndpointTestCase(TestCase):
         block.refresh_from_db()
         self.assertEqual(block.content, "theirs")
 
-    # --- create_todo / create_note nesting ---------------------------
+    # --- create_block nesting ----------------------------------------
 
-    def test_create_todo_nests_under_parent_block(self):
+    def test_create_block_nests_under_parent_block(self):
         # The daily page must already exist for the parent to live there.
         today = self.user.today()
         page, _ = PageRepository.get_or_create_daily_note(self.user, today)
@@ -390,8 +386,12 @@ class MCPEndpointTestCase(TestCase):
         response = self.client.post(
             "/api/mcp/",
             _tool_call(
-                "create_todo",
-                {"content": "sub item", "parent_block_uuid": str(parent.uuid)},
+                "create_block",
+                {
+                    "content": "sub item",
+                    "block_type": "todo",
+                    "parent_block_uuid": str(parent.uuid),
+                },
             ),
             format="json",
         )
@@ -399,7 +399,7 @@ class MCPEndpointTestCase(TestCase):
         block = Block.objects.get(uuid=payload["block"]["uuid"])
         self.assertEqual(block.parent_id, parent.id)
 
-    def test_create_note_rejects_parent_on_different_page(self):
+    def test_create_block_rejects_parent_on_different_page(self):
         target = PageFactory(user=self.user, slug="alpha", title="Alpha")
         other_page = PageFactory(user=self.user, slug="beta", title="Beta")
         parent = BlockFactory(user=self.user, page=other_page, content="elsewhere")
@@ -407,7 +407,7 @@ class MCPEndpointTestCase(TestCase):
         response = self.client.post(
             "/api/mcp/",
             _tool_call(
-                "create_note",
+                "create_block",
                 {
                     "content": "x",
                     "page_slug": "alpha",
