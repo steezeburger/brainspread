@@ -93,6 +93,8 @@ class MCPEndpointTestCase(TestCase):
                 "list_overdue",
                 "list_scheduled",
                 "get_page",
+                "get_current_time",
+                "move_block_to_daily",
                 "search_notes",
                 "search_pages",
                 "toggle_todo",
@@ -584,3 +586,136 @@ class MCPEndpointTestCase(TestCase):
         )
         self.assertFalse(response.json()["result"]["isError"])
         self.assertNotIn(tag_page, block.pages.all())
+
+    # --- get_current_time --------------------------------------------
+
+    def test_get_current_time_returns_user_local_clock(self):
+        response = self.client.post(
+            "/api/mcp/", _tool_call("get_current_time", {}), format="json"
+        )
+        body = response.json()
+        self.assertFalse(body["result"]["isError"], body)
+        payload = _content_json(body)
+        # Shape comes from GetCurrentTimeCommand — we just confirm the
+        # date matches what user.today() resolves to right now.
+        self.assertEqual(payload["date"], self.user.today().isoformat())
+        self.assertIn("time", payload)
+        self.assertIn("timezone", payload)
+
+    # --- move_block_to_daily -----------------------------------------
+
+    def test_move_block_to_daily_relocates_block(self):
+        source = PageFactory(user=self.user, slug="src", title="Source")
+        block = BlockFactory(
+            user=self.user, page=source, content="move me", block_type="todo"
+        )
+
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "move_block_to_daily",
+                {"block_uuid": str(block.uuid), "target_date": "tomorrow"},
+            ),
+            format="json",
+        )
+        body = response.json()
+        self.assertFalse(body["result"]["isError"], body)
+        payload = _content_json(body)
+
+        # Block actually moved to a different (daily) page.
+        block.refresh_from_db()
+        self.assertNotEqual(block.page_id, source.id)
+        self.assertEqual(block.page.page_type, "daily")
+        tomorrow = self.user.today() + timedelta(days=1)
+        self.assertEqual(block.page.slug, tomorrow.isoformat())
+        # Source page surfaces in affected list so the UI can refresh.
+        self.assertIn(str(source.uuid), payload["affected_page_uuids"])
+
+    def test_move_block_to_daily_defaults_to_today(self):
+        page = PageFactory(user=self.user, slug="src2", title="Src2")
+        block = BlockFactory(user=self.user, page=page, content="x", block_type="todo")
+
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call("move_block_to_daily", {"block_uuid": str(block.uuid)}),
+            format="json",
+        )
+        self.assertFalse(response.json()["result"]["isError"])
+        block.refresh_from_db()
+        self.assertEqual(block.page.slug, self.user.today().isoformat())
+
+    # --- relative-date parsing ---------------------------------------
+
+    def test_schedule_block_accepts_relative_date_token(self):
+        page = PageFactory(user=self.user)
+        block = BlockFactory(user=self.user, page=page, block_type="todo")
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "schedule_block",
+                {"block_uuid": str(block.uuid), "scheduled_for": "+3d"},
+            ),
+            format="json",
+        )
+        self.assertFalse(response.json()["result"]["isError"])
+        block.refresh_from_db()
+        self.assertEqual(block.scheduled_for, self.user.today() + timedelta(days=3))
+
+    def test_schedule_block_rejects_garbage_date(self):
+        page = PageFactory(user=self.user)
+        block = BlockFactory(user=self.user, page=page, block_type="todo")
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "schedule_block",
+                {"block_uuid": str(block.uuid), "scheduled_for": "next thursday"},
+            ),
+            format="json",
+        )
+        body = response.json()
+        self.assertTrue(body["result"]["isError"])
+        self.assertIn("scheduled_for", body["result"]["content"][0]["text"])
+
+    def test_get_page_accepts_relative_date_token(self):
+        today = self.user.today()
+        # Create yesterday's daily so it's resolvable.
+        PageRepository.get_or_create_daily_note(self.user, today - timedelta(days=1))
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call("get_page", {"date": "yesterday"}),
+            format="json",
+        )
+        payload = _content_json(response.json())
+        self.assertEqual(payload["page"]["page_type"], "daily")
+        self.assertEqual(
+            payload["page"]["slug"], (today - timedelta(days=1)).isoformat()
+        )
+
+    def test_list_scheduled_accepts_relative_date_tokens(self):
+        page = PageFactory(user=self.user)
+        today = self.user.today()
+        in_range = BlockFactory(
+            user=self.user,
+            page=page,
+            content="this week",
+            block_type="todo",
+            scheduled_for=today + timedelta(days=2),
+        )
+        BlockFactory(
+            user=self.user,
+            page=page,
+            content="far future",
+            block_type="todo",
+            scheduled_for=today + timedelta(days=30),
+        )
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "list_scheduled",
+                {"start_date": "today", "end_date": "+7d"},
+            ),
+            format="json",
+        )
+        body_text = json.dumps(_content_json(response.json()))
+        self.assertIn(str(in_range.uuid), body_text)
+        self.assertNotIn("far future", body_text)

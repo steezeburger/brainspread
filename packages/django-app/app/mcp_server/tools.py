@@ -15,7 +15,15 @@ Add new tools by appending to ``REGISTRY`` at the bottom.
 
 from typing import Any
 
-from core.llm_tools import Tool, ToolContext, ToolError, ToolRegistry
+from core.commands.get_current_time_command import GetCurrentTimeCommand
+from core.forms import GetCurrentTimeForm
+from core.llm_tools import (
+    Tool,
+    ToolContext,
+    ToolError,
+    ToolRegistry,
+    parse_relative_date,
+)
 from core.models import User
 from knowledge.commands import (
     CreateBlockCommand,
@@ -27,6 +35,7 @@ from knowledge.commands import (
 )
 from knowledge.commands.list_overdue_blocks_command import ListOverdueBlocksCommand
 from knowledge.commands.list_scheduled_blocks_command import ListScheduledBlocksCommand
+from knowledge.commands.move_block_to_daily_command import MoveBlockToDailyCommand
 from knowledge.commands.search_pages_command import SearchPagesCommand
 from knowledge.commands.tag_blocks_command import TagBlocksCommand, UntagBlocksCommand
 from knowledge.commands.update_block_command import UpdateBlockCommand
@@ -39,6 +48,7 @@ from knowledge.forms import (
 )
 from knowledge.forms.list_overdue_blocks_form import ListOverdueBlocksForm
 from knowledge.forms.list_scheduled_blocks_form import ListScheduledBlocksForm
+from knowledge.forms.move_block_to_daily_form import MoveBlockToDailyForm
 from knowledge.forms.search_notes_form import SearchNotesForm
 from knowledge.forms.search_pages_form import SearchPagesForm
 from knowledge.forms.tag_blocks_form import TagBlocksForm, UntagBlocksForm
@@ -80,6 +90,20 @@ def _resolve_parent_block(user: User, page, parent_uuid: str | None) -> Block | 
     if parent.page_id != page.id:
         raise ToolError("parent block belongs to a different page")
     return parent
+
+
+def _date_arg(user: User, value: Any, *, field: str) -> str | None:
+    """Resolve a date arg (ISO or relative token) into an ISO string.
+
+    Returns None when the input is empty / missing so the caller can
+    leave the corresponding form field unset. Raises ToolError with a
+    field-tagged message on bad input.
+    """
+    try:
+        parsed = parse_relative_date(value, user.today())
+    except ValueError as e:
+        raise ToolError(f"{field}: {e}") from e
+    return parsed.isoformat() if parsed is not None else None
 
 
 def _resolve_tag_pages(user: User, tags: list[str]) -> list[str]:
@@ -205,10 +229,12 @@ def _list_overdue(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
 
 def _list_scheduled(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     data: dict[str, Any] = {"user": ctx.user.id}
-    if args.get("start_date"):
-        data["start_date"] = args["start_date"]
-    if args.get("end_date"):
-        data["end_date"] = args["end_date"]
+    start = _date_arg(ctx.user, args.get("start_date"), field="start_date")
+    if start is not None:
+        data["start_date"] = start
+    end = _date_arg(ctx.user, args.get("end_date"), field="end_date")
+    if end is not None:
+        data["end_date"] = end
     if args.get("limit") is not None:
         data["limit"] = args["limit"]
     form = ListScheduledBlocksForm(data=data)
@@ -221,8 +247,9 @@ def _get_page(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     data: dict[str, Any] = {"user": ctx.user.id}
     if args.get("slug"):
         data["slug"] = args["slug"]
-    if args.get("date"):
-        data["date"] = args["date"]
+    parsed_date = _date_arg(ctx.user, args.get("date"), field="date")
+    if parsed_date is not None:
+        data["date"] = parsed_date
     form = GetPageWithBlocksForm(data=data)
     if not form.is_valid():
         raise ToolError(_form_errors_to_str(form))
@@ -232,6 +259,46 @@ def _get_page(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
         "direct_blocks": [b.to_dict_with_children() for b in direct],
         "referenced_blocks": [b.to_dict(include_page_context=True) for b in refs],
         "overdue_blocks": [b.to_dict(include_page_context=True) for b in overdue],
+    }
+
+
+def _get_current_time(ctx: ToolContext, _args: dict[str, Any]) -> dict[str, Any]:
+    """Return now in the user's local timezone, plus a friendly breakdown."""
+    form = GetCurrentTimeForm({"user": ctx.user.id})
+    if not form.is_valid():
+        raise ToolError(_form_errors_to_str(form))
+    return GetCurrentTimeCommand(form).execute()
+
+
+def _move_block_to_daily(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    block_uuid = (args.get("block_uuid") or "").strip()
+    if not block_uuid:
+        raise ToolError("block_uuid is required")
+    block = BlockRepository.get_by_uuid(block_uuid, user=ctx.user)
+    if not block:
+        raise ToolError(f"no block found with uuid {block_uuid}")
+
+    target_date = _date_arg(ctx.user, args.get("target_date"), field="target_date")
+    source_page_uuid = str(block.page.uuid) if block.page else None
+
+    data: dict[str, Any] = {"user": ctx.user.id, "block": str(block.uuid)}
+    if target_date is not None:
+        data["target_date"] = target_date
+
+    form = MoveBlockToDailyForm(data=data)
+    if not form.is_valid():
+        raise ToolError(_form_errors_to_str(form))
+    result = MoveBlockToDailyCommand(form).execute()
+
+    affected = {result["target_page"]["uuid"]}
+    if source_page_uuid:
+        affected.add(source_page_uuid)
+    return {
+        "moved": result["moved"],
+        "message": result["message"],
+        "block": result["block"],
+        "target_page": result["target_page"],
+        "affected_page_uuids": sorted(affected),
     }
 
 
@@ -270,16 +337,22 @@ def _toggle_todo(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
 
 
 def _schedule_block(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    scheduled_for = _date_arg(
+        ctx.user, args.get("scheduled_for"), field="scheduled_for"
+    )
     payload: dict[str, Any] = {
         "user": ctx.user.id,
         "block": args.get("block_uuid") or "",
         # ScheduleBlockForm treats empty/absent as "clear".
-        "scheduled_for": args.get("scheduled_for") or "",
+        "scheduled_for": scheduled_for or "",
     }
     if args.get("reminder_time"):
         payload["reminder_time"] = args["reminder_time"]
-    if args.get("reminder_date"):
-        payload["reminder_date"] = args["reminder_date"]
+    reminder_date = _date_arg(
+        ctx.user, args.get("reminder_date"), field="reminder_date"
+    )
+    if reminder_date is not None:
+        payload["reminder_date"] = reminder_date
     form = ScheduleBlockForm(data=payload)
     if not form.is_valid():
         raise ToolError(_form_errors_to_str(form))
@@ -451,19 +524,26 @@ REGISTRY = ToolRegistry(
             name="list_scheduled",
             description=(
                 "Scheduled blocks within a date range (inclusive). Use for"
-                " 'what's coming up this week?'. Dates are ISO YYYY-MM-DD;"
-                " omit both for the full upcoming view."
+                " 'what's coming up this week?'. Dates accept ISO"
+                " YYYY-MM-DD or relative tokens ('today', 'tomorrow',"
+                " 'yesterday', '+Nd', '-Nd', '+Nw', '-Nw'). Omit both"
+                " bounds for the full upcoming view."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
                     "start_date": {
                         "type": "string",
-                        "description": "Inclusive lower bound, YYYY-MM-DD.",
+                        "description": (
+                            "Inclusive lower bound. ISO YYYY-MM-DD or a"
+                            " relative token ('today', '+7d', etc.)."
+                        ),
                     },
                     "end_date": {
                         "type": "string",
-                        "description": "Inclusive upper bound, YYYY-MM-DD.",
+                        "description": (
+                            "Inclusive upper bound. Same format as start_date."
+                        ),
                     },
                     "limit": {
                         "type": "integer",
@@ -478,8 +558,10 @@ REGISTRY = ToolRegistry(
         Tool(
             name="get_page",
             description=(
-                "Get a page with its blocks. Pass slug for a regular page, "
-                "date (YYYY-MM-DD) for a daily note, or neither for today."
+                "Get a page with its blocks. Pass slug for a regular page,"
+                " date for a daily note, or neither for today. date accepts"
+                " ISO YYYY-MM-DD or relative tokens ('today', 'tomorrow',"
+                " 'yesterday', '+Nd', '-Nd')."
             ),
             input_schema={
                 "type": "object",
@@ -487,11 +569,57 @@ REGISTRY = ToolRegistry(
                     "slug": {"type": "string"},
                     "date": {
                         "type": "string",
-                        "description": "YYYY-MM-DD; selects that day's daily note.",
+                        "description": (
+                            "ISO YYYY-MM-DD or relative token; selects that"
+                            " day's daily note."
+                        ),
                     },
                 },
             },
             handler=_get_page,
+        ),
+        Tool(
+            name="get_current_time",
+            description=(
+                "Return the current date + time in the user's timezone."
+                " Call this before scheduling far-out dates when the user"
+                " says something time-relative that the simple relative"
+                " tokens can't express ('6 months from now', 'next"
+                " Tuesday', 'my birthday next year') so the model can"
+                " compute the absolute ISO date itself. For simple"
+                " offsets like 'tomorrow' or '+7d', just pass the token"
+                " straight to the date arg instead."
+            ),
+            input_schema={"type": "object", "properties": {}},
+            handler=_get_current_time,
+        ),
+        Tool(
+            name="move_block_to_daily",
+            description=(
+                "Move a block from its current page to a daily note,"
+                " creating that daily page if it doesn't exist yet."
+                " Distinct from schedule_block: scheduling sets a due"
+                " date but leaves the block where it is; this physically"
+                " relocates it so it shows up on the daily. Use for"
+                " 'move this to tomorrow's daily', 'pull all overdue"
+                " todos to today'. target_date accepts ISO YYYY-MM-DD or"
+                " a relative token; defaults to today."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "block_uuid": {"type": "string"},
+                    "target_date": {
+                        "type": "string",
+                        "description": (
+                            "ISO YYYY-MM-DD or relative token ('today',"
+                            " 'tomorrow', '+1d'). Defaults to today."
+                        ),
+                    },
+                },
+                "required": ["block_uuid"],
+            },
+            handler=_move_block_to_daily,
         ),
         Tool(
             name="search_notes",
@@ -549,8 +677,10 @@ REGISTRY = ToolRegistry(
         Tool(
             name="schedule_block",
             description=(
-                "Set a block's due date (and optional reminder). "
-                "scheduled_for is YYYY-MM-DD; empty string clears the schedule."
+                "Set a block's due date (and optional reminder). Dates"
+                " accept ISO YYYY-MM-DD or relative tokens ('today',"
+                " 'tomorrow', 'yesterday', '+Nd', '-Nd', '+Nw', '-Nw')."
+                " Empty scheduled_for clears the schedule."
             ),
             input_schema={
                 "type": "object",
@@ -558,7 +688,9 @@ REGISTRY = ToolRegistry(
                     "block_uuid": {"type": "string"},
                     "scheduled_for": {
                         "type": "string",
-                        "description": "YYYY-MM-DD, or empty to clear.",
+                        "description": (
+                            "ISO YYYY-MM-DD or relative token, or empty to" " clear."
+                        ),
                     },
                     "reminder_time": {
                         "type": "string",
@@ -567,7 +699,8 @@ REGISTRY = ToolRegistry(
                     "reminder_date": {
                         "type": "string",
                         "description": (
-                            "YYYY-MM-DD; defaults to scheduled_for when omitted."
+                            "ISO YYYY-MM-DD or relative token; defaults to"
+                            " scheduled_for when omitted."
                         ),
                     },
                 },

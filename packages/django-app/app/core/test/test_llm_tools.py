@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.test import SimpleTestCase
 
 from core.llm_tools import (
@@ -5,6 +7,7 @@ from core.llm_tools import (
     ToolContext,
     ToolError,
     ToolRegistry,
+    parse_relative_date,
     to_anthropic,
     to_mcp,
     to_openai,
@@ -102,3 +105,41 @@ class RenderersTestCase(SimpleTestCase):
         self.assertEqual(rendered[0]["name"], "alpha")
         self.assertIn("inputSchema", rendered[0])
         self.assertNotIn("input_schema", rendered[0])
+
+
+class ParseRelativeDateTestCase(SimpleTestCase):
+    TODAY = date(2026, 6, 20)
+
+    def test_none_and_empty_return_none(self):
+        self.assertIsNone(parse_relative_date(None, self.TODAY))
+        self.assertIsNone(parse_relative_date("", self.TODAY))
+        self.assertIsNone(parse_relative_date("   ", self.TODAY))
+
+    def test_named_tokens(self):
+        self.assertEqual(parse_relative_date("today", self.TODAY), self.TODAY)
+        self.assertEqual(parse_relative_date("tomorrow", self.TODAY), date(2026, 6, 21))
+        self.assertEqual(
+            parse_relative_date("yesterday", self.TODAY), date(2026, 6, 19)
+        )
+
+    def test_offset_tokens(self):
+        self.assertEqual(parse_relative_date("+7d", self.TODAY), date(2026, 6, 27))
+        self.assertEqual(parse_relative_date("-3d", self.TODAY), date(2026, 6, 17))
+        self.assertEqual(parse_relative_date("+2w", self.TODAY), date(2026, 7, 4))
+        self.assertEqual(parse_relative_date("-1w", self.TODAY), date(2026, 6, 13))
+
+    def test_iso_string(self):
+        self.assertEqual(
+            parse_relative_date("2027-01-15", self.TODAY), date(2027, 1, 15)
+        )
+
+    def test_date_passthrough(self):
+        self.assertEqual(
+            parse_relative_date(date(2030, 1, 1), self.TODAY), date(2030, 1, 1)
+        )
+
+    def test_garbage_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            parse_relative_date("next thursday", self.TODAY)
+        with self.assertRaises(ValueError):
+            parse_relative_date("+5x", self.TODAY)

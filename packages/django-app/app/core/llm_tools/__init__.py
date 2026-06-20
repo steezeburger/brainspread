@@ -6,6 +6,7 @@ renderers consumed by mcp_server and ai_chat.
 """
 
 from .base import Tool, ToolContext, ToolError, ToolHandler, ToolRegistry
+from .dates import parse_relative_date
 from .renderers import to_anthropic, to_mcp, to_openai
 
 __all__ = [
@@ -14,6 +15,7 @@ __all__ = [
     "ToolError",
     "ToolHandler",
     "ToolRegistry",
+    "parse_relative_date",
     "to_anthropic",
     "to_mcp",
     "to_openai",

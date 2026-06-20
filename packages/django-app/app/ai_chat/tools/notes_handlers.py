@@ -25,6 +25,7 @@ from core.commands.get_current_time_command import GetCurrentTimeCommand
 from core.commands.get_user_preferences_command import GetUserPreferencesCommand
 from core.forms import GetCurrentTimeForm, GetUserPreferencesForm
 from core.llm_tools import ToolContext
+from core.llm_tools import parse_relative_date as _parse_relative_date
 from core.models import User
 from knowledge.commands.bulk_cancel_reminders_command import (
     BulkCancelRemindersCommand,
@@ -1195,7 +1196,6 @@ def _delete_page_embed(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]
 
 # ---- Date / time helpers ----
 
-_RELATIVE_OFFSET_RE = re.compile(r"^([+-])(\d+)([dw])$")
 _RELATIVE_TIME_OFFSET_RE = re.compile(r"^([+-])(\d+)([mh])$")
 
 
@@ -1240,40 +1240,6 @@ def _resolve_reminder_time(
             f"expected HH:MM or '+Nm' / '+Nh' offset, got '{value}'"
         ) from e
     return (None, text)
-
-
-def _parse_relative_date(value: Any, today: date) -> Optional[date]:
-    """Parse a date input that accepts ISO YYYY-MM-DD or simple relative
-    tokens ('today', 'tomorrow', 'yesterday', '+Nd', '-Nd', '+Nw', '-Nw').
-
-    Returns None when the input is empty / missing. Raises ValueError on
-    unrecognised formats so the caller can surface a helpful error.
-    """
-    if value is None:
-        return None
-    if isinstance(value, date):
-        return value
-    text = str(value).strip().lower()
-    if not text:
-        return None
-    if text == "today":
-        return today
-    if text == "tomorrow":
-        return today + timedelta(days=1)
-    if text == "yesterday":
-        return today - timedelta(days=1)
-    match = _RELATIVE_OFFSET_RE.match(text)
-    if match:
-        sign, num, unit = match.groups()
-        amount = int(num) * (1 if sign == "+" else -1)
-        days = amount if unit == "d" else amount * 7
-        return today + timedelta(days=days)
-    try:
-        return date.fromisoformat(text)
-    except ValueError as e:
-        raise ValueError(
-            f"expected ISO YYYY-MM-DD or 'today'/'tomorrow'/'+Nd', got '{value}'"
-        ) from e
 
 
 def _first_form_error(form) -> str:
