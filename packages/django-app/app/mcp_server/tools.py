@@ -15,6 +15,8 @@ Add new tools by appending to ``REGISTRY`` at the bottom.
 
 from typing import Any
 
+from django.core.exceptions import ValidationError
+
 from core.commands.get_current_time_command import GetCurrentTimeCommand
 from core.forms import GetCurrentTimeForm
 from core.llm_tools import (
@@ -29,6 +31,7 @@ from knowledge.commands import (
     CreateBlockCommand,
     CreatePageCommand,
     GetPageWithBlocksCommand,
+    ReorderBlocksCommand,
     ScheduleBlockCommand,
     SearchNotesCommand,
     ToggleBlockTodoCommand,
@@ -46,6 +49,7 @@ from knowledge.forms import (
     CreateBlockForm,
     CreatePageForm,
     GetPageWithBlocksForm,
+    ReorderBlocksForm,
     ScheduleBlockForm,
     ToggleBlockTodoForm,
 )
@@ -192,9 +196,18 @@ def _edit_block(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     if block_type:
         payload["block_type"] = block_type
         touched = True
+    order = args.get("order")
+    if order is not None:
+        try:
+            payload["order"] = int(order)
+        except (TypeError, ValueError) as e:
+            raise ToolError("order must be an integer") from e
+        touched = True
     completed_at = args.get("completed_at")
     if not touched and completed_at is None:
-        raise ToolError("pass content, block_type, and/or completed_at to update")
+        raise ToolError(
+            "pass content, block_type, order, and/or completed_at to update"
+        )
 
     updated = block
     if touched:
@@ -225,6 +238,39 @@ def _edit_block(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
         updated = SetBlockCompletedAtCommand(ca_form).execute()
 
     return {"block": updated.to_dict(include_page_context=True)}
+
+
+def _reorder_blocks(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    items = args.get("blocks") or []
+    if not isinstance(items, list) or not items:
+        raise ToolError("blocks must be a non-empty list")
+
+    payload_blocks: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            raise ToolError("each blocks entry must be an object")
+        block_uuid = (item.get("block_uuid") or "").strip()
+        if not block_uuid:
+            raise ToolError("each entry needs block_uuid")
+        if block_uuid in seen:
+            raise ToolError(f"duplicate block_uuid {block_uuid}")
+        seen.add(block_uuid)
+        try:
+            order = int(item.get("order"))
+        except (TypeError, ValueError) as e:
+            raise ToolError("each entry needs an integer order") from e
+        payload_blocks.append({"uuid": block_uuid, "order": order})
+
+    form = ReorderBlocksForm(data={"user": ctx.user.id, "blocks": payload_blocks})
+    if not form.is_valid():
+        raise ToolError(_form_errors_to_str(form))
+    try:
+        ReorderBlocksCommand(form).execute()
+    except ValidationError as e:
+        raise ToolError("; ".join(e.messages)) from e
+
+    return {"reordered": True, "count": len(payload_blocks)}
 
 
 def _list_today_todos(ctx: ToolContext, _args: dict[str, Any]) -> dict[str, Any]:
@@ -490,13 +536,15 @@ REGISTRY = ToolRegistry(
         Tool(
             name="edit_block",
             description=(
-                "Update a block's content, block_type, and/or completion"
-                " time. Pass at least one of content / block_type /"
-                " completed_at. block_type accepts 'bullet', 'todo',"
-                " 'doing', 'done', 'later', 'wontdo', 'heading', etc."
-                " completed_at corrects when a done / wontdo block was"
-                " actually completed. Preserves the block's parent — use"
-                " the UI to re-parent."
+                "Update a block's content, block_type, order, and/or"
+                " completion time. Pass at least one of content / block_type"
+                " / order / completed_at. block_type accepts 'bullet',"
+                " 'todo', 'doing', 'done', 'later', 'wontdo', 'heading', etc."
+                " order moves the block among its siblings (lower sorts"
+                " first); to resequence several siblings at once prefer"
+                " reorder_blocks. completed_at corrects when a done / wontdo"
+                " block was actually completed. Preserves the block's"
+                " parent — use the UI to re-parent."
             ),
             input_schema={
                 "type": "object",
@@ -509,6 +557,14 @@ REGISTRY = ToolRegistry(
                     "block_type": {
                         "type": "string",
                         "description": "New block_type. Omit to leave unchanged.",
+                    },
+                    "order": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": (
+                            "New sort position among siblings (0-based, lower"
+                            " sorts first). Omit to leave unchanged."
+                        ),
                     },
                     "completed_at": {
                         "type": "string",
@@ -524,6 +580,41 @@ REGISTRY = ToolRegistry(
                 "required": ["block_uuid"],
             },
             handler=_edit_block,
+        ),
+        Tool(
+            name="reorder_blocks",
+            description=(
+                "Resequence a set of sibling blocks in one call. Pass the"
+                " full ordered list of blocks (each with its new 0-based"
+                " order); the lowest order sorts first. Use this to move a"
+                " block up/down or sort a list — it only changes ordering,"
+                " not parents or pages. All blocks must belong to the"
+                " caller. Read the current orders first (e.g. via get_page)"
+                " so the new sequence is contiguous and gap-free."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "blocks": {
+                        "type": "array",
+                        "description": (
+                            "Ordered list of blocks to resequence. Each item"
+                            " is {block_uuid, order}."
+                        ),
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "block_uuid": {"type": "string"},
+                                "order": {"type": "integer", "minimum": 0},
+                            },
+                            "required": ["block_uuid", "order"],
+                        },
+                        "minItems": 1,
+                    },
+                },
+                "required": ["blocks"],
+            },
+            handler=_reorder_blocks,
         ),
         Tool(
             name="list_today_todos",
