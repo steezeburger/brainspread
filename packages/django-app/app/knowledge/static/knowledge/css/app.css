@@ -860,6 +860,23 @@ body {
   overflow-y: auto;
 }
 
+.block-info-completed {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.block-info-datetime-input {
+  font-family: inherit;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  padding: 0.1rem 0.3rem;
+}
+
 /* Page picker modal (window.appModals.pickPage). Wider than the
    prompt/confirm modals so longer page titles fit on one line, and
    wraps a scrollable result list under the input. */

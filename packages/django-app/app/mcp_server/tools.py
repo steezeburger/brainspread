@@ -37,6 +37,9 @@ from knowledge.commands.list_overdue_blocks_command import ListOverdueBlocksComm
 from knowledge.commands.list_scheduled_blocks_command import ListScheduledBlocksCommand
 from knowledge.commands.move_block_to_daily_command import MoveBlockToDailyCommand
 from knowledge.commands.search_pages_command import SearchPagesCommand
+from knowledge.commands.set_block_completed_at_command import (
+    SetBlockCompletedAtCommand,
+)
 from knowledge.commands.tag_blocks_command import TagBlocksCommand, UntagBlocksCommand
 from knowledge.commands.update_block_command import UpdateBlockCommand
 from knowledge.forms import (
@@ -51,6 +54,7 @@ from knowledge.forms.list_scheduled_blocks_form import ListScheduledBlocksForm
 from knowledge.forms.move_block_to_daily_form import MoveBlockToDailyForm
 from knowledge.forms.search_notes_form import SearchNotesForm
 from knowledge.forms.search_pages_form import SearchPagesForm
+from knowledge.forms.set_block_completed_at_form import SetBlockCompletedAtForm
 from knowledge.forms.tag_blocks_form import TagBlocksForm, UntagBlocksForm
 from knowledge.forms.update_block_form import UpdateBlockForm
 from knowledge.models import Block
@@ -188,19 +192,38 @@ def _edit_block(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     if block_type:
         payload["block_type"] = block_type
         touched = True
-    if not touched:
-        raise ToolError("pass content and/or block_type to update")
+    completed_at = args.get("completed_at")
+    if not touched and completed_at is None:
+        raise ToolError("pass content, block_type, and/or completed_at to update")
 
-    # UpdateBlockCommand orphans the block to root when "parent" is
-    # missing — preserve the existing parent so a content-only edit
-    # doesn't restructure the tree.
-    if block.parent_id is not None:
-        payload["parent"] = str(block.parent.uuid)
+    updated = block
+    if touched:
+        # UpdateBlockCommand orphans the block to root when "parent" is
+        # missing — preserve the existing parent so a content-only edit
+        # doesn't restructure the tree.
+        if block.parent_id is not None:
+            payload["parent"] = str(block.parent.uuid)
 
-    form = UpdateBlockForm(data=payload)
-    if not form.is_valid():
-        raise ToolError(_form_errors_to_str(form))
-    updated = UpdateBlockCommand(form).execute()
+        form = UpdateBlockForm(data=payload)
+        if not form.is_valid():
+            raise ToolError(_form_errors_to_str(form))
+        updated = UpdateBlockCommand(form).execute()
+
+    # Override completion time last, so a combined "mark done + set time"
+    # call lands on the caller's timestamp rather than "now". The form
+    # rejects completed_at on non-terminal blocks.
+    if completed_at is not None:
+        ca_form = SetBlockCompletedAtForm(
+            data={
+                "user": ctx.user.id,
+                "block": str(updated.uuid),
+                "completed_at": completed_at,
+            }
+        )
+        if not ca_form.is_valid():
+            raise ToolError(_form_errors_to_str(ca_form))
+        updated = SetBlockCompletedAtCommand(ca_form).execute()
+
     return {"block": updated.to_dict(include_page_context=True)}
 
 
@@ -467,11 +490,13 @@ REGISTRY = ToolRegistry(
         Tool(
             name="edit_block",
             description=(
-                "Update a block's content and/or block_type. Pass at least"
-                " one of content / block_type. block_type accepts 'bullet',"
-                " 'todo', 'doing', 'done', 'later', 'wontdo', 'heading',"
-                " etc. Preserves the block's parent — use the UI to"
-                " re-parent."
+                "Update a block's content, block_type, and/or completion"
+                " time. Pass at least one of content / block_type /"
+                " completed_at. block_type accepts 'bullet', 'todo',"
+                " 'doing', 'done', 'later', 'wontdo', 'heading', etc."
+                " completed_at corrects when a done / wontdo block was"
+                " actually completed. Preserves the block's parent — use"
+                " the UI to re-parent."
             ),
             input_schema={
                 "type": "object",
@@ -484,6 +509,16 @@ REGISTRY = ToolRegistry(
                     "block_type": {
                         "type": "string",
                         "description": "New block_type. Omit to leave unchanged.",
+                    },
+                    "completed_at": {
+                        "type": "string",
+                        "description": (
+                            "ISO-8601 datetime to record as the completion"
+                            " time. Only valid for done / wontdo blocks."
+                            " Include a timezone offset; a naive value is"
+                            " read in the user's timezone. Omit to leave"
+                            " unchanged."
+                        ),
                     },
                 },
                 "required": ["block_uuid"],

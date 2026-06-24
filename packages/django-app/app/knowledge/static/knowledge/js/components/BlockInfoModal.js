@@ -9,20 +9,28 @@
 //   block      object  — the block dict whose info we're showing
 // Emits:
 //   close — user dismissed
+//   save-completed-at — { iso } user saved a corrected completion time
 window.BlockInfoModal = {
   name: "BlockInfoModal",
   props: {
     isOpen: { type: Boolean, default: false },
     block: { type: Object, default: null },
   },
-  emits: ["close"],
+  emits: ["close", "save-completed-at"],
   data() {
     return {
       uuidCopied: false,
       uuidCopyTimer: null,
+      editingCompleted: false,
+      completedDraft: "",
     };
   },
   computed: {
+    // completed_at only carries meaning for terminal blocks; gate editing
+    // to those so we never stamp a completion time on an open todo.
+    isTerminal() {
+      return ["done", "wontdo"].includes(this.block?.block_type);
+    },
     createdAtPretty() {
       return this.formatTimestamp(this.block?.created_at);
     },
@@ -56,14 +64,49 @@ window.BlockInfoModal = {
     isOpen(open) {
       if (open) {
         this.uuidCopied = false;
+        this.cancelEditCompleted();
         this.$nextTick(() => this.$refs.closeBtn?.focus());
       } else if (this.uuidCopyTimer) {
         clearTimeout(this.uuidCopyTimer);
         this.uuidCopyTimer = null;
       }
     },
+    // Parent reassigns the block object after a successful save; drop out
+    // of edit mode so the refreshed timestamp shows.
+    block() {
+      this.cancelEditCompleted();
+    },
   },
   methods: {
+    // datetime-local wants "YYYY-MM-DDTHH:MM" in local wall-clock time.
+    toDatetimeLocal(value) {
+      if (!value) return "";
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return "";
+      const pad = (n) => String(n).padStart(2, "0");
+      return (
+        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+        `T${pad(d.getHours())}:${pad(d.getMinutes())}`
+      );
+    },
+    startEditCompleted() {
+      this.completedDraft = this.toDatetimeLocal(this.block?.completed_at);
+      this.editingCompleted = true;
+    },
+    cancelEditCompleted() {
+      this.editingCompleted = false;
+      this.completedDraft = "";
+    },
+    saveCompleted() {
+      if (!this.completedDraft) return;
+      // The input is local wall-clock; toISOString() converts to the UTC
+      // instant the backend stores. A naive value would otherwise be read
+      // in server time, drifting the saved moment.
+      const d = new Date(this.completedDraft);
+      if (Number.isNaN(d.getTime())) return;
+      this.editingCompleted = false;
+      this.$emit("save-completed-at", { iso: d.toISOString() });
+    },
     formatTimestamp(value) {
       // Block info is a debug-leaning surface, so render the full
       // timestamp (date + time + seconds) in the user's locale rather
@@ -164,7 +207,38 @@ window.BlockInfoModal = {
               <dd>{{ scheduledForPretty }}</dd>
             </template>
 
-            <template v-if="completedAtPretty">
+            <template v-if="isTerminal">
+              <dt>completed</dt>
+              <dd>
+                <div v-if="!editingCompleted" class="block-info-completed">
+                  <span>{{ completedAtPretty || 'not set' }}</span>
+                  <button
+                    type="button"
+                    class="block-info-copy-btn"
+                    @click="startEditCompleted"
+                  >edit</button>
+                </div>
+                <div v-else class="block-info-completed">
+                  <input
+                    type="datetime-local"
+                    class="block-info-datetime-input"
+                    v-model="completedDraft"
+                  />
+                  <button
+                    type="button"
+                    class="block-info-copy-btn"
+                    :disabled="!completedDraft"
+                    @click="saveCompleted"
+                  >save</button>
+                  <button
+                    type="button"
+                    class="block-info-copy-btn"
+                    @click="cancelEditCompleted"
+                  >cancel</button>
+                </div>
+              </dd>
+            </template>
+            <template v-else-if="completedAtPretty">
               <dt>completed</dt>
               <dd>{{ completedAtPretty }}</dd>
             </template>

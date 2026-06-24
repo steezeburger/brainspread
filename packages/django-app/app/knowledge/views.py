@@ -47,6 +47,7 @@ from knowledge.commands import (
     ScheduleBlockCommand,
     SearchNotesCommand,
     SearchPagesCommand,
+    SetBlockCompletedAtCommand,
     SetPageFavoritedCommand,
     SetSavedViewPinnedCommand,
     SharePageCommand,
@@ -106,6 +107,7 @@ from knowledge.forms import (
     ScheduleBlockForm,
     SearchNotesForm,
     SearchPagesForm,
+    SetBlockCompletedAtForm,
     SetPageFavoritedForm,
     SetSavedViewPinnedForm,
     SharePageForm,
@@ -1139,6 +1141,48 @@ def schedule_block(request):
 
         if form.is_valid():
             block = ScheduleBlockCommand(form).execute()
+            response: BlockResponse = {
+                "success": True,
+                "data": block.to_dict(),
+                "errors": None,
+            }
+            return Response(response)
+
+        response: BlockResponse = {
+            "success": False,
+            "data": None,
+            "errors": form.errors,
+        }
+        return Response(response, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        response: BlockResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def set_block_completed_at(request):
+    """Override a completed (done / wontdo) block's completed_at timestamp.
+
+    Lets a user correct the recorded completion time when a block was
+    carried forward for a while before being marked done.
+    """
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = SetBlockCompletedAtForm(data)
+
+        if form.is_valid():
+            block = SetBlockCompletedAtCommand(form).execute()
             response: BlockResponse = {
                 "success": True,
                 "data": block.to_dict(),
