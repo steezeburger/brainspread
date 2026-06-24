@@ -54,6 +54,7 @@ from .schedule_block_form import ScheduleBlockForm
 from .search_notes_form import SearchNotesForm
 from .search_pages_form import SearchPagesForm
 from .send_due_reminders_form import SendDueRemindersForm
+from .set_block_completed_at_form import SetBlockCompletedAtForm
 from .set_block_type_form import SetBlockTypeForm
 from .set_page_favorited_form import SetPageFavoritedForm
 from .set_saved_view_pinned_form import SetSavedViewPinnedForm

@@ -54,6 +54,7 @@ from .schedule_block_command import ScheduleBlockCommand
 from .search_notes_command import SearchNotesCommand
 from .search_pages_command import SearchPagesCommand
 from .send_due_reminders_command import SendDueRemindersCommand
+from .set_block_completed_at_command import SetBlockCompletedAtCommand
 from .set_block_type_command import SetBlockTypeCommand
 from .set_page_favorited_command import SetPageFavoritedCommand
 from .set_saved_view_pinned_command import SetSavedViewPinnedCommand

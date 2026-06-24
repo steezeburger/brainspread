@@ -296,6 +296,22 @@ class ApiService {
     });
   }
 
+  /**
+   * Override a completed (done / wontdo) block's completed_at timestamp.
+   *   completedAt: ISO-8601 datetime string (with timezone offset; the
+   *                backend reads a naive value in the user's timezone).
+   * Only valid for terminal blocks — the backend rejects anything else.
+   */
+  async setBlockCompletedAt(blockUuid, completedAt) {
+    return await this.request("/knowledge/api/blocks/set-completed-at/", {
+      method: "POST",
+      body: JSON.stringify({
+        block: blockUuid,
+        completed_at: completedAt,
+      }),
+    });
+  }
+
   async moveUndoneTodos(targetDate = null) {
     const body = targetDate ? { target_date: targetDate } : {};
     return await this.request("/knowledge/api/blocks/move-undone-todos/", {

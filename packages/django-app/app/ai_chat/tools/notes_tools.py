@@ -640,10 +640,13 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
         "name": "edit_block",
         "description": (
             "Update an existing block: change its content, type, parent"
-            " (re-nest), or order. All fields except block_uuid are"
-            " optional — supply only what you want to change. To move a"
-            " block to the page root pass parent_uuid=null. Every call"
-            " pauses for explicit user approval before execution."
+            " (re-nest), order, or completion time. All fields except"
+            " block_uuid are optional — supply only what you want to"
+            " change. To move a block to the page root pass"
+            " parent_uuid=null. Use completed_at to correct when a"
+            " done / wontdo block was actually completed (e.g. a task"
+            " carried forward for days before being marked done). Every"
+            " call pauses for explicit user approval before execution."
         ),
         "input_schema": {
             "type": "object",
@@ -673,6 +676,16 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
                 "order": {
                     "type": "integer",
                     "description": "Optional new order within the parent.",
+                },
+                "completed_at": {
+                    "type": "string",
+                    "description": (
+                        "Optional ISO-8601 datetime to record as when the"
+                        " block was completed. Only valid when the block is"
+                        " (or is being set to) done / wontdo. Include a"
+                        " timezone offset; a naive value is interpreted in"
+                        " the user's timezone."
+                    ),
                 },
             },
             "required": ["block_uuid"],

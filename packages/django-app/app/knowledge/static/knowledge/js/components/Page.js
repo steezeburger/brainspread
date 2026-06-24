@@ -1080,6 +1080,37 @@ const Page = {
       this.blockInfoModalBlock = null;
     },
 
+    async onSaveBlockCompletedAt({ iso }) {
+      const block = this.blockInfoModalBlock;
+      if (!block || !iso) return;
+      try {
+        const result = await window.apiService.setBlockCompletedAt(
+          block.uuid,
+          iso
+        );
+        if (result.success) {
+          // Reassign so the modal (and its watcher) pick up the new
+          // timestamp and drop out of edit mode.
+          this.blockInfoModalBlock = {
+            ...block,
+            completed_at: result.data?.completed_at || iso,
+          };
+          this.$parent?.addToast?.("completion time updated", "success");
+          document.dispatchEvent(
+            new CustomEvent("brainspread:block-changed", {
+              detail: { uuid: block.uuid },
+            })
+          );
+          await this.loadPage({ silent: true });
+        } else {
+          this.$parent?.addToast?.("failed to update completion time", "error");
+        }
+      } catch (err) {
+        console.error("setBlockCompletedAt failed:", err);
+        this.$parent?.addToast?.("failed to update completion time", "error");
+      }
+    },
+
     async openMovePagePicker(block) {
       // Defer the picker UI to the shared AppModals.pickPage typeahead
       // (added for the saved-view embed flow) so we don't ship two
@@ -4215,6 +4246,7 @@ const Page = {
         :is-open="blockInfoModalOpen"
         :block="blockInfoModalBlock"
         @close="closeBlockInfoModal"
+        @save-completed-at="onSaveBlockCompletedAt"
       />
 
       <!-- Share modal (issue #90) -->
