@@ -668,6 +668,10 @@ const Page = {
           block.content = newContent;
           if (result.data && result.data.block_type) {
             block.block_type = result.data.block_type;
+            // A content prefix (e.g. typing "DONE ") can flip the type
+            // to/from a terminal state; mirror the server's completed_at
+            // so the block-info modal stays accurate without a reload.
+            block.completed_at = result.data.completed_at;
           }
           // Inline URL detection on save: if the user typed (or pasted
           // without the paste handler firing, e.g. mobile) a bare URL,
@@ -877,6 +881,10 @@ const Page = {
         if (result.success) {
           block.block_type = result.data.block_type;
           block.content = result.data.content;
+          // Keep completed_at in sync so the block-info modal shows the
+          // right time without a reload: entering done/wontdo stamps it,
+          // cycling back out clears it to null.
+          block.completed_at = result.data.completed_at;
           this.error = null;
           // Embeds may be showing this block — let them re-run so the
           // bullet / DONE strikethrough reflects the new state without
