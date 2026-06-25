@@ -548,6 +548,7 @@ const BlockComponent = {
       // its targets aren't present.
       this.renderMermaidIfPresent();
       this.highlightCodeIfPresent();
+      this.addCodeCopyButtonsIfPresent();
       this.applyResizableHandles();
     },
 
@@ -648,6 +649,68 @@ const BlockComponent = {
           // un-highlighted code is still legible.
         }
       });
+    },
+
+    addCodeCopyButtonsIfPresent() {
+      // Inject a hover-revealed "copy" button into each plain code block.
+      // Mermaid / CSV blocks render no <pre class="block-code"> so they're
+      // skipped. The code HTML comes from formatContentWithTags via v-html,
+      // so the button has to be wired here after mount/update rather than in
+      // the template.
+      if (!this.$el || this.$el.nodeType !== 1 || !this.$el.querySelector)
+        return;
+      const wrappers = this.$el.querySelectorAll(".block-code-wrapper");
+      wrappers.forEach((wrapper) => {
+        if (wrapper.querySelector(".block-code-copy")) return;
+        const pre = wrapper.querySelector("pre.block-code");
+        if (!pre) return;
+        const codeEl = pre.querySelector("code") || pre;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "block-code-copy";
+        btn.textContent = "copy";
+        btn.setAttribute("aria-label", "Copy code to clipboard");
+        btn.addEventListener("click", (event) => {
+          // Don't let the click fall through to the content-display handler,
+          // which would drop the block into edit (or toggle selection).
+          event.preventDefault();
+          event.stopPropagation();
+          this.copyCodeToClipboard(codeEl.textContent, btn);
+        });
+        wrapper.appendChild(btn);
+      });
+    },
+
+    async copyCodeToClipboard(text, button) {
+      const flashCopied = () => {
+        button.textContent = "copied";
+        button.classList.add("copied");
+        setTimeout(() => {
+          button.textContent = "copy";
+          button.classList.remove("copied");
+        }, 2000);
+      };
+      try {
+        await navigator.clipboard.writeText(text);
+        flashCopied();
+      } catch (_) {
+        // Fallback for contexts without the async clipboard API (e.g.
+        // non-secure origins).
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.opacity = "0";
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand("copy");
+          flashCopied();
+        } catch (err) {
+          console.error("copy failed:", err);
+        } finally {
+          document.body.removeChild(textArea);
+        }
+      }
     },
 
     async loadWebArchive() {

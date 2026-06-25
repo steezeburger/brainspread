@@ -5856,6 +5856,53 @@ kbd {
   opacity: 0.8;
   user-select: none;
   pointer-events: none;
+  transition: opacity 0.15s ease-in-out;
+}
+
+/* Hover-revealed "copy" button on plain code blocks. Mirrors the chat
+   .copy-button affordance but scoped to .block-code-wrapper. The lang
+   badge fades out on hover so the button can take the top-right corner. */
+.block-code-copy {
+  position: absolute;
+  top: 0.25em;
+  right: 0.4em;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  padding: 0.15rem 0.4rem;
+  font-family: inherit;
+  font-size: 0.65rem;
+  line-height: 1;
+  color: var(--text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.15s ease-in-out,
+    background-color 0.15s ease-in-out;
+  z-index: 2;
+}
+
+.block-code-wrapper:hover .block-code-copy,
+.block-code-copy:focus-visible {
+  opacity: 1;
+}
+
+.block-code-wrapper:hover .block-code-lang {
+  opacity: 0;
+}
+
+.block-code-copy:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.block-code-copy:active {
+  transform: translateY(1px);
+}
+
+.block-code-copy.copied {
+  color: var(--text-primary);
+  border-color: var(--text-primary);
 }
 
 .block-mermaid-wrapper {
