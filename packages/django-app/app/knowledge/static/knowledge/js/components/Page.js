@@ -3058,55 +3058,20 @@ const Page = {
     },
 
     async handleUrlPaste(block, url) {
-      // Empty block: promote it to an embed in place. Otherwise append a
-      // sibling embed block after the current one (matches paste-as-list
-      // behaviour for consistency).
-      const blockIsEmpty = !block.content || block.content.trim() === "";
-      let targetBlock = block;
-
+      // Only called for an empty block: promote it to an embed in place.
+      // (Pasting a URL into a non-empty block is handled as a plain text
+      // paste by onBlockPaste and never reaches here.)
       try {
-        if (blockIsEmpty) {
-          const result = await window.apiService.updateBlock(block.uuid, {
-            content: url,
-            content_type: "embed",
-            media_url: url,
-          });
-          if (!result.success) throw new Error("update block failed");
-          block.content = url;
-          block.content_type = "embed";
-          block.media_url = url;
-        } else {
-          const parentUuid = block.parent ? block.parent.uuid : null;
-          const newOrder = block.order + 1;
-          const siblings = block.parent
-            ? block.parent.children
-            : this.directBlocks;
-          const blocksToShift = siblings.filter(
-            (b) => b.uuid !== block.uuid && b.order >= newOrder
-          );
-          if (blocksToShift.length > 0) {
-            const reorderPayload = blocksToShift.map((b) => ({
-              uuid: b.uuid,
-              order: b.order + 1,
-            }));
-            const reorderResult =
-              await window.apiService.reorderBlocks(reorderPayload);
-            if (!reorderResult.success) throw new Error("reorder failed");
-          }
-          const createResult = await window.apiService.createBlock({
-            page: this.page.uuid,
-            parent: parentUuid,
-            content: url,
-            content_type: "embed",
-            block_type: "bullet",
-            media_url: url,
-            order: newOrder,
-          });
-          if (!createResult.success) throw new Error("create block failed");
-          targetBlock = { uuid: createResult.data.uuid };
-        }
+        const result = await window.apiService.updateBlock(block.uuid, {
+          content: url,
+          content_type: "embed",
+          media_url: url,
+        });
+        if (!result.success) throw new Error("update block failed");
+        block.content = url;
+        block.content_type = "embed";
+        block.media_url = url;
         // Archiving is opt-in - user clicks "archive" on the embed card.
-        void targetBlock;
       } catch (error) {
         console.error("url paste failed:", error);
         this.emitToast("could not save URL", "error");
@@ -3274,10 +3239,14 @@ const Page = {
       const text = clipboardData.getData("text/plain");
       if (!text) return;
 
-      // URL paste gets first shot. If the clipboard is a bare URL, create an
-      // embed block and kick off an archive capture in the background.
+      // URL paste gets first shot, but only into an empty block: there we
+      // promote the block to an embed in place. Pasting a URL into a block
+      // that already has content should behave like an ordinary paste -
+      // drop the URL text in at the cursor, don't hijack it into an embed
+      // (or a stray sibling block).
       const trimmed = text.trim();
-      if (this.isBareUrl(trimmed)) {
+      const blockIsEmptyForUrl = !block.content || block.content.trim() === "";
+      if (this.isBareUrl(trimmed) && blockIsEmptyForUrl) {
         event.preventDefault();
         await this.handleUrlPaste(block, trimmed);
         return;
