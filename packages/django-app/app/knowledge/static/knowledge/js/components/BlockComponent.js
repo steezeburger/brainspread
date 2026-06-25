@@ -135,10 +135,19 @@ const BlockComponent = {
       type: Boolean,
       default: false,
     },
+    // Linked-references rendering mode. When true the block (and its
+    // subtree) starts collapsed regardless of the block's own collapsed
+    // flag, and expand/collapse toggles stay local instead of being
+    // persisted — these blocks live on another page and collapsing them
+    // in a references list shouldn't change how they render at home.
+    referenceMode: {
+      type: Boolean,
+      default: false,
+    },
   },
   data() {
     return {
-      isCollapsed: this.block.collapsed === true,
+      isCollapsed: this.referenceMode ? true : this.block.collapsed === true,
       showContextMenu: false,
       contextMenuPosition: { x: 0, y: 0 },
       contextMenuFocusedIndex: -1,
@@ -778,6 +787,11 @@ const BlockComponent = {
       const next = !this.isCollapsed;
       const previous = this.isCollapsed;
       this.isCollapsed = next;
+      // In a linked-references list the block belongs to another page, so
+      // keep the toggle local and don't persist it back to the source.
+      if (this.referenceMode) {
+        return;
+      }
       this.block.collapsed = next;
       try {
         const result = await window.apiService.updateBlock(this.block.uuid, {
@@ -2020,6 +2034,7 @@ const BlockComponent = {
           :bulkDeleteSelected="bulkDeleteSelected"
           :bulkMoveSelectedToToday="bulkMoveSelectedToToday"
           :selectionMode="selectionMode"
+          :reference-mode="referenceMode"
         />
       </div>
     </div>

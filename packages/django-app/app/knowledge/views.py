@@ -552,7 +552,9 @@ def get_tag_content(request, tag_name):
 
         referenced_blocks_data = []
         for block in result["referenced_blocks"]:
-            referenced_blocks_data.append(block.to_dict(include_page_context=True))
+            referenced_blocks_data.append(
+                block.to_dict_with_children(include_page_context=True)
+            )
 
         pages_data = []
         for page in result["pages"]:
@@ -918,7 +920,7 @@ def get_page_with_blocks(request):
                     block.to_dict_with_children() for block in direct_blocks
                 ],
                 referenced_blocks=[
-                    block.to_dict(include_page_context=True)
+                    block.to_dict_with_children(include_page_context=True)
                     for block in referenced_blocks
                 ],
                 overdue_blocks=[

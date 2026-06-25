@@ -4198,6 +4198,7 @@ const Page = {
               </div>
               <BlockComponent
                 :block="block"
+                :reference-mode="true"
                 :onBlockContentChange="onBlockContentChange"
                 :onBlockKeyDown="onBlockKeyDown"
                 :startEditing="startEditing"
