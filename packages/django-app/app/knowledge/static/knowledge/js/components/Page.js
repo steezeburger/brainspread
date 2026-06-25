@@ -3090,6 +3090,11 @@ const Page = {
         block.content = url;
         block.content_type = "embed";
         block.media_url = url;
+        // Keep the user in the block: promoting to an embed swaps the
+        // textarea they were typing in for the embed card, which would
+        // otherwise drop focus. Re-enter edit mode so focus lands in the
+        // embed's label field and they can rename the link in place.
+        this.startEditing(block);
         // Archiving is opt-in - user clicks "archive" on the embed card.
       } catch (error) {
         console.error("url paste failed:", error);
