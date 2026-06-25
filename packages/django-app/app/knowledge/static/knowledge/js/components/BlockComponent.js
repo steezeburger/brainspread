@@ -1481,13 +1481,35 @@ const BlockComponent = {
       this.onBlockSelectClick(this.block, event);
     },
 
+    // While in selection mode, the whole block row is a hit target, not just
+    // the radio toggle. The bullet / content / toggle handlers stop
+    // propagation when they handle a click, so this only fires for the
+    // "dead" space (margins, gaps left of the content). Dedicated controls
+    // — collapse toggle, menu button, links, embeds, form fields — keep
+    // their own behavior and must not double-fire a selection toggle.
+    handleRowClick(event) {
+      if (!this.selectionMode) return;
+      if (
+        event.target.closest(
+          "button, a, input, textarea, .block-asset, .block-embed-card"
+        )
+      ) {
+        return;
+      }
+      const handled = this.onBlockSelectClick(this.block, event);
+      if (handled) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    },
+
     showBulkSelectionActions() {
       return this.blockSelected && this.selectedBlockCount >= 2;
     },
   },
   template: `
     <div class="block-wrapper" :class="{ 'child-block': block.parent, 'in-context': blockInContext, 'selected': blockSelected, 'in-selection-mode': selectionMode }" :data-block-uuid="block.uuid" @dragover="handleBlockDragOver" @drop="handleBlockDrop">
-      <div class="block" :class="{ 'has-children': hasChildren, 'is-collapsed': hasChildren && isCollapsed }">
+      <div class="block" :class="{ 'has-children': hasChildren, 'is-collapsed': hasChildren && isCollapsed }" @click="handleRowClick($event)">
         <button
           v-if="selectionMode"
           type="button"
