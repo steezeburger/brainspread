@@ -47,6 +47,69 @@ class BlockRepository(BaseRepository):
         )
 
     @classmethod
+    def get_referenced_blocks(
+        cls, page: Page, order_by: Iterable[str] = ()
+    ) -> List[Block]:
+        """Blocks on *other* pages tagged with ``page`` (its "linked
+        references"), with redundant descendants removed.
+
+        A tagged block is dropped when one of its ancestors is also tagged
+        with the same page: the references list renders each reference's
+        full subtree, so the descendant already shows up nested under that
+        ancestor. Surfacing it again as its own top-level entry would just
+        duplicate it.
+
+        ``order_by`` is applied to the underlying query (defaults to the
+        model's Meta ordering). The ancestor walk fetches intermediate
+        (untagged) ancestors in bulk per depth level, so it costs one
+        query per level rather than one per block.
+        """
+        qs = (
+            cls.get_queryset()
+            .filter(pages=page)
+            .exclude(page=page)
+            .select_related("user", "page", "asset")
+            .prefetch_related("reminders")
+        )
+        if order_by:
+            qs = qs.order_by(*order_by)
+        tagged = list(qs)
+        if not tagged:
+            return []
+
+        tagged_ids = {b.id for b in tagged}
+
+        parent_of: Dict[int, Optional[int]] = {b.id: b.parent_id for b in tagged}
+        frontier = {
+            b.parent_id
+            for b in tagged
+            if b.parent_id is not None and b.parent_id not in parent_of
+        }
+        while frontier:
+            rows = list(
+                cls.get_queryset()
+                .filter(id__in=frontier)
+                .values_list("id", "parent_id")
+            )
+            for block_id, parent_id in rows:
+                parent_of[block_id] = parent_id
+            frontier = {
+                parent_id
+                for _block_id, parent_id in rows
+                if parent_id is not None and parent_id not in parent_of
+            }
+
+        def has_tagged_ancestor(block_id: int) -> bool:
+            parent_id = parent_of.get(block_id)
+            while parent_id is not None:
+                if parent_id in tagged_ids:
+                    return True
+                parent_id = parent_of.get(parent_id)
+            return False
+
+        return [b for b in tagged if not has_tagged_ancestor(b.id)]
+
+    @classmethod
     def get_child_blocks(cls, parent_block: Block) -> QuerySet:
         """Get direct children of a block"""
         return cls.get_queryset().filter(parent=parent_block).order_by("order")

@@ -331,14 +331,14 @@ def _serialize_block_tree(block, share_token: str) -> dict:
 
 
 def _serialize_referenced_block(block, share_token: str) -> dict:
-    """Flat dict for a block that lives on another page but is tagged with
-    the shared page. Carries source-page context so the template can
-    label "from <daily date> / <page title>" without exposing a working
-    link to the source page.
+    """Dict for a block that lives on another page but is tagged with the
+    shared page. Carries source-page context so the template can label
+    "from <daily date> / <page title>" without exposing a working link to
+    the source page.
 
-    Renders flat (no children) to match how the editor surfaces linked
-    references — the recipient sees the same scope of content the owner
-    sees in their own "Linked References" section.
+    Includes the block's nested children (as block-tree dicts) so the
+    recipient can see the sub-blocks under a tagged note — matching the
+    editor's linked-references section, which now expands children too.
     """
     asset_uuid = str(block.asset.uuid) if block.asset_id else None
     asset_file_type = block.asset.file_type if block.asset_id else None
@@ -365,6 +365,9 @@ def _serialize_referenced_block(block, share_token: str) -> dict:
         "source_page_date": (
             source.date.isoformat() if source and source.date else None
         ),
+        "children": [
+            _serialize_block_tree(child, share_token) for child in block.get_children()
+        ],
     }
 
 
@@ -388,10 +391,10 @@ def public_page(request, share_token: str):
     # Linked references — blocks elsewhere that tag this page (e.g. daily
     # notes that mention #food-log). For a topic / tag-style page these
     # ARE the content, so the share view would be empty without them.
-    referenced_blocks = (
-        page.tagged_blocks.exclude(page=page)
-        .select_related("user", "page", "asset")
-        .order_by("-page__date", "-modified_at", "order")
+    # Descendants whose ancestor is also tagged are dropped (they already
+    # render nested under that ancestor) so the same block isn't shown twice.
+    referenced_blocks = BlockRepository.get_referenced_blocks(
+        page, order_by=("-page__date", "-modified_at", "order")
     )
     references = [
         _serialize_referenced_block(b, share_token) for b in referenced_blocks
@@ -552,7 +555,9 @@ def get_tag_content(request, tag_name):
 
         referenced_blocks_data = []
         for block in result["referenced_blocks"]:
-            referenced_blocks_data.append(block.to_dict(include_page_context=True))
+            referenced_blocks_data.append(
+                block.to_dict_with_children(include_page_context=True)
+            )
 
         pages_data = []
         for page in result["pages"]:
@@ -918,7 +923,7 @@ def get_page_with_blocks(request):
                     block.to_dict_with_children() for block in direct_blocks
                 ],
                 referenced_blocks=[
-                    block.to_dict(include_page_context=True)
+                    block.to_dict_with_children(include_page_context=True)
                     for block in referenced_blocks
                 ],
                 overdue_blocks=[

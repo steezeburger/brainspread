@@ -489,7 +489,9 @@ const Page = {
           this.directBlocks = this.setupParentReferences(
             result.data.direct_blocks || []
           );
-          this.referencedBlocks = result.data.referenced_blocks || [];
+          this.referencedBlocks = this.setupParentReferences(
+            result.data.referenced_blocks || []
+          );
           this.overdueBlocks = result.data.overdue_blocks || [];
           this.embeddedViews = result.data.embedded_views || [];
           this.$emit("page-loaded", this.page);
@@ -4198,6 +4200,7 @@ const Page = {
               </div>
               <BlockComponent
                 :block="block"
+                :reference-mode="true"
                 :onBlockContentChange="onBlockContentChange"
                 :onBlockKeyDown="onBlockKeyDown"
                 :startEditing="startEditing"

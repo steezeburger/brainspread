@@ -62,13 +62,11 @@ class GetPageWithBlocksCommand(AbstractBaseCommand):
         # Get direct blocks (blocks that belong directly to this page)
         direct_blocks = BlockRepository.get_root_blocks(page)
 
-        # Get referenced blocks (blocks from other pages that reference this page)
-        # Look for blocks that have this page in their M2M tags relationship, but don't belong to this page
-        referenced_blocks = (
-            page.tagged_blocks.exclude(page=page)
-            .select_related("user", "page")
-            .prefetch_related("reminders")
-        )
+        # Get referenced blocks (blocks from other pages that reference this
+        # page via the M2M tag relationship). Descendants whose ancestor is
+        # also tagged are dropped — they already render nested under that
+        # ancestor's reference, so a standalone entry would just duplicate.
+        referenced_blocks = BlockRepository.get_referenced_blocks(page)
 
         overdue_blocks: List[Block] = []
         if page.page_type == "daily" and page.date == today:

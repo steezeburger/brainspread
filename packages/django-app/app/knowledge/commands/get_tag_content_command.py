@@ -5,7 +5,7 @@ from core.models import User
 
 from ..forms import GetTagContentForm
 from ..models import BlockData, PageData
-from ..repositories import PageRepository
+from ..repositories import BlockRepository, PageRepository
 
 
 class GetTagContentCommand(AbstractBaseCommand):
@@ -31,8 +31,10 @@ class GetTagContentCommand(AbstractBaseCommand):
         # Get direct blocks (blocks that belong directly to this page)
         direct_blocks = tag_page.blocks.all().order_by("order")
 
-        # Get referenced blocks (blocks from other pages that reference this tag)
-        referenced_blocks = tag_page.tagged_blocks.exclude(page=tag_page)
+        # Get referenced blocks (blocks from other pages that reference this
+        # tag). Descendants whose ancestor is also tagged are dropped so they
+        # aren't shown twice — once nested, once standalone.
+        referenced_blocks = BlockRepository.get_referenced_blocks(tag_page)
 
         # Get all pages that have blocks with this tag (excluding the tag page itself)
         pages = []
