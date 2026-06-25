@@ -71,6 +71,10 @@ const Page = {
       schedulePopoverInitialDate: "",
       schedulePopoverInitialReminderDate: "",
       schedulePopoverInitialTime: "",
+      // When the schedule popover is opened for a multi-select, these hold
+      // the bulk context so onSchedulePopoverSave routes to the bulk path.
+      schedulePopoverBulk: false,
+      schedulePopoverBulkUuids: [],
       blockChatPopoverOpen: false,
       blockChatPopoverBlock: null,
       blockInfoModalOpen: false,
@@ -2526,9 +2530,22 @@ const Page = {
     },
 
     onSchedulePopoverSave({ scheduledFor, reminderDate, reminderTime }) {
+      const bulk = this.schedulePopoverBulk;
+      const bulkUuids = this.schedulePopoverBulkUuids;
       const block = this.schedulePopoverBlock;
       this.schedulePopoverOpen = false;
       this.schedulePopoverBlock = null;
+      this.schedulePopoverBulk = false;
+      this.schedulePopoverBulkUuids = [];
+      if (bulk) {
+        this._submitBulkSchedule(
+          bulkUuids,
+          scheduledFor,
+          reminderDate,
+          reminderTime
+        );
+        return;
+      }
       if (!block) return;
       this._submitSchedule(block, scheduledFor, reminderDate, reminderTime);
     },
@@ -2536,6 +2553,8 @@ const Page = {
     onSchedulePopoverCancel() {
       this.schedulePopoverOpen = false;
       this.schedulePopoverBlock = null;
+      this.schedulePopoverBulk = false;
+      this.schedulePopoverBulkUuids = [];
     },
 
     openBlockChatPopover(block) {
@@ -3782,6 +3801,75 @@ const Page = {
         );
       }
     },
+
+    bulkScheduleSelected() {
+      // Reuse the single-block schedule popover for the whole selection.
+      // We snapshot the selected uuids now; the popover's save handler
+      // routes back through _submitBulkSchedule once the user picks a date.
+      const uuids = [...this.selectedBlockUuids];
+      if (uuids.length === 0) {
+        this.$parent?.addToast?.("no blocks selected", "info");
+        return;
+      }
+      this.schedulePopoverBulk = true;
+      this.schedulePopoverBulkUuids = uuids;
+      this.schedulePopoverBlock = null;
+      // No shared starting point across N blocks — let the popover default
+      // to today rather than seeding from one block's existing schedule.
+      this.schedulePopoverInitialDate = "";
+      this.schedulePopoverInitialReminderDate = "";
+      this.schedulePopoverInitialTime = "";
+      this.schedulePopoverOpen = true;
+    },
+
+    async _submitBulkSchedule(uuids, scheduledFor, reminderDate, reminderTime) {
+      if (!uuids || uuids.length === 0) return;
+      if (!scheduledFor) {
+        this.$parent?.addToast?.("pick a date to schedule", "info");
+        return;
+      }
+      try {
+        const result = await window.apiService.bulkScheduleBlocks(
+          uuids,
+          scheduledFor,
+          reminderDate,
+          reminderTime
+        );
+        if (!result || !result.success) {
+          throw new Error(
+            result?.errors?.non_field_errors?.[0] || "bulk schedule failed"
+          );
+        }
+        const count = result.data?.updated_count ?? 0;
+        let msg = `scheduled ${count} block${
+          count === 1 ? "" : "s"
+        } for ${scheduledFor}`;
+        if (result.data?.reminder_set && reminderTime) {
+          const formatted =
+            window.formatTimeForUser?.(reminderTime) || reminderTime;
+          msg += ` · remind at ${formatted}`;
+        }
+        this.$parent?.addToast?.(msg, "success");
+        // Keep any embeds that surface these blocks in sync, same as the
+        // single-block schedule path.
+        uuids.forEach((uuid) =>
+          document.dispatchEvent(
+            new CustomEvent("brainspread:block-changed", {
+              detail: { uuid },
+            })
+          )
+        );
+        this.clearBlockSelection();
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("failed to bulk-schedule blocks:", error);
+        this.error = "failed to schedule selected blocks";
+        this.$parent?.addToast?.(
+          `failed to schedule selected blocks: ${error.message || error}`,
+          "error"
+        );
+      }
+    },
   },
 
   template: `
@@ -4026,6 +4114,13 @@ const Page = {
               @click="bulkMoveSelectedToPage"
               title="Move selected blocks to any page…"
             >move to page…</button>
+            <button
+              type="button"
+              class="btn btn-outline selection-toolbar-action"
+              :disabled="selectedBlockCount === 0"
+              @click="bulkScheduleSelected"
+              title="Schedule selected blocks (set a due date / reminder)"
+            >schedule…</button>
             <button
               type="button"
               class="btn btn-outline selection-toolbar-action selection-toolbar-danger"

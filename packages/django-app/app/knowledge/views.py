@@ -16,6 +16,7 @@ from knowledge.commands import (
     BulkDeleteBlocksCommand,
     BulkMoveBlocksCommand,
     BulkMoveBlocksToPageCommand,
+    BulkScheduleCommand,
     ConsumeReminderActionCommand,
     CreateBlockCommand,
     CreatePageCommand,
@@ -76,6 +77,7 @@ from knowledge.forms import (
     BulkDeleteBlocksForm,
     BulkMoveBlocksForm,
     BulkMoveBlocksToPageForm,
+    BulkScheduleForm,
     ConsumeReminderActionForm,
     CreateBlockForm,
     CreatePageEmbeddedViewForm,
@@ -1796,6 +1798,43 @@ def bulk_move_blocks_to_page(request):
             "errors": {"non_field_errors": [str(e)]},
         }
         return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def bulk_schedule_blocks(request):
+    """Set the same scheduled_for (and optional reminder) on a list of blocks.
+
+    Mirrors single-block schedule_block, batched: when reminder_time is
+    supplied each block gets a replacement pending reminder; otherwise the
+    date moves and any existing pending reminder shifts to preserve its
+    time-of-day. Blocks owned by another user are silently skipped.
+    """
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+
+        form = BulkScheduleForm(data)
+        if not form.is_valid():
+            return Response(
+                {"success": False, "data": None, "errors": form.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        result = BulkScheduleCommand(form).execute()
+        return Response({"success": True, "data": result, "errors": None})
+
+    except ValidationError as e:
+        return Response(
+            {"success": False, "data": None, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    except Exception as e:
+        return Response(
+            {"success": False, "data": None, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 # ---------------------------------------------------------------------------
