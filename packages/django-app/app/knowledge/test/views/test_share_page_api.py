@@ -178,6 +178,48 @@ class PublicPageViewTestCase(TestCase):
         self.assertIn("nested detail line", body)
         self.assertIn("deeper grandchild line", body)
 
+    def test_public_view_dedupes_child_tagged_alongside_ancestor(self):
+        # A child tagged with the same page as its parent must appear only
+        # once (nested under the parent), not also as a standalone reference.
+        from datetime import date
+
+        self.page.share_token = "tag-share-token-dedup"
+        self.page.share_mode = "link"
+        self.page.save()
+
+        daily = PageFactory(
+            user=self.user,
+            title="2026-05-02",
+            slug="2026-05-02",
+            page_type="daily",
+            date=date(2026, 5, 2),
+        )
+        parent = BlockFactory(
+            user=self.user, page=daily, content="parent note #food-log", order=0
+        )
+        parent.pages.add(self.page)
+        child = BlockFactory(
+            user=self.user,
+            page=daily,
+            parent=parent,
+            content="child note #food-log",
+            order=0,
+        )
+        child.pages.add(self.page)
+
+        client = Client()
+        response = client.get(f"/knowledge/share/{self.page.share_token}/")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode("utf-8")
+        # The public template renders each block's content twice (a data-md
+        # attribute plus the visible text), so compare the child against the
+        # parent: both should render the same number of times. If the child
+        # weren't deduped it would appear nested AND standalone — more times
+        # than the parent.
+        self.assertIn("child note", body)
+        self.assertEqual(body.count("child note"), body.count("parent note"))
+
     def test_public_view_excludes_blocks_tagged_with_other_pages(self):
         # A block tagged only with a different page must not leak just
         # because both pages belong to the same user.

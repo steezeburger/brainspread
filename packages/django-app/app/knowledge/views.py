@@ -391,10 +391,10 @@ def public_page(request, share_token: str):
     # Linked references — blocks elsewhere that tag this page (e.g. daily
     # notes that mention #food-log). For a topic / tag-style page these
     # ARE the content, so the share view would be empty without them.
-    referenced_blocks = (
-        page.tagged_blocks.exclude(page=page)
-        .select_related("user", "page", "asset")
-        .order_by("-page__date", "-modified_at", "order")
+    # Descendants whose ancestor is also tagged are dropped (they already
+    # render nested under that ancestor) so the same block isn't shown twice.
+    referenced_blocks = BlockRepository.get_referenced_blocks(
+        page, order_by=("-page__date", "-modified_at", "order")
     )
     references = [
         _serialize_referenced_block(b, share_token) for b in referenced_blocks

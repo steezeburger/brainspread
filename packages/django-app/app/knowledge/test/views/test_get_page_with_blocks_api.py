@@ -51,3 +51,39 @@ class GetPageWithBlocksReferencedChildrenTestCase(TestCase):
         self.assertEqual(len(ref_block["children"]), 1)
         self.assertEqual(ref_block["children"][0]["uuid"], str(self.child.uuid))
         self.assertEqual(ref_block["children"][0]["content"], "a child detail")
+
+    def test_child_tagged_alongside_ancestor_is_not_duplicated(self):
+        # The child is ALSO tagged with the same page. It already shows up
+        # nested under its tagged parent, so it must not appear again as its
+        # own top-level reference entry.
+        self.child.pages.add(self.tag_page)
+
+        response = self.client.get("/knowledge/api/page/?slug=mental-health")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        referenced = response.data["data"]["referenced_blocks"]
+        top_level_uuids = [b["uuid"] for b in referenced]
+        # Only the parent surfaces at top level; the child is deduped.
+        self.assertEqual(top_level_uuids, [str(self.parent.uuid)])
+        # ...but it's still reachable nested under the parent.
+        self.assertEqual(referenced[0]["children"][0]["uuid"], str(self.child.uuid))
+
+    def test_deeply_nested_tagged_descendant_is_deduped(self):
+        # parent (tagged) -> child (untagged) -> grandchild (tagged).
+        # The grandchild's ancestor is tagged, so it's deduped even though
+        # the intermediate child isn't tagged.
+        grandchild = BlockFactory(
+            user=self.user,
+            page=self.source_page,
+            parent=self.child,
+            content="a grandchild detail",
+            order=0,
+        )
+        grandchild.pages.add(self.tag_page)
+
+        response = self.client.get("/knowledge/api/page/?slug=mental-health")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        referenced = response.data["data"]["referenced_blocks"]
+        top_level_uuids = [b["uuid"] for b in referenced]
+        self.assertEqual(top_level_uuids, [str(self.parent.uuid)])
