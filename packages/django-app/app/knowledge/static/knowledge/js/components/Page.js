@@ -3087,13 +3087,23 @@ const Page = {
           media_url: url,
         });
         if (!result.success) throw new Error("update block failed");
-        block.content = url;
         block.content_type = "embed";
         block.media_url = url;
+        // Open the label field empty (with its "label this link…"
+        // placeholder) instead of full of the raw URL. BlockComponent's
+        // isEditing watcher normally does this, but only on a false->true
+        // transition; here the block was already being edited, so mirror
+        // it explicitly. (The URL persists via media_url; on blur the empty
+        // label falls back to the hostname, same as any unlabeled embed.)
+        block.content = "";
         // Keep the user in the block: promoting to an embed swaps the
-        // textarea they were typing in for the embed card, which would
-        // otherwise drop focus. Re-enter edit mode so focus lands in the
-        // embed's label field and they can rename the link in place.
+        // textarea they were typing in for the embed's label textarea.
+        // Removing the old textarea fires its blur -> stopEditing, which
+        // would set isEditing=false and clobber the focus we're about to
+        // take. Setting isNavigating makes that blur-driven stopEditing
+        // bail (same guard block-to-block navigation uses), so re-entering
+        // edit mode here sticks and focus lands in the label field.
+        this.isNavigating = true;
         this.startEditing(block);
         // Archiving is opt-in - user clicks "archive" on the embed card.
       } catch (error) {
