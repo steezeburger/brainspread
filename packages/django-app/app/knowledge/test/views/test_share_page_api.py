@@ -134,6 +134,50 @@ class PublicPageViewTestCase(TestCase):
         # Source-page label uses the daily's date, not its raw title.
         self.assertIn("2026-04-30", body)
 
+    def test_public_view_linked_reference_includes_nested_children(self):
+        # A tagged note with sub-blocks should expose those children in the
+        # shared page's linked references, not just the tagged parent.
+        from datetime import date
+
+        self.page.share_token = "tag-share-token-children"
+        self.page.share_mode = "link"
+        self.page.save()
+
+        daily = PageFactory(
+            user=self.user,
+            title="2026-05-01",
+            slug="2026-05-01",
+            page_type="daily",
+            date=date(2026, 5, 1),
+        )
+        parent = BlockFactory(
+            user=self.user, page=daily, content="some note #food-log", order=0
+        )
+        parent.pages.add(self.page)
+        child = BlockFactory(
+            user=self.user,
+            page=daily,
+            parent=parent,
+            content="nested detail line",
+            order=0,
+        )
+        BlockFactory(
+            user=self.user,
+            page=daily,
+            parent=child,
+            content="deeper grandchild line",
+            order=0,
+        )
+
+        client = Client()
+        response = client.get(f"/knowledge/share/{self.page.share_token}/")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode("utf-8")
+        self.assertIn("some note", body)
+        self.assertIn("nested detail line", body)
+        self.assertIn("deeper grandchild line", body)
+
     def test_public_view_excludes_blocks_tagged_with_other_pages(self):
         # A block tagged only with a different page must not leak just
         # because both pages belong to the same user.

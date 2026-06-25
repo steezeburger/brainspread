@@ -42,6 +42,11 @@
               {% endif %}
             </div>
             {% include 'knowledge/_public_block_content.html' with block=ref %}
+            {% if ref.children %}
+            <ul class="public-block-list">
+              {% include 'knowledge/_public_block_list.html' with blocks=ref.children %}
+            </ul>
+            {% endif %}
           </li>
           {% endfor %}
         </ul>

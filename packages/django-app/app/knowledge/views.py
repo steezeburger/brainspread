@@ -331,14 +331,14 @@ def _serialize_block_tree(block, share_token: str) -> dict:
 
 
 def _serialize_referenced_block(block, share_token: str) -> dict:
-    """Flat dict for a block that lives on another page but is tagged with
-    the shared page. Carries source-page context so the template can
-    label "from <daily date> / <page title>" without exposing a working
-    link to the source page.
+    """Dict for a block that lives on another page but is tagged with the
+    shared page. Carries source-page context so the template can label
+    "from <daily date> / <page title>" without exposing a working link to
+    the source page.
 
-    Renders flat (no children) to match how the editor surfaces linked
-    references — the recipient sees the same scope of content the owner
-    sees in their own "Linked References" section.
+    Includes the block's nested children (as block-tree dicts) so the
+    recipient can see the sub-blocks under a tagged note — matching the
+    editor's linked-references section, which now expands children too.
     """
     asset_uuid = str(block.asset.uuid) if block.asset_id else None
     asset_file_type = block.asset.file_type if block.asset_id else None
@@ -365,6 +365,9 @@ def _serialize_referenced_block(block, share_token: str) -> dict:
         "source_page_date": (
             source.date.isoformat() if source and source.date else None
         ),
+        "children": [
+            _serialize_block_tree(child, share_token) for child in block.get_children()
+        ],
     }
 
 
