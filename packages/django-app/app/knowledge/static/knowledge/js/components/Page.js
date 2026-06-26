@@ -2522,11 +2522,29 @@ const Page = {
       }
 
       this.schedulePopoverBlock = block;
-      this.schedulePopoverInitialDate = block.scheduled_for || "";
+      this.schedulePopoverInitialDate =
+        block.scheduled_for || this._defaultScheduleDate();
       this.schedulePopoverInitialReminderDate =
         block.pending_reminder_date || "";
       this.schedulePopoverInitialTime = block.pending_reminder_time || "";
       this.schedulePopoverOpen = true;
+    },
+
+    // Default due date for an unscheduled block. On a future daily page we
+    // seed the page's own date — the user navigated to that day on purpose,
+    // so a TODO they're scheduling almost certainly belongs on it, not
+    // today. Today's/past daily pages and non-daily pages return "" so the
+    // popover falls back to its own "today" default.
+    _defaultScheduleDate() {
+      if (!this.isDaily) return "";
+      const pageDate = this.page?.date;
+      if (!pageDate) return "";
+      const now = new Date();
+      const tzOffsetMs = now.getTimezoneOffset() * 60_000;
+      const todayIso = new Date(now.getTime() - tzOffsetMs)
+        .toISOString()
+        .slice(0, 10);
+      return pageDate > todayIso ? pageDate : "";
     },
 
     onSchedulePopoverSave({ scheduledFor, reminderDate, reminderTime }) {
