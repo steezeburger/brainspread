@@ -15,6 +15,7 @@ dependencies = [
     "httpx>=0.24.0,<0.28.0",
     "openai",
     "google-generativeai",
+    "django-oauth-toolkit>=3.3.0,<4",
 ]
 
 [dependency-groups]

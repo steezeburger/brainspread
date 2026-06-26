@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework.authtoken",
     "corsheaders",
+    "oauth2_provider",
     # own
     "core",
     "assets",
@@ -84,7 +85,7 @@ ROOT_URLCONF = "app.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -215,6 +216,28 @@ REST_FRAMEWORK = {
         "rest_framework.parsers.JSONParser",
     ],
 }
+
+# OAuth 2.1 authorization server (django-oauth-toolkit) for the MCP
+# "custom connector" flow. PKCE is mandatory; a single ``mcp`` scope
+# grants a token holder access to their own notes and tools.
+OAUTH2_PROVIDER = {
+    "SCOPES": {"mcp": "Access your brainspread notes and tools"},
+    "DEFAULT_SCOPES": ["mcp"],
+    "PKCE_REQUIRED": True,
+    "ALLOWED_REDIRECT_URI_SCHEMES": ["https", "http"],
+    "ACCESS_TOKEN_EXPIRE_SECONDS": 60 * 60 * 8,
+    "REFRESH_TOKEN_EXPIRE_SECONDS": 60 * 60 * 24 * 30,
+    "ROTATE_REFRESH_TOKEN": True,
+}
+
+# The /o/authorize/ step redirects unauthenticated browsers here to log in.
+LOGIN_URL = "/oauth/login/"
+
+# Public origin advertised in OAuth discovery metadata. Behind a
+# TLS-terminating proxy this must be set explicitly (e.g.
+# "https://brainspread.nutmegranch.com") so the metadata URLs are
+# correct; otherwise it's derived from the request.
+MCP_OAUTH_ISSUER = os.environ.get("MCP_OAUTH_ISSUER", "")
 
 # CORS settings
 CORS_ALLOWED_ORIGINS = [

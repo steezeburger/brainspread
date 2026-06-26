@@ -4,12 +4,20 @@ Speaks just enough of the MCP wire protocol to support tools-only
 servers (no resources/prompts). One POST endpoint that dispatches
 JSON-RPC requests to a small set of handlers.
 
-Auth: standard DRF token auth. The MCP client sends
-``Authorization: Token <brainspread-token>`` on every request; the
-authenticated user is what each tool acts on. This is intentionally
-*not* OAuth — the MCP spec recommends OAuth for public servers, but
-this server is per-user and reuses the existing token an account
-already has.
+Auth: two paths, both resolving to the user each tool acts on.
+
+1. DRF token auth — the client sends ``Authorization: Token
+   <brainspread-token>``. This is what Claude Code + the ``mcp-remote``
+   bridge use.
+2. OAuth 2.1 (django-oauth-toolkit) — the client sends
+   ``Authorization: Bearer <access-token>`` obtained via the
+   authorization-code + PKCE flow. This is the path Claude Desktop /
+   web "custom connectors" use; see ``oauth_*`` modules for the
+   discovery, registration, and authorize/token machinery.
+
+When a request arrives unauthenticated we answer ``401`` with a
+``WWW-Authenticate: Bearer resource_metadata="…"`` header so an
+OAuth-capable client can discover and begin the flow.
 
 We always respond with ``application/json`` (no SSE) since every
 tool here completes synchronously. Streaming can be added later if a
@@ -21,12 +29,18 @@ import logging
 from typing import Any
 
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.authentication import SessionAuthentication, TokenAuthentication
+from rest_framework.decorators import (
+    api_view,
+    authentication_classes,
+    permission_classes,
+)
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from core.llm_tools import ToolContext, ToolError, to_mcp
 
+from .auth import MCPBearerAuthentication
 from .tools import REGISTRY
 
 logger = logging.getLogger(__name__)
@@ -157,7 +171,14 @@ def _dispatch_single(user, message: dict[str, Any]) -> dict[str, Any] | None:
     return None if is_notification else _result(req_id, result)
 
 
+# MCPBearerAuthentication is listed first so its ``WWW-Authenticate``
+# challenge (the OAuth resource-metadata pointer) is what an
+# unauthenticated 401 advertises. Token + Session auth still work for
+# requests that present those credentials.
 @api_view(["POST"])
+@authentication_classes(
+    [MCPBearerAuthentication, TokenAuthentication, SessionAuthentication]
+)
 @permission_classes([IsAuthenticated])
 def mcp_endpoint(request):
     """The single Streamable-HTTP MCP endpoint."""

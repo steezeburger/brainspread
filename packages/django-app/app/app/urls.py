@@ -17,6 +17,8 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 
+from mcp_server.oauth_urls import oauth2_patterns, root_urlpatterns
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", include("core.urls")),
@@ -25,4 +27,7 @@ urlpatterns = [
     path("api/web-archives/", include("web_archives.urls")),
     path("api/assets/", include("assets.urls")),
     path("api/mcp/", include("mcp_server.urls")),
+    # OAuth authorization server for MCP custom connectors.
+    path("o/", include(oauth2_patterns)),
+    *root_urlpatterns,
 ]

@@ -1,0 +1,78 @@
+{% comment %}
+Overrides django-oauth-toolkit's consent page. Standalone (outside the
+Vue SPA), so it carries its own brutalist styles. The hidden-field loop
+and the name="allow" submit button replicate DOT's stock authorize.html
+contract: posting back with allow=Authorize approves, the unnamed Deny
+button posts without it and DOT treats that as access_denied.
+{% endcomment %}
+{% load i18n %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Authorize — brainspread</title>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f4f4f4; color: #1a1a1a; margin: 0;
+      display: flex; min-height: 100vh; align-items: center; justify-content: center;
+      padding: 16px;
+    }
+    .card {
+      background: #fff; border: 3px solid #1a1a1a; box-shadow: 4px 4px 0 #1a1a1a;
+      border-radius: 0; padding: 28px; width: 100%; max-width: 400px;
+    }
+    h1 { font-size: 18px; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 12px; }
+    p.sub { margin: 0 0 8px; font-size: 13px; color: #555; }
+    ul { margin: 8px 0 4px; padding-left: 18px; font-size: 14px; }
+    li { margin: 4px 0; }
+    .actions { display: flex; gap: 10px; margin-top: 24px; }
+    button {
+      flex: 1; padding: 12px; cursor: pointer;
+      font-family: inherit; font-weight: 700; font-size: 14px;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      border: 3px solid #1a1a1a; border-radius: 0;
+      box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.25);
+    }
+    button:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.25); }
+    .btn-allow { background: #1a1a1a; color: #fff; }
+    .btn-deny { background: #fff; color: #1a1a1a; }
+    .errors { border: 3px solid #b00020; background: #fde7ea; color: #b00020; padding: 10px; font-size: 13px; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    {% if not error %}
+      <form method="post">
+        {% csrf_token %}
+        <h1>{% trans "Authorize" %} {{ application.name }}</h1>
+
+        {% for field in form %}
+          {% if field.is_hidden %}{{ field }}{% endif %}
+        {% endfor %}
+
+        <p class="sub">{% trans "This connection will be able to:" %}</p>
+        <ul>
+          {% for scope in scopes_descriptions %}
+            <li>{{ scope }}</li>
+          {% endfor %}
+        </ul>
+
+        {% if form.errors %}<div class="errors">{{ form.errors }}</div>{% endif %}
+        {{ form.non_field_errors }}
+
+        <div class="actions">
+          <button type="submit" class="btn-deny">{% trans "Deny" %}</button>
+          <button type="submit" class="btn-allow" name="allow" value="Authorize">{% trans "Allow" %}</button>
+        </div>
+      </form>
+    {% else %}
+      <h1>{% trans "Error" %}</h1>
+      <p class="sub">{{ error.error }}: {{ error.description }}</p>
+    {% endif %}
+  </div>
+</body>
+</html>
