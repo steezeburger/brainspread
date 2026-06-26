@@ -1956,7 +1956,7 @@ const BlockComponent = {
           :class="{ 'overdue': isOverdue }"
           @click.stop="scheduleBlock(block)"
           :title="'Scheduled ' + block.scheduled_for + (reminderTimeLabel ? ' · reminder at ' + reminderTimeLabel : '') + (isOverdue ? ' (overdue)' : '') + ' — click to change'"
-        ><svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="1"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg> {{ scheduledForLabel }}<span v-if="reminderTimeLabel"> · <svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><circle cx="8" cy="8" r="6.25"/><polyline points="8,4.5 8,8 11,9.5"/></g></svg> {{ reminderInlineLabel }}</span></button>
+        ><svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="0"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg> {{ scheduledForLabel }}<span v-if="reminderTimeLabel"> · <svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><circle cx="8" cy="8" r="6.25"/><polyline points="8,4.5 8,8 11,9.5"/></g></svg> {{ reminderInlineLabel }}</span></button>
         <button
           v-else
           type="button"
@@ -1964,7 +1964,7 @@ const BlockComponent = {
           @click.stop="scheduleBlock(block)"
           title="Schedule this block"
           aria-label="Schedule this block"
-        ><svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="1"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg></button>
+        ><svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="0"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg></button>
         <button
           @click="showContextMenuAt($event)"
           @contextmenu="showContextMenuAt($event)"
@@ -2040,7 +2040,7 @@ const BlockComponent = {
         </template>
         <div class="context-menu-separator"></div>
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('schedule')">
-          <span class="context-menu-icon"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="1"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg></span>
+          <span class="context-menu-icon"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="0"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg></span>
           <span>{{ block.scheduled_for ? 'reschedule...' : 'schedule...' }}</span>
         </button>
         <button class="context-menu-item" role="menuitem" tabindex="-1" v-if="block.scheduled_for" @click="handleContextMenuAction('unschedule')">
