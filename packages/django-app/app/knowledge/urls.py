@@ -75,6 +75,11 @@ urlpatterns = [
         views.bulk_move_blocks_to_page,
         name="bulk_move_blocks_to_page",
     ),
+    path(
+        "api/blocks/bulk-schedule/",
+        views.bulk_schedule_blocks,
+        name="bulk_schedule_blocks",
+    ),
     # Page-centric API endpoints
     path("api/pages/", views.create_page, name="create_page"),
     path("api/pages/update/", views.update_page, name="update_page"),

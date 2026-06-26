@@ -384,6 +384,26 @@ class ApiService {
     });
   }
 
+  async bulkScheduleBlocks(
+    blockUuids,
+    scheduledFor,
+    reminderDate = "",
+    reminderTime = ""
+  ) {
+    return await this.request("/knowledge/api/blocks/bulk-schedule/", {
+      method: "POST",
+      body: JSON.stringify({
+        block_uuids: blockUuids,
+        new_date: scheduledFor || "",
+        reminder_date: reminderDate || "",
+        reminder_time: reminderTime || "",
+      }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
   async getHistoricalData(daysBack = 30, limit = 50) {
     return await this.request(
       `/knowledge/api/historical/?days_back=${daysBack}&limit=${limit}`

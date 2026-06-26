@@ -234,7 +234,7 @@ class ChatMessageAdmin(admin.ModelAdmin):
                         '<a href="{}" target="_blank" rel="noopener" '
                         'style="margin-right: 0.4rem; display: inline-block;">'
                         '<img src="{}" style="max-width: 160px; max-height: 160px; '
-                        'border: 1px solid #ccc; border-radius: 3px;" alt="{}" />'
+                        'border: 1px solid #ccc; border-radius: 0;" alt="{}" />'
                         "</a>",
                         url,
                         url,

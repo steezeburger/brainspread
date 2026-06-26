@@ -155,7 +155,7 @@ body {
 .public-block-content code {
   background: #eef0f2;
   padding: 2px 5px;
-  border-radius: 3px;
+  border-radius: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.9em;
 }
@@ -164,7 +164,7 @@ body {
   background: #1f2328;
   color: #eef0f2;
   padding: 12px 14px;
-  border-radius: 3px;
+  border-radius: 0;
   overflow-x: auto;
 }
 
@@ -197,7 +197,7 @@ body {
   max-width: 100%;
   height: auto;
   margin: 8px 0;
-  border-radius: 3px;
+  border-radius: 0;
 }
 
 .public-block-empty {
@@ -212,7 +212,7 @@ body {
   vertical-align: top;
   width: calc(100% - 12px);
   border: 1px solid #e1e4e8;
-  border-radius: 3px;
+  border-radius: 0;
   padding: 8px 12px;
   background: #ffffff;
 }
@@ -249,7 +249,7 @@ body {
   color: #6b7280;
   background: #eef0f2;
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: 0;
 }
 
 .public-references {
