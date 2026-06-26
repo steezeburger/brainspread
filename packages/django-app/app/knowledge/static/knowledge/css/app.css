@@ -5791,7 +5791,7 @@ kbd {
   font-size: 0.875em;
   background-color: var(--bg-secondary, rgba(0, 0, 0, 0.08));
   border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.1em 0.35em;
 }
 
@@ -5830,7 +5830,7 @@ kbd {
   font-size: 0.85em;
   background-color: var(--bg-secondary, rgba(0, 0, 0, 0.08));
   border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
-  border-radius: 4px;
+  border-radius: 0;
   padding: 0.5em 0.75em;
   margin: 0;
   overflow-x: auto;
@@ -5868,7 +5868,7 @@ kbd {
   right: 0.4em;
   background: var(--bg-primary);
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.15rem 0.4rem;
   font-family: inherit;
   font-size: 0.65rem;
@@ -5915,7 +5915,7 @@ kbd {
 .block-mermaid {
   background-color: var(--bg-secondary, rgba(0, 0, 0, 0.08));
   border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
-  border-radius: 4px;
+  border-radius: 0;
   padding: 0.75em;
   overflow-x: auto;
   text-align: center;
@@ -5946,7 +5946,7 @@ kbd {
 .block-csv-scroll {
   overflow-x: auto;
   border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
-  border-radius: 4px;
+  border-radius: 0;
   background-color: var(--bg-secondary, rgba(0, 0, 0, 0.04));
 }
 
@@ -6378,7 +6378,7 @@ kbd {
   gap: 0.6rem;
   padding: 0.5rem 0.6rem;
   border: 1px solid var(--border-secondary);
-  border-radius: 4px;
+  border-radius: 0;
   background: var(--hover-bg-light);
   cursor: pointer;
   color: var(--text-primary);
@@ -6415,7 +6415,7 @@ kbd {
   cursor: text;
   padding: 0.1rem 0.2rem;
   margin: -0.1rem -0.2rem;
-  border-radius: 2px;
+  border-radius: 0;
 }
 
 .block-embed-title-clickable:hover,
@@ -6431,7 +6431,7 @@ kbd {
   color: var(--text-primary);
   background: var(--bg-primary);
   border: 1px solid var(--border-secondary);
-  border-radius: 2px;
+  border-radius: 0;
   padding: 0.1rem 0.3rem;
   width: 100%;
   resize: none;
