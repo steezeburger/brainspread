@@ -565,7 +565,7 @@ body {
   height: 28px;
   object-fit: cover;
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
 }
 
 .context-picker-text {
@@ -836,7 +836,7 @@ body {
   color: var(--text-primary);
   background: var(--bg-primary);
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.1rem 0.4rem;
   cursor: pointer;
 }
@@ -850,7 +850,7 @@ body {
   padding: 0.5rem 0.6rem;
   background: var(--bg-secondary, var(--bg-primary));
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.75rem;
   color: var(--text-primary);
@@ -873,7 +873,7 @@ body {
   color: var(--text-primary);
   background: var(--bg-primary);
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.1rem 0.3rem;
 }
 
@@ -890,7 +890,7 @@ body {
   max-height: 18rem;
   overflow-y: auto;
   border: 1px solid var(--border-primary);
-  border-radius: 3px;
+  border-radius: 0;
   background: var(--bg-primary);
 }
 
@@ -939,7 +939,7 @@ body {
   color: var(--text-muted);
   background: var(--tag-bg);
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: 0;
   letter-spacing: 0.04em;
 }
 
@@ -1935,7 +1935,7 @@ kbd {
 .block-collapse-toggle {
   background: var(--bg-primary);
   border: none;
-  border-radius: 3px;
+  border-radius: 0;
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 0.8rem;
@@ -1973,7 +1973,7 @@ kbd {
 .block-collapsed-indicator {
   background: color-mix(in srgb, var(--text-primary) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--text-primary) 25%, transparent);
-  border-radius: 10px;
+  border-radius: 0;
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 0.7rem;
@@ -2033,7 +2033,7 @@ kbd {
 .block-menu:focus {
   color: var(--text-primary);
   background: var(--bg-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   outline: 2px solid var(--border-primary);
   outline-offset: 1px;
 }
@@ -2845,7 +2845,7 @@ kbd {
   margin-right: 0.2rem;
   color: var(--text-muted);
   text-decoration: none;
-  border-radius: 3px;
+  border-radius: 0;
   font-size: 0.85rem;
   opacity: 0;
   transition: opacity 80ms linear;
@@ -3718,7 +3718,7 @@ a.sidebar-item:visited {
   color: var(--text-primary);
   border: 1px solid var(--border-secondary);
   padding: 0.5rem 0.75rem;
-  border-radius: 6px;
+  border-radius: 0;
   cursor: pointer;
   font-size: 0.85rem;
 }
@@ -3734,7 +3734,7 @@ a.sidebar-item:visited {
   right: 0;
   background: var(--sidebar-bg);
   border: 1px solid var(--border-primary);
-  border-radius: 0 0 8px 8px;
+  border-radius: 0;
   border-top: none;
   max-height: 400px;
   overflow: hidden;
@@ -3786,7 +3786,7 @@ a.sidebar-item:visited {
 .close-btn:hover {
   color: var(--text-primary);
   background: var(--hover-bg);
-  border-radius: 4px;
+  border-radius: 0;
 }
 
 .history-search {
@@ -3926,7 +3926,7 @@ a.sidebar-item:visited {
   background: transparent;
   color: var(--text-secondary);
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.25rem 0.6rem;
   font-family: inherit;
   font-size: 0.75rem;
@@ -3976,7 +3976,7 @@ a.sidebar-item:visited {
   background: transparent;
   color: var(--text-muted);
   border: none;
-  border-radius: 3px;
+  border-radius: 0;
   width: 22px;
   height: 22px;
   padding: 0;
@@ -4017,7 +4017,7 @@ a.sidebar-item:visited {
   background: var(--bg-primary);
   color: var(--text-primary);
   border: 1px solid var(--text-primary);
-  border-radius: 3px;
+  border-radius: 0;
   font-family: inherit;
   font-size: 0.85rem;
 }
@@ -4486,7 +4486,7 @@ a.sidebar-item:visited {
   align-items: center;
   background: var(--accent-bg);
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.4rem;
   font-size: 0.7rem;
 }
@@ -4505,7 +4505,7 @@ a.sidebar-item:visited {
   width: 36px;
   height: 36px;
   object-fit: cover;
-  border-radius: 3px;
+  border-radius: 0;
   border: 1px solid var(--border-secondary);
   margin-right: 0.4rem;
   flex-shrink: 0;
@@ -4597,7 +4597,7 @@ a.sidebar-item:visited {
   margin: 0 0 0.5rem;
   background: var(--accent-bg);
   border: 1px solid var(--border-primary);
-  border-radius: 4px;
+  border-radius: 0;
   box-shadow: 2px 2px 0 var(--border-primary);
 }
 
@@ -4641,7 +4641,7 @@ a.sidebar-item:visited {
 .block-wrapper.in-selection-mode > .block {
   outline: 1px dashed color-mix(in srgb, var(--text-primary) 25%, transparent);
   outline-offset: -1px;
-  border-radius: 3px;
+  border-radius: 0;
   cursor: pointer;
 }
 
@@ -5029,7 +5029,7 @@ a.sidebar-item:visited {
 /* Slow background blink on the row whose tool call is in flight, so
    the eye lands on it among any already-completed calls above it. */
 .tool-call.tool-call-running {
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.05rem 0.25rem;
   margin: 0 -0.25rem;
   animation: tool-call-blink 1.8s ease-in-out infinite;
@@ -5685,7 +5685,7 @@ a.sidebar-item:visited {
   background: var(--tag-bg);
   color: var(--tag-text);
   padding: 0.125rem 0.25rem;
-  border-radius: 2px;
+  border-radius: 0;
   font-weight: 600;
 }
 
@@ -5734,7 +5734,7 @@ a.sidebar-item:visited {
 kbd {
   background: var(--bg-primary);
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.125rem 0.375rem;
   font-size: 0.75rem;
   font-family: monospace;
@@ -5806,7 +5806,7 @@ kbd {
 .markdown-highlight {
   background-color: var(--highlight-bg, #ffe066);
   color: var(--highlight-text, #333);
-  border-radius: 2px;
+  border-radius: 0;
   padding: 0.05em 0.2em;
 }
 
@@ -6135,13 +6135,13 @@ kbd {
   font-size: 0.85em;
   background-color: var(--bg-secondary, rgba(0, 0, 0, 0.08));
   padding: 0.1em 0.3em;
-  border-radius: 3px;
+  border-radius: 0;
 }
 
 .block-markdown pre {
   background-color: var(--bg-secondary, rgba(0, 0, 0, 0.08));
   border: 1px solid var(--border-color, rgba(0, 0, 0, 0.12));
-  border-radius: 4px;
+  border-radius: 0;
   padding: 0.5em 0.75em;
   overflow-x: auto;
 }
@@ -6198,7 +6198,7 @@ kbd {
   text-transform: uppercase;
   color: var(--text-secondary, #888);
   border: 1px solid var(--border-color, rgba(0, 0, 0, 0.2));
-  border-radius: 10px;
+  border-radius: 0;
   padding: 0.05em 0.5em;
 }
 
@@ -6245,7 +6245,7 @@ kbd {
   color: var(--text-secondary, #888);
   background: var(--bg-primary, rgba(255, 255, 255, 0.85));
   padding: 0.15em 0.5em;
-  border-radius: 3px;
+  border-radius: 0;
   pointer-events: none;
 }
 
@@ -6507,7 +6507,7 @@ kbd {
   align-items: center;
   gap: 0.15rem;
   padding: 0.1rem 0.4rem;
-  border-radius: 3px;
+  border-radius: 0;
   background-color: var(--tag-bg);
   color: var(--tag-text);
   border: 1px solid var(--tag-bg);
@@ -6542,7 +6542,7 @@ kbd {
 .block-embed-tag-add {
   background: transparent;
   border: 1px dashed var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.1rem 0.5rem;
   font-size: 0.75rem;
   color: var(--text-muted);
@@ -6567,7 +6567,7 @@ kbd {
   color: var(--text-primary);
   background: var(--bg-primary);
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.1rem 0.5rem;
   min-width: 6rem;
   max-width: 12rem;
@@ -6592,7 +6592,7 @@ kbd {
   padding: 0.75rem 1rem;
   border-left: 3px solid var(--error-color, #c0392b);
   background: color-mix(in srgb, var(--error-color, #c0392b) 6%, transparent);
-  border-radius: 4px;
+  border-radius: 0;
 }
 
 .overdue-title {
@@ -6724,7 +6724,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   background: var(--bg-primary);
   border: 1px solid var(--border-primary);
   padding: 1.25rem 1.5rem;
-  border-radius: 6px;
+  border-radius: 0;
   min-width: 18rem;
   display: flex;
   flex-direction: column;
@@ -6761,7 +6761,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   color: var(--text-primary);
   background: var(--bg-primary);
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.25rem 0.5rem;
   flex: 1;
 }
@@ -6801,7 +6801,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   background: var(--bg-primary);
   color: var(--text-primary);
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.2rem 0.55rem;
   font-family: inherit;
   font-size: 0.78rem;
@@ -6899,7 +6899,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   max-width: 100%;
   max-height: 480px;
   height: auto;
-  border-radius: 3px;
+  border-radius: 0;
   border: 1px solid var(--border-secondary);
   margin-top: 0.25rem;
   margin-bottom: 0.25rem;
@@ -6913,7 +6913,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
    * metrics (1rem / 1.5 line-height) so chip + textarea share the
    * same line box and align cleanly on the flex row. */
   padding: 0.125rem 0.5rem;
-  border-radius: 3px;
+  border-radius: 0;
   background-color: var(--accent-bg);
   border: 1px solid var(--border-secondary);
   color: var(--text-primary);
@@ -6964,7 +6964,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   width: 56px;
   height: 56px;
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   overflow: hidden;
   background-color: var(--accent-bg);
 }
@@ -6983,7 +6983,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   background: rgba(0, 0, 0, 0.6);
   color: #fff;
   border: none;
-  border-radius: 0 0 0 3px;
+  border-radius: 0;
   width: 18px;
   height: 18px;
   font-size: 0.75rem;
@@ -7006,7 +7006,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 .chat-attach-btn {
   background: transparent;
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   color: var(--text-primary);
   cursor: pointer;
   padding: 0.4rem 0.6rem;
@@ -7039,7 +7039,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 .message-attachment-image {
   max-width: 280px;
   max-height: 280px;
-  border-radius: 3px;
+  border-radius: 0;
   border: 1px solid var(--border-secondary);
   display: block;
 }
@@ -7050,7 +7050,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   gap: 0.3rem;
   padding: 0.2rem 0.5rem;
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   background-color: var(--accent-bg);
   font-size: 0.85rem;
   color: var(--text-primary);
@@ -7066,7 +7066,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   line-height: 1.2;
   background: var(--accent-primary, #0969da);
   color: #fff;
-  border-radius: 3px;
+  border-radius: 0;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -7086,7 +7086,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   background: var(--bg-primary, #fff);
   color: var(--text-primary);
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   width: 100%;
   max-width: 480px;
   max-height: calc(100vh - 2rem);
@@ -7116,7 +7116,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   color: var(--text-secondary, #6b7280);
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: 3px;
+  border-radius: 0;
 }
 
 .share-modal-close:hover {
@@ -7147,7 +7147,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   gap: 10px;
   padding: 10px 12px;
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   cursor: pointer;
   transition:
     background 0.1s,
@@ -7195,7 +7195,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   flex: 1;
   padding: 6px 10px;
   border: 1px solid var(--border-primary);
-  border-radius: 3px;
+  border-radius: 0;
   background: var(--bg-primary);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.8rem;
@@ -7248,7 +7248,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 .block-chat-popover {
   background: var(--bg-primary);
   border: 1px solid var(--border-primary);
-  border-radius: 6px;
+  border-radius: 0;
   width: min(640px, 100%);
   max-height: min(80vh, 720px);
   display: flex;
@@ -7278,7 +7278,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   line-height: 1;
   cursor: pointer;
   padding: 0.125rem 0.375rem;
-  border-radius: 3px;
+  border-radius: 0;
 }
 
 .block-chat-popover-close:hover {
@@ -7288,7 +7288,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 
 .block-chat-popover-source {
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.5rem 0.75rem;
   background: var(--bg-secondary);
 }
@@ -7312,7 +7312,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   width: auto;
   height: auto;
   object-fit: cover;
-  border-radius: 3px;
+  border-radius: 0;
   flex-shrink: 0;
 }
 
@@ -7347,7 +7347,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 
 .block-chat-popover-msg.user .block-chat-popover-content {
   background: var(--bg-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.4rem 0.6rem;
   align-self: flex-end;
   max-width: 85%;
@@ -7369,7 +7369,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 
 .block-chat-popover-tools {
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.4rem 0.5rem;
   background: var(--bg-secondary);
   font-size: 0.75rem;
@@ -7440,7 +7440,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 
 .block-chat-popover-approval {
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.5rem 0.75rem;
   background: var(--bg-secondary);
   display: flex;
@@ -7455,7 +7455,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
 
 .block-chat-popover-approval-row {
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.4rem 0.5rem;
   background: var(--bg-primary);
   display: flex;
@@ -7485,7 +7485,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   font-family: var(--font-monospace, monospace);
   background: var(--bg-secondary);
   padding: 0.4rem 0.5rem;
-  border-radius: 3px;
+  border-radius: 0;
   overflow-x: auto;
   margin: 0;
   white-space: pre-wrap;
@@ -7525,7 +7525,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   background: var(--bg-secondary);
   color: var(--text-primary);
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.3rem 0.6rem;
   font-size: 0.8rem;
   cursor: pointer;
@@ -7559,7 +7559,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   left: 0;
   background: var(--bg-primary);
   border: 1px solid var(--border-primary);
-  border-radius: 3px;
+  border-radius: 0;
   z-index: 1110;
   min-width: 14rem;
   max-height: 14rem;
@@ -7593,7 +7593,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   left: 0;
   background: var(--bg-primary);
   border: 1px solid var(--border-primary);
-  border-radius: 3px;
+  border-radius: 0;
   z-index: 1110;
   min-width: 18rem;
   padding: 0.5rem;
@@ -7640,7 +7640,7 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   background: var(--bg-primary);
   color: var(--text-primary);
   border: 1px solid var(--border-secondary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.5rem 0.6rem;
   font-family: inherit;
   font-size: 0.9rem;
@@ -7697,7 +7697,7 @@ a.hashtag-mention:hover,
   overflow-y: auto;
   background: var(--bg-primary);
   border: 1px solid var(--border-primary);
-  border-radius: 4px;
+  border-radius: 0;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
   padding: 0.25rem 0;
 }
@@ -7782,7 +7782,7 @@ a.hashtag-mention:hover,
   color: var(--text-secondary);
   background: var(--tag-bg, var(--bg-secondary));
   border: 1px solid var(--border-primary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 1px 5px;
 }
 
@@ -7802,7 +7802,7 @@ a.hashtag-mention:hover,
   padding: 0;
   margin: 0;
   border: 1px solid var(--border-primary);
-  border-radius: 3px;
+  border-radius: 0;
   background: var(--bg-secondary);
 }
 
@@ -7836,7 +7836,7 @@ a.hashtag-mention:hover,
 
 .saved-view-editor {
   border: 1px solid var(--border-primary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 1rem;
   background: var(--bg-secondary);
   margin: 1rem 0;
@@ -7866,7 +7866,7 @@ a.hashtag-mention:hover,
   background: var(--bg-primary);
   color: var(--text-primary);
   border: 1px solid var(--border-primary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.4rem 0.5rem;
   font-size: 0.9rem;
 }
@@ -7918,7 +7918,7 @@ a.hashtag-mention:hover,
   margin-bottom: 0.75rem;
   background: var(--bg-primary);
   border: 1px solid var(--border-primary);
-  border-radius: 3px;
+  border-radius: 0;
   color: var(--text-primary);
   font-size: 0.85rem;
 }
@@ -7939,7 +7939,7 @@ a.hashtag-mention:hover,
   background: var(--bg-primary);
   padding: 0.6rem;
   border: 1px solid var(--border-primary);
-  border-radius: 3px;
+  border-radius: 0;
   font-size: 0.8rem;
   overflow-x: auto;
 }
@@ -7964,7 +7964,7 @@ a.hashtag-mention:hover,
 .saved-view-cheatsheet code {
   background: var(--bg-primary);
   padding: 1px 4px;
-  border-radius: 3px;
+  border-radius: 0;
   border: 1px solid var(--border-primary);
   font-size: 0.78rem;
 }
@@ -7991,7 +7991,7 @@ a.hashtag-mention:hover,
 
 .saved-view-spec details {
   border: 1px solid var(--border-primary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.4rem 0.6rem;
   margin: 0.5rem 0 1rem;
   background: var(--bg-secondary);
@@ -8006,7 +8006,7 @@ a.hashtag-mention:hover,
   background: var(--bg-primary);
   padding: 0.5rem;
   border: 1px solid var(--border-primary);
-  border-radius: 3px;
+  border-radius: 0;
   margin-top: 0.5rem;
   font-size: 0.85rem;
   overflow-x: auto;
@@ -8031,7 +8031,7 @@ a.hashtag-mention:hover,
   padding: 0;
   margin: 0;
   border: 1px solid var(--border-primary);
-  border-radius: 3px;
+  border-radius: 0;
   background: var(--bg-secondary);
 }
 .result-list li {
@@ -8083,7 +8083,7 @@ a.hashtag-mention:hover,
 .result-block-type {
   display: inline-block;
   border: 1px solid var(--border-primary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0 4px;
   margin-right: 0.25rem;
 }
@@ -8103,7 +8103,7 @@ a.hashtag-mention:hover,
 }
 .block-query-embed {
   border: 1px solid var(--border-primary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.6rem 0.8rem;
   background: var(--bg-secondary);
 }
@@ -8155,7 +8155,7 @@ a.hashtag-mention:hover,
   color: var(--tag-text);
   background: var(--tag-bg, var(--bg-primary));
   border: 1px solid var(--border-primary);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0.05rem 0.35rem;
   cursor: help;
 }
@@ -8178,7 +8178,7 @@ a.hashtag-mention:hover,
 .block-query-embed-iconbtn {
   background: transparent;
   border: 1px solid var(--border-primary);
-  border-radius: 3px;
+  border-radius: 0;
   color: var(--text-secondary);
   cursor: pointer;
   font: inherit;
