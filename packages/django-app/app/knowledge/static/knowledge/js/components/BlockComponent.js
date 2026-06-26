@@ -548,6 +548,7 @@ const BlockComponent = {
       // its targets aren't present.
       this.renderMermaidIfPresent();
       this.highlightCodeIfPresent();
+      this.addCodeCopyButtonsIfPresent();
       this.applyResizableHandles();
     },
 
@@ -648,6 +649,68 @@ const BlockComponent = {
           // un-highlighted code is still legible.
         }
       });
+    },
+
+    addCodeCopyButtonsIfPresent() {
+      // Inject a hover-revealed "copy" button into each plain code block.
+      // Mermaid / CSV blocks render no <pre class="block-code"> so they're
+      // skipped. The code HTML comes from formatContentWithTags via v-html,
+      // so the button has to be wired here after mount/update rather than in
+      // the template.
+      if (!this.$el || this.$el.nodeType !== 1 || !this.$el.querySelector)
+        return;
+      const wrappers = this.$el.querySelectorAll(".block-code-wrapper");
+      wrappers.forEach((wrapper) => {
+        if (wrapper.querySelector(".block-code-copy")) return;
+        const pre = wrapper.querySelector("pre.block-code");
+        if (!pre) return;
+        const codeEl = pre.querySelector("code") || pre;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "block-code-copy";
+        btn.textContent = "copy";
+        btn.setAttribute("aria-label", "Copy code to clipboard");
+        btn.addEventListener("click", (event) => {
+          // Don't let the click fall through to the content-display handler,
+          // which would drop the block into edit (or toggle selection).
+          event.preventDefault();
+          event.stopPropagation();
+          this.copyCodeToClipboard(codeEl.textContent, btn);
+        });
+        wrapper.appendChild(btn);
+      });
+    },
+
+    async copyCodeToClipboard(text, button) {
+      const flashCopied = () => {
+        button.textContent = "copied";
+        button.classList.add("copied");
+        setTimeout(() => {
+          button.textContent = "copy";
+          button.classList.remove("copied");
+        }, 2000);
+      };
+      try {
+        await navigator.clipboard.writeText(text);
+        flashCopied();
+      } catch (_) {
+        // Fallback for contexts without the async clipboard API (e.g.
+        // non-secure origins).
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.opacity = "0";
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand("copy");
+          flashCopied();
+        } catch (err) {
+          console.error("copy failed:", err);
+        } finally {
+          document.body.removeChild(textArea);
+        }
+      }
     },
 
     async loadWebArchive() {
@@ -1481,13 +1544,35 @@ const BlockComponent = {
       this.onBlockSelectClick(this.block, event);
     },
 
+    // While in selection mode, the whole block row is a hit target, not just
+    // the radio toggle. The bullet / content / toggle handlers stop
+    // propagation when they handle a click, so this only fires for the
+    // "dead" space (margins, gaps left of the content). Dedicated controls
+    // — collapse toggle, menu button, links, embeds, form fields — keep
+    // their own behavior and must not double-fire a selection toggle.
+    handleRowClick(event) {
+      if (!this.selectionMode) return;
+      if (
+        event.target.closest(
+          "button, a, input, textarea, .block-asset, .block-embed-card"
+        )
+      ) {
+        return;
+      }
+      const handled = this.onBlockSelectClick(this.block, event);
+      if (handled) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    },
+
     showBulkSelectionActions() {
       return this.blockSelected && this.selectedBlockCount >= 2;
     },
   },
   template: `
     <div class="block-wrapper" :class="{ 'child-block': block.parent, 'in-context': blockInContext, 'selected': blockSelected, 'in-selection-mode': selectionMode }" :data-block-uuid="block.uuid" @dragover="handleBlockDragOver" @drop="handleBlockDrop">
-      <div class="block" :class="{ 'has-children': hasChildren, 'is-collapsed': hasChildren && isCollapsed }">
+      <div class="block" :class="{ 'has-children': hasChildren, 'is-collapsed': hasChildren && isCollapsed }" @click="handleRowClick($event)">
         <button
           v-if="selectionMode"
           type="button"
@@ -1871,7 +1956,7 @@ const BlockComponent = {
           :class="{ 'overdue': isOverdue }"
           @click.stop="scheduleBlock(block)"
           :title="'Scheduled ' + block.scheduled_for + (reminderTimeLabel ? ' · reminder at ' + reminderTimeLabel : '') + (isOverdue ? ' (overdue)' : '') + ' — click to change'"
-        ><svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="1"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg> {{ scheduledForLabel }}<span v-if="reminderTimeLabel"> · <svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><circle cx="8" cy="8" r="6.25"/><polyline points="8,4.5 8,8 11,9.5"/></g></svg> {{ reminderInlineLabel }}</span></button>
+        ><svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="0"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg> {{ scheduledForLabel }}<span v-if="reminderTimeLabel"> · <svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><circle cx="8" cy="8" r="6.25"/><polyline points="8,4.5 8,8 11,9.5"/></g></svg> {{ reminderInlineLabel }}</span></button>
         <button
           v-else
           type="button"
@@ -1879,7 +1964,7 @@ const BlockComponent = {
           @click.stop="scheduleBlock(block)"
           title="Schedule this block"
           aria-label="Schedule this block"
-        ><svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="1"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg></button>
+        ><svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="0"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg></button>
         <button
           @click="showContextMenuAt($event)"
           @contextmenu="showContextMenuAt($event)"
@@ -1955,7 +2040,7 @@ const BlockComponent = {
         </template>
         <div class="context-menu-separator"></div>
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('schedule')">
-          <span class="context-menu-icon"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="1"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg></span>
+          <span class="context-menu-icon"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="0"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg></span>
           <span>{{ block.scheduled_for ? 'reschedule...' : 'schedule...' }}</span>
         </button>
         <button class="context-menu-item" role="menuitem" tabindex="-1" v-if="block.scheduled_for" @click="handleContextMenuAction('unschedule')">

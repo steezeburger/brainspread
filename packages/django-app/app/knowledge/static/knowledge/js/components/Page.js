@@ -71,6 +71,10 @@ const Page = {
       schedulePopoverInitialDate: "",
       schedulePopoverInitialReminderDate: "",
       schedulePopoverInitialTime: "",
+      // When the schedule popover is opened for a multi-select, these hold
+      // the bulk context so onSchedulePopoverSave routes to the bulk path.
+      schedulePopoverBulk: false,
+      schedulePopoverBulkUuids: [],
       blockChatPopoverOpen: false,
       blockChatPopoverBlock: null,
       blockInfoModalOpen: false,
@@ -2526,9 +2530,22 @@ const Page = {
     },
 
     onSchedulePopoverSave({ scheduledFor, reminderDate, reminderTime }) {
+      const bulk = this.schedulePopoverBulk;
+      const bulkUuids = this.schedulePopoverBulkUuids;
       const block = this.schedulePopoverBlock;
       this.schedulePopoverOpen = false;
       this.schedulePopoverBlock = null;
+      this.schedulePopoverBulk = false;
+      this.schedulePopoverBulkUuids = [];
+      if (bulk) {
+        this._submitBulkSchedule(
+          bulkUuids,
+          scheduledFor,
+          reminderDate,
+          reminderTime
+        );
+        return;
+      }
       if (!block) return;
       this._submitSchedule(block, scheduledFor, reminderDate, reminderTime);
     },
@@ -2536,6 +2553,8 @@ const Page = {
     onSchedulePopoverCancel() {
       this.schedulePopoverOpen = false;
       this.schedulePopoverBlock = null;
+      this.schedulePopoverBulk = false;
+      this.schedulePopoverBulkUuids = [];
     },
 
     openBlockChatPopover(block) {
@@ -3058,55 +3077,40 @@ const Page = {
     },
 
     async handleUrlPaste(block, url) {
-      // Empty block: promote it to an embed in place. Otherwise append a
-      // sibling embed block after the current one (matches paste-as-list
-      // behaviour for consistency).
-      const blockIsEmpty = !block.content || block.content.trim() === "";
-      let targetBlock = block;
-
+      // Only called for an empty block: promote it to an embed in place.
+      // (Pasting a URL into a non-empty block is handled as a plain text
+      // paste by onBlockPaste and never reaches here.)
       try {
-        if (blockIsEmpty) {
-          const result = await window.apiService.updateBlock(block.uuid, {
-            content: url,
-            content_type: "embed",
-            media_url: url,
-          });
-          if (!result.success) throw new Error("update block failed");
-          block.content = url;
-          block.content_type = "embed";
-          block.media_url = url;
-        } else {
-          const parentUuid = block.parent ? block.parent.uuid : null;
-          const newOrder = block.order + 1;
-          const siblings = block.parent
-            ? block.parent.children
-            : this.directBlocks;
-          const blocksToShift = siblings.filter(
-            (b) => b.uuid !== block.uuid && b.order >= newOrder
-          );
-          if (blocksToShift.length > 0) {
-            const reorderPayload = blocksToShift.map((b) => ({
-              uuid: b.uuid,
-              order: b.order + 1,
-            }));
-            const reorderResult =
-              await window.apiService.reorderBlocks(reorderPayload);
-            if (!reorderResult.success) throw new Error("reorder failed");
-          }
-          const createResult = await window.apiService.createBlock({
-            page: this.page.uuid,
-            parent: parentUuid,
-            content: url,
-            content_type: "embed",
-            block_type: "bullet",
-            media_url: url,
-            order: newOrder,
-          });
-          if (!createResult.success) throw new Error("create block failed");
-          targetBlock = { uuid: createResult.data.uuid };
-        }
+        const result = await window.apiService.updateBlock(block.uuid, {
+          content: url,
+          content_type: "embed",
+          media_url: url,
+        });
+        if (!result.success) throw new Error("update block failed");
+        block.content = url;
+        block.content_type = "embed";
+        block.media_url = url;
+        // Keep the user in the block, focused in the embed's label field.
+        // The block was being edited as plain text, so flipping straight
+        // to an editing embed swaps one focused textarea for another and
+        // the old one's blur tears down edit mode mid-flight. Instead drop
+        // out of edit mode first (rendering the embed's static label, fully
+        // removing the plain textarea), then re-enter on the next tick. That
+        // clean false->true isEditing transition focuses the label field and
+        // lets BlockComponent's watcher swap the raw URL for the empty
+        // "label this link…" placeholder — the same path as clicking an
+        // embed's label to rename it.
+        //
+        // isNavigating makes the plain textarea's teardown blur bail out of
+        // stopEditing (same guard block-to-block navigation uses); otherwise
+        // its async save would race the watcher and repopulate the label
+        // with the raw URL just after we cleared it.
+        this.isNavigating = true;
+        block.isEditing = false;
+        this.$nextTick(() => {
+          this.startEditing(block);
+        });
         // Archiving is opt-in - user clicks "archive" on the embed card.
-        void targetBlock;
       } catch (error) {
         console.error("url paste failed:", error);
         this.emitToast("could not save URL", "error");
@@ -3274,10 +3278,14 @@ const Page = {
       const text = clipboardData.getData("text/plain");
       if (!text) return;
 
-      // URL paste gets first shot. If the clipboard is a bare URL, create an
-      // embed block and kick off an archive capture in the background.
+      // URL paste gets first shot, but only into an empty block: there we
+      // promote the block to an embed in place. Pasting a URL into a block
+      // that already has content should behave like an ordinary paste -
+      // drop the URL text in at the cursor, don't hijack it into an embed
+      // (or a stray sibling block).
       const trimmed = text.trim();
-      if (this.isBareUrl(trimmed)) {
+      const blockIsEmptyForUrl = !block.content || block.content.trim() === "";
+      if (this.isBareUrl(trimmed) && blockIsEmptyForUrl) {
         event.preventDefault();
         await this.handleUrlPaste(block, trimmed);
         return;
@@ -3813,6 +3821,75 @@ const Page = {
         );
       }
     },
+
+    bulkScheduleSelected() {
+      // Reuse the single-block schedule popover for the whole selection.
+      // We snapshot the selected uuids now; the popover's save handler
+      // routes back through _submitBulkSchedule once the user picks a date.
+      const uuids = [...this.selectedBlockUuids];
+      if (uuids.length === 0) {
+        this.$parent?.addToast?.("no blocks selected", "info");
+        return;
+      }
+      this.schedulePopoverBulk = true;
+      this.schedulePopoverBulkUuids = uuids;
+      this.schedulePopoverBlock = null;
+      // No shared starting point across N blocks — let the popover default
+      // to today rather than seeding from one block's existing schedule.
+      this.schedulePopoverInitialDate = "";
+      this.schedulePopoverInitialReminderDate = "";
+      this.schedulePopoverInitialTime = "";
+      this.schedulePopoverOpen = true;
+    },
+
+    async _submitBulkSchedule(uuids, scheduledFor, reminderDate, reminderTime) {
+      if (!uuids || uuids.length === 0) return;
+      if (!scheduledFor) {
+        this.$parent?.addToast?.("pick a date to schedule", "info");
+        return;
+      }
+      try {
+        const result = await window.apiService.bulkScheduleBlocks(
+          uuids,
+          scheduledFor,
+          reminderDate,
+          reminderTime
+        );
+        if (!result || !result.success) {
+          throw new Error(
+            result?.errors?.non_field_errors?.[0] || "bulk schedule failed"
+          );
+        }
+        const count = result.data?.updated_count ?? 0;
+        let msg = `scheduled ${count} block${
+          count === 1 ? "" : "s"
+        } for ${scheduledFor}`;
+        if (result.data?.reminder_set && reminderTime) {
+          const formatted =
+            window.formatTimeForUser?.(reminderTime) || reminderTime;
+          msg += ` · remind at ${formatted}`;
+        }
+        this.$parent?.addToast?.(msg, "success");
+        // Keep any embeds that surface these blocks in sync, same as the
+        // single-block schedule path.
+        uuids.forEach((uuid) =>
+          document.dispatchEvent(
+            new CustomEvent("brainspread:block-changed", {
+              detail: { uuid },
+            })
+          )
+        );
+        this.clearBlockSelection();
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("failed to bulk-schedule blocks:", error);
+        this.error = "failed to schedule selected blocks";
+        this.$parent?.addToast?.(
+          `failed to schedule selected blocks: ${error.message || error}`,
+          "error"
+        );
+      }
+    },
   },
 
   template: `
@@ -4057,6 +4134,13 @@ const Page = {
               @click="bulkMoveSelectedToPage"
               title="Move selected blocks to any page…"
             >move to page…</button>
+            <button
+              type="button"
+              class="btn btn-outline selection-toolbar-action"
+              :disabled="selectedBlockCount === 0"
+              @click="bulkScheduleSelected"
+              title="Schedule selected blocks (set a due date / reminder)"
+            >schedule…</button>
             <button
               type="button"
               class="btn btn-outline selection-toolbar-action selection-toolbar-danger"
