@@ -53,6 +53,10 @@ window.QueryEmbedBlock = {
       loading: true,
       error: null,
       result: null, // {view, count, results, truncated}
+      // True once a full (row-serializing) fetch has landed. Collapsed
+      // embeds fetch count-only, so this stays false until they expand —
+      // it's how the expand watcher knows it still needs the rows.
+      detailLoaded: false,
     };
   },
 
@@ -112,7 +116,10 @@ window.QueryEmbedBlock = {
   },
 
   mounted() {
-    if (!this.collapsed) this.fetch();
+    // Always fetch on mount: expanded embeds load their rows, collapsed
+    // embeds load a count-only payload so the header still shows how many
+    // blocks the view matches. fetch() picks the mode from `collapsed`.
+    this.fetch();
     // Re-run the saved view when any block we might be displaying
     // mutates elsewhere on the page (a different embed's row, the
     // home-page editor, etc.). Our own row actions also broadcast
@@ -143,20 +150,21 @@ window.QueryEmbedBlock = {
 
   watch: {
     collapsed(now, prev) {
-      // Lazy-load when the user expands a previously-collapsed embed,
-      // so collapsed embeds don't all hammer /api/views/run/ on page
-      // load.
-      if (prev && !now && !this.result) this.fetch();
+      // Expanding a collapsed embed: it only has a count-only payload so
+      // far, so fetch the rows. Collapsed embeds still fetch their count
+      // on mount, so they don't hammer the full /api/views/run/ path on
+      // page load — just the cheap count.
+      if (prev && !now && !this.detailLoaded) this.fetch();
     },
     contextDate(now, prev) {
       // ``scope="daily"`` embeds are the same DB row across every daily,
       // so navigating between dailies can reuse this component instance
-      // rather than remount it. Refetch so the results rebase to the
-      // new daily — but only when the view actually cares about
-      // context_date. Without the dates_relative_to_daily check we'd
-      // re-run every "live today" embed on every daily nav for no
-      // visible reason.
-      if (now !== prev && !this.collapsed && this._viewRebases()) {
+      // rather than remount it. Refetch so the results (or collapsed
+      // count) rebase to the new daily — but only when the view actually
+      // cares about context_date. Without the dates_relative_to_daily
+      // check we'd re-run every "live today" embed on every daily nav for
+      // no visible reason.
+      if (now !== prev && this._viewRebases()) {
         this.fetch();
       }
     },
@@ -180,15 +188,21 @@ window.QueryEmbedBlock = {
         this.error = "This embed doesn't reference a saved view.";
         return;
       }
+      // Collapsed embeds only need the header count, so skip serializing
+      // the matched rows. Expanding later triggers a full fetch (see the
+      // collapsed watcher).
+      const countOnly = this.collapsed;
       this.loading = true;
       try {
         const r = await window.apiService.runSavedView({
           uuid: this.savedView.uuid,
           limit: 25,
           contextDate: this.contextDate || null,
+          countOnly,
         });
         if (r && r.success) {
           this.result = r.data;
+          this.detailLoaded = !countOnly;
           this.error = null;
         } else {
           const errs = (r && r.errors) || {};
@@ -269,7 +283,7 @@ window.QueryEmbedBlock = {
           ><path fill="currentColor" d="M8 1.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3ZM7.25 5.92V7.5H5.5a.5.5 0 0 0 0 1h1.75v4.97c-1.49-.18-2.62-1.07-3.13-1.91l.72-.43a.4.4 0 0 0-.15-.74L2.5 9.85a.4.4 0 0 0-.5.4v2.34a.4.4 0 0 0 .65.31l.7-.55C4.05 13.55 5.83 14.5 8 14.5s3.95-.95 4.65-2.15l.7.55a.4.4 0 0 0 .65-.31v-2.34a.4.4 0 0 0-.5-.4l-2.19.54a.4.4 0 0 0-.15.74l.72.43c-.51.84-1.64 1.73-3.13 1.91V8.5h1.75a.5.5 0 0 0 0-1H8.75V5.92a2.5 2.5 0 1 0-1.5 0Z"/></svg>
           <span class="block-query-embed-anchor-label">{{ dateAnchor.label }}</span>
         </span>
-        <span v-if="result && !collapsed" class="block-query-embed-meta">
+        <span v-if="result" class="block-query-embed-meta">
           {{ result.count }}<span v-if="result.truncated">+ truncated</span>
         </span>
         <span class="block-query-embed-actions">

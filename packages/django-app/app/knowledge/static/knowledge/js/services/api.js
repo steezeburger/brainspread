@@ -906,6 +906,7 @@ class ApiService {
     slug = null,
     limit = 100,
     contextDate = null,
+    countOnly = false,
   } = {}) {
     const params = new URLSearchParams();
     if (uuid) params.set("view_uuid", uuid);
@@ -916,6 +917,10 @@ class ApiService {
     // view's ``dates_relative_to_daily`` flag is on; otherwise it's a
     // no-op. Pass null for non-daily surfaces.
     if (contextDate) params.set("context_date", contextDate);
+    // countOnly returns just the matched-block count (+ truncation flag)
+    // without serializing the rows — used by collapsed embeds for their
+    // header count.
+    if (countOnly) params.set("count_only", "true");
     return await this.request(`/knowledge/api/views/run/?${params.toString()}`);
   }
 
