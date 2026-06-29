@@ -4810,6 +4810,11 @@ a.sidebar-item:visited {
 
 .page-sort-btn.is-active {
   background: var(--tag-bg);
+  /* Pair --tag-bg with --tag-text: in several themes --tag-bg is the
+     same hue as --text-primary (e.g. #00ff00 on the default theme), so
+     leaving the inherited text color would make the active sort label
+     invisible against its own background. */
+  color: var(--tag-text);
   border-color: var(--border-primary);
 }
 
