@@ -100,6 +100,10 @@ jobs:
         working-directory: ./packages/django-app
         run: just migrate
 
+      - name: Check for missing migrations
+        working-directory: ./packages/django-app
+        run: just check-pending-migrations
+
       - name: Run Django system checks
         working-directory: ./packages/django-app
         run: just django-admin check --deploy
