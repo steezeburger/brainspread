@@ -64,6 +64,9 @@ window.EmbedResultRow = {
       if (!c) return "(empty block)";
       return c.length > 200 ? c.slice(0, 200) + "…" : c;
     },
+    isCompleted(b) {
+      return ["done", "wontdo"].includes(b && b.block_type);
+    },
     renderContent(b) {
       // Escape first, then linkify #hashtags into the same clickable
       // anchors the page block tree uses (.inline-tag .clickable-tag →
@@ -71,7 +74,13 @@ window.EmbedResultRow = {
       // what keeps block content from injecting markup. This is the
       // reason the content sits in its own <span> rather than inside the
       // block link — anchors can't nest.
-      const text = this.blockLabel(b);
+      let text = this.blockLabel(b);
+      // The bullet already conveys todo state, so strip a leading
+      // TODO/DOING/DONE/LATER/WONTDO marker from the text — same as the
+      // page block tree's formatContentWithTags.
+      if (this.isTodoType(b)) {
+        text = text.replace(/^(WONTDO|LATER|DOING|DONE|TODO)\s*:?\s*/i, "");
+      }
       const escaped = text
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
@@ -317,7 +326,7 @@ window.EmbedResultRow = {
           :aria-label="isTodoType(block) ? 'Cycle todo state' : null"
         >{{ bulletSymbol(block) }}</div>
         <div class="result-row-link">
-          <span class="result-content" @click="openBlock" v-html="renderContent(block)"></span>
+          <span class="result-content" :class="{ completed: isCompleted(block) }" @click="openBlock" v-html="renderContent(block)"></span>
           <a :href="blockHref(block)" class="result-meta">
             <span v-if="block.block_type" class="result-block-type">{{ block.block_type }}</span>
             <span v-if="block.scheduled_for"> · due {{ block.scheduled_for }}</span>

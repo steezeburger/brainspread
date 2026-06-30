@@ -128,10 +128,19 @@ window.QueryEmbedBlock = {
     this._onBlocksChanged = (ev) => {
       const uuid = ev?.detail?.uuid;
       if (!uuid || ev?.detail?.source === this) return;
-      if (this.collapsed || !this.result?.results) return;
-      if (this.result.results.some((b) => b.uuid === uuid)) {
+      // Only expanded embeds render rows; collapsed ones just carry a
+      // count, which we leave until expand/nav.
+      if (this.collapsed || !this.detailLoaded) return;
+      // Re-run on any block change, not just blocks already in our
+      // results: a change can move a block INTO the view (e.g. a todo
+      // marked done on the page now matching a "done" view), which a
+      // results-membership check would miss. Debounced so a bulk action
+      // (which fires one event per block) coalesces into a single re-run.
+      if (this._refetchTimer) clearTimeout(this._refetchTimer);
+      this._refetchTimer = setTimeout(() => {
+        this._refetchTimer = null;
         this.fetch();
-      }
+      }, 150);
     };
     document.addEventListener(
       "brainspread:block-changed",
@@ -145,6 +154,10 @@ window.QueryEmbedBlock = {
         "brainspread:block-changed",
         this._onBlocksChanged
       );
+    }
+    if (this._refetchTimer) {
+      clearTimeout(this._refetchTimer);
+      this._refetchTimer = null;
     }
   },
 
