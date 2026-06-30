@@ -8094,6 +8094,20 @@ a.hashtag-mention:hover,
   font-family: var(--font-mono, monospace);
   text-decoration: none;
 }
+/* Due date pulled out to the right of the row so it reads as its own
+   field, well clear of the page name in the meta line — two dates side
+   by side in the meta line were hard to parse. */
+.result-due {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono, monospace);
+  white-space: nowrap;
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  padding: 0 5px;
+}
 .result-block-type {
   display: inline-block;
   border: 1px solid var(--border-primary);

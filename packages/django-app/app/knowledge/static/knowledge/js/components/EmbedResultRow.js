@@ -341,11 +341,11 @@ window.EmbedResultRow = {
           <span class="result-content" :class="{ completed: isCompleted(block) }" @click="openBlock" v-html="renderContent(block)"></span>
           <a :href="blockHref(block)" class="result-meta">
             <span v-if="block.block_type" class="result-block-type">{{ block.block_type }}</span>
-            <span v-if="block.scheduled_for"> · due {{ block.scheduled_for }}</span>
             <span v-if="block.completed_at"> · done {{ block.completed_at.split('T')[0] }}</span>
             <span v-if="block.page_title && !isDailyOnDueDate(block)"> · {{ block.page_title }}</span>
           </a>
         </div>
+        <span v-if="block.scheduled_for" class="result-due">due {{ block.scheduled_for }}</span>
         <button
           type="button"
           class="block-menu result-row-menu-btn"
