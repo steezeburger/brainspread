@@ -388,6 +388,19 @@ const Page = {
       return blockUuid ? `${base}#block-${blockUuid}` : base;
     },
 
+    isDailyOnDueDate(block) {
+      // A block on a daily page whose date equals its due date: the page
+      // name (the daily's date) just duplicates the "due <date>" token, so
+      // callers suppress the page label to avoid showing the date twice.
+      // Daily slugs are the ISO date, same format as scheduled_for.
+      return !!(
+        block &&
+        block.page_type === "daily" &&
+        block.scheduled_for &&
+        block.page_slug === block.scheduled_for
+      );
+    },
+
     // Copy an absolute deep link to the block to the user's
     // clipboard. Uses `block.page_slug` when present (referenced /
     // overdue blocks set it via `include_page_context=True`) and
@@ -4225,7 +4238,7 @@ const Page = {
             <div v-for="block in overdueBlocks" :key="block.uuid" class="referenced-block-wrapper overdue-block-wrapper" :class="{ 'in-context': isBlockInContext(block.uuid) }" :data-block-uuid="block.uuid">
               <div class="block-meta">
                 <span v-if="block.scheduled_for" class="overdue-due-date">due {{ formatDate(block.scheduled_for) }}</span>
-                <a class="page-title clickable" :href="pageBlockHref(block.page_slug, block.uuid)">{{ block.page_type === 'daily' ? formatDate(block.page_title) : block.page_title }}</a>
+                <a v-if="!isDailyOnDueDate(block)" class="page-title clickable" :href="pageBlockHref(block.page_slug, block.uuid)">{{ block.page_type === 'daily' ? formatDate(block.page_title) : block.page_title }}</a>
               </div>
               <BlockComponent
                 :block="block"
