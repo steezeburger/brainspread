@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("knowledge", "0037_block_due_at"),
+        ("knowledge", "0038_block_due_at"),
     ]
 
     operations = [

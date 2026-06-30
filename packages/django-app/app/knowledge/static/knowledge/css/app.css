@@ -4810,6 +4810,11 @@ a.sidebar-item:visited {
 
 .page-sort-btn.is-active {
   background: var(--tag-bg);
+  /* Pair --tag-bg with --tag-text: in several themes --tag-bg is the
+     same hue as --text-primary (e.g. #00ff00 on the default theme), so
+     leaving the inherited text color would make the active sort label
+     invisible against its own background. */
+  color: var(--tag-text);
   border-color: var(--border-primary);
 }
 
@@ -6603,9 +6608,18 @@ kbd {
 }
 
 .overdue-due-date {
+  /* Pushed to the right of the meta row (page name sits on the left) so
+     the due date reads as its own field — matches the embed rows'
+     right-aligned due chip, keeping the overdue red emphasis. */
+  margin-left: auto;
+  flex: 0 0 auto;
   font-size: 0.8rem;
   color: var(--error-color, #c0392b);
-  margin-right: 0.5rem;
+  font-family: var(--font-mono, monospace);
+  white-space: nowrap;
+  border: 1px solid var(--error-color, #c0392b);
+  border-radius: 3px;
+  padding: 0 5px;
   opacity: 0.85;
 }
 
@@ -8074,11 +8088,34 @@ a.hashtag-mention:hover,
 }
 .result-content {
   font-size: 0.95rem;
+  cursor: pointer;
+}
+.result-content.completed {
+  text-decoration: line-through;
+  text-decoration-color: var(--text-primary);
+  text-decoration-thickness: 2px;
+  opacity: 0.6;
+  color: var(--completed-text);
 }
 .result-meta {
   font-size: 0.8rem;
   color: var(--text-secondary);
   font-family: var(--font-mono, monospace);
+  text-decoration: none;
+}
+/* Due date pulled out to the right of the row so it reads as its own
+   field, well clear of the page name in the meta line — two dates side
+   by side in the meta line were hard to parse. */
+.result-due {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono, monospace);
+  white-space: nowrap;
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  padding: 0 5px;
 }
 .result-block-type {
   display: inline-block;

@@ -87,8 +87,13 @@ class SendDueRemindersCommand(AbstractBaseCommand):
                 # Mint the per-action tokens before posting so the
                 # links in the message resolve. Failing to mint tokens
                 # shouldn't block the reminder itself — fall back to a
-                # link-less embed so the user still gets pinged.
-                action_urls = _action_urls_for(reminder, settings.SITE_URL, now)
+                # link-less embed so the user still gets pinged. Which
+                # actions get offered depends on the block type — a plain
+                # bullet has no task state to advance, so it gets snooze
+                # links only (see `_actions_for_block`).
+                action_urls = _action_urls_for(
+                    reminder, settings.SITE_URL, now, _actions_for_block(block)
+                )
 
                 content, embeds = _build_payload(
                     reminder,
@@ -147,19 +152,53 @@ _COLOR_STAGING = 0xF59E0B  # amber
 _COLOR_DEFAULT = 0x6B7280  # gray (local / unknown)
 
 
-def _action_urls_for(reminder: Reminder, site_url: str, now) -> Dict[str, str]:
+# Status-change actions ("Mark done" / "Mark doing") only make sense for
+# task-like blocks — the same open-task set used across the app (see
+# OPEN_TODO_TYPES in get_completion_stats_command). A plain bullet,
+# heading, quote, code, or divider block can still carry a reminder, but
+# advancing a task state it doesn't have would be nonsensical, so those
+# blocks get the snooze actions only.
+_TASK_BLOCK_TYPES = {"todo", "doing", "later"}
+
+_SNOOZE_ACTIONS = [
+    ReminderAction.ACTION_SNOOZE_15M,
+    ReminderAction.ACTION_SNOOZE_30M,
+    ReminderAction.ACTION_SNOOZE_1H,
+    ReminderAction.ACTION_SNOOZE_1D,
+]
+
+
+def _actions_for_block(block) -> List[str]:
+    """Which reminder actions to surface for `block`, in display order.
+
+    Snooze is always offered. The status-change actions are added only
+    for task-like blocks so non-task blocks (bullet/heading/quote/...)
+    don't get a confusing "Mark done" link.
+    """
+    actions: List[str] = []
+    if block.block_type in _TASK_BLOCK_TYPES:
+        actions.append(ReminderAction.ACTION_COMPLETE)
+        actions.append(ReminderAction.ACTION_MARK_DOING)
+    actions.extend(_SNOOZE_ACTIONS)
+    return actions
+
+
+def _action_urls_for(
+    reminder: Reminder, site_url: str, now, actions: List[str]
+) -> Dict[str, str]:
     """Mint reminder-action tokens and return their absolute URLs.
 
-    Returns `{action: url}`. Skips when SITE_URL isn't a real http(s)
-    URL — without a working absolute base, the embed links would 404 so
-    the reminder is better off without them. Errors are swallowed so a
-    DB hiccup creating tokens doesn't block delivery; we log + carry
-    on. Worst case the user gets a notification with no quick-actions.
+    Returns `{action: url}` for the given `actions`. Skips when SITE_URL
+    isn't a real http(s) URL — without a working absolute base, the
+    embed links would 404 so the reminder is better off without them.
+    Errors are swallowed so a DB hiccup creating tokens doesn't block
+    delivery; we log + carry on. Worst case the user gets a notification
+    with no quick-actions.
     """
     if not site_url or not site_url.startswith(("http://", "https://")):
         return {}
     try:
-        rows = create_action_tokens(reminder, now=now)
+        rows = create_action_tokens(reminder, actions=actions, now=now)
     except Exception as e:
         logger.warning(
             "failed to mint reminder action tokens for %s: %s",
@@ -288,10 +327,12 @@ def _author_block(environment: str, pr_number: str, pr_url: str) -> dict:
 # Order matters: this is the order the links appear in the embed.
 # "Mark doing" sits between "Mark done" and the snoozes so the two
 # status-change actions cluster together on the left and the deferrals
-# cluster on the right.
+# cluster on the right (shortest snooze first).
 _ACTION_LABELS = [
     (ReminderAction.ACTION_COMPLETE, "Mark done"),
     (ReminderAction.ACTION_MARK_DOING, "Mark doing"),
+    (ReminderAction.ACTION_SNOOZE_15M, "Snooze 15m"),
+    (ReminderAction.ACTION_SNOOZE_30M, "Snooze 30m"),
     (ReminderAction.ACTION_SNOOZE_1H, "Snooze 1h"),
     (ReminderAction.ACTION_SNOOZE_1D, "Snooze 1d"),
 ]

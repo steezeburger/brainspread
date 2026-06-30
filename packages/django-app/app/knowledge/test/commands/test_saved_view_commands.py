@@ -280,6 +280,53 @@ class RunSavedViewTests(_SavedViewTestBase):
         self.assertEqual(result["count"], 2)
         self.assertTrue(result["truncated"])
 
+    def test_count_only_returns_count_without_serializing_rows(self):
+        # Collapsed embeds ask for count_only — the header count comes
+        # back but the rows are not serialized.
+        for _ in range(2):
+            BlockFactory(
+                user=self.user,
+                page=self.page,
+                block_type="todo",
+                due_at=due_dt(2026, 4, 23),
+            )
+        form = RunSavedViewForm(
+            {
+                "user": self.user.id,
+                "view_slug": SYSTEM_VIEW_OVERDUE,
+                "count_only": "true",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        result = RunSavedViewCommand(form).execute()
+        self.assertEqual(result["count"], 2)
+        self.assertEqual(result["results"], [])
+        self.assertFalse(result["truncated"])
+
+    def test_count_only_truncates_and_flags(self):
+        for _ in range(3):
+            BlockFactory(
+                user=self.user,
+                page=self.page,
+                block_type="todo",
+                due_at=due_dt(2026, 4, 23),
+            )
+        form = RunSavedViewForm(
+            {
+                "user": self.user.id,
+                "view_slug": SYSTEM_VIEW_OVERDUE,
+                "limit": 2,
+                "count_only": "true",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        result = RunSavedViewCommand(form).execute()
+        # Count is capped at the limit and truncation is flagged, matching
+        # the full (row-serializing) path.
+        self.assertEqual(result["count"], 2)
+        self.assertTrue(result["truncated"])
+        self.assertEqual(result["results"], [])
+
     def test_run_unknown_view_404(self):
         form = RunSavedViewForm({"user": self.user.id, "view_slug": "does-not-exist"})
         self.assertTrue(form.is_valid())

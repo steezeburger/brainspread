@@ -302,6 +302,14 @@ const Page = {
       "brainspread:request-archive",
       this.handleRequestArchive
     );
+    // An embed (or any other surface) toggled / scheduled / deleted a
+    // block we might also be rendering in the page tree. Refresh so the
+    // page copy reflects the change — embeds already sync via this same
+    // event, but the page itself wasn't listening.
+    document.addEventListener(
+      "brainspread:block-changed",
+      this.handleBlockChanged
+    );
     // When a same-page deep link fires (e.g. spotlight block result on
     // the current page), the URL hash changes without a reload. Listen
     // so we still scroll the matching block into view.
@@ -343,6 +351,14 @@ const Page = {
       "brainspread:request-archive",
       this.handleRequestArchive
     );
+    document.removeEventListener(
+      "brainspread:block-changed",
+      this.handleBlockChanged
+    );
+    if (this._blockChangedTimer) {
+      clearTimeout(this._blockChangedTimer);
+      this._blockChangedTimer = null;
+    }
   },
 
   methods: {
@@ -454,6 +470,61 @@ const Page = {
         // the reload — clobbering an in-progress edit would be worse than
         // showing stale state. They'll see the AI's changes the next time
         // they finish editing (which saves and reloads).
+        const active = document.activeElement;
+        if (
+          active &&
+          active.tagName === "TEXTAREA" &&
+          this.$el &&
+          this.$el.contains(active)
+        ) {
+          return;
+        }
+        this.loadPage({ silent: true });
+      }, 300);
+    },
+
+    broadcastBlockChanged(uuid) {
+      // Single entry point for the page's own block-changed broadcasts.
+      // Tagging the event with `source: this` lets handleBlockChanged
+      // ignore our own notifications — the page already updated its tree
+      // in place, so reloading from the same event would just churn.
+      if (!uuid) return;
+      document.dispatchEvent(
+        new CustomEvent("brainspread:block-changed", {
+          detail: { uuid, source: this },
+        })
+      );
+    },
+
+    pageHasBlock(uuid) {
+      // True when `uuid` is rendered anywhere on this page — the direct
+      // tree, the referenced-block tree, or the overdue list. Used to
+      // skip reloads for changes to blocks we aren't showing.
+      const inTree = (blocks) =>
+        this.flattenBlockTree(blocks).some((b) => b.uuid === uuid);
+      return (
+        inTree(this.directBlocks) ||
+        inTree(this.referencedBlocks) ||
+        inTree(this.overdueBlocks)
+      );
+    },
+
+    handleBlockChanged(event) {
+      // Another surface (typically a saved-view embed on this page)
+      // changed a block we also render. Reload silently so the page copy
+      // picks up the new state — e.g. a TODO toggled to DONE in an embed
+      // should also flip on the bullet list.
+      const uuid = event?.detail?.uuid;
+      if (!uuid) return;
+      // Our own broadcast — the mutating method already patched the tree.
+      if (event.detail.source === this) return;
+      if (!this.page || !this.pageHasBlock(uuid)) return;
+      // Debounce + active-edit guard, mirroring handleNotesModified: skip
+      // the reload while the user is typing in a block on this page so we
+      // don't clobber an in-progress edit.
+      if (this._blockChangedTimer) clearTimeout(this._blockChangedTimer);
+      this._blockChangedTimer = setTimeout(() => {
+        this._blockChangedTimer = null;
         const active = document.activeElement;
         if (
           active &&
@@ -824,11 +895,7 @@ const Page = {
         if (result.success) {
           // Notify embeds that may still be displaying this block —
           // their saved view re-run will drop the now-gone row.
-          document.dispatchEvent(
-            new CustomEvent("brainspread:block-changed", {
-              detail: { uuid: block.uuid },
-            })
-          );
+          this.broadcastBlockChanged(block.uuid);
           await this.loadPage();
         }
       } catch (error) {
@@ -896,11 +963,7 @@ const Page = {
           // Embeds may be showing this block — let them re-run so the
           // bullet / DONE strikethrough reflects the new state without
           // a manual collapse-expand.
-          document.dispatchEvent(
-            new CustomEvent("brainspread:block-changed", {
-              detail: { uuid: block.uuid },
-            })
-          );
+          this.broadcastBlockChanged(block.uuid);
         } else {
           this.error =
             result.errors?.non_field_errors?.[0] || "Failed to toggle todo";
@@ -1072,11 +1135,7 @@ const Page = {
         // Let any QueryEmbedBlock on this page re-run its saved view —
         // the moved block's page_slug just changed and embeds keep
         // their own copy of the block until they refetch.
-        document.dispatchEvent(
-          new CustomEvent("brainspread:block-changed", {
-            detail: { uuid: block.uuid },
-          })
-        );
+        this.broadcastBlockChanged(block.uuid);
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to move block to today:", error);
@@ -1111,11 +1170,7 @@ const Page = {
             completed_at: result.data?.completed_at || iso,
           };
           this.$parent?.addToast?.("completion time updated", "success");
-          document.dispatchEvent(
-            new CustomEvent("brainspread:block-changed", {
-              detail: { uuid: block.uuid },
-            })
-          );
+          this.broadcastBlockChanged(block.uuid);
           await this.loadPage({ silent: true });
         } else {
           this.$parent?.addToast?.("failed to update completion time", "error");
@@ -1172,11 +1227,7 @@ const Page = {
         // See moveBlockToToday for rationale — embeds keep their own
         // copy of the block until they refetch, and the move just
         // updated page_slug on the server.
-        document.dispatchEvent(
-          new CustomEvent("brainspread:block-changed", {
-            detail: { uuid: block.uuid },
-          })
-        );
+        this.broadcastBlockChanged(block.uuid);
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to move block to page:", error);
@@ -2647,11 +2698,7 @@ const Page = {
           // they re-run their saved view — keeps the displayed
           // due date / time meta in sync without a manual
           // collapse-expand.
-          document.dispatchEvent(
-            new CustomEvent("brainspread:block-changed", {
-              detail: { uuid: block.uuid },
-            })
-          );
+          this.broadcastBlockChanged(block.uuid);
           await this.loadPage({ silent: true });
         } else {
           this.$parent?.addToast?.("failed to schedule block", "error");
@@ -3919,13 +3966,7 @@ const Page = {
         this.$parent?.addToast?.(msg, "success");
         // Keep any embeds that surface these blocks in sync, same as the
         // single-block schedule path.
-        uuids.forEach((uuid) =>
-          document.dispatchEvent(
-            new CustomEvent("brainspread:block-changed", {
-              detail: { uuid },
-            })
-          )
-        );
+        uuids.forEach((uuid) => this.broadcastBlockChanged(uuid));
         this.clearBlockSelection();
         await this.loadPage({ silent: true });
       } catch (error) {
@@ -4212,8 +4253,8 @@ const Page = {
           <div class="overdue-blocks-container">
             <div v-for="block in overdueBlocks" :key="block.uuid" class="referenced-block-wrapper overdue-block-wrapper" :class="{ 'in-context': isBlockInContext(block.uuid) }" :data-block-uuid="block.uuid">
               <div class="block-meta">
-                <span v-if="block.due_date" class="overdue-due-date">due {{ formatDate(block.due_date) }}<template v-if="block.due_time"> {{ block.due_time }}</template></span>
                 <a class="page-title clickable" :href="pageBlockHref(block.page_slug, block.uuid)">{{ block.page_type === 'daily' ? formatDate(block.page_title) : block.page_title }}</a>
+                <span v-if="block.due_date" class="overdue-due-date">due {{ formatDate(block.due_date) }}<template v-if="block.due_time"> {{ block.due_time }}</template></span>
               </div>
               <BlockComponent
                 :block="block"

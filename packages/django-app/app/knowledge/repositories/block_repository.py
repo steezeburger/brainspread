@@ -537,6 +537,19 @@ class BlockRepository(BaseRepository):
         )
 
     @classmethod
+    def _compiled_base_queryset(cls, user, compiled) -> QuerySet:
+        """Shared filter/exclude logic for a CompiledQuery, before ordering
+        and serialization hints. Used by both ``run_compiled_query`` (which
+        adds select_related/ordering) and ``count_compiled_query`` (which
+        only needs the row count). Keeping the template-page exclusion in
+        one place so the two paths can never drift.
+        """
+        qs = cls.get_queryset().filter(user=user).filter(compiled.filter_q)
+        if not compiled.includes_page_type:
+            qs = qs.exclude(page__page_type="template")
+        return qs
+
+    @classmethod
     def run_compiled_query(
         cls,
         user,
@@ -558,14 +571,10 @@ class BlockRepository(BaseRepository):
         and the exclusion is skipped, putting the spec back in control.
         """
         qs = (
-            cls.get_queryset()
-            .filter(user=user)
-            .filter(compiled.filter_q)
+            cls._compiled_base_queryset(user, compiled)
             .select_related("page", "user")
             .prefetch_related("reminders")
         )
-        if not compiled.includes_page_type:
-            qs = qs.exclude(page__page_type="template")
         if compiled.order_by:
             qs = qs.order_by(*compiled.order_by)
         else:
@@ -573,6 +582,28 @@ class BlockRepository(BaseRepository):
         if limit is not None:
             qs = qs[:limit]
         return qs
+
+    @classmethod
+    def count_compiled_query(
+        cls,
+        user,
+        compiled,
+        limit: Optional[int] = None,
+    ) -> int:
+        """Count the blocks a CompiledQuery matches, without fetching or
+        serializing the rows. Used by collapsed saved-view embeds, which
+        only need the header count — running the full ``run_compiled_query``
+        + ``to_dict`` for a header number is wasteful when a daily page can
+        carry many collapsed embeds.
+
+        ``limit`` caps the count (via a sliced subquery) so callers can
+        cheaply distinguish "exactly N" from "at least N" for truncation
+        badges; pass ``limit + 1`` and compare against ``limit``.
+        """
+        qs = cls._compiled_base_queryset(user, compiled)
+        if limit is not None:
+            qs = qs[:limit]
+        return qs.count()
 
     @classmethod
     def clone_block_tree_to_page(

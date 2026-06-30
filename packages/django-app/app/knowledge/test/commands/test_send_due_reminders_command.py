@@ -388,10 +388,12 @@ class TestSendDueRemindersCommand(TestCase):
     def test_embed_includes_action_links_when_site_url_is_real(self):
         # When a real SITE_URL is set, the dispatcher mints per-action
         # tokens and the embed description picks up a quick-action row
-        # ([Mark done](u) · [Snooze 1h](u) · [Snooze 1d](u)) underneath
-        # the existing "Open block" link.
+        # ([Mark done](u) · [Snooze 15m](u) · ...) underneath the
+        # existing "Open block" link. A task-type block gets the full set.
         page = PageFactory(user=self.user, title="Backlog", slug="backlog")
-        block = BlockFactory(user=self.user, page=page, content="TODO ship")
+        block = BlockFactory(
+            user=self.user, page=page, content="TODO ship", block_type="todo"
+        )
         reminder = Reminder.objects.create(
             block=block,
             fire_at=timezone.now() - timedelta(minutes=1),
@@ -406,18 +408,22 @@ class TestSendDueRemindersCommand(TestCase):
         self.assertIn("[Open block →]", description)
         self.assertIn("[Mark done]", description)
         self.assertIn("[Mark doing]", description)
+        self.assertIn("[Snooze 15m]", description)
+        self.assertIn("[Snooze 30m]", description)
         self.assertIn("[Snooze 1h]", description)
         self.assertIn("[Snooze 1d]", description)
 
-        # Four action rows minted, all linked to this reminder, none
+        # Six action rows minted, all linked to this reminder, none
         # consumed yet.
         actions = list(ReminderAction.objects.filter(reminder=reminder))
-        self.assertEqual(len(actions), 4)
+        self.assertEqual(len(actions), 6)
         self.assertEqual(
             {a.action for a in actions},
             {
                 ReminderAction.ACTION_COMPLETE,
                 ReminderAction.ACTION_MARK_DOING,
+                ReminderAction.ACTION_SNOOZE_15M,
+                ReminderAction.ACTION_SNOOZE_30M,
                 ReminderAction.ACTION_SNOOZE_1H,
                 ReminderAction.ACTION_SNOOZE_1D,
             },
@@ -427,6 +433,40 @@ class TestSendDueRemindersCommand(TestCase):
             self.assertIn(
                 f"https://app.example.com/knowledge/r/{a.token}/", description
             )
+
+    def test_non_task_block_gets_snooze_actions_only(self):
+        # A plain bullet block has no task state to advance, so the
+        # embed must not offer "Mark done" / "Mark doing" — just snooze.
+        page = PageFactory(user=self.user, title="Notes", slug="notes")
+        block = BlockFactory(
+            user=self.user, page=page, content="ping the vet", block_type="bullet"
+        )
+        reminder = Reminder.objects.create(
+            block=block,
+            fire_at=timezone.now() - timedelta(minutes=1),
+        )
+
+        captured, patcher = self._capture_payload()
+        with self.settings(SITE_URL="https://app.example.com"), patcher:
+            self._run()
+
+        description = captured["embeds"][0]["description"]
+        self.assertNotIn("[Mark done]", description)
+        self.assertNotIn("[Mark doing]", description)
+        self.assertIn("[Snooze 15m]", description)
+        self.assertIn("[Snooze 30m]", description)
+        self.assertIn("[Snooze 1h]", description)
+        self.assertIn("[Snooze 1d]", description)
+
+        self.assertEqual(
+            {a.action for a in ReminderAction.objects.filter(reminder=reminder)},
+            {
+                ReminderAction.ACTION_SNOOZE_15M,
+                ReminderAction.ACTION_SNOOZE_30M,
+                ReminderAction.ACTION_SNOOZE_1H,
+                ReminderAction.ACTION_SNOOZE_1D,
+            },
+        )
 
     def test_no_action_links_when_site_url_is_placeholder(self):
         # 0.0.0.0 doesn't form a real URL, so the embed renders without

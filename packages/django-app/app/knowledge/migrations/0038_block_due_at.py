@@ -86,7 +86,7 @@ def rename_saved_view_fields(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("knowledge", "0036_savedview_dates_relative_to_daily"),
+        ("knowledge", "0037_reminderaction_snooze_15m_30m"),
     ]
 
     operations = [
@@ -111,16 +111,6 @@ class Migration(migrations.Migration):
                 default=False,
                 help_text="True when due_at carries a meaningful time of day",
             ),
-        ),
-        # The (user, scheduled_for) index follows the column rename, but its
-        # auto-generated name is derived from the field name, so rename it to
-        # the (user, due_at) name Django now expects. RenameIndex (rather than
-        # remove+add) keeps this reversible — a remove+add would reference the
-        # old field name on reverse, before the column rename is undone.
-        migrations.RenameIndex(
-            model_name="block",
-            new_name="blocks_user_id_f99b9a_idx",
-            old_name="blocks_user_id_e91738_idx",
         ),
         # Help-text example referenced the old field name.
         migrations.AlterField(

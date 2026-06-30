@@ -59,6 +59,38 @@ class ConsumeReminderActionCommandTests(TestCase):
         action.refresh_from_db()
         self.assertIsNotNone(action.used_at)
 
+    def test_snooze_15m_resets_pending_with_new_fire_at(self) -> None:
+        action = self._make_action(ReminderAction.ACTION_SNOOZE_15M)
+        pinned = timezone.now()
+
+        result = self._run(action.token, now=pinned)
+
+        self.assertEqual(result["status"], "executed")
+        self.assertEqual(result["detail"], "Snoozed for 15 minutes.")
+
+        self.reminder.refresh_from_db()
+        self.assertEqual(self.reminder.status, Reminder.STATUS_PENDING)
+        self.assertIsNone(self.reminder.sent_at)
+        self.assertEqual(
+            self.reminder.fire_at.replace(microsecond=0),
+            (pinned + timedelta(minutes=15)).replace(microsecond=0),
+        )
+
+    def test_snooze_30m_resets_pending_with_new_fire_at(self) -> None:
+        action = self._make_action(ReminderAction.ACTION_SNOOZE_30M)
+        pinned = timezone.now()
+
+        result = self._run(action.token, now=pinned)
+
+        self.assertEqual(result["status"], "executed")
+        self.assertEqual(result["detail"], "Snoozed for 30 minutes.")
+
+        self.reminder.refresh_from_db()
+        self.assertEqual(
+            self.reminder.fire_at.replace(microsecond=0),
+            (pinned + timedelta(minutes=30)).replace(microsecond=0),
+        )
+
     def test_snooze_1h_resets_pending_with_new_fire_at(self) -> None:
         action = self._make_action(ReminderAction.ACTION_SNOOZE_1H)
         pinned = timezone.now()
