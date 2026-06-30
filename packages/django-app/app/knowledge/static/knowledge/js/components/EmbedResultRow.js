@@ -67,18 +67,6 @@ window.EmbedResultRow = {
     isCompleted(b) {
       return ["done", "wontdo"].includes(b && b.block_type);
     },
-    isDailyOnDueDate(b) {
-      // A block on a daily page whose date equals its due date: the page
-      // name (the daily's date) duplicates the "due <date>" token, so the
-      // caller suppresses the page label. Daily slugs are the ISO date,
-      // same format as scheduled_for.
-      return !!(
-        b &&
-        b.page_type === "daily" &&
-        b.scheduled_for &&
-        b.page_slug === b.scheduled_for
-      );
-    },
     renderContent(b) {
       // Escape first, then linkify #hashtags into the same clickable
       // anchors the page block tree uses (.inline-tag .clickable-tag →
@@ -342,7 +330,7 @@ window.EmbedResultRow = {
           <a :href="blockHref(block)" class="result-meta">
             <span v-if="block.block_type" class="result-block-type">{{ block.block_type }}</span>
             <span v-if="block.completed_at"> · done {{ block.completed_at.split('T')[0] }}</span>
-            <span v-if="block.page_title && !isDailyOnDueDate(block)"> · {{ block.page_title }}</span>
+            <span v-if="block.page_title"> · {{ block.page_title }}</span>
           </a>
         </div>
         <span v-if="block.scheduled_for" class="result-due">due {{ block.scheduled_for }}</span>
