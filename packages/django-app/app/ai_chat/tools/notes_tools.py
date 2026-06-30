@@ -110,10 +110,10 @@ _READ_SCHEMAS: List[Dict[str, Any]] = [
         "name": "list_overdue_blocks",
         "description": (
             "List the user's overdue scheduled blocks: blocks whose"
-            " scheduled_for is before today (in the user's timezone) and"
+            " due_at is before today (in the user's timezone) and"
             " whose block_type is still todo / doing / later. Same predicate"
             " that drives the daily-page overdue section. Returns block"
-            " uuid, content, page title, scheduled_for, block_type."
+            " uuid, content, page title, due_date, block_type."
         ),
         "input_schema": {
             "type": "object",
@@ -378,7 +378,7 @@ _READ_SCHEMAS: List[Dict[str, Any]] = [
         "name": "find_stale_todos",
         "description": (
             "List the user's open TODO blocks that are older than"
-            " `older_than_days` days and have no scheduled_for date set."
+            " `older_than_days` days and have no due_at date set."
             " Useful for surfacing forgotten work that has slipped through"
             " the cracks. Returns block uuid, content preview, page title,"
             " and how many days old the block is."
@@ -407,7 +407,7 @@ _READ_SCHEMAS: List[Dict[str, Any]] = [
     {
         "name": "list_scheduled_blocks",
         "description": (
-            "List blocks with a scheduled_for date in the given inclusive"
+            "List blocks with a due_at date in the given inclusive"
             " range. Defaults: start_date = today (user tz), end_date ="
             " start_date + 30 days. Useful for 'what's coming up this week'"
             " questions. Dates accept ISO YYYY-MM-DD or 'today' / 'tomorrow'"
@@ -487,10 +487,10 @@ _READ_SCHEMAS: List[Dict[str, Any]] = [
             "    - block_type: 'todo' | {'in': [...]} | 'doing' /"
             " 'done' / 'bullet' / 'heading' / 'quote' / 'code' /"
             " 'divider' / 'later' / 'wontdo'\n"
-            "    - scheduled_for: <date-token> | {'lt' | 'lte' | 'gt'"
+            "    - due_at: <date-token> | {'lt' | 'lte' | 'gt'"
             " | 'gte' | 'eq': <date-token>} | {'between': [<from>,"
             " <to>]} | {'is_null': true|false}\n"
-            "    - completed_at: same shape as scheduled_for\n"
+            "    - completed_at: same shape as due_at\n"
             "    - has_tag: 'foo' (matches blocks tagged #foo OR"
             " blocks living on a page named foo)\n"
             "    - has_property: 'priority'\n"
@@ -524,7 +524,7 @@ _READ_SCHEMAS: List[Dict[str, Any]] = [
                     "type": "array",
                     "description": (
                         "Optional sort spec, e.g."
-                        " [{'field': 'scheduled_for', 'dir': 'asc'}]."
+                        " [{'field': 'due_at', 'dir': 'asc'}]."
                     ),
                 },
                 "limit": {
@@ -745,15 +745,15 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
     {
         "name": "schedule_block",
         "description": (
-            "Set a block's due date (scheduled_for), optionally creating a"
-            " reminder. The block surfaces on the daily page for that date"
-            " and shows up in the overdue section after it passes. Re-"
-            "calling on the same block replaces any pending reminder; sent"
-            " reminders stay as history. Pass an absolute ISO date or one of"
-            " 'today' / 'tomorrow' / 'yesterday' / '+Nd' / '-Nd'. Reminder"
-            " time is HH:MM 24-hour in the user's timezone. Use"
-            " clear_schedule to unschedule a block. Every call pauses for"
-            " explicit user approval before execution."
+            "Set a block's due date, optionally creating a reminder. The"
+            " block surfaces on the daily page for that date and shows up in"
+            " the overdue section after it passes. The due is all-day unless"
+            " due_time is given. Re-calling on the same block replaces any"
+            " pending reminder; sent reminders stay as history. Pass an"
+            " absolute ISO date or one of 'today' / 'tomorrow' / 'yesterday'"
+            " / '+Nd' / '-Nd'. Reminder time is HH:MM 24-hour in the user's"
+            " timezone. Use clear_schedule to unschedule a block. Every call"
+            " pauses for explicit user approval before execution."
         ),
         "input_schema": {
             "type": "object",
@@ -762,20 +762,26 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
                     "type": "string",
                     "description": "UUID of the block to schedule.",
                 },
-                "scheduled_for": {
+                "due_date": {
                     "type": "string",
                     "description": (
                         "Due date. ISO YYYY-MM-DD, or 'today' / 'tomorrow'"
                         " / 'yesterday' / '+Nd' / '-Nd'."
                     ),
                 },
+                "due_time": {
+                    "type": "string",
+                    "description": (
+                        "Optional HH:MM 24-hour time in the user's timezone"
+                        " for a timed due. Omit for an all-day due."
+                    ),
+                },
                 "reminder_date": {
                     "type": "string",
                     "description": (
                         "Optional date for the reminder ping. Same format as"
-                        " scheduled_for. Defaults to scheduled_for (i.e."
-                        " 'remind me the day of'). Only used if"
-                        " reminder_time is also set."
+                        " due_date. Defaults to due_date (i.e. 'remind me the"
+                        " day of'). Only used if reminder_time is also set."
                     ),
                 },
                 "reminder_time": {
@@ -791,7 +797,7 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
                     ),
                 },
             },
-            "required": ["block_uuid", "scheduled_for"],
+            "required": ["block_uuid", "due_date"],
         },
     },
     {
@@ -877,7 +883,7 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
             " whole days; the reminder time-of-day shifts by the full"
             " days+hours delta. At least one of `days` / `hours` must"
             " be non-zero. Refuses if the block has nothing to snooze"
-            " (no scheduled_for AND no pending reminder). Every call"
+            " (no due_at AND no pending reminder). Every call"
             " pauses for explicit user approval before execution."
         ),
         "input_schema": {
@@ -1014,8 +1020,9 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
     {
         "name": "bulk_schedule",
         "description": (
-            "Set the same scheduled_for on many blocks, optionally"
-            " creating / replacing a pending reminder on each. Two"
+            "Set the same due date on many blocks (all-day unless"
+            " new_time is given), optionally creating / replacing a"
+            " pending reminder on each. Two"
             " modes: (a) `reminder_time` omitted — dates move; existing"
             " pending reminders shift by each block's per-block delta"
             " so reminder time-of-day is preserved, and previously-"
@@ -1040,6 +1047,13 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
                     "description": (
                         "Target date. ISO YYYY-MM-DD, or 'today' /"
                         " 'tomorrow' / 'yesterday' / '+Nd' / '-Nd'."
+                    ),
+                },
+                "new_time": {
+                    "type": "string",
+                    "description": (
+                        "Optional HH:MM 24-hour time in the user's"
+                        " timezone for a timed due; omit for all-day."
                     ),
                 },
                 "reminder_date": {
@@ -1118,7 +1132,7 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
     {
         "name": "bulk_clear_schedule",
         "description": (
-            "Drop scheduled_for AND any pending reminder on many blocks"
+            "Drop due_at AND any pending reminder on many blocks"
             " at once. Same effect as calling clear_schedule on each"
             " block, but one approval covers the whole batch. Blocks"
             " that don't currently have a schedule or reminder are"
@@ -1144,7 +1158,7 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
             " 'cancel all reminders on this page'). Each block has at"
             " most one pending reminder; blocks with none are reported"
             " in `no_reminder` (not failures). Schedules are untouched"
-            " — to also drop scheduled_for use bulk_clear_schedule."
+            " — to also drop the due date use bulk_clear_schedule."
             " Every call pauses for explicit user approval before"
             " execution."
         ),
@@ -1209,7 +1223,7 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
         "description": (
             "Create a new SavedView. The filter spec follows the same"
             " language as run_saved_view — predicates (block_type,"
-            " scheduled_for, completed_at, has_tag, has_property,"
+            " due_at, completed_at, has_tag, has_property,"
             " property_eq, content_contains), combinators (all, any,"
             " not), date tokens (today, yesterday, 'N days ago',"
             " 'N days from now', YYYY-MM-DD). Validate by calling"
@@ -1247,7 +1261,7 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
                     "type": "array",
                     "description": (
                         "Optional sort spec, e.g."
-                        " [{'field': 'scheduled_for', 'dir': 'asc'}]."
+                        " [{'field': 'due_at', 'dir': 'asc'}]."
                     ),
                 },
             },

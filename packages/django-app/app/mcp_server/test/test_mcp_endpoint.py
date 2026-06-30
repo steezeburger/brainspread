@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 from core.test.helpers import UserFactory
 from knowledge.models import Block, Page
 from knowledge.repositories import PageRepository
-from knowledge.test.helpers import BlockFactory, PageFactory
+from knowledge.test.helpers import BlockFactory, PageFactory, due_dt
 
 
 def _rpc(method: str, params: dict | None = None, req_id: int | str = 1) -> dict:
@@ -273,21 +273,21 @@ class MCPEndpointTestCase(TestCase):
 
     # --- schedule_block ------------------------------------------------
 
-    def test_schedule_block_sets_scheduled_for(self):
+    def test_schedule_block_sets_due_date(self):
         page = PageFactory(user=self.user)
         block = BlockFactory(user=self.user, page=page, block_type="todo")
         response = self.client.post(
             "/api/mcp/",
             _tool_call(
                 "schedule_block",
-                {"block_uuid": str(block.uuid), "scheduled_for": "2026-07-15"},
+                {"block_uuid": str(block.uuid), "due_date": "2026-07-15"},
             ),
             format="json",
         )
         body = response.json()
         self.assertFalse(body["result"]["isError"], body)
         block.refresh_from_db()
-        self.assertEqual(block.scheduled_for.isoformat(), "2026-07-15")
+        self.assertEqual(block._due_local_date(), "2026-07-15")
 
     def test_unknown_tool_returns_tool_error(self):
         response = self.client.post(
@@ -530,7 +530,7 @@ class MCPEndpointTestCase(TestCase):
             page=page,
             content="overdue thing",
             block_type="todo",
-            scheduled_for=yesterday,
+            due_at=due_dt(yesterday),
         )
         # Future scheduled block — should not appear.
         BlockFactory(
@@ -538,7 +538,7 @@ class MCPEndpointTestCase(TestCase):
             page=page,
             content="future thing",
             block_type="todo",
-            scheduled_for=today + timedelta(days=3),
+            due_at=due_dt(today + timedelta(days=3)),
         )
 
         response = self.client.post(
@@ -560,14 +560,14 @@ class MCPEndpointTestCase(TestCase):
             page=page,
             content="this week",
             block_type="todo",
-            scheduled_for=today + timedelta(days=2),
+            due_at=due_dt(today + timedelta(days=2)),
         )
         out_of_range = BlockFactory(
             user=self.user,
             page=page,
             content="next month",
             block_type="todo",
-            scheduled_for=today + timedelta(days=30),
+            due_at=due_dt(today + timedelta(days=30)),
         )
 
         response = self.client.post(
@@ -748,13 +748,16 @@ class MCPEndpointTestCase(TestCase):
             "/api/mcp/",
             _tool_call(
                 "schedule_block",
-                {"block_uuid": str(block.uuid), "scheduled_for": "+3d"},
+                {"block_uuid": str(block.uuid), "due_date": "+3d"},
             ),
             format="json",
         )
         self.assertFalse(response.json()["result"]["isError"])
         block.refresh_from_db()
-        self.assertEqual(block.scheduled_for, self.user.today() + timedelta(days=3))
+        self.assertEqual(
+            block._due_local_date(),
+            (self.user.today() + timedelta(days=3)).isoformat(),
+        )
 
     def test_schedule_block_rejects_garbage_date(self):
         page = PageFactory(user=self.user)
@@ -763,13 +766,13 @@ class MCPEndpointTestCase(TestCase):
             "/api/mcp/",
             _tool_call(
                 "schedule_block",
-                {"block_uuid": str(block.uuid), "scheduled_for": "next thursday"},
+                {"block_uuid": str(block.uuid), "due_date": "next thursday"},
             ),
             format="json",
         )
         body = response.json()
         self.assertTrue(body["result"]["isError"])
-        self.assertIn("scheduled_for", body["result"]["content"][0]["text"])
+        self.assertIn("due_date", body["result"]["content"][0]["text"])
 
     def test_get_page_accepts_relative_date_token(self):
         today = self.user.today()
@@ -794,14 +797,14 @@ class MCPEndpointTestCase(TestCase):
             page=page,
             content="this week",
             block_type="todo",
-            scheduled_for=today + timedelta(days=2),
+            due_at=due_dt(today + timedelta(days=2)),
         )
         BlockFactory(
             user=self.user,
             page=page,
             content="far future",
             block_type="todo",
-            scheduled_for=today + timedelta(days=30),
+            due_at=due_dt(today + timedelta(days=30)),
         )
         response = self.client.post(
             "/api/mcp/",

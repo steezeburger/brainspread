@@ -231,11 +231,15 @@ def _build_payload(
         # line without collapsing the second into a continuation.
         embed["description"] = "\n\n".join(description_lines)
 
-    if block.scheduled_for:
+    if block.due_at:
+        due_value = block._due_local_date()
+        due_time = block._due_local_time()
+        if block.due_at_has_time and due_time:
+            due_value = f"{due_value} {due_time}"
         embed["fields"] = [
             {
                 "name": "Due",
-                "value": block.scheduled_for.isoformat(),
+                "value": due_value,
                 "inline": True,
             }
         ]

@@ -288,7 +288,7 @@ window.EmbedResultRow = {
           <span class="result-content">{{ blockLabel(block) }}</span>
           <span class="result-meta">
             <span v-if="block.block_type" class="result-block-type">{{ block.block_type }}</span>
-            <span v-if="block.scheduled_for"> · due {{ block.scheduled_for }}</span>
+            <span v-if="block.due_date"> · due {{ block.due_date }}<template v-if="block.due_time"> {{ block.due_time }}</template></span>
             <span v-if="block.completed_at"> · done {{ block.completed_at.split('T')[0] }}</span>
             <span v-if="block.page_title"> · {{ block.page_title }}</span>
           </span>

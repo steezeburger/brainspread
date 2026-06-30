@@ -36,7 +36,7 @@ from knowledge.forms import (
 from knowledge.models import SYSTEM_VIEW_OVERDUE, SavedView
 from knowledge.services.system_views import seed_system_views_for_user
 
-from ..helpers import BlockFactory, PageFactory, UserFactory
+from ..helpers import BlockFactory, PageFactory, UserFactory, due_dt
 
 
 def _utc_noon(d: date) -> datetime:
@@ -239,14 +239,14 @@ class RunSavedViewTests(_SavedViewTestBase):
             user=self.user,
             page=self.page,
             block_type="todo",
-            scheduled_for=date(2026, 4, 23),
+            due_at=due_dt(2026, 4, 23),
         )
         # Already-done — should not match
         BlockFactory(
             user=self.user,
             page=self.page,
             block_type="done",
-            scheduled_for=date(2026, 4, 23),
+            due_at=due_dt(2026, 4, 23),
             completed_at=_utc_noon(self.today),
         )
 
@@ -266,7 +266,7 @@ class RunSavedViewTests(_SavedViewTestBase):
                 user=self.user,
                 page=self.page,
                 block_type="todo",
-                scheduled_for=date(2026, 4, 23),
+                due_at=due_dt(2026, 4, 23),
             )
         form = RunSavedViewForm(
             {
@@ -439,13 +439,13 @@ class PreviewSavedViewTests(_SavedViewTestBase):
             user=self.user,
             page=self.page,
             block_type="todo",
-            scheduled_for=date(2026, 4, 23),
+            due_at=due_dt(2026, 4, 23),
         )
         BlockFactory(
             user=self.user,
             page=self.page,
             block_type="done",
-            scheduled_for=date(2026, 4, 23),
+            due_at=due_dt(2026, 4, 23),
             completed_at=_utc_noon(self.today),
         )
         form = PreviewSavedViewForm(

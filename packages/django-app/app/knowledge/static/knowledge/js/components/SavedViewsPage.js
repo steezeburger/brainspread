@@ -55,6 +55,7 @@ const SavedViewsPage = {
       schedulePopoverOpen: false,
       schedulePopoverBlock: null,
       schedulePopoverInitialDate: "",
+      schedulePopoverInitialDueTime: "",
       schedulePopoverInitialReminderDate: "",
       schedulePopoverInitialTime: "",
 
@@ -110,14 +111,15 @@ const SavedViewsPage = {
       page <em>or</em> living on it. To require two tags, list both
       under <code>all</code>.
     </td></tr>
-    <tr><th><code>scheduled_for</code></th><td>
-      Date predicate. Ops: <code>is_null</code> (bool), <code>eq</code>,
+    <tr><th><code>due_at</code></th><td>
+      Date predicate (compares by day in your timezone). Ops:
+      <code>is_null</code> (bool), <code>eq</code>,
       <code>lt</code>, <code>lte</code>, <code>gt</code>, <code>gte</code>,
       <code>between</code> (<code>[start, end]</code>). Values are date
       tokens or <code>YYYY-MM-DD</code>.
     </td></tr>
     <tr><th><code>completed_at</code></th><td>
-      Same ops as <code>scheduled_for</code> — compares the moment a
+      Same ops as <code>due_at</code> — compares the moment a
       block transitioned to done / wontdo.
     </td></tr>
     <tr><th><code>has_property</code></th><td>
@@ -166,7 +168,7 @@ const SavedViewsPage = {
     — unknown keys are silently ignored.
   </p>
   <p>
-    Fields: <code>scheduled_for</code>, <code>completed_at</code>,
+    Fields: <code>due_at</code>, <code>completed_at</code>,
     <code>created_at</code>, <code>modified_at</code>, <code>order</code>,
     <code>block_type</code>, or <code>properties.&lt;key&gt;</code>.
     Property sort is lexicographic — works naturally for ISO dates
@@ -197,7 +199,7 @@ const SavedViewsPage = {
   ]
 }</pre>
   <pre>[
-  { "field": "scheduled_for", "dir": "asc" },
+  { "field": "due_at", "dir": "asc" },
   { "field": "created_at",   "dir": "asc" }
 ]</pre>
 
@@ -205,7 +207,7 @@ const SavedViewsPage = {
   <pre>{
   "all": [
     { "block_type": { "in": ["todo", "doing", "later"] } },
-    { "scheduled_for": { "lt": "today" } },
+    { "due_at": { "lt": "today" } },
     { "completed_at": { "is_null": true } },
     { "not": { "has_tag": "snoozed" } }
   ]
@@ -220,7 +222,7 @@ const SavedViewsPage = {
         { "has_tag": "brainspread" },
         { "has_tag": "homelab" }
       ] },
-    { "scheduled_for": { "between": ["today", "today+7d"] } }
+    { "due_at": { "between": ["today", "today+7d"] } }
   ]
 }</pre>
 
@@ -231,7 +233,7 @@ const SavedViewsPage = {
     { "block_type": { "in": ["todo", "doing", "later"] } },
     { "any": [
         { "property_eq": { "key": "priority", "in": ["high", "critical"] } },
-        { "scheduled_for": { "lt": "today" } },
+        { "due_at": { "lt": "today" } },
         { "has_tag": "blocker" }
       ] }
   ]
@@ -251,7 +253,7 @@ const SavedViewsPage = {
   <pre>{
   "all": [
     { "block_type": { "in": ["todo", "doing", "later"] } },
-    { "scheduled_for": { "is_null": true } },
+    { "due_at": { "is_null": true } },
     { "not": { "any": [
         { "has_tag": "work" },
         { "has_tag": "personal" },
@@ -860,22 +862,34 @@ const SavedViewsPage = {
 
     scheduleBlock(b, { clear = false } = {}) {
       if (clear) {
-        this._submitSchedule(b, "", "", "");
+        this._submitSchedule(b, "", "", "", "");
         return;
       }
       this.schedulePopoverBlock = b;
-      this.schedulePopoverInitialDate = b.scheduled_for || "";
+      this.schedulePopoverInitialDate = b.due_date || "";
+      this.schedulePopoverInitialDueTime = b.due_time || "";
       this.schedulePopoverInitialReminderDate = b.pending_reminder_date || "";
       this.schedulePopoverInitialTime = b.pending_reminder_time || "";
       this.schedulePopoverOpen = true;
     },
 
-    onSchedulePopoverSave({ scheduledFor, reminderDate, reminderTime }) {
+    onSchedulePopoverSave({
+      scheduledFor,
+      dueTime,
+      reminderDate,
+      reminderTime,
+    }) {
       const b = this.schedulePopoverBlock;
       this.schedulePopoverOpen = false;
       this.schedulePopoverBlock = null;
       if (!b) return;
-      this._submitSchedule(b, scheduledFor, reminderDate, reminderTime);
+      this._submitSchedule(
+        b,
+        scheduledFor,
+        dueTime,
+        reminderDate,
+        reminderTime
+      );
     },
 
     onSchedulePopoverCancel() {
@@ -883,11 +897,18 @@ const SavedViewsPage = {
       this.schedulePopoverBlock = null;
     },
 
-    async _submitSchedule(block, scheduledFor, reminderDate, reminderTime) {
+    async _submitSchedule(
+      block,
+      scheduledFor,
+      dueTime,
+      reminderDate,
+      reminderTime
+    ) {
       try {
         const r = await window.apiService.scheduleBlock(
           block.uuid,
           scheduledFor,
+          dueTime,
           reminderDate,
           reminderTime
         );
@@ -1092,6 +1113,7 @@ const SavedViewsPage = {
       <ScheduleBlockPopover
         :is-open="schedulePopoverOpen"
         :initial-date="schedulePopoverInitialDate"
+        :initial-due-time="schedulePopoverInitialDueTime"
         :initial-reminder-date="schedulePopoverInitialReminderDate"
         :initial-time="schedulePopoverInitialTime"
         @save="onSchedulePopoverSave"

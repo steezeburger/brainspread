@@ -69,6 +69,7 @@ const Page = {
       schedulePopoverOpen: false,
       schedulePopoverBlock: null,
       schedulePopoverInitialDate: "",
+      schedulePopoverInitialDueTime: "",
       schedulePopoverInitialReminderDate: "",
       schedulePopoverInitialTime: "",
       // When the schedule popover is opened for a multi-select, these hold
@@ -145,7 +146,7 @@ const Page = {
     // sortMode. Falls back to directBlocks for "manual" so the v-for
     // reference stays identity-stable in the common case. Nulls
     // always sort last regardless of direction (a block with no
-    // scheduled_for date shouldn't pop to the top when listing
+    // due date shouldn't pop to the top when listing
     // scheduled · latest). Manual `order` is used as the
     // stable tiebreaker so equal keys preserve their curated layout.
     displayBlocks() {
@@ -171,12 +172,12 @@ const Page = {
           case "updated-desc":
             return cmpNullsLast(b.modified_at, a.modified_at);
           case "scheduled-asc":
-            return cmpNullsLast(a.scheduled_for, b.scheduled_for);
+            return cmpNullsLast(a.due_date, b.due_date);
           case "scheduled-desc": {
-            if (a.scheduled_for == null && b.scheduled_for == null) return 0;
-            if (a.scheduled_for == null) return 1;
-            if (b.scheduled_for == null) return -1;
-            return cmpNullsLast(b.scheduled_for, a.scheduled_for);
+            if (a.due_date == null && b.due_date == null) return 0;
+            if (a.due_date == null) return 1;
+            if (b.due_date == null) return -1;
+            return cmpNullsLast(b.due_date, a.due_date);
           }
           case "type": {
             const t = cmpNullsLast(a.block_type, b.block_type);
@@ -2517,13 +2518,14 @@ const Page = {
       if (!block) return;
 
       if (clear) {
-        await this._submitSchedule(block, "", "", "");
+        await this._submitSchedule(block, "", "", "", "");
         return;
       }
 
       this.schedulePopoverBlock = block;
       this.schedulePopoverInitialDate =
-        block.scheduled_for || this._defaultScheduleDate();
+        block.due_date || this._defaultScheduleDate();
+      this.schedulePopoverInitialDueTime = block.due_time || "";
       this.schedulePopoverInitialReminderDate =
         block.pending_reminder_date || "";
       this.schedulePopoverInitialTime = block.pending_reminder_time || "";
@@ -2547,7 +2549,12 @@ const Page = {
       return pageDate > todayIso ? pageDate : "";
     },
 
-    onSchedulePopoverSave({ scheduledFor, reminderDate, reminderTime }) {
+    onSchedulePopoverSave({
+      scheduledFor,
+      dueTime,
+      reminderDate,
+      reminderTime,
+    }) {
       const bulk = this.schedulePopoverBulk;
       const bulkUuids = this.schedulePopoverBulkUuids;
       const block = this.schedulePopoverBlock;
@@ -2559,13 +2566,20 @@ const Page = {
         this._submitBulkSchedule(
           bulkUuids,
           scheduledFor,
+          dueTime,
           reminderDate,
           reminderTime
         );
         return;
       }
       if (!block) return;
-      this._submitSchedule(block, scheduledFor, reminderDate, reminderTime);
+      this._submitSchedule(
+        block,
+        scheduledFor,
+        dueTime,
+        reminderDate,
+        reminderTime
+      );
     },
 
     onSchedulePopoverCancel() {
@@ -2598,11 +2612,18 @@ const Page = {
       this.blockChatPopoverBlock = null;
     },
 
-    async _submitSchedule(block, scheduledFor, reminderDate, reminderTime) {
+    async _submitSchedule(
+      block,
+      scheduledFor,
+      dueTime,
+      reminderDate,
+      reminderTime
+    ) {
       try {
         const result = await window.apiService.scheduleBlock(
           block.uuid,
           scheduledFor,
+          dueTime,
           reminderDate,
           reminderTime
         );
@@ -2624,7 +2645,7 @@ const Page = {
           this.$parent?.addToast?.(msg, "success");
           // Notify any embeds on the page that show this block so
           // they re-run their saved view — keeps the displayed
-          // scheduled_for / due meta in sync without a manual
+          // due date / time meta in sync without a manual
           // collapse-expand.
           document.dispatchEvent(
             new CustomEvent("brainspread:block-changed", {
@@ -3855,12 +3876,19 @@ const Page = {
       // No shared starting point across N blocks — let the popover default
       // to today rather than seeding from one block's existing schedule.
       this.schedulePopoverInitialDate = "";
+      this.schedulePopoverInitialDueTime = "";
       this.schedulePopoverInitialReminderDate = "";
       this.schedulePopoverInitialTime = "";
       this.schedulePopoverOpen = true;
     },
 
-    async _submitBulkSchedule(uuids, scheduledFor, reminderDate, reminderTime) {
+    async _submitBulkSchedule(
+      uuids,
+      scheduledFor,
+      dueTime,
+      reminderDate,
+      reminderTime
+    ) {
       if (!uuids || uuids.length === 0) return;
       if (!scheduledFor) {
         this.$parent?.addToast?.("pick a date to schedule", "info");
@@ -3870,6 +3898,7 @@ const Page = {
         const result = await window.apiService.bulkScheduleBlocks(
           uuids,
           scheduledFor,
+          dueTime,
           reminderDate,
           reminderTime
         );
@@ -4183,7 +4212,7 @@ const Page = {
           <div class="overdue-blocks-container">
             <div v-for="block in overdueBlocks" :key="block.uuid" class="referenced-block-wrapper overdue-block-wrapper" :class="{ 'in-context': isBlockInContext(block.uuid) }" :data-block-uuid="block.uuid">
               <div class="block-meta">
-                <span v-if="block.scheduled_for" class="overdue-due-date">due {{ formatDate(block.scheduled_for) }}</span>
+                <span v-if="block.due_date" class="overdue-due-date">due {{ formatDate(block.due_date) }}<template v-if="block.due_time"> {{ block.due_time }}</template></span>
                 <a class="page-title clickable" :href="pageBlockHref(block.page_slug, block.uuid)">{{ block.page_type === 'daily' ? formatDate(block.page_title) : block.page_title }}</a>
               </div>
               <BlockComponent
@@ -4341,6 +4370,7 @@ const Page = {
       <ScheduleBlockPopover
         :is-open="schedulePopoverOpen"
         :initial-date="schedulePopoverInitialDate"
+        :initial-due-time="schedulePopoverInitialDueTime"
         :initial-reminder-date="schedulePopoverInitialReminderDate"
         :initial-time="schedulePopoverInitialTime"
         @save="onSchedulePopoverSave"

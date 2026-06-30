@@ -1,21 +1,19 @@
-from datetime import datetime
-
-import pytz
-
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.schedule_block_form import ScheduleBlockForm
 from ..forms.touch_page_form import TouchPageForm
 from ..models import Block, Reminder
+from ..services.due_dates import build_due_at, combine_local_to_utc
 from .touch_page_command import TouchPageCommand
 
 
 class ScheduleBlockCommand(AbstractBaseCommand):
-    """Set or clear a block's scheduled_for, optionally creating a reminder
-    at a user-chosen time on that date. See issue #59 phase 4.
+    """Set or clear a block's due_at, optionally creating a reminder at a
+    user-chosen time. See issue #59 phase 4.
 
-    Re-scheduling a block always replaces its pending reminder rather than
-    accumulating new ones — sent reminders stay as history.
+    The due value is all-day by default; a `due_time` flips on a specific
+    time of day. Re-scheduling a block always replaces its pending reminder
+    rather than accumulating new ones — sent reminders stay as history.
     """
 
     def __init__(self, form: ScheduleBlockForm) -> None:
@@ -26,12 +24,15 @@ class ScheduleBlockCommand(AbstractBaseCommand):
 
         user = self.form.cleaned_data["user"]
         block: Block = self.form.cleaned_data["block"]
-        scheduled_for = self.form.cleaned_data.get("scheduled_for")
+        due_date = self.form.cleaned_data.get("due_date")
+        due_time = self.form.cleaned_data.get("due_time")
         reminder_date = self.form.cleaned_data.get("reminder_date")
         reminder_time = self.form.cleaned_data.get("reminder_time")
 
-        block.scheduled_for = scheduled_for
-        block.save(update_fields=["scheduled_for", "modified_at"])
+        block.due_at, block.due_at_has_time = build_due_at(
+            due_date, due_time, user.timezone
+        )
+        block.save(update_fields=["due_at", "due_at_has_time", "modified_at"])
 
         touch_form = TouchPageForm(data={"user": user.id, "page": str(block.page.uuid)})
         if touch_form.is_valid():
@@ -46,9 +47,11 @@ class ScheduleBlockCommand(AbstractBaseCommand):
         # concrete date on the client and submit it as `reminder_date`. If
         # absent, default to the due date (= classic "remind me day of").
         if reminder_time:
-            target_date = reminder_date or scheduled_for
+            target_date = reminder_date or due_date
             if target_date:
-                fire_at = _to_utc(target_date, reminder_time, block.user.timezone)
+                fire_at = combine_local_to_utc(
+                    target_date, reminder_time, block.user.timezone
+                )
                 Reminder.objects.create(
                     block=block,
                     fire_at=fire_at,
@@ -56,13 +59,3 @@ class ScheduleBlockCommand(AbstractBaseCommand):
                 )
 
         return block
-
-
-def _to_utc(scheduled_for, reminder_time, tz_name: str) -> "datetime":
-    """Combine date + time in the user's tz, return as UTC."""
-    try:
-        tz = pytz.timezone(tz_name or "UTC")
-    except pytz.UnknownTimeZoneError:
-        tz = pytz.UTC
-    naive = datetime.combine(scheduled_for, reminder_time)
-    return tz.localize(naive).astimezone(pytz.UTC)

@@ -10,7 +10,7 @@ from knowledge.forms import SendDueRemindersForm
 from knowledge.models import Reminder, ReminderAction
 from knowledge.services.discord_webhook import DiscordDeliveryResult
 
-from ..helpers import BlockFactory, PageFactory, UserFactory
+from ..helpers import BlockFactory, PageFactory, UserFactory, due_dt
 
 
 def _ok(*_args, **_kwargs):
@@ -286,7 +286,7 @@ class TestSendDueRemindersCommand(TestCase):
             user=self.user,
             page=self.page,
             content="TODO ship",
-            scheduled_for=scheduled,
+            due_at=due_dt(scheduled),
         )
         Reminder.objects.create(
             block=block,

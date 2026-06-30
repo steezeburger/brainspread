@@ -1138,8 +1138,8 @@ def reorder_blocks(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def schedule_block(request):
-    """Set or clear a block's scheduled_for, optionally adding a morning-of
-    reminder. See issue #59 phase 4.
+    """Set or clear a block's due_at, optionally adding a reminder. See
+    issue #59 phase 4.
     """
     try:
         data = request.data.copy()
@@ -1803,7 +1803,7 @@ def bulk_move_blocks_to_page(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def bulk_schedule_blocks(request):
-    """Set the same scheduled_for (and optional reminder) on a list of blocks.
+    """Set the same due date (and optional reminder) on a list of blocks.
 
     Mirrors single-block schedule_block, batched: when reminder_time is
     supplied each block gets a replacement pending reminder; otherwise the

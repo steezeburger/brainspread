@@ -267,10 +267,12 @@ class ApiService {
   }
 
   /**
-   * Set or clear a block's scheduled_for date.
-   *   scheduledFor: "" or "YYYY-MM-DD"   (empty clears the schedule)
+   * Set or clear a block's due date/time.
+   *   dueDate: "" or "YYYY-MM-DD"        (empty clears the due date)
+   *   dueTime: "" or "HH:MM"             (empty = all-day "due that day";
+   *                                       present = due at that time)
    *   reminderDate: "" or "YYYY-MM-DD"   (the day the reminder fires;
-   *                                       defaults to scheduledFor on the
+   *                                       defaults to dueDate on the
    *                                       backend if omitted, so callers
    *                                       can leave this empty for
    *                                       "remind day-of")
@@ -280,13 +282,15 @@ class ApiService {
    */
   async scheduleBlock(
     blockUuid,
-    scheduledFor,
+    dueDate,
+    dueTime = "",
     reminderDate = "",
     reminderTime = ""
   ) {
     const payload = {
       block: blockUuid,
-      scheduled_for: scheduledFor || "",
+      due_date: dueDate || "",
+      due_time: dueTime || "",
       reminder_date: reminderDate || "",
       reminder_time: reminderTime || "",
     };
@@ -386,7 +390,8 @@ class ApiService {
 
   async bulkScheduleBlocks(
     blockUuids,
-    scheduledFor,
+    dueDate,
+    dueTime = "",
     reminderDate = "",
     reminderTime = ""
   ) {
@@ -394,7 +399,8 @@ class ApiService {
       method: "POST",
       body: JSON.stringify({
         block_uuids: blockUuids,
-        new_date: scheduledFor || "",
+        new_date: dueDate || "",
+        new_time: dueTime || "",
         reminder_date: reminderDate || "",
         reminder_time: reminderTime || "",
       }),

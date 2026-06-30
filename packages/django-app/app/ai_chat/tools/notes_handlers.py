@@ -782,13 +782,11 @@ def _schedule_block(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
 
     today = ctx.user.today()
     try:
-        scheduled_for = _parse_relative_date(args.get("scheduled_for"), today)
+        due_date = _parse_relative_date(args.get("due_date"), today)
     except ValueError as e:
-        return {"error": f"scheduled_for: {e}"}
-    if scheduled_for is None:
-        return {
-            "error": ("scheduled_for is required (use clear_schedule to unschedule)")
-        }
+        return {"error": f"due_date: {e}"}
+    if due_date is None:
+        return {"error": ("due_date is required (use clear_schedule to unschedule)")}
 
     try:
         reminder_date = _parse_relative_date(args.get("reminder_date"), today)
@@ -810,8 +808,11 @@ def _schedule_block(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
     form_data: Dict[str, Any] = {
         "user": ctx.user.id,
         "block": block.uuid,
-        "scheduled_for": scheduled_for.isoformat(),
+        "due_date": due_date.isoformat(),
     }
+    # Optional time-of-day; absent leaves the due all-day.
+    if args.get("due_time"):
+        form_data["due_time"] = args["due_time"]
     if reminder_date is not None:
         form_data["reminder_date"] = reminder_date.isoformat()
     if resolved_time:
@@ -836,8 +837,8 @@ def _clear_schedule(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
     if not block:
         return {"error": f"No block found with uuid {block_uuid}"}
 
-    # ScheduleBlockForm treats a missing scheduled_for as "clear" (the
-    # field is required=False; cleaned_data["scheduled_for"] is None).
+    # ScheduleBlockForm treats a missing due_date as "clear" (the
+    # field is required=False; cleaned_data["due_date"] is None).
     form = ScheduleBlockForm(
         {
             "user": ctx.user.id,
@@ -1023,6 +1024,9 @@ def _bulk_schedule(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
         "block_uuids": args.get("block_uuids") or [],
         "new_date": new_date.isoformat(),
     }
+    # Optional time-of-day; absent leaves the dues all-day.
+    if args.get("new_time"):
+        form_data["new_time"] = args["new_time"]
     if reminder_date is not None:
         form_data["reminder_date"] = reminder_date.isoformat()
     if resolved_time:
@@ -1235,7 +1239,7 @@ def _resolve_reminder_time(
 
     - Empty / None    -> (None, None) — caller should leave reminder unset.
     - 'HH:MM'         -> (None, 'HH:MM') — let the form parse it; the
-                          caller's reminder_date / scheduled_for fallback
+                          caller's reminder_date / due_date fallback
                           decides which day it fires on.
     - '+Nm' / '+Nh'   -> (target_date, 'HH:MM') in the user's tz, computed
                           from now() + offset. The date is returned so the

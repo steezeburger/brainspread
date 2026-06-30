@@ -15,13 +15,13 @@ from knowledge.repositories import SavedViewRepository
 OVERDUE_FILTER: Dict[str, Any] = {
     "all": [
         {"block_type": {"in": ["todo", "doing", "later"]}},
-        {"scheduled_for": {"lt": "today"}},
+        {"due_at": {"lt": "today"}},
         {"completed_at": {"is_null": True}},
     ]
 }
 
 OVERDUE_SORT = [
-    {"field": "scheduled_for", "dir": "asc"},
+    {"field": "due_at", "dir": "asc"},
     {"field": "order", "dir": "asc"},
 ]
 

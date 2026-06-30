@@ -8,7 +8,10 @@
 // 8pm) for today, or 9am for any future date. If the user manually edits
 // the time once, we stop overwriting it for the remainder of this session.
 //
-// Emits: save({ scheduledFor, reminderDate, reminderTime }) and cancel.
+// The due value is all-day by default; ticking "at a time" adds a
+// specific time of day (emitted as dueTime; "" means all-day).
+//
+// Emits: save({ scheduledFor, dueTime, reminderDate, reminderTime }) and cancel.
 
 const SCHEDULE_TIME_CHUNKS = [
   { time: "09:00", label: "9am" },
@@ -89,6 +92,7 @@ window.ScheduleBlockPopover = {
   props: {
     isOpen: { type: Boolean, default: false },
     initialDate: { type: String, default: "" },
+    initialDueTime: { type: String, default: "" },
     initialReminderDate: { type: String, default: "" },
     initialTime: { type: String, default: "" },
   },
@@ -96,6 +100,8 @@ window.ScheduleBlockPopover = {
   data() {
     return {
       scheduledFor: "",
+      dueTimeEnabled: false,
+      dueTime: "",
       reminderEnabled: false,
       reminderOffset: "day_of",
       customReminderDate: "",
@@ -169,6 +175,8 @@ window.ScheduleBlockPopover = {
         // the user deliberates.
         this.nowMs = Date.now();
         this.scheduledFor = this.initialDate || todayLocalISO();
+        this.dueTimeEnabled = !!this.initialDueTime;
+        this.dueTime = this.initialDueTime || "";
         this.reminderEnabled = !!this.initialTime;
         this.reminderTime =
           this.initialTime || defaultReminderTimeFor(this.scheduledFor);
@@ -206,6 +214,13 @@ window.ScheduleBlockPopover = {
           defaultReminderTimeFor(this.scheduledFor) || "09:00";
       }
     },
+    onDueTimeToggle() {
+      // Seed a sensible default so enabling the time doesn't leave the
+      // input empty (an empty time would submit as all-day).
+      if (this.dueTimeEnabled && !this.dueTime) {
+        this.dueTime = "09:00";
+      }
+    },
     setScheduledFor(iso) {
       this.scheduledFor = iso;
     },
@@ -228,6 +243,7 @@ window.ScheduleBlockPopover = {
     save() {
       this.$emit("save", {
         scheduledFor: this.scheduledFor || "",
+        dueTime: this.scheduledFor && this.dueTimeEnabled ? this.dueTime : "",
         reminderDate: this.reminderEnabled ? this.resolvedReminderDate : "",
         reminderTime: this.reminderEnabled ? this.reminderTime : "",
       });
@@ -282,6 +298,22 @@ window.ScheduleBlockPopover = {
             @click="setScheduledFor(tomorrowIso)"
           >tomorrow</button>
         </div>
+
+        <label class="schedule-popover-row schedule-popover-row-duetime">
+          <input
+            type="checkbox"
+            v-model="dueTimeEnabled"
+            @change="onDueTimeToggle"
+            :disabled="!scheduledFor"
+          />
+          <span class="schedule-popover-label">at a time</span>
+          <input
+            type="time"
+            v-model="dueTime"
+            class="schedule-popover-input"
+            :disabled="!dueTimeEnabled || !scheduledFor"
+          />
+        </label>
 
         <label class="schedule-popover-row schedule-popover-row-reminder">
           <input

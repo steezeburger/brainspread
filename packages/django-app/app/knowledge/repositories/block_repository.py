@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, Iterable, List, Optional
 
 from django.db import transaction
@@ -8,6 +8,14 @@ from django.db.models.functions import TruncDate
 from common.repositories.base_repository import BaseRepository
 
 from ..models import Block, Page
+
+
+def _start_of_local_day(d: date, user) -> datetime:
+    """Aware datetime at midnight of ``d`` in the user's timezone. Used to
+    turn date-shaped boundaries into datetime bounds for the (now datetime)
+    ``due_at`` field. pytz needs ``localize()`` rather than ``tzinfo=`` to
+    pick the right DST offset."""
+    return user.tz().localize(datetime.combine(d, time.min))
 
 
 class BlockRepository(BaseRepository):
@@ -280,9 +288,9 @@ class BlockRepository(BaseRepository):
     def get_undone_todos(cls, user) -> QuerySet:
         """Get undone TODO blocks from daily pages before today.
 
-        Dated blocks (scheduled_for is set) are excluded — they surface on
-        their scheduled page via the overdue query instead, keeping the
-        original page intact as history.
+        Dated blocks (due_at is set) are excluded — they surface on their
+        due page via the overdue query instead, keeping the original page
+        intact as history.
 
         "Today" is resolved against the user's timezone via the shared
         today_for_user helper (added on main).
@@ -295,7 +303,7 @@ class BlockRepository(BaseRepository):
                 block_type="todo",
                 page__page_type="daily",
                 page__date__lt=today,
-                scheduled_for__isnull=True,
+                due_at__isnull=True,
             )
             .select_related("page")
             .order_by("page__date", "order")
@@ -303,25 +311,28 @@ class BlockRepository(BaseRepository):
 
     @classmethod
     def get_overdue_blocks(cls, user, today) -> QuerySet:
-        """Get overdue scheduled blocks for a user as of the given date.
+        """Get overdue blocks for a user as of the given date.
 
-        Predicate per issue #59:
-            scheduled_for < today
+        Predicate per issue #59, by due *date* in the user's timezone:
+            due_at < start-of-today (user-local)
             AND block_type IN (todo, doing, later)
             AND completed_at IS NULL
             AND user = request.user
+
+        Both all-day and timed items compare by date — a timed item due
+        today (even at 3pm) is "due today", not overdue, until tomorrow.
         """
         return (
             cls.get_queryset()
             .filter(
                 user=user,
-                scheduled_for__lt=today,
+                due_at__lt=_start_of_local_day(today, user),
                 block_type__in=("todo", "doing", "later"),
                 completed_at__isnull=True,
             )
             .select_related("page", "user")
             .prefetch_related("reminders")
-            .order_by("scheduled_for", "order")
+            .order_by("due_at", "order")
         )
 
     @classmethod
@@ -332,18 +343,20 @@ class BlockRepository(BaseRepository):
         end_date: date,
         limit: int,
     ) -> List[Block]:
-        """Blocks with scheduled_for in the inclusive range, ordered for
-        a calendar / upcoming-list view."""
+        """Blocks due within the inclusive date range, ordered for a
+        calendar / upcoming-list view. The date range is widened to
+        datetime bounds in the user's timezone since due_at is a datetime
+        (``[start 00:00, day-after-end 00:00)``)."""
         return list(
             cls.get_queryset()
             .filter(
                 user=user,
-                scheduled_for__gte=start_date,
-                scheduled_for__lte=end_date,
+                due_at__gte=_start_of_local_day(start_date, user),
+                due_at__lt=_start_of_local_day(end_date + timedelta(days=1), user),
             )
             .select_related("page")
             .prefetch_related("reminders")
-            .order_by("scheduled_for", "order")[:limit]
+            .order_by("due_at", "order")[:limit]
         )
 
     @classmethod
@@ -515,7 +528,7 @@ class BlockRepository(BaseRepository):
             .filter(
                 user=user,
                 block_type="todo",
-                scheduled_for__isnull=True,
+                due_at__isnull=True,
                 completed_at__isnull=True,
                 created_at__lt=cutoff_dt,
             )
@@ -535,7 +548,7 @@ class BlockRepository(BaseRepository):
         across users. When the spec doesn't supply a sort we fall back to
         ``-created_at`` (newest first) — "what did I add lately" is the
         most useful default for an open-ended block list; the older
-        ``scheduled_for, order`` default surfaced undated items at the
+        ``due_at, order`` default surfaced undated items at the
         top, which felt random for views like "all #brainspread #bugs".
 
         Template-page blocks are excluded by default — they're
@@ -574,7 +587,7 @@ class BlockRepository(BaseRepository):
         Used by the page-template / duplicate / add-from-template flows
         (issue #106). Each cloned block gets a fresh UUID; parent/child
         structure, order, block_type, content, properties, media_url,
-        asset, scheduled_for, and the M2M tag set are preserved.
+        asset, due_at / due_at_has_time, and the M2M tag set are preserved.
         completed_at is intentionally cleared on clone — a duplicated
         todo starts uncompleted even if the source was done.
 
@@ -612,7 +625,8 @@ class BlockRepository(BaseRepository):
                     media_metadata=src.media_metadata,
                     properties=dict(src.properties or {}),
                     asset=src.asset,
-                    scheduled_for=src.scheduled_for,
+                    due_at=src.due_at,
+                    due_at_has_time=src.due_at_has_time,
                     collapsed=src.collapsed,
                 )
                 uuid_map[src.id] = new_block

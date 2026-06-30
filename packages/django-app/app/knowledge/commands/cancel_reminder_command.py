@@ -8,7 +8,7 @@ from ..models import Block, Reminder
 
 class CancelReminderCommand(AbstractBaseCommand):
     """Cancel the block's pending reminder without clearing the
-    block's scheduled_for. Refuses (returns an error result) when
+    block's due_at. Refuses (returns an error result) when
     the block has no pending reminder — there's nothing to cancel.
     Sent / failed / skipped reminders aren't touched.
     """

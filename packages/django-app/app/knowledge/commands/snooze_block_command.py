@@ -5,16 +5,18 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.snooze_block_form import SnoozeBlockForm
 from ..models import Block, Reminder
+from ..services.due_dates import shift_due_days
 
 
 class SnoozeBlockCommand(AbstractBaseCommand):
-    """Push a single block's schedule forward by days and/or hours.
+    """Push a single block's due date forward by days and/or hours.
 
-    Date side (`scheduled_for`) only respects `days` since it's a date,
-    not a datetime. Reminder side (the block's pending reminder, if
-    any) shifts by the full days+hours timedelta. Refuses if the block
-    has neither a scheduled_for nor a pending reminder — there's
-    nothing to snooze.
+    Due side (`due_at`) only respects `days`: for an all-day item the local
+    date moves and midnight is preserved; for a timed item the day moves and
+    the local time-of-day is preserved (DST-safe). Reminder side (the block's
+    pending reminder, if any) shifts by the full days+hours timedelta. Refuses
+    if the block has neither a due_at nor a pending reminder — nothing to
+    snooze.
     """
 
     def __init__(self, form: SnoozeBlockForm) -> None:
@@ -29,14 +31,16 @@ class SnoozeBlockCommand(AbstractBaseCommand):
 
         pending: Reminder | None = block.get_pending_reminder()
 
-        if block.scheduled_for is None and pending is None:
+        if block.due_at is None and pending is None:
             return {"error": "block has no schedule to snooze"}
 
         update_fields: list[str] = []
 
-        if block.scheduled_for is not None and days != 0:
-            block.scheduled_for = block.scheduled_for + timedelta(days=days)
-            update_fields.append("scheduled_for")
+        if block.due_at is not None and days != 0:
+            block.due_at = shift_due_days(
+                block.due_at, block.due_at_has_time, days, block.user.timezone
+            )
+            update_fields.append("due_at")
 
         if update_fields:
             update_fields.append("modified_at")
@@ -51,9 +55,8 @@ class SnoozeBlockCommand(AbstractBaseCommand):
         return {
             "snoozed": True,
             "block_uuid": str(block.uuid),
-            "scheduled_for": (
-                block.scheduled_for.isoformat() if block.scheduled_for else None
-            ),
+            "due_at": (block.due_at.isoformat() if block.due_at else None),
+            "due_date": block._due_local_date(),
             "reminder_fire_at": new_fire_at,
             "affected_page_uuids": ([str(block.page.uuid)] if block.page else []),
         }

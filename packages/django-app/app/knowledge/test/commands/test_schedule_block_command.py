@@ -29,28 +29,48 @@ class TestScheduleBlockCommand(TestCase):
             .astimezone(pytz.UTC)
         )
 
-    def test_sets_scheduled_for_on_block(self):
+    def test_sets_due_date_on_block(self):
         block = BlockFactory(user=self.user, page=self.page)
         target = date(2026, 4, 30)
-        result = self._run(block=str(block.uuid), scheduled_for=target)
-        self.assertEqual(result.scheduled_for, target)
+        result = self._run(block=str(block.uuid), due_date=target)
+        # All-day due: stored at user-local midnight, no time component.
+        self.assertEqual(result.due_at, self._to_utc(target, time.min))
+        self.assertFalse(result.due_at_has_time)
+        self.assertEqual(result._due_local_date(), "2026-04-30")
+        self.assertIsNone(result._due_local_time())
 
-    def test_clears_scheduled_for_when_empty(self):
-        block = BlockFactory(
-            user=self.user, page=self.page, scheduled_for=date(2026, 4, 30)
+    def test_sets_timed_due(self):
+        block = BlockFactory(user=self.user, page=self.page)
+        target = date(2026, 4, 30)
+        result = self._run(
+            block=str(block.uuid), due_date=target, due_time=time(hour=15)
         )
-        result = self._run(block=str(block.uuid), scheduled_for="")
-        self.assertIsNone(result.scheduled_for)
+        self.assertTrue(result.due_at_has_time)
+        self.assertEqual(result.due_at, self._to_utc(target, time(hour=15)))
+        self.assertEqual(result._due_local_date(), "2026-04-30")
+        self.assertEqual(result._due_local_time(), "15:00")
+
+    def test_clears_due_when_empty(self):
+        block = BlockFactory(
+            user=self.user,
+            page=self.page,
+            due_at=self._to_utc(date(2026, 4, 30), time.min),
+        )
+        result = self._run(block=str(block.uuid), due_date="")
+        self.assertIsNone(result.due_at)
+        self.assertFalse(result.due_at_has_time)
 
     def test_clear_also_deletes_pending_reminder(self):
         block = BlockFactory(
-            user=self.user, page=self.page, scheduled_for=date(2026, 4, 30)
+            user=self.user,
+            page=self.page,
+            due_at=self._to_utc(date(2026, 4, 30), time.min),
         )
         Reminder.objects.create(
             block=block, fire_at=timezone.now() + timedelta(hours=1)
         )
 
-        self._run(block=str(block.uuid), scheduled_for="")
+        self._run(block=str(block.uuid), due_date="")
 
         self.assertEqual(Reminder.objects.filter(block=block).count(), 0)
 
@@ -61,7 +81,7 @@ class TestScheduleBlockCommand(TestCase):
 
         self._run(
             block=str(block.uuid),
-            scheduled_for=target,
+            due_date=target,
             reminder_time=chosen_time,
         )
 
@@ -71,7 +91,7 @@ class TestScheduleBlockCommand(TestCase):
 
     def test_no_reminder_when_time_not_set(self):
         block = BlockFactory(user=self.user, page=self.page)
-        self._run(block=str(block.uuid), scheduled_for=date(2026, 4, 30))
+        self._run(block=str(block.uuid), due_date=date(2026, 4, 30))
         self.assertEqual(Reminder.objects.filter(block=block).count(), 0)
 
     def test_reschedule_replaces_pending_reminder(self):
@@ -80,12 +100,12 @@ class TestScheduleBlockCommand(TestCase):
 
         self._run(
             block=str(block.uuid),
-            scheduled_for=date(2026, 4, 30),
+            due_date=date(2026, 4, 30),
             reminder_time=time(hour=9),
         )
         self._run(
             block=str(block.uuid),
-            scheduled_for=date(2026, 5, 1),
+            due_date=date(2026, 5, 1),
             reminder_time=time(hour=17),
         )
 
@@ -103,7 +123,7 @@ class TestScheduleBlockCommand(TestCase):
         chosen = time(hour=17, minute=30)
         self._run(
             block=str(block.uuid),
-            scheduled_for=date(2026, 4, 30),
+            due_date=date(2026, 4, 30),
             reminder_time=chosen,
         )
 
@@ -118,15 +138,15 @@ class TestScheduleBlockCommand(TestCase):
         self.assertIsNone(block.to_dict()["pending_reminder_date"])
 
     def test_reminder_can_fire_on_date_different_from_due(self):
-        """Submitting a reminder_date earlier than scheduled_for should
-        fire the reminder on that earlier date — supports "remind me 1
-        day before due", "1 week before", etc."""
+        """Submitting a reminder_date earlier than due_date should fire the
+        reminder on that earlier date — supports "remind me 1 day before
+        due", "1 week before", etc."""
         block = BlockFactory(user=self.user, page=self.page)
         due = date(2026, 4, 30)
         remind_on = date(2026, 4, 23)  # 1 week before
         self._run(
             block=str(block.uuid),
-            scheduled_for=due,
+            due_date=due,
             reminder_date=remind_on,
             reminder_time=time(hour=9),
         )
@@ -142,12 +162,12 @@ class TestScheduleBlockCommand(TestCase):
         data = block.to_dict()
         self.assertEqual(data["pending_reminder_date"], "2026-04-23")
 
-    def test_reminder_date_falls_back_to_scheduled_for_when_omitted(self):
+    def test_reminder_date_falls_back_to_due_date_when_omitted(self):
         block = BlockFactory(user=self.user, page=self.page)
         due = date(2026, 4, 30)
         self._run(
             block=str(block.uuid),
-            scheduled_for=due,
+            due_date=due,
             reminder_time=time(hour=9),
             # reminder_date omitted intentionally
         )
@@ -168,7 +188,7 @@ class TestScheduleBlockCommand(TestCase):
 
         self._run(
             block=str(block.uuid),
-            scheduled_for=date(2026, 5, 1),
+            due_date=date(2026, 5, 1),
             reminder_time=time(hour=9),
         )
 
