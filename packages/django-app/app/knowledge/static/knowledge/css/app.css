@@ -6608,9 +6608,18 @@ kbd {
 }
 
 .overdue-due-date {
+  /* Pushed to the right of the meta row (page name sits on the left) so
+     the due date reads as its own field — matches the embed rows'
+     right-aligned due chip, keeping the overdue red emphasis. */
+  margin-left: auto;
+  flex: 0 0 auto;
   font-size: 0.8rem;
   color: var(--error-color, #c0392b);
-  margin-right: 0.5rem;
+  font-family: var(--font-mono, monospace);
+  white-space: nowrap;
+  border: 1px solid var(--error-color, #c0392b);
+  border-radius: 3px;
+  padding: 0 5px;
   opacity: 0.85;
 }
 
