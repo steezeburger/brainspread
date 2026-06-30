@@ -8079,11 +8079,13 @@ a.hashtag-mention:hover,
 }
 .result-content {
   font-size: 0.95rem;
+  cursor: pointer;
 }
 .result-meta {
   font-size: 0.8rem;
   color: var(--text-secondary);
   font-family: var(--font-mono, monospace);
+  text-decoration: none;
 }
 .result-block-type {
   display: inline-block;

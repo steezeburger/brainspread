@@ -64,6 +64,38 @@ window.EmbedResultRow = {
       if (!c) return "(empty block)";
       return c.length > 200 ? c.slice(0, 200) + "…" : c;
     },
+    renderContent(b) {
+      // Escape first, then linkify #hashtags into the same clickable
+      // anchors the page block tree uses (.inline-tag .clickable-tag →
+      // /knowledge/page/<tag>/). Rendered via v-html, so escaping is
+      // what keeps block content from injecting markup. This is the
+      // reason the content sits in its own <span> rather than inside the
+      // block link — anchors can't nest.
+      const text = this.blockLabel(b);
+      const escaped = text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+      return escaped.replace(
+        /#([a-zA-Z0-9_-]+)/g,
+        '<a class="inline-tag clickable-tag" href="/knowledge/page/$1/" data-tag="$1">#$1</a>'
+      );
+    },
+    openBlock(event) {
+      // Clicking a hashtag inside the content navigates to that tag via
+      // its own anchor — let it through. Any other click on the content
+      // opens the source block, preserving the old whole-row-is-a-link
+      // behavior (the meta line is also a real link for keyboard / open
+      // in new tab).
+      if (event.target.closest("a")) return;
+      const href = this.blockHref(this.block);
+      if (!href || href === "#") return;
+      if (event.metaKey || event.ctrlKey) {
+        window.open(href, "_blank", "noopener");
+        return;
+      }
+      window.location.href = href;
+    },
     isTodoType(b) {
       return ["todo", "doing", "done", "later", "wontdo"].includes(
         b && b.block_type
@@ -284,15 +316,15 @@ window.EmbedResultRow = {
           :role="isTodoType(block) ? 'button' : null"
           :aria-label="isTodoType(block) ? 'Cycle todo state' : null"
         >{{ bulletSymbol(block) }}</div>
-        <a :href="blockHref(block)" class="result-row-link">
-          <span class="result-content">{{ blockLabel(block) }}</span>
-          <span class="result-meta">
+        <div class="result-row-link">
+          <span class="result-content" @click="openBlock" v-html="renderContent(block)"></span>
+          <a :href="blockHref(block)" class="result-meta">
             <span v-if="block.block_type" class="result-block-type">{{ block.block_type }}</span>
             <span v-if="block.scheduled_for"> · due {{ block.scheduled_for }}</span>
             <span v-if="block.completed_at"> · done {{ block.completed_at.split('T')[0] }}</span>
             <span v-if="block.page_title"> · {{ block.page_title }}</span>
-          </span>
-        </a>
+          </a>
+        </div>
         <button
           type="button"
           class="block-menu result-row-menu-btn"
