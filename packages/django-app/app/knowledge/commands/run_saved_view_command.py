@@ -26,6 +26,7 @@ class RunSavedViewCommand(AbstractBaseCommand):
 
         user = self.form.cleaned_data["user"]
         limit = self.form.cleaned_data.get("limit") or 100
+        count_only = self.form.cleaned_data.get("count_only")
         view_uuid = self.form.cleaned_data.get("view_uuid")
         view_slug = self.form.cleaned_data.get("view_slug")
         context_date = self.form.cleaned_data.get("context_date")
@@ -55,6 +56,22 @@ class RunSavedViewCommand(AbstractBaseCommand):
             )
         except query_engine.QueryEngineError as exc:
             raise ValidationError(str(exc)) from exc
+
+        # Collapsed embeds only need the header count — count limit+1
+        # without serializing the rows so the count + truncation badge
+        # match the full path, but a daily page full of collapsed embeds
+        # stays cheap.
+        if count_only:
+            matched = BlockRepository.count_compiled_query(
+                user, compiled, limit=limit + 1
+            )
+            truncated = matched > limit
+            return {
+                "view": view.to_dict(),
+                "count": min(matched, limit),
+                "results": [],
+                "truncated": truncated,
+            }
 
         # Fetch limit+1 so we can flag when there are more results than fit.
         rows = list(BlockRepository.run_compiled_query(user, compiled, limit=limit + 1))
