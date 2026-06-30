@@ -113,17 +113,14 @@ class Migration(migrations.Migration):
             ),
         ),
         # The (user, scheduled_for) index follows the column rename, but its
-        # auto-generated name is derived from the field name, so swap it for
-        # the (user, due_at) name Django now expects.
-        migrations.RemoveIndex(
+        # auto-generated name is derived from the field name, so rename it to
+        # the (user, due_at) name Django now expects. RenameIndex (rather than
+        # remove+add) keeps this reversible — a remove+add would reference the
+        # old field name on reverse, before the column rename is undone.
+        migrations.RenameIndex(
             model_name="block",
-            name="blocks_user_id_e91738_idx",
-        ),
-        migrations.AddIndex(
-            model_name="block",
-            index=models.Index(
-                fields=["user", "due_at"], name="blocks_user_id_f99b9a_idx"
-            ),
+            new_name="blocks_user_id_f99b9a_idx",
+            old_name="blocks_user_id_e91738_idx",
         ),
         # Help-text example referenced the old field name.
         migrations.AlterField(
