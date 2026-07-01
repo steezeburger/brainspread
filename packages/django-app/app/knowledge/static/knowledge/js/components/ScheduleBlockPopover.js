@@ -348,6 +348,8 @@ window.ScheduleBlockPopover = {
           />
         </label>
 
+        <div class="schedule-popover-section-divider" aria-hidden="true"></div>
+
         <template v-for="(row, i) in reminderRows" :key="row.id">
           <div class="schedule-popover-row schedule-popover-row-reminder">
             <span class="schedule-popover-label">{{ i === 0 ? 'remind' : 'and' }}</span>
@@ -385,7 +387,7 @@ window.ScheduleBlockPopover = {
         </template>
 
         <div
-          v-if="scheduledFor"
+          v-if="scheduledFor && reminderRows.length > 0"
           class="schedule-popover-quick-row schedule-popover-quick-row-time"
         >
           <button

@@ -6842,6 +6842,14 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   margin: 0.1rem 0.15rem;
 }
 
+/* Full-width rule between the due date/time section and the reminder
+ * section so the two groups read as distinct; the popover's column gap
+ * provides the breathing room around it. */
+.schedule-popover-section-divider {
+  border-top: 1px solid var(--border-secondary);
+  margin: 0;
+}
+
 /* "+ reminder" — an add-row action, not a value chip. Dashed border +
  * muted text + left alignment with the reminder rows (no chip-row
  * indent) so it can't be mistaken for another time suggestion. */
