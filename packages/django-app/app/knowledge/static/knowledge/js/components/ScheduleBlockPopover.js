@@ -8,7 +8,7 @@
 // 8pm) for today, or 9am for any future date. If the user manually edits
 // the time once, we stop overwriting it for the remainder of this session.
 //
-// The due value is all-day by default; ticking "at a time" adds a
+// The due value is all-day by default; ticking "at" adds a
 // specific time of day (emitted as dueTime; "" means all-day).
 //
 // Emits: save({ scheduledFor, dueTime, reminderDate, reminderTime }) and cancel.
@@ -306,7 +306,7 @@ window.ScheduleBlockPopover = {
             @change="onDueTimeToggle"
             :disabled="!scheduledFor"
           />
-          <span class="schedule-popover-label">at a time</span>
+          <span class="schedule-popover-label">at</span>
           <input
             type="time"
             v-model="dueTime"
