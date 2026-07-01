@@ -34,20 +34,34 @@ class BulkScheduleCommand(AbstractBaseCommand):
         block_uuids: List[str] = self.form.cleaned_data["block_uuids"]
         new_date: date = self.form.cleaned_data["new_date"]
         new_time: Optional[time] = self.form.cleaned_data.get("new_time")
+        reminders: Optional[list] = self.form.cleaned_data.get("reminders")
         reminder_time: Optional[time] = self.form.cleaned_data.get("reminder_time")
         reminder_date: Optional[date] = self.form.cleaned_data.get("reminder_date")
 
         # Route mode is decided once for the whole batch — either everyone
-        # gets a reminder set (replace semantics) or nobody does (preserve
-        # existing reminders, shift fire_at).
+        # gets the same reminder set (replace semantics) or nobody does
+        # (preserve existing reminders, shift fire_at). The popover sends
+        # a `reminders` list; the tools send single reminder_date/time.
+        if reminders:
+            return self._execute_with_reminders(
+                user=user,
+                block_uuids=block_uuids,
+                new_date=new_date,
+                new_time=new_time,
+                reminders=reminders,
+            )
         if reminder_time is not None:
             return self._execute_with_reminders(
                 user=user,
                 block_uuids=block_uuids,
                 new_date=new_date,
                 new_time=new_time,
-                reminder_date=reminder_date or new_date,
-                reminder_time=reminder_time,
+                reminders=[
+                    {
+                        "date": (reminder_date or new_date).isoformat(),
+                        "time": reminder_time.strftime("%H:%M"),
+                    }
+                ],
             )
         return self._execute_date_only(
             user=user, block_uuids=block_uuids, new_date=new_date, new_time=new_time
@@ -83,8 +97,7 @@ class BulkScheduleCommand(AbstractBaseCommand):
                 if old_date is not None:
                     delta = new_date - old_date
                     if delta != timedelta(0):
-                        pending = block.get_pending_reminder()
-                        if pending is not None:
+                        for pending in block.get_pending_reminders():
                             pending.fire_at = pending.fire_at + delta
                             pending.save(update_fields=["fire_at", "modified_at"])
 
@@ -107,13 +120,11 @@ class BulkScheduleCommand(AbstractBaseCommand):
         block_uuids: List[str],
         new_date: date,
         new_time: Optional[time],
-        reminder_date: date,
-        reminder_time: time,
+        reminders: list,
     ) -> Dict[str, Any]:
         updated_count = 0
         missing: List[str] = []
         affected_page_uuids: Set[str] = set()
-        reminder_iso = reminder_time.strftime("%H:%M")
         due_time_iso = new_time.strftime("%H:%M") if new_time else ""
 
         with transaction.atomic():
@@ -129,8 +140,7 @@ class BulkScheduleCommand(AbstractBaseCommand):
                         "block": str(block.uuid),
                         "due_date": new_date.isoformat(),
                         "due_time": due_time_iso,
-                        "reminder_date": reminder_date.isoformat(),
-                        "reminder_time": reminder_iso,
+                        "reminders": reminders,
                     }
                 )
                 if not inner.is_valid():
@@ -146,7 +156,6 @@ class BulkScheduleCommand(AbstractBaseCommand):
             "missing": missing,
             "new_date": new_date.isoformat(),
             "reminder_set": True,
-            "reminder_date": reminder_date.isoformat(),
-            "reminder_time": reminder_iso,
+            "reminders_count": len(reminders),
             "affected_page_uuids": sorted(affected_page_uuids),
         }

@@ -29,9 +29,9 @@ class SnoozeBlockCommand(AbstractBaseCommand):
         days: int = self.form.cleaned_data["days"]
         hours: int = self.form.cleaned_data["hours"]
 
-        pending: Reminder | None = block.get_pending_reminder()
+        pending: list[Reminder] = block.get_pending_reminders()
 
-        if block.due_at is None and pending is None:
+        if block.due_at is None and not pending:
             return {"error": "block has no schedule to snooze"}
 
         update_fields: list[str] = []
@@ -46,11 +46,15 @@ class SnoozeBlockCommand(AbstractBaseCommand):
             update_fields.append("modified_at")
             block.save(update_fields=update_fields)
 
+        # Every pending reminder shifts by the same delta so their
+        # relative spacing (e.g. a nudge series) is preserved.
         new_fire_at: str | None = None
-        if pending is not None:
-            pending.fire_at = pending.fire_at + timedelta(days=days, hours=hours)
-            pending.save(update_fields=["fire_at", "modified_at"])
-            new_fire_at = pending.fire_at.isoformat()
+        delta = timedelta(days=days, hours=hours)
+        for reminder in pending:
+            reminder.fire_at = reminder.fire_at + delta
+            reminder.save(update_fields=["fire_at", "modified_at"])
+        if pending:
+            new_fire_at = pending[0].fire_at.isoformat()
 
         return {
             "snoozed": True,

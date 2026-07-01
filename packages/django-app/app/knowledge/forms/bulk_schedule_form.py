@@ -37,11 +37,22 @@ class BulkScheduleForm(BaseForm):
     new_date = forms.DateField()
     # Optional due time of day. Absent = all-day.
     new_time = forms.TimeField(required=False)
+    # Reminder list from the popover ([{date?, time}, …]); passed through
+    # to the per-block ScheduleBlockForm, which owns entry validation.
+    reminders = forms.JSONField(required=False)
     # Mirrors ScheduleBlockForm — both optional. reminder_date defaults
     # to new_date in the command when reminder_time is set but
-    # reminder_date isn't.
+    # reminder_date isn't. Ignored when `reminders` is supplied.
     reminder_date = forms.DateField(required=False)
     reminder_time = forms.TimeField(required=False)
+
+    def clean_reminders(self):
+        raw = self.cleaned_data.get("reminders")
+        if raw in (None, ""):
+            return None
+        if not isinstance(raw, list):
+            raise ValidationError("reminders must be a list")
+        return raw
 
     def clean_block_uuids(self) -> List[str]:
         raw = self.cleaned_data.get("block_uuids")

@@ -276,7 +276,8 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
     def to_dict(self, include_page_context: bool = False) -> "BlockData":
         """Convert block to dictionary with proper typing"""
         due_date, due_time = self._due_local()
-        pending_reminder_date, pending_reminder_time = self._pending_reminder_local()
+        pending_reminders = self._pending_reminders_local()
+        first_reminder = pending_reminders[0] if pending_reminders else None
         data: BlockData = {
             "uuid": str(self.uuid),
             "content": self.content,
@@ -303,13 +304,14 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             "completed_at": (
                 self.completed_at.isoformat() if self.completed_at else None
             ),
-            # The popover round-trips these so a user can re-open it and
-            # see their previous reminder still selected. Both reflect the
-            # single pending reminder for the block (or None for both).
-            # `pending_reminder_date` may differ from `due_date` —
-            # users can choose to be reminded N days before due, etc.
-            "pending_reminder_date": pending_reminder_date,
-            "pending_reminder_time": pending_reminder_time,
+            # The popover round-trips the full list so a user can re-open
+            # it and edit their reminders. Reminder dates may differ from
+            # `due_date` — users can be reminded N days before due, etc.
+            # The singular fields mirror the earliest pending reminder for
+            # compact surfaces (the due-pill badge).
+            "pending_reminders": pending_reminders,
+            "pending_reminder_date": first_reminder["date"] if first_reminder else None,
+            "pending_reminder_time": first_reminder["time"] if first_reminder else None,
             # Page context fields (optional)
             "page_title": None,
             "page_type": None,
@@ -344,27 +346,40 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
     def _due_local_date(self) -> Optional[str]:
         return self._due_local()[0]
 
-    def _pending_reminder_local(self) -> "tuple[Optional[str], Optional[str]]":
-        """Return the user-local (date, time) of the block's pending reminder
-        (one at most — see ScheduleBlockCommand), as ("YYYY-MM-DD", "HH:MM").
-        Both are None when no pending reminder exists.
-        """
-        pending = self.reminders.filter(sent_at__isnull=True).first()
-        if not pending:
-            return (None, None)
-        local = pending.fire_at.astimezone(self.user.tz())
-        return (local.strftime("%Y-%m-%d"), local.strftime("%H:%M"))
+    def get_pending_reminders(self) -> "list":
+        """All pending reminders for this block, earliest fire_at first.
+
+        A block can carry 0..N pending reminders — ScheduleBlockCommand
+        replaces the whole pending set on every save. Pending = sent_at IS
+        NULL; once a reminder fires (or is cancelled / skipped) sent_at
+        gets set. Filters in Python over ``self.reminders.all()`` so a
+        ``prefetch_related("reminders")`` cache is used instead of bypassed
+        (``.filter()`` on the related manager would issue a fresh query
+        per block)."""
+        return [r for r in self.reminders.all() if r.sent_at is None]
 
     def get_pending_reminder(self):
-        """Return this block's pending reminder, if any.
+        """Earliest pending reminder, or None. Kept for single-reminder
+        surfaces (snooze/cancel tool results, the due-pill badge)."""
+        pending = self.get_pending_reminders()
+        return pending[0] if pending else None
 
-        At most one pending reminder exists per block at any time —
-        ScheduleBlockCommand replaces the previous one on save. Used by
-        snooze / cancel / pending-time-display flows that all need the
-        single live reminder for a block. Filters by sent_at IS NULL,
-        matching `_pending_reminder_local` — once a reminder fires (or
-        is cancelled / skipped) sent_at gets set."""
-        return self.reminders.filter(sent_at__isnull=True).first()
+    def _pending_reminders_local(self) -> "list[PendingReminderData]":
+        """User-local ``[{uuid, date, time}, …]`` for every pending
+        reminder, earliest first. Drives the popover's editable reminder
+        list; date/time are "YYYY-MM-DD" / "HH:MM" strings."""
+        tz = self.user.tz()
+        out: list[PendingReminderData] = []
+        for reminder in self.get_pending_reminders():
+            local = reminder.fire_at.astimezone(tz)
+            out.append(
+                {
+                    "uuid": str(reminder.uuid),
+                    "date": local.strftime("%Y-%m-%d"),
+                    "time": local.strftime("%H:%M"),
+                }
+            )
+        return out
 
     def as_summary(self) -> "BlockSummaryData":
         """Compact summary for list-shaped tool results (overdue list,
@@ -373,7 +388,8 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
         surface can render the row without a follow-up fetch.
         """
         due_date, due_time = self._due_local()
-        pending_reminder_date, pending_reminder_time = self._pending_reminder_local()
+        pending_reminders = self._pending_reminders_local()
+        first_reminder = pending_reminders[0] if pending_reminders else None
         return {
             "block_uuid": str(self.uuid),
             "content": self.content,
@@ -388,8 +404,9 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             "page_uuid": str(self.page.uuid) if self.page else None,
             "page_title": self.page.title if self.page else None,
             "page_slug": self.page.slug if self.page else None,
-            "pending_reminder_date": pending_reminder_date,
-            "pending_reminder_time": pending_reminder_time,
+            "pending_reminders": pending_reminders,
+            "pending_reminder_date": first_reminder["date"] if first_reminder else None,
+            "pending_reminder_time": first_reminder["time"] if first_reminder else None,
         }
 
     def to_dict_with_children(self, include_page_context: bool = False) -> "BlockData":
@@ -402,6 +419,15 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             )
         block_data["children"] = children
         return block_data
+
+
+class PendingReminderData(TypedDict):
+    """One pending reminder in user-local terms, as round-tripped by the
+    schedule popover's editable reminder list."""
+
+    uuid: str
+    date: str
+    time: str
 
 
 class BlockSummaryData(TypedDict):
@@ -422,6 +448,7 @@ class BlockSummaryData(TypedDict):
     page_uuid: Optional[str]
     page_title: Optional[str]
     page_slug: Optional[str]
+    pending_reminders: list[PendingReminderData]
     pending_reminder_date: Optional[str]
     pending_reminder_time: Optional[str]
 
@@ -449,6 +476,7 @@ class BlockData(TypedDict):
     due_time: Optional[str]
     due_at_has_time: bool
     completed_at: Optional[str]
+    pending_reminders: list[PendingReminderData]
     pending_reminder_date: Optional[str]
     pending_reminder_time: Optional[str]
     # Page context fields (when included in API responses)

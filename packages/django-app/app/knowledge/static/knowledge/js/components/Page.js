@@ -70,8 +70,7 @@ const Page = {
       schedulePopoverBlock: null,
       schedulePopoverInitialDate: "",
       schedulePopoverInitialDueTime: "",
-      schedulePopoverInitialReminderDate: "",
-      schedulePopoverInitialTime: "",
+      schedulePopoverInitialReminders: [],
       // When the schedule popover is opened for a multi-select, these hold
       // the bulk context so onSchedulePopoverSave routes to the bulk path.
       schedulePopoverBulk: false,
@@ -2569,7 +2568,7 @@ const Page = {
       if (!block) return;
 
       if (clear) {
-        await this._submitSchedule(block, "", "", "", "");
+        await this._submitSchedule(block, "", "", []);
         return;
       }
 
@@ -2577,9 +2576,7 @@ const Page = {
       this.schedulePopoverInitialDate =
         block.due_date || this._defaultScheduleDate();
       this.schedulePopoverInitialDueTime = block.due_time || "";
-      this.schedulePopoverInitialReminderDate =
-        block.pending_reminder_date || "";
-      this.schedulePopoverInitialTime = block.pending_reminder_time || "";
+      this.schedulePopoverInitialReminders = block.pending_reminders || [];
       this.schedulePopoverOpen = true;
     },
 
@@ -2600,12 +2597,7 @@ const Page = {
       return pageDate > todayIso ? pageDate : "";
     },
 
-    onSchedulePopoverSave({
-      scheduledFor,
-      dueTime,
-      reminderDate,
-      reminderTime,
-    }) {
+    onSchedulePopoverSave({ scheduledFor, dueTime, reminders }) {
       const bulk = this.schedulePopoverBulk;
       const bulkUuids = this.schedulePopoverBulkUuids;
       const block = this.schedulePopoverBlock;
@@ -2614,23 +2606,11 @@ const Page = {
       this.schedulePopoverBulk = false;
       this.schedulePopoverBulkUuids = [];
       if (bulk) {
-        this._submitBulkSchedule(
-          bulkUuids,
-          scheduledFor,
-          dueTime,
-          reminderDate,
-          reminderTime
-        );
+        this._submitBulkSchedule(bulkUuids, scheduledFor, dueTime, reminders);
         return;
       }
       if (!block) return;
-      this._submitSchedule(
-        block,
-        scheduledFor,
-        dueTime,
-        reminderDate,
-        reminderTime
-      );
+      this._submitSchedule(block, scheduledFor, dueTime, reminders);
     },
 
     onSchedulePopoverCancel() {
@@ -2663,33 +2643,26 @@ const Page = {
       this.blockChatPopoverBlock = null;
     },
 
-    async _submitSchedule(
-      block,
-      scheduledFor,
-      dueTime,
-      reminderDate,
-      reminderTime
-    ) {
+    async _submitSchedule(block, scheduledFor, dueTime, reminders) {
       try {
         const result = await window.apiService.scheduleBlock(
           block.uuid,
           scheduledFor,
           dueTime,
-          reminderDate,
-          reminderTime
+          reminders
         );
         if (result.success) {
           let msg;
+          const count = (reminders || []).length;
           if (!scheduledFor) {
             msg = "schedule cleared";
-          } else if (reminderTime) {
-            const formatted =
-              window.formatTimeForUser?.(reminderTime) || reminderTime;
-            const onDate =
-              reminderDate && reminderDate !== scheduledFor
-                ? ` on ${reminderDate}`
-                : "";
+          } else if (count === 1) {
+            const r = reminders[0];
+            const formatted = window.formatTimeForUser?.(r.time) || r.time;
+            const onDate = r.date !== scheduledFor ? ` on ${r.date}` : "";
             msg = `scheduled for ${scheduledFor} · remind${onDate} at ${formatted}`;
+          } else if (count > 1) {
+            msg = `scheduled for ${scheduledFor} · ${count} reminders`;
           } else {
             msg = `scheduled for ${scheduledFor}`;
           }
@@ -3924,18 +3897,11 @@ const Page = {
       // to today rather than seeding from one block's existing schedule.
       this.schedulePopoverInitialDate = "";
       this.schedulePopoverInitialDueTime = "";
-      this.schedulePopoverInitialReminderDate = "";
-      this.schedulePopoverInitialTime = "";
+      this.schedulePopoverInitialReminders = [];
       this.schedulePopoverOpen = true;
     },
 
-    async _submitBulkSchedule(
-      uuids,
-      scheduledFor,
-      dueTime,
-      reminderDate,
-      reminderTime
-    ) {
+    async _submitBulkSchedule(uuids, scheduledFor, dueTime, reminders) {
       if (!uuids || uuids.length === 0) return;
       if (!scheduledFor) {
         this.$parent?.addToast?.("pick a date to schedule", "info");
@@ -3946,8 +3912,7 @@ const Page = {
           uuids,
           scheduledFor,
           dueTime,
-          reminderDate,
-          reminderTime
+          reminders
         );
         if (!result || !result.success) {
           throw new Error(
@@ -3958,10 +3923,13 @@ const Page = {
         let msg = `scheduled ${count} block${
           count === 1 ? "" : "s"
         } for ${scheduledFor}`;
-        if (result.data?.reminder_set && reminderTime) {
+        const reminderCount = (reminders || []).length;
+        if (result.data?.reminder_set && reminderCount === 1) {
           const formatted =
-            window.formatTimeForUser?.(reminderTime) || reminderTime;
+            window.formatTimeForUser?.(reminders[0].time) || reminders[0].time;
           msg += ` · remind at ${formatted}`;
+        } else if (result.data?.reminder_set && reminderCount > 1) {
+          msg += ` · ${reminderCount} reminders each`;
         }
         this.$parent?.addToast?.(msg, "success");
         // Keep any embeds that surface these blocks in sync, same as the
@@ -4412,8 +4380,7 @@ const Page = {
         :is-open="schedulePopoverOpen"
         :initial-date="schedulePopoverInitialDate"
         :initial-due-time="schedulePopoverInitialDueTime"
-        :initial-reminder-date="schedulePopoverInitialReminderDate"
-        :initial-time="schedulePopoverInitialTime"
+        :initial-reminders="schedulePopoverInitialReminders"
         @save="onSchedulePopoverSave"
         @cancel="onSchedulePopoverCancel"
       />

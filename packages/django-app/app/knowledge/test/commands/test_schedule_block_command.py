@@ -176,6 +176,98 @@ class TestScheduleBlockCommand(TestCase):
         self.assertEqual(reminders.count(), 1)
         self.assertEqual(reminders.first().fire_at, self._to_utc(due, time(hour=9)))
 
+    def test_creates_multiple_reminders_from_list(self):
+        block = BlockFactory(user=self.user, page=self.page)
+        due = date(2026, 4, 30)
+        self._run(
+            block=str(block.uuid),
+            due_date=due,
+            reminders=[
+                {"date": "2026-04-29", "time": "09:00"},
+                {"time": "17:30"},  # no date → falls back to due_date
+            ],
+        )
+
+        fire_ats = set(
+            Reminder.objects.filter(block=block).values_list("fire_at", flat=True)
+        )
+        self.assertEqual(
+            fire_ats,
+            {
+                self._to_utc(date(2026, 4, 29), time(hour=9)),
+                self._to_utc(due, time(hour=17, minute=30)),
+            },
+        )
+
+    def test_reminders_list_replaces_whole_pending_set(self):
+        block = BlockFactory(user=self.user, page=self.page)
+        due = date(2026, 4, 30)
+        self._run(
+            block=str(block.uuid),
+            due_date=due,
+            reminders=[
+                {"time": "09:00"},
+                {"time": "12:00"},
+                {"time": "17:00"},
+            ],
+        )
+        self._run(
+            block=str(block.uuid),
+            due_date=due,
+            reminders=[{"time": "08:00"}],
+        )
+
+        reminders = Reminder.objects.filter(block=block, sent_at__isnull=True)
+        self.assertEqual(reminders.count(), 1)
+        self.assertEqual(reminders.first().fire_at, self._to_utc(due, time(hour=8)))
+
+    def test_duplicate_reminder_instants_collapse(self):
+        block = BlockFactory(user=self.user, page=self.page)
+        due = date(2026, 4, 30)
+        self._run(
+            block=str(block.uuid),
+            due_date=due,
+            reminders=[
+                {"time": "09:00"},
+                {"date": due.isoformat(), "time": "09:00"},
+            ],
+        )
+        self.assertEqual(Reminder.objects.filter(block=block).count(), 1)
+
+    def test_rejects_more_than_max_reminders(self):
+        block = BlockFactory(user=self.user, page=self.page)
+        form = ScheduleBlockForm(
+            {
+                "user": self.user.id,
+                "block": str(block.uuid),
+                "due_date": "2026-04-30",
+                "reminders": [{"time": "09:00"}] * 11,
+            }
+        )
+        self.assertFalse(form.is_valid())
+
+    def test_pending_reminders_round_trip_through_block_dict(self):
+        block = BlockFactory(user=self.user, page=self.page)
+        due = date(2026, 4, 30)
+        self._run(
+            block=str(block.uuid),
+            due_date=due,
+            reminders=[
+                {"date": "2026-04-29", "time": "17:30"},
+                {"time": "09:00"},
+            ],
+        )
+
+        block.refresh_from_db()
+        data = block.to_dict()
+        rows = [(r["date"], r["time"]) for r in data["pending_reminders"]]
+        # Ordered by fire_at: the 04-29 evening ping precedes the 04-30
+        # morning one.
+        self.assertEqual(rows, [("2026-04-29", "17:30"), ("2026-04-30", "09:00")])
+        # Singular fields mirror the earliest pending reminder.
+        self.assertEqual(data["pending_reminder_date"], "2026-04-29")
+        self.assertEqual(data["pending_reminder_time"], "17:30")
+
     def test_rejects_legacy_scheduled_for_key(self):
         """A stale client still posting the pre-rename `scheduled_for` key
         must get a validation error, not a silent schedule clear."""

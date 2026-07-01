@@ -267,32 +267,20 @@ class ApiService {
   }
 
   /**
-   * Set or clear a block's due date/time.
-   *   dueDate: "" or "YYYY-MM-DD"        (empty clears the due date)
-   *   dueTime: "" or "HH:MM"             (empty = all-day "due that day";
-   *                                       present = due at that time)
-   *   reminderDate: "" or "YYYY-MM-DD"   (the day the reminder fires;
-   *                                       defaults to dueDate on the
-   *                                       backend if omitted, so callers
-   *                                       can leave this empty for
-   *                                       "remind day-of")
-   *   reminderTime: "" or "HH:MM"        (presence triggers reminder
-   *                                       creation; user-local time)
-   * Re-saving always replaces any pending reminder for the block.
+   * Set or clear a block's due date/time and reminders.
+   *   dueDate: "" or "YYYY-MM-DD"   (empty clears the due date)
+   *   dueTime: "" or "HH:MM"        (empty = all-day "due that day";
+   *                                  present = due at that time)
+   *   reminders: [{date, time}, …]  (each date "YYYY-MM-DD", time "HH:MM"
+   *                                  in the user's local timezone)
+   * Re-saving always replaces the block's whole pending reminder set.
    */
-  async scheduleBlock(
-    blockUuid,
-    dueDate,
-    dueTime = "",
-    reminderDate = "",
-    reminderTime = ""
-  ) {
+  async scheduleBlock(blockUuid, dueDate, dueTime = "", reminders = []) {
     const payload = {
       block: blockUuid,
       due_date: dueDate || "",
       due_time: dueTime || "",
-      reminder_date: reminderDate || "",
-      reminder_time: reminderTime || "",
+      reminders: reminders || [],
     };
     return await this.request("/knowledge/api/blocks/schedule/", {
       method: "POST",
@@ -388,21 +376,14 @@ class ApiService {
     });
   }
 
-  async bulkScheduleBlocks(
-    blockUuids,
-    dueDate,
-    dueTime = "",
-    reminderDate = "",
-    reminderTime = ""
-  ) {
+  async bulkScheduleBlocks(blockUuids, dueDate, dueTime = "", reminders = []) {
     return await this.request("/knowledge/api/blocks/bulk-schedule/", {
       method: "POST",
       body: JSON.stringify({
         block_uuids: blockUuids,
         new_date: dueDate || "",
         new_time: dueTime || "",
-        reminder_date: reminderDate || "",
-        reminder_time: reminderTime || "",
+        reminders: reminders || [],
       }),
       headers: {
         "Content-Type": "application/json",

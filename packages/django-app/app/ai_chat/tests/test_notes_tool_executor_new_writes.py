@@ -84,6 +84,23 @@ class SnoozeBlockTests(TestCase):
         self.assertEqual(self.scheduled_block._due_local_date(), "2025-06-01")
         self.assertEqual(self.reminder.fire_at, _utc(datetime(2025, 6, 1, 12, 0)))
 
+    def test_shifts_every_pending_reminder(self):
+        second = Reminder.objects.create(
+            block=self.scheduled_block,
+            fire_at=_utc(datetime(2025, 6, 1, 15, 0)),
+            channel=Reminder.CHANNEL_DISCORD_WEBHOOK,
+        )
+        ex = _writable(self.user)
+        ex.execute(
+            "snooze_block",
+            {"block_uuid": str(self.scheduled_block.uuid), "days": 1},
+        )
+
+        self.reminder.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(self.reminder.fire_at, _utc(datetime(2025, 6, 2, 9, 0)))
+        self.assertEqual(second.fire_at, _utc(datetime(2025, 6, 2, 15, 0)))
+
     def test_errors_on_block_with_no_schedule(self):
         ex = _writable(self.user)
         result = ex.execute(
@@ -123,11 +140,19 @@ class CancelReminderTests(TestCase):
             channel=Reminder.CHANNEL_DISCORD_WEBHOOK,
         )
 
-    def test_cancels_pending_reminder_and_keeps_schedule(self):
+    def test_cancels_all_pending_reminders_and_keeps_schedule(self):
+        second = Reminder.objects.create(
+            block=self.block,
+            fire_at=_utc(datetime(2025, 6, 1, 15, 0)),
+            channel=Reminder.CHANNEL_DISCORD_WEBHOOK,
+        )
         ex = _writable(self.user)
         result = ex.execute("cancel_reminder", {"block_uuid": str(self.block.uuid)})
 
         self.assertTrue(result.get("cancelled"))
+        self.assertEqual(result["cancelled_count"], 2)
+        second.refresh_from_db()
+        self.assertEqual(second.status, Reminder.STATUS_CANCELLED)
         self.assertEqual(result["status"], Reminder.STATUS_CANCELLED)
         self.reminder.refresh_from_db()
         self.assertEqual(self.reminder.status, Reminder.STATUS_CANCELLED)
@@ -357,8 +382,7 @@ class BulkScheduleTests(TestCase):
 
         self.assertEqual(result["updated_count"], 2)
         self.assertTrue(result["reminder_set"])
-        self.assertEqual(result["reminder_time"], "09:00")
-        self.assertEqual(result["reminder_date"], "2025-06-10")
+        self.assertEqual(result["reminders_count"], 1)
 
         # Each block should have exactly one pending reminder at 09:00 UTC.
         for block in (self.b1, self.b2):

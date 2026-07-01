@@ -1,17 +1,18 @@
-// Schedule Block Popover — set a block's due date and an optional reminder.
+// Schedule Block Popover — set a block's due date and 0..N reminders.
 //
-// Reminder offset chips (day-of, 1d/2d/1w before) compute their concrete
-// date from the chosen due date and submit it as `reminder_date`. Pick
-// "custom date..." to fire on any day independent of the due date.
+// Reminders are editable rows: an offset select (day-of, 1d/2d/1w before,
+// custom date), a time input, and a × remove button; "+ reminder" appends
+// a row. Offsets resolve to concrete dates client-side and submit as
+// `reminders: [{date, time}, …]` — saving replaces the block's whole
+// pending set on the backend.
 //
-// Time field defaults to the next "common chunk" (9am, noon, 3pm, 5pm,
-// 8pm) for today, or 9am for any future date. If the user manually edits
-// the time once, we stop overwriting it for the remainder of this session.
+// Quick chips ("in 30m", "9am", …) append a reminder row rather than
+// mutating an existing one — tapping a chip means "also ping me then".
 //
 // The due value is all-day by default; ticking "at" adds a
 // specific time of day (emitted as dueTime; "" means all-day).
 //
-// Emits: save({ scheduledFor, dueTime, reminderDate, reminderTime }) and cancel.
+// Emits: save({ scheduledFor, dueTime, reminders }) and cancel.
 
 const SCHEDULE_TIME_CHUNKS = [
   { time: "09:00", label: "9am" },
@@ -29,6 +30,10 @@ const REMINDER_OFFSETS = [
   { value: "custom", label: "custom date...", days: null },
 ];
 
+const MAX_REMINDER_ROWS = 10;
+
+let _rowIdCounter = 0;
+
 function todayLocalISO(now = new Date()) {
   const tzOffsetMs = now.getTimezoneOffset() * 60_000;
   return new Date(now.getTime() - tzOffsetMs).toISOString().slice(0, 10);
@@ -44,8 +49,8 @@ function timeHHMM(date) {
 }
 
 // Both the local-date ISO and HH:MM for the given Date — used by the
-// "in 30m" / "in 1h" relative time chips so they can roll the schedule
-// date over to tomorrow if "now + offset" crosses midnight.
+// "in 30m" / "in 1h" relative time chips so they can land on tomorrow's
+// date if "now + offset" crosses midnight.
 function localDateTimeISO(date) {
   return { date: todayLocalISO(date), time: timeHHMM(date) };
 }
@@ -93,8 +98,9 @@ window.ScheduleBlockPopover = {
     isOpen: { type: Boolean, default: false },
     initialDate: { type: String, default: "" },
     initialDueTime: { type: String, default: "" },
-    initialReminderDate: { type: String, default: "" },
-    initialTime: { type: String, default: "" },
+    // [{date: "YYYY-MM-DD", time: "HH:MM"}, …] — the block's pending
+    // reminders, from block.pending_reminders.
+    initialReminders: { type: Array, default: () => [] },
   },
   emits: ["save", "cancel"],
   data() {
@@ -102,12 +108,10 @@ window.ScheduleBlockPopover = {
       scheduledFor: "",
       dueTimeEnabled: false,
       dueTime: "",
-      reminderEnabled: false,
-      reminderOffset: "day_of",
-      customReminderDate: "",
-      reminderTime: "",
-      timeManuallyEdited: false,
+      // Editable reminder rows: {id, offset, customDate, time}.
+      reminderRows: [],
       offsets: REMINDER_OFFSETS,
+      maxRows: MAX_REMINDER_ROWS,
       // Refreshed when the popover opens so the relative-time chips
       // ("in 30m", "in 1h") and the past-chunk filter are anchored to
       // when the user actually started looking at the popover, not
@@ -116,18 +120,6 @@ window.ScheduleBlockPopover = {
     };
   },
   computed: {
-    showCustomDate() {
-      return this.reminderEnabled && this.reminderOffset === "custom";
-    },
-    // Concrete date the reminder will fire on, given the current state.
-    resolvedReminderDate() {
-      if (!this.reminderEnabled) return "";
-      if (this.reminderOffset === "custom") return this.customReminderDate;
-      const offset = REMINDER_OFFSETS.find(
-        (o) => o.value === this.reminderOffset
-      );
-      return subtractDaysISO(this.scheduledFor, offset?.days ?? 0);
-    },
     todayIso() {
       return todayLocalISO(new Date(this.nowMs));
     },
@@ -137,8 +129,8 @@ window.ScheduleBlockPopover = {
       return todayLocalISO(t);
     },
     // Relative time chips ("in 30m" / "in 1h"). Each preset carries both
-    // the target date and target time so the chip can correctly roll
-    // the schedule to tomorrow if "now + offset" crosses midnight.
+    // the target date and target time so the chip lands on the right
+    // calendar day even if "now + offset" crosses midnight.
     relativeTimePresets() {
       return [30, 60].map((minutes) => {
         const target = new Date(this.nowMs + minutes * 60_000);
@@ -165,6 +157,11 @@ window.ScheduleBlockPopover = {
         return h * 60 + m > nowMins;
       }).map((c) => ({ key: `chunk-${c.time}`, label: c.label, time: c.time }));
     },
+    canAddReminder() {
+      return (
+        !!this.scheduledFor && this.reminderRows.length < MAX_REMINDER_ROWS
+      );
+    },
   },
   watch: {
     isOpen: {
@@ -177,43 +174,23 @@ window.ScheduleBlockPopover = {
         this.scheduledFor = this.initialDate || todayLocalISO();
         this.dueTimeEnabled = !!this.initialDueTime;
         this.dueTime = this.initialDueTime || "";
-        this.reminderEnabled = !!this.initialTime;
-        this.reminderTime =
-          this.initialTime || defaultReminderTimeFor(this.scheduledFor);
-        this.timeManuallyEdited = !!this.initialTime;
-        this.reminderOffset = deriveOffset(
-          this.scheduledFor,
-          this.initialReminderDate
-        );
-        this.customReminderDate =
-          this.reminderOffset === "custom" ? this.initialReminderDate : "";
+        this.reminderRows = (this.initialReminders || []).map((entry) => {
+          const offset = deriveOffset(this.scheduledFor, entry.date);
+          return {
+            id: ++_rowIdCounter,
+            offset,
+            customDate: offset === "custom" ? entry.date : "",
+            time: entry.time || "",
+          };
+        });
         this.$nextTick(() => {
           this.$refs.dateInput?.focus();
         });
       },
       immediate: true,
     },
-    scheduledFor(newDate) {
-      // Re-suggest the default time when the date changes — unless the
-      // user has manually picked one this session.
-      if (!this.timeManuallyEdited) {
-        this.reminderTime = defaultReminderTimeFor(newDate);
-      }
-      // If the user is on a relative offset (not custom), the reminder
-      // date follows the due date implicitly via resolvedReminderDate.
-      // Nothing to do for custom — they explicitly picked a date.
-    },
   },
   methods: {
-    onTimeInput() {
-      this.timeManuallyEdited = true;
-    },
-    onReminderToggle() {
-      if (this.reminderEnabled && !this.reminderTime) {
-        this.reminderTime =
-          defaultReminderTimeFor(this.scheduledFor) || "09:00";
-      }
-    },
     onDueTimeToggle() {
       // Seed a sensible default so enabling the time doesn't leave the
       // input empty (an empty time would submit as all-day).
@@ -224,28 +201,65 @@ window.ScheduleBlockPopover = {
     setScheduledFor(iso) {
       this.scheduledFor = iso;
     },
-    // Quick-pick chip: jump straight to a specific reminder time. Also
-    // enables the reminder so the user doesn't have to tick the box
-    // first — tapping a time chip clearly signals they want one.
-    pickReminderTime(time, date) {
-      if (date) this.scheduledFor = date;
-      this.reminderTime = time;
-      this.timeManuallyEdited = true;
-      this.reminderEnabled = true;
+    // Concrete date a row's reminder fires on, given the current due date.
+    rowResolvedDate(row) {
+      if (row.offset === "custom") return row.customDate;
+      const offset = REMINDER_OFFSETS.find((o) => o.value === row.offset);
+      return subtractDaysISO(this.scheduledFor, offset?.days ?? 0);
     },
-    onOffsetChange() {
+    hasRowAt(date, time) {
+      return this.reminderRows.some(
+        (row) => row.time === time && this.rowResolvedDate(row) === date
+      );
+    },
+    // Append a reminder row. Chips pass a concrete date+time; the
+    // "+ reminder" button passes neither and gets day-of defaults.
+    addReminderRow(time, date) {
+      if (this.reminderRows.length >= MAX_REMINDER_ROWS) return;
+      const rowTime =
+        time || defaultReminderTimeFor(this.scheduledFor) || "09:00";
+      const offset = date ? deriveOffset(this.scheduledFor, date) : "day_of";
+      const resolved =
+        offset === "custom" ? date : subtractDaysISO(this.scheduledFor, 0);
+      if (this.hasRowAt(date || resolved, rowTime)) return;
+      this.reminderRows.push({
+        id: ++_rowIdCounter,
+        offset,
+        customDate: offset === "custom" ? date : "",
+        time: rowTime,
+      });
+    },
+    removeReminderRow(id) {
+      this.reminderRows = this.reminderRows.filter((row) => row.id !== id);
+    },
+    onOffsetChange(row) {
       // When switching to custom, seed the input with the due date so the
       // user has a sensible starting point.
-      if (this.reminderOffset === "custom" && !this.customReminderDate) {
-        this.customReminderDate = this.scheduledFor;
+      if (row.offset === "custom" && !row.customDate) {
+        row.customDate = this.scheduledFor;
       }
     },
+    // Quick-pick chip: add a reminder at that time (and date, for the
+    // relative chips) — tapping a chip means "also ping me then".
+    pickReminderTime(time, date) {
+      this.addReminderRow(time, date);
+    },
+    chipIsActive(time) {
+      return this.hasRowAt(this.scheduledFor, time);
+    },
     save() {
+      const reminders = this.scheduledFor
+        ? this.reminderRows
+            .map((row) => ({
+              date: this.rowResolvedDate(row),
+              time: row.time,
+            }))
+            .filter((r) => r.date && r.time)
+        : [];
       this.$emit("save", {
         scheduledFor: this.scheduledFor || "",
         dueTime: this.scheduledFor && this.dueTimeEnabled ? this.dueTime : "",
-        reminderDate: this.reminderEnabled ? this.resolvedReminderDate : "",
-        reminderTime: this.reminderEnabled ? this.reminderTime : "",
+        reminders,
       });
     },
     cancel() {
@@ -315,31 +329,50 @@ window.ScheduleBlockPopover = {
           />
         </label>
 
-        <label class="schedule-popover-row schedule-popover-row-reminder">
-          <input
-            type="checkbox"
-            v-model="reminderEnabled"
-            @change="onReminderToggle"
-            :disabled="!scheduledFor"
-          />
-          <span class="schedule-popover-label">remind me</span>
-          <select
-            v-model="reminderOffset"
-            @change="onOffsetChange"
-            class="schedule-popover-input"
-            :disabled="!reminderEnabled || !scheduledFor"
-          >
-            <option v-for="o in offsets" :key="o.value" :value="o.value">{{ o.label }}</option>
-          </select>
-          <span class="schedule-popover-label schedule-popover-label-narrow">at</span>
-          <input
-            type="time"
-            v-model="reminderTime"
-            @input="onTimeInput"
-            class="schedule-popover-input"
-            :disabled="!reminderEnabled || !scheduledFor"
-          />
-        </label>
+        <template v-for="(row, i) in reminderRows" :key="row.id">
+          <div class="schedule-popover-row schedule-popover-row-reminder">
+            <span class="schedule-popover-label">{{ i === 0 ? 'remind' : 'and' }}</span>
+            <select
+              v-model="row.offset"
+              @change="onOffsetChange(row)"
+              class="schedule-popover-input"
+              :disabled="!scheduledFor"
+            >
+              <option v-for="o in offsets" :key="o.value" :value="o.value">{{ o.label }}</option>
+            </select>
+            <span class="schedule-popover-label schedule-popover-label-narrow">at</span>
+            <input
+              type="time"
+              v-model="row.time"
+              class="schedule-popover-input"
+              :disabled="!scheduledFor"
+            />
+            <button
+              type="button"
+              class="schedule-popover-quick-btn"
+              @click="removeReminderRow(row.id)"
+              aria-label="Remove reminder"
+              title="Remove reminder"
+            >&times;</button>
+          </div>
+          <label v-if="row.offset === 'custom'" class="schedule-popover-row">
+            <span class="schedule-popover-label">on</span>
+            <input
+              type="date"
+              v-model="row.customDate"
+              class="schedule-popover-input"
+            />
+          </label>
+        </template>
+
+        <div class="schedule-popover-quick-row">
+          <button
+            type="button"
+            class="schedule-popover-quick-btn"
+            :disabled="!canAddReminder"
+            @click="addReminderRow()"
+          >+ reminder</button>
+        </div>
 
         <div
           v-if="scheduledFor"
@@ -350,6 +383,7 @@ window.ScheduleBlockPopover = {
             :key="preset.key"
             type="button"
             class="schedule-popover-quick-btn schedule-popover-quick-btn-relative"
+            :disabled="!canAddReminder"
             @click="pickReminderTime(preset.time, preset.date)"
           >{{ preset.label }}</button>
           <span
@@ -362,19 +396,11 @@ window.ScheduleBlockPopover = {
             :key="preset.key"
             type="button"
             class="schedule-popover-quick-btn"
-            :class="{ 'is-active': reminderEnabled && reminderTime === preset.time }"
+            :class="{ 'is-active': chipIsActive(preset.time) }"
+            :disabled="!canAddReminder && !chipIsActive(preset.time)"
             @click="pickReminderTime(preset.time)"
           >{{ preset.label }}</button>
         </div>
-
-        <label v-if="showCustomDate" class="schedule-popover-row">
-          <span class="schedule-popover-label">on</span>
-          <input
-            type="date"
-            v-model="customReminderDate"
-            class="schedule-popover-input"
-          />
-        </label>
 
         <p v-if="!scheduledFor" class="schedule-popover-hint">
           pick a date to enable reminders

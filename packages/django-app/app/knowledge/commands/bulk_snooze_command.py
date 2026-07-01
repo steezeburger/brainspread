@@ -46,8 +46,8 @@ class BulkSnoozeCommand(AbstractBaseCommand):
                 if block is None:
                     not_found.append(block_uuid)
                     continue
-                pending = block.get_pending_reminder()
-                if block.due_at is None and pending is None:
+                pending = block.get_pending_reminders()
+                if block.due_at is None and not pending:
                     nothing_to_snooze.append(block_uuid)
                     continue
 
@@ -57,9 +57,9 @@ class BulkSnoozeCommand(AbstractBaseCommand):
                     )
                     block.save(update_fields=["due_at", "modified_at"])
 
-                if pending is not None:
-                    pending.fire_at = pending.fire_at + reminder_delta
-                    pending.save(update_fields=["fire_at", "modified_at"])
+                for reminder in pending:
+                    reminder.fire_at = reminder.fire_at + reminder_delta
+                    reminder.save(update_fields=["fire_at", "modified_at"])
 
                 snoozed_count += 1
                 if block.page is not None:

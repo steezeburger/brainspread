@@ -450,10 +450,14 @@ const BlockComponent = {
       // separator. Splitting them across <span> + interpolation lets the
       // Vue compiler's whitespace-condense pass eat the space between
       // ("may 9" + "9:01 AM" → "may 99:01 AM"). Reading bug from staging.
+      // Additional pending reminders collapse into a "+N" suffix — the
+      // popover is the place to see/edit the full list.
       const t = this.reminderTimeLabel;
       const d = this.reminderDateLabel;
-      if (d && t) return `${d}, ${t}`;
-      return t || d;
+      let label = d && t ? `${d}, ${t}` : t || d;
+      const extra = (this.block.pending_reminders || []).length - 1;
+      if (label && extra > 0) label += ` +${extra}`;
+      return label;
     },
     isOverdue() {
       const d = this.block.due_date;

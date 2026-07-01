@@ -56,8 +56,7 @@ const SavedViewsPage = {
       schedulePopoverBlock: null,
       schedulePopoverInitialDate: "",
       schedulePopoverInitialDueTime: "",
-      schedulePopoverInitialReminderDate: "",
-      schedulePopoverInitialTime: "",
+      schedulePopoverInitialReminders: [],
 
       // Block info modal — same rationale as the schedule popover.
       blockInfoModalOpen: false,
@@ -862,34 +861,22 @@ const SavedViewsPage = {
 
     scheduleBlock(b, { clear = false } = {}) {
       if (clear) {
-        this._submitSchedule(b, "", "", "", "");
+        this._submitSchedule(b, "", "", []);
         return;
       }
       this.schedulePopoverBlock = b;
       this.schedulePopoverInitialDate = b.due_date || "";
       this.schedulePopoverInitialDueTime = b.due_time || "";
-      this.schedulePopoverInitialReminderDate = b.pending_reminder_date || "";
-      this.schedulePopoverInitialTime = b.pending_reminder_time || "";
+      this.schedulePopoverInitialReminders = b.pending_reminders || [];
       this.schedulePopoverOpen = true;
     },
 
-    onSchedulePopoverSave({
-      scheduledFor,
-      dueTime,
-      reminderDate,
-      reminderTime,
-    }) {
+    onSchedulePopoverSave({ scheduledFor, dueTime, reminders }) {
       const b = this.schedulePopoverBlock;
       this.schedulePopoverOpen = false;
       this.schedulePopoverBlock = null;
       if (!b) return;
-      this._submitSchedule(
-        b,
-        scheduledFor,
-        dueTime,
-        reminderDate,
-        reminderTime
-      );
+      this._submitSchedule(b, scheduledFor, dueTime, reminders);
     },
 
     onSchedulePopoverCancel() {
@@ -897,20 +884,13 @@ const SavedViewsPage = {
       this.schedulePopoverBlock = null;
     },
 
-    async _submitSchedule(
-      block,
-      scheduledFor,
-      dueTime,
-      reminderDate,
-      reminderTime
-    ) {
+    async _submitSchedule(block, scheduledFor, dueTime, reminders) {
       try {
         const r = await window.apiService.scheduleBlock(
           block.uuid,
           scheduledFor,
           dueTime,
-          reminderDate,
-          reminderTime
+          reminders
         );
         if (!r || !r.success) {
           throw new Error(
@@ -1114,8 +1094,7 @@ const SavedViewsPage = {
         :is-open="schedulePopoverOpen"
         :initial-date="schedulePopoverInitialDate"
         :initial-due-time="schedulePopoverInitialDueTime"
-        :initial-reminder-date="schedulePopoverInitialReminderDate"
-        :initial-time="schedulePopoverInitialTime"
+        :initial-reminders="schedulePopoverInitialReminders"
         @save="onSchedulePopoverSave"
         @cancel="onSchedulePopoverCancel"
       />
