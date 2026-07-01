@@ -185,9 +185,9 @@ window.EmbedContextMenu = {
         <div class="context-menu-separator"></div>
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="onAction('schedule')">
           <span class="context-menu-icon">◷</span>
-          <span>{{ block.scheduled_for ? 'reschedule…' : 'schedule…' }}</span>
+          <span>{{ block.due_date ? 'reschedule…' : 'schedule…' }}</span>
         </button>
-        <button v-if="block.scheduled_for" class="context-menu-item" role="menuitem" tabindex="-1" @click="onAction('unschedule')">
+        <button v-if="block.due_date" class="context-menu-item" role="menuitem" tabindex="-1" @click="onAction('unschedule')">
           <span class="context-menu-icon">×</span>
           <span>clear schedule</span>
         </button>

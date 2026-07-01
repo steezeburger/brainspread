@@ -10,8 +10,8 @@ from common.models.uuid_mixin import UUIDModelMixin
 class Reminder(UUIDModelMixin, CRUDTimestampsMixin):
     """A time-based ping for a block.
 
-    Reminders are separate from a block's due date (`scheduled_for`):
-    `scheduled_for` decides *where* a block surfaces; a Reminder decides
+    Reminders are separate from a block's due date (`due_at`):
+    `due_at` decides *where* a block surfaces; a Reminder decides
     *when to ping* the user. A block can have 0..N reminders, or reminders
     without a due date.
     """

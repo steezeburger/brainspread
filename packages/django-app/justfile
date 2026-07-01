@@ -190,6 +190,7 @@ check-pending-migrations:
   else
     echo "❌ Model changes detected that need migrations!"
     echo "Run 'just makemigrations' to create them."
+    exit 1
   fi
 
 # Docker compose shortcuts

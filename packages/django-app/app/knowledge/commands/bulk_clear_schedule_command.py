@@ -11,11 +11,10 @@ from .schedule_block_command import ScheduleBlockCommand
 
 
 class BulkClearScheduleCommand(AbstractBaseCommand):
-    """Drop scheduled_for AND any pending reminder on N blocks in one
-    approval. Wraps ScheduleBlockCommand per block (which already
-    handles "missing scheduled_for == clear" semantics) so the cascade
-    behaviour stays in one place. Per-row failures are reported and
-    don't roll back the rest.
+    """Drop due_at AND any pending reminder on N blocks in one approval.
+    Wraps ScheduleBlockCommand per block (which already handles "missing
+    due_date == clear" semantics) so the cascade behaviour stays in one
+    place. Per-row failures are reported and don't roll back the rest.
     """
 
     def __init__(self, form: BulkClearScheduleForm) -> None:
@@ -37,7 +36,7 @@ class BulkClearScheduleCommand(AbstractBaseCommand):
                 if block is None:
                     skipped.append({"block_uuid": block_uuid, "reason": "not found"})
                     continue
-                if block.scheduled_for is None and block.get_pending_reminder() is None:
+                if block.due_at is None and block.get_pending_reminder() is None:
                     # Nothing to clear; surface as a no-op rather than a failure.
                     skipped.append(
                         {"block_uuid": block_uuid, "reason": "nothing to clear"}

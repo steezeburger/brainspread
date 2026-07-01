@@ -333,7 +333,7 @@ window.EmbedResultRow = {
             <span v-if="block.page_title"> · {{ block.page_title }}</span>
           </a>
         </div>
-        <span v-if="block.scheduled_for" class="result-due">due {{ block.scheduled_for }}</span>
+        <span v-if="block.due_date" class="result-due">due {{ block.due_date }}<template v-if="block.due_time"> {{ block.due_time }}</template></span>
         <button
           type="button"
           class="block-menu result-row-menu-btn"

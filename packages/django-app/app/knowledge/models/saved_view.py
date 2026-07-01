@@ -45,7 +45,7 @@ class SavedView(UUIDModelMixin, CRUDTimestampsMixin):
     sort = models.JSONField(
         default=list,
         blank=True,
-        help_text='Ordering, e.g. [{"field": "scheduled_for", "dir": "asc"}]',
+        help_text='Ordering, e.g. [{"field": "due_at", "dir": "asc"}]',
     )
     is_system = models.BooleanField(
         default=False,

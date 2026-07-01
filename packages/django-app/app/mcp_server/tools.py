@@ -406,15 +406,15 @@ def _toggle_todo(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
 
 
 def _schedule_block(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
-    scheduled_for = _date_arg(
-        ctx.user, args.get("scheduled_for"), field="scheduled_for"
-    )
+    due_date = _date_arg(ctx.user, args.get("due_date"), field="due_date")
     payload: dict[str, Any] = {
         "user": ctx.user.id,
         "block": args.get("block_uuid") or "",
         # ScheduleBlockForm treats empty/absent as "clear".
-        "scheduled_for": scheduled_for or "",
+        "due_date": due_date or "",
     }
+    if args.get("due_time"):
+        payload["due_time"] = args["due_time"]
     if args.get("reminder_time"):
         payload["reminder_time"] = args["reminder_time"]
     reminder_date = _date_arg(
@@ -629,7 +629,7 @@ REGISTRY = ToolRegistry(
             name="list_overdue",
             description=(
                 "All overdue scheduled blocks across every page (todo /"
-                " doing / later with scheduled_for before today). Broader"
+                " doing / later with due_at before today). Broader"
                 " than list_today_todos, which only includes today's daily"
                 " page."
             ),
@@ -806,16 +806,24 @@ REGISTRY = ToolRegistry(
                 "Set a block's due date (and optional reminder). Dates"
                 " accept ISO YYYY-MM-DD or relative tokens ('today',"
                 " 'tomorrow', 'yesterday', '+Nd', '-Nd', '+Nw', '-Nw')."
-                " Empty scheduled_for clears the schedule."
+                " Due is all-day unless due_time is given. Empty due_date"
+                " clears the due date."
             ),
             input_schema={
                 "type": "object",
                 "properties": {
                     "block_uuid": {"type": "string"},
-                    "scheduled_for": {
+                    "due_date": {
                         "type": "string",
                         "description": (
                             "ISO YYYY-MM-DD or relative token, or empty to" " clear."
+                        ),
+                    },
+                    "due_time": {
+                        "type": "string",
+                        "description": (
+                            "Optional HH:MM (user's local tz) for a timed"
+                            " due; omit for an all-day due."
                         ),
                     },
                     "reminder_time": {
@@ -826,11 +834,11 @@ REGISTRY = ToolRegistry(
                         "type": "string",
                         "description": (
                             "ISO YYYY-MM-DD or relative token; defaults to"
-                            " scheduled_for when omitted."
+                            " due_date when omitted."
                         ),
                     },
                 },
-                "required": ["block_uuid", "scheduled_for"],
+                "required": ["block_uuid", "due_date"],
             },
             handler=_schedule_block,
         ),

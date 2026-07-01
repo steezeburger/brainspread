@@ -34,12 +34,13 @@ class BulkCancelRemindersCommand(AbstractBaseCommand):
                 if block is None:
                     not_found.append(block_uuid)
                     continue
-                pending = block.get_pending_reminder()
-                if pending is None:
+                pending = block.get_pending_reminders()
+                if not pending:
                     no_reminder.append(block_uuid)
                     continue
-                pending.cancel()
-                cancelled_count += 1
+                for reminder in pending:
+                    reminder.cancel()
+                cancelled_count += len(pending)
                 if block.page is not None:
                     affected_page_uuids.add(str(block.page.uuid))
 

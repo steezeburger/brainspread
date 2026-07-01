@@ -7,12 +7,13 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.bulk_snooze_form import BulkSnoozeForm
 from ..repositories import BlockRepository
+from ..services.due_dates import shift_due_days
 
 
 class BulkSnoozeCommand(AbstractBaseCommand):
     """Push N blocks' schedules + pending reminders forward by the same
     days/hours. Same semantics as single snooze_block:
-    - scheduled_for shifts only by `days` (it's a date)
+    - due_at shifts only by `days` (preserving local time-of-day / midnight)
     - pending reminder fire_at shifts by the full days+hours delta
 
     Blocks with no schedule AND no pending reminder are reported in
@@ -36,8 +37,8 @@ class BulkSnoozeCommand(AbstractBaseCommand):
         nothing_to_snooze: List[str] = []
         affected_page_uuids: Set[str] = set()
 
-        date_delta = timedelta(days=days)
         reminder_delta = timedelta(days=days, hours=hours)
+        tz = user.tz()
 
         with transaction.atomic():
             for block_uuid in block_uuids:
@@ -45,18 +46,20 @@ class BulkSnoozeCommand(AbstractBaseCommand):
                 if block is None:
                     not_found.append(block_uuid)
                     continue
-                pending = block.get_pending_reminder()
-                if block.scheduled_for is None and pending is None:
+                pending = block.get_pending_reminders()
+                if block.due_at is None and not pending:
                     nothing_to_snooze.append(block_uuid)
                     continue
 
-                if block.scheduled_for is not None and days != 0:
-                    block.scheduled_for = block.scheduled_for + date_delta
-                    block.save(update_fields=["scheduled_for", "modified_at"])
+                if block.due_at is not None and days != 0:
+                    block.due_at = shift_due_days(
+                        block.due_at, block.due_at_has_time, days, tz
+                    )
+                    block.save(update_fields=["due_at", "modified_at"])
 
-                if pending is not None:
-                    pending.fire_at = pending.fire_at + reminder_delta
-                    pending.save(update_fields=["fire_at", "modified_at"])
+                for reminder in pending:
+                    reminder.fire_at = reminder.fire_at + reminder_delta
+                    reminder.save(update_fields=["fire_at", "modified_at"])
 
                 snoozed_count += 1
                 if block.page is not None:

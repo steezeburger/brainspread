@@ -1,12 +1,13 @@
 import re
+from datetime import time
 from typing import Optional, TypedDict
 
-import pytz
 from django.conf import settings
 from django.db import models
 
 from common.models.crud_timestamps_mixin import CRUDTimestampsMixin
 from common.models.uuid_mixin import UUIDModelMixin
+from knowledge.services.due_dates import combine_local_to_utc
 
 
 class Block(UUIDModelMixin, CRUDTimestampsMixin):
@@ -93,11 +94,18 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
         default=False, help_text="Whether block is collapsed"
     )
 
-    # Scheduling (the daily page this block surfaces on; see issue #59)
-    scheduled_for = models.DateField(
+    # Due date/time. Surfaces the block on the matching daily page (see
+    # issue #59). All-day by default; due_at_has_time flips on when the
+    # user picks a specific time of day. For all-day items the time
+    # component is non-meaningful (stored as user-local midnight).
+    due_at = models.DateTimeField(
         null=True,
         blank=True,
-        help_text="Daily page this block should surface on (due date)",
+        help_text="When this block is due (all-day unless due_at_has_time)",
+    )
+    due_at_has_time = models.BooleanField(
+        default=False,
+        help_text="True when due_at carries a meaningful time of day",
     )
     # Completion tracking — set when block_type transitions into a terminal
     # state (done/wontdo) and cleared on transition out. modified_at is
@@ -117,7 +125,7 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             models.Index(fields=["page", "order"]),
             models.Index(fields=["content_type"]),
             models.Index(fields=["block_type"]),
-            models.Index(fields=["user", "scheduled_for"]),
+            models.Index(fields=["user", "due_at"]),
         ]
 
     def __str__(self):
@@ -130,6 +138,23 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             return f"Block {self.uuid}: [{self.content_type}]"
         else:
             return f"Block {self.uuid}: [empty]"
+
+    def clean(self) -> None:
+        """Normalize the all-day due invariant on validated saves.
+
+        An all-day due (due_at_has_time=False) must sit at user-local
+        midnight or _due_local_date() reads back a different calendar day.
+        Command write paths guarantee this via services.due_dates.build_due_at;
+        direct edits (Django admin runs full_clean) don't — so snap the value
+        to midnight of its local date here rather than erroring, preserving
+        the editor's intent of "due that local day".
+        """
+        super().clean()
+        if self.due_at and not self.due_at_has_time and self.user_id:
+            tz = self.user.tz()
+            local = self.due_at.astimezone(tz)
+            if local.time() != time.min:
+                self.due_at = combine_local_to_utc(local.date(), time.min, tz)
 
     def get_children(self):
         """Get direct children blocks"""
@@ -250,6 +275,9 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
 
     def to_dict(self, include_page_context: bool = False) -> "BlockData":
         """Convert block to dictionary with proper typing"""
+        due_date, due_time = self._due_local()
+        pending_reminders = self._pending_reminders_local()
+        first_reminder = pending_reminders[0] if pending_reminders else None
         data: BlockData = {
             "uuid": str(self.uuid),
             "content": self.content,
@@ -267,19 +295,23 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             "properties": self.properties or {},
             "tags": [{"name": tag.slug, "color": "#007bff"} for tag in self.get_tags()],
             "children": None,
-            "scheduled_for": (
-                self.scheduled_for.isoformat() if self.scheduled_for else None
-            ),
+            # `due_at` is the raw UTC instant; `due_date` / `due_time` are the
+            # user-local pieces the UI renders (time is None for all-day items).
+            "due_at": (self.due_at.isoformat() if self.due_at else None),
+            "due_date": due_date,
+            "due_time": due_time,
+            "due_at_has_time": self.due_at_has_time,
             "completed_at": (
                 self.completed_at.isoformat() if self.completed_at else None
             ),
-            # The popover round-trips these so a user can re-open it and
-            # see their previous reminder still selected. Both reflect the
-            # single pending reminder for the block (or None for both).
-            # `pending_reminder_date` may differ from `scheduled_for` —
-            # users can choose to be reminded N days before due, etc.
-            "pending_reminder_date": self._pending_reminder_local_date(),
-            "pending_reminder_time": self._pending_reminder_local_time(),
+            # The popover round-trips the full list so a user can re-open
+            # it and edit their reminders. Reminder dates may differ from
+            # `due_date` — users can be reminded N days before due, etc.
+            # The singular fields mirror the earliest pending reminder for
+            # compact surfaces (the due-pill badge).
+            "pending_reminders": pending_reminders,
+            "pending_reminder_date": first_reminder["date"] if first_reminder else None,
+            "pending_reminder_time": first_reminder["time"] if first_reminder else None,
             # Page context fields (optional)
             "page_title": None,
             "page_type": None,
@@ -296,37 +328,58 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
 
         return data
 
-    def _pending_reminder_local(self) -> "tuple[Optional[str], Optional[str]]":
-        """Return the user-local (date, time) of the block's pending reminder
-        (one at most — see ScheduleBlockCommand), as ("YYYY-MM-DD", "HH:MM").
-        Both are None when no pending reminder exists.
+    def _due_local(self) -> "tuple[Optional[str], Optional[str]]":
+        """Return the user-local (date, time) of this block's due_at as
+        ("YYYY-MM-DD", "HH:MM"). Both None when due_at is unset. The time
+        is None for all-day items (due_at_has_time is False) — for those
+        due_at is stored at user-local midnight and only the date matters.
         """
-        pending = self.reminders.filter(sent_at__isnull=True).first()
-        if not pending:
+        if not self.due_at:
             return (None, None)
-        try:
-            tz = pytz.timezone(self.user.timezone or "UTC")
-        except pytz.UnknownTimeZoneError:
-            tz = pytz.UTC
-        local = pending.fire_at.astimezone(tz)
-        return (local.strftime("%Y-%m-%d"), local.strftime("%H:%M"))
+        local = self.due_at.astimezone(self.user.tz())
+        time_str = local.strftime("%H:%M") if self.due_at_has_time else None
+        return (local.strftime("%Y-%m-%d"), time_str)
 
-    def _pending_reminder_local_time(self) -> Optional[str]:
-        return self._pending_reminder_local()[1]
+    def _due_local_time(self) -> Optional[str]:
+        return self._due_local()[1]
 
-    def _pending_reminder_local_date(self) -> Optional[str]:
-        return self._pending_reminder_local()[0]
+    def _due_local_date(self) -> Optional[str]:
+        return self._due_local()[0]
+
+    def get_pending_reminders(self) -> "list":
+        """All pending reminders for this block, earliest fire_at first.
+
+        A block can carry 0..N pending reminders — ScheduleBlockCommand
+        replaces the whole pending set on every save. Pending = sent_at IS
+        NULL; once a reminder fires (or is cancelled / skipped) sent_at
+        gets set. Filters in Python over ``self.reminders.all()`` so a
+        ``prefetch_related("reminders")`` cache is used instead of bypassed
+        (``.filter()`` on the related manager would issue a fresh query
+        per block)."""
+        return [r for r in self.reminders.all() if r.sent_at is None]
 
     def get_pending_reminder(self):
-        """Return this block's pending reminder, if any.
+        """Earliest pending reminder, or None. Kept for single-reminder
+        surfaces (snooze/cancel tool results, the due-pill badge)."""
+        pending = self.get_pending_reminders()
+        return pending[0] if pending else None
 
-        At most one pending reminder exists per block at any time —
-        ScheduleBlockCommand replaces the previous one on save. Used by
-        snooze / cancel / pending-time-display flows that all need the
-        single live reminder for a block. Filters by sent_at IS NULL,
-        matching `_pending_reminder_local` — once a reminder fires (or
-        is cancelled / skipped) sent_at gets set."""
-        return self.reminders.filter(sent_at__isnull=True).first()
+    def _pending_reminders_local(self) -> "list[PendingReminderData]":
+        """User-local ``[{uuid, date, time}, …]`` for every pending
+        reminder, earliest first. Drives the popover's editable reminder
+        list; date/time are "YYYY-MM-DD" / "HH:MM" strings."""
+        tz = self.user.tz()
+        out: list[PendingReminderData] = []
+        for reminder in self.get_pending_reminders():
+            local = reminder.fire_at.astimezone(tz)
+            out.append(
+                {
+                    "uuid": str(reminder.uuid),
+                    "date": local.strftime("%Y-%m-%d"),
+                    "time": local.strftime("%H:%M"),
+                }
+            )
+        return out
 
     def as_summary(self) -> "BlockSummaryData":
         """Compact summary for list-shaped tool results (overdue list,
@@ -334,21 +387,26 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
         properties, tags, and parent — but rich enough that the chat
         surface can render the row without a follow-up fetch.
         """
+        due_date, due_time = self._due_local()
+        pending_reminders = self._pending_reminders_local()
+        first_reminder = pending_reminders[0] if pending_reminders else None
         return {
             "block_uuid": str(self.uuid),
             "content": self.content,
             "block_type": self.block_type,
-            "scheduled_for": (
-                self.scheduled_for.isoformat() if self.scheduled_for else None
-            ),
+            "due_at": (self.due_at.isoformat() if self.due_at else None),
+            "due_date": due_date,
+            "due_time": due_time,
+            "due_at_has_time": self.due_at_has_time,
             "completed_at": (
                 self.completed_at.isoformat() if self.completed_at else None
             ),
             "page_uuid": str(self.page.uuid) if self.page else None,
             "page_title": self.page.title if self.page else None,
             "page_slug": self.page.slug if self.page else None,
-            "pending_reminder_date": self._pending_reminder_local_date(),
-            "pending_reminder_time": self._pending_reminder_local_time(),
+            "pending_reminders": pending_reminders,
+            "pending_reminder_date": first_reminder["date"] if first_reminder else None,
+            "pending_reminder_time": first_reminder["time"] if first_reminder else None,
         }
 
     def to_dict_with_children(self, include_page_context: bool = False) -> "BlockData":
@@ -363,6 +421,15 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
         return block_data
 
 
+class PendingReminderData(TypedDict):
+    """One pending reminder in user-local terms, as round-tripped by the
+    schedule popover's editable reminder list."""
+
+    uuid: str
+    date: str
+    time: str
+
+
 class BlockSummaryData(TypedDict):
     """Compact subset of BlockData returned by Block.as_summary().
 
@@ -373,11 +440,15 @@ class BlockSummaryData(TypedDict):
     block_uuid: str
     content: str
     block_type: str
-    scheduled_for: Optional[str]
+    due_at: Optional[str]
+    due_date: Optional[str]
+    due_time: Optional[str]
+    due_at_has_time: bool
     completed_at: Optional[str]
     page_uuid: Optional[str]
     page_title: Optional[str]
     page_slug: Optional[str]
+    pending_reminders: list[PendingReminderData]
     pending_reminder_date: Optional[str]
     pending_reminder_time: Optional[str]
 
@@ -400,8 +471,12 @@ class BlockData(TypedDict):
     properties: dict
     tags: Optional[list]
     children: Optional[list["BlockData"]]
-    scheduled_for: Optional[str]
+    due_at: Optional[str]
+    due_date: Optional[str]
+    due_time: Optional[str]
+    due_at_has_time: bool
     completed_at: Optional[str]
+    pending_reminders: list[PendingReminderData]
     pending_reminder_date: Optional[str]
     pending_reminder_time: Optional[str]
     # Page context fields (when included in API responses)

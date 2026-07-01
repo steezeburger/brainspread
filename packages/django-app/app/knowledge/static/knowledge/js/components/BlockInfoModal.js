@@ -38,7 +38,10 @@ window.BlockInfoModal = {
       return this.formatTimestamp(this.block?.modified_at);
     },
     scheduledForPretty() {
-      return this.block?.scheduled_for || "";
+      const d = this.block?.due_date;
+      if (!d) return "";
+      const t = this.block?.due_time;
+      return t ? `${d} ${t}` : d;
     },
     completedAtPretty() {
       return this.formatTimestamp(this.block?.completed_at);
@@ -203,7 +206,7 @@ window.BlockInfoModal = {
             <dd>{{ modifiedAtPretty }}</dd>
 
             <template v-if="scheduledForPretty">
-              <dt>scheduled for</dt>
+              <dt>due</dt>
               <dd>{{ scheduledForPretty }}</dd>
             </template>
 

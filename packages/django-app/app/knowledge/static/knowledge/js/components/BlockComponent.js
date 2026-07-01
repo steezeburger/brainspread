@@ -384,7 +384,8 @@ const BlockComponent = {
     },
     scheduledForLabel() {
       // "2026-04-30" -> "apr 30" (or "apr 30, 2027" for non-current year).
-      const raw = this.block.scheduled_for;
+      // A timed due appends the time, e.g. "apr 30 3:00 PM".
+      const raw = this.block.due_date;
       if (!raw) return "";
       const [y, m, d] = raw.split("-").map(Number);
       const months = [
@@ -402,7 +403,14 @@ const BlockComponent = {
         "dec",
       ];
       const sameYear = y === new Date().getFullYear();
-      return sameYear ? `${months[m - 1]} ${d}` : `${months[m - 1]} ${d}, ${y}`;
+      const dateLabel = sameYear
+        ? `${months[m - 1]} ${d}`
+        : `${months[m - 1]} ${d}, ${y}`;
+      const t = this.block.due_time;
+      if (t) {
+        return `${dateLabel} ${window.formatTimeForUser?.(t) || t}`;
+      }
+      return dateLabel;
     },
     reminderTimeLabel() {
       // Formatted per the user's 12h/24h preference, when a pending
@@ -415,7 +423,7 @@ const BlockComponent = {
       // Render the reminder date inline on the chip ONLY when it differs
       // from the due date — same date is the implicit common case.
       const r = this.block.pending_reminder_date;
-      const d = this.block.scheduled_for;
+      const d = this.block.due_date;
       if (!r || !d || r === d) return "";
       const [y, m, day] = r.split("-").map(Number);
       const months = [
@@ -442,13 +450,17 @@ const BlockComponent = {
       // separator. Splitting them across <span> + interpolation lets the
       // Vue compiler's whitespace-condense pass eat the space between
       // ("may 9" + "9:01 AM" → "may 99:01 AM"). Reading bug from staging.
+      // Additional pending reminders collapse into a "+N" suffix — the
+      // popover is the place to see/edit the full list.
       const t = this.reminderTimeLabel;
       const d = this.reminderDateLabel;
-      if (d && t) return `${d}, ${t}`;
-      return t || d;
+      let label = d && t ? `${d}, ${t}` : t || d;
+      const extra = (this.block.pending_reminders || []).length - 1;
+      if (label && extra > 0) label += ` +${extra}`;
+      return label;
     },
     isOverdue() {
-      const d = this.block.scheduled_for;
+      const d = this.block.due_date;
       if (!d) return false;
       if (this.block.completed_at) return false;
       if (!["todo", "doing", "later"].includes(this.block.block_type)) {
@@ -1950,12 +1962,12 @@ const BlockComponent = {
           :aria-label="'Expand ' + childrenCount + ' hidden ' + (childrenCount === 1 ? 'block' : 'blocks')"
         >… {{ childrenCount }}</button>
         <button
-          v-if="block.scheduled_for"
+          v-if="block.due_date"
           type="button"
           class="block-due-pill"
           :class="{ 'overdue': isOverdue }"
           @click.stop="scheduleBlock(block)"
-          :title="'Scheduled ' + block.scheduled_for + (reminderTimeLabel ? ' · reminder at ' + reminderTimeLabel : '') + (isOverdue ? ' (overdue)' : '') + ' — click to change'"
+          :title="'Due ' + scheduledForLabel + (reminderTimeLabel ? ' · reminder at ' + reminderTimeLabel : '') + (isOverdue ? ' (overdue)' : '') + ' — click to change'"
         ><svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="0"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg> {{ scheduledForLabel }}<span v-if="reminderTimeLabel"> · <svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><circle cx="8" cy="8" r="6.25"/><polyline points="8,4.5 8,8 11,9.5"/></g></svg> {{ reminderInlineLabel }}</span></button>
         <button
           v-else
@@ -2041,9 +2053,9 @@ const BlockComponent = {
         <div class="context-menu-separator"></div>
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('schedule')">
           <span class="context-menu-icon"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="0"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg></span>
-          <span>{{ block.scheduled_for ? 'reschedule...' : 'schedule...' }}</span>
+          <span>{{ block.due_date ? 'reschedule...' : 'schedule...' }}</span>
         </button>
-        <button class="context-menu-item" role="menuitem" tabindex="-1" v-if="block.scheduled_for" @click="handleContextMenuAction('unschedule')">
+        <button class="context-menu-item" role="menuitem" tabindex="-1" v-if="block.due_date" @click="handleContextMenuAction('unschedule')">
           <span class="context-menu-icon">✕</span>
           <span>clear schedule</span>
         </button>

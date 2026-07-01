@@ -10,7 +10,7 @@ DEFAULT_RANGE_DAYS = 30
 
 
 class ListScheduledBlocksCommand(AbstractBaseCommand):
-    """List the user's blocks with a scheduled_for date in the inclusive
+    """List the user's blocks with a due_at date in the inclusive
     range. Defaults the start to today (user tz) and the end to start+30
     days when the caller doesn't supply explicit values.
     """
