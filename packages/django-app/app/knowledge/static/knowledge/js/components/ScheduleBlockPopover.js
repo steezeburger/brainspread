@@ -6,8 +6,9 @@
 // `reminders: [{date, time}, …]` — saving replaces the block's whole
 // pending set on the backend.
 //
-// Quick chips ("in 30m", "9am", …) append a reminder row rather than
-// mutating an existing one — tapping a chip means "also ping me then".
+// Quick chips ("in 30m", "9am", …) set the time on the last reminder
+// row — tapping around retunes that row instead of piling up new
+// reminders; "+ reminder" adds a row, which becomes the chips' target.
 //
 // The due value is all-day by default; ticking "at" adds a
 // specific time of day (emitted as dueTime; "" means all-day).
@@ -219,34 +220,18 @@ window.ScheduleBlockPopover = {
       const offset = REMINDER_OFFSETS.find((o) => o.value === row.offset);
       return subtractDaysISO(this.scheduledFor, offset?.days ?? 0);
     },
-    hasRowAt(date, time) {
-      return this.reminderRows.some(
-        (row) => row.time === time && this.rowResolvedDate(row) === date
-      );
+    lastRow() {
+      return this.reminderRows[this.reminderRows.length - 1] || null;
     },
-    // Add a reminder row. Chips pass a concrete date+time; the
-    // "+ reminder" button passes neither and gets day-of defaults.
-    // A time-less row (the seeded default) is filled in place before
-    // anything is appended.
-    addReminderRow(time, date) {
-      const rowTime =
-        time || defaultReminderTimeFor(this.scheduledFor) || "09:00";
-      const offset = date ? deriveOffset(this.scheduledFor, date) : "day_of";
-      const resolved = date || this.scheduledFor;
-      if (this.hasRowAt(resolved, rowTime)) return;
-      const empty = this.reminderRows.find((row) => !row.time);
-      if (empty) {
-        empty.offset = offset;
-        empty.customDate = offset === "custom" ? date : "";
-        empty.time = rowTime;
-        return;
-      }
+    // "+ reminder": always append a fresh row (seeded with a sensible
+    // default time). It becomes the target of the quick chips below.
+    addReminderRow() {
       if (this.reminderRows.length >= MAX_REMINDER_ROWS) return;
       this.reminderRows.push({
         id: ++_rowIdCounter,
-        offset,
-        customDate: offset === "custom" ? date : "",
-        time: rowTime,
+        offset: "day_of",
+        customDate: "",
+        time: defaultReminderTimeFor(this.scheduledFor) || "09:00",
       });
     },
     removeReminderRow(id) {
@@ -259,13 +244,27 @@ window.ScheduleBlockPopover = {
         row.customDate = this.scheduledFor;
       }
     },
-    // Quick-pick chip: add a reminder at that time (and date, for the
-    // relative chips) — tapping a chip means "also ping me then".
+    // Quick-pick chip: set the time (and date, for the relative chips)
+    // on the LAST reminder row — tapping around the chips retunes that
+    // row rather than piling up new reminders. "+ reminder" adds a row,
+    // which then becomes the chips' target.
     pickReminderTime(time, date) {
-      this.addReminderRow(time, date);
+      let row = this.lastRow();
+      if (!row) {
+        this.addReminderRow();
+        row = this.lastRow();
+      }
+      row.offset = date ? deriveOffset(this.scheduledFor, date) : "day_of";
+      row.customDate = row.offset === "custom" ? date : "";
+      row.time = time;
     },
     chipIsActive(time) {
-      return this.hasRowAt(this.scheduledFor, time);
+      const row = this.lastRow();
+      return (
+        !!row &&
+        row.time === time &&
+        this.rowResolvedDate(row) === this.scheduledFor
+      );
     },
     save() {
       const reminders = this.scheduledFor
@@ -394,7 +393,6 @@ window.ScheduleBlockPopover = {
             :key="preset.key"
             type="button"
             class="schedule-popover-quick-btn schedule-popover-quick-btn-relative"
-            :disabled="!canAddReminder"
             @click="pickReminderTime(preset.time, preset.date)"
           >{{ preset.label }}</button>
           <span
@@ -408,7 +406,6 @@ window.ScheduleBlockPopover = {
             type="button"
             class="schedule-popover-quick-btn"
             :class="{ 'is-active': chipIsActive(preset.time) }"
-            :disabled="!canAddReminder && !chipIsActive(preset.time)"
             @click="pickReminderTime(preset.time)"
           >{{ preset.label }}</button>
         </div>
