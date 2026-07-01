@@ -49,6 +49,7 @@ from .preview_saved_view_command import PreviewSavedViewCommand
 from .reorder_blocks_command import ReorderBlocksCommand
 from .reorder_favorited_pages_command import ReorderFavoritedPagesCommand
 from .reorder_page_embedded_views_command import ReorderPageEmbeddedViewsCommand
+from .run_automation_command import RunAutomationCommand
 from .run_saved_view_command import RunSavedViewCommand
 from .schedule_block_command import ScheduleBlockCommand
 from .search_notes_command import SearchNotesCommand

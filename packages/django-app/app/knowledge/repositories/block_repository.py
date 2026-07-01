@@ -8,6 +8,7 @@ from django.db.models.functions import TruncDate
 from common.repositories.base_repository import BaseRepository
 
 from ..models import Block, Page
+from ..services.automation_spec import AUTOMATION_TAG_SLUG
 
 
 class BlockRepository(BaseRepository):
@@ -129,6 +130,33 @@ class BlockRepository(BaseRepository):
             queryset = queryset.exclude(properties={})
 
         return queryset
+
+    @classmethod
+    def get_automation_blocks(cls, user) -> List[Block]:
+        """Blocks the user tagged ``#automation`` — the definitions for the
+        automations platform (issue #143). Each block carries its config as
+        ``key:: value`` props in ``block.properties``.
+
+        Matches the ``has_tag`` semantics from the query engine: the M2M
+        tag OR living on a page with the tag's slug both count, so a block
+        added to a seeded "Automations" page enrolls without the user
+        having to retype ``#automation``. Template pages are excluded —
+        an automation block inside a template is a dormant blueprint and
+        must only go live once the template is applied to a real page
+        (mirrors ``run_compiled_query``'s template exclusion).
+
+        ``distinct()`` guards against the join multiplying a block tagged
+        with multiple pages; ordered by creation for stable run ordering."""
+        return list(
+            cls.get_queryset()
+            .filter(user=user)
+            .filter(
+                Q(pages__slug=AUTOMATION_TAG_SLUG) | Q(page__slug=AUTOMATION_TAG_SLUG)
+            )
+            .exclude(page__page_type="template")
+            .distinct()
+            .order_by("created_at")
+        )
 
     @classmethod
     def create(cls, data: dict) -> Block:

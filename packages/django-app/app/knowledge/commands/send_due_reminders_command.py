@@ -198,7 +198,7 @@ def _build_payload(
         on <page title>               ← footer, page context
         <relative time>               ← timestamp, rendered by Discord
     """
-    title = (block.content or "").strip().splitlines()[0] if block.content else ""
+    title = block.first_content_line()
     if len(title) > 240:
         title = title[:237] + "..."
     if not title:
