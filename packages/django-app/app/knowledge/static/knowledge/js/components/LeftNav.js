@@ -648,6 +648,13 @@ window.LeftNav = {
       this.closeOnMobile();
     },
 
+    onPagesClick(event) {
+      if (this.shouldDeferToBrowser(event)) return;
+      event.preventDefault();
+      this.$emit("navigate-pages");
+      this.closeOnMobile();
+    },
+
     onSearchClick() {
       this.$emit("open-search");
       this.closeOnMobile();
@@ -937,6 +944,14 @@ window.LeftNav = {
           title="Saved views"
           aria-label="Saved views"
         >≡</a>
+        <a
+          href="/knowledge/pages/"
+          class="leftnav-rail-btn leftnav-rail-action"
+          @click="onPagesClick"
+          @auxclick="onPagesClick"
+          title="All pages"
+          aria-label="All pages"
+        >☰</a>
         <div class="leftnav-rail-spacer leftnav-rail-action"></div>
         <button
           type="button"
@@ -1071,6 +1086,16 @@ window.LeftNav = {
             >
               <span class="leftnav-icon" aria-hidden="true">≡</span>
               <span class="leftnav-label">saved views</span>
+            </a>
+            <a
+              href="/knowledge/pages/"
+              class="leftnav-item"
+              @click="onPagesClick"
+              @auxclick="onPagesClick"
+              title="Browse all pages"
+            >
+              <span class="leftnav-icon" aria-hidden="true">☰</span>
+              <span class="leftnav-label">all pages</span>
             </a>
           </nav>
 
