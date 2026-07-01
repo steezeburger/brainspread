@@ -6842,6 +6842,36 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
   margin: 0.1rem 0.15rem;
 }
 
+/* "+ reminder" — an add-row action, not a value chip. Dashed border +
+ * muted text + left alignment with the reminder rows (no chip-row
+ * indent) so it can't be mistaken for another time suggestion. */
+.schedule-popover-add-row {
+  margin-top: 0.1rem;
+}
+
+.schedule-popover-add-btn {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px dashed var(--border-secondary);
+  border-radius: 0;
+  padding: 0.2rem 0.55rem;
+  font-family: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.schedule-popover-add-btn:hover {
+  color: var(--text-primary);
+  background: var(--hover-bg);
+  border-color: var(--border-primary);
+}
+
+.schedule-popover-add-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* Mobile: the desktop popover lays the date/reminder controls out in a
  * single row, which overflows below ~420px-wide viewports. Stack the
  * rows vertically and clamp the modal width to the viewport so the

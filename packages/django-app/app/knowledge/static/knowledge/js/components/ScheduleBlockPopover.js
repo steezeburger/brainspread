@@ -413,10 +413,10 @@ window.ScheduleBlockPopover = {
           >{{ preset.label }}</button>
         </div>
 
-        <div class="schedule-popover-quick-row">
+        <div class="schedule-popover-add-row">
           <button
             type="button"
-            class="schedule-popover-quick-btn"
+            class="schedule-popover-add-btn"
             :disabled="!canAddReminder"
             @click="addReminderRow()"
           >+ reminder</button>
