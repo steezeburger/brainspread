@@ -385,15 +385,6 @@ window.ScheduleBlockPopover = {
           </label>
         </template>
 
-        <div class="schedule-popover-quick-row">
-          <button
-            type="button"
-            class="schedule-popover-quick-btn"
-            :disabled="!canAddReminder"
-            @click="addReminderRow()"
-          >+ reminder</button>
-        </div>
-
         <div
           v-if="scheduledFor"
           class="schedule-popover-quick-row schedule-popover-quick-row-time"
@@ -420,6 +411,15 @@ window.ScheduleBlockPopover = {
             :disabled="!canAddReminder && !chipIsActive(preset.time)"
             @click="pickReminderTime(preset.time)"
           >{{ preset.label }}</button>
+        </div>
+
+        <div class="schedule-popover-quick-row">
+          <button
+            type="button"
+            class="schedule-popover-quick-btn"
+            :disabled="!canAddReminder"
+            @click="addReminderRow()"
+          >+ reminder</button>
         </div>
 
         <p v-if="!scheduledFor" class="schedule-popover-hint">
