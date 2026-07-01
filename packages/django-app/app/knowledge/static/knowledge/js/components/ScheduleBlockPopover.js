@@ -183,6 +183,18 @@ window.ScheduleBlockPopover = {
             time: entry.time || "",
           };
         });
+        // Always show one reminder row so the affordance is visible
+        // without hunting for "+ reminder". An empty time means "no
+        // reminder" — save() drops time-less rows — so the seeded row
+        // is inert until the user picks a time or taps a chip.
+        if (this.reminderRows.length === 0) {
+          this.reminderRows.push({
+            id: ++_rowIdCounter,
+            offset: "day_of",
+            customDate: "",
+            time: "",
+          });
+        }
         this.$nextTick(() => {
           this.$refs.dateInput?.focus();
         });
@@ -212,16 +224,24 @@ window.ScheduleBlockPopover = {
         (row) => row.time === time && this.rowResolvedDate(row) === date
       );
     },
-    // Append a reminder row. Chips pass a concrete date+time; the
+    // Add a reminder row. Chips pass a concrete date+time; the
     // "+ reminder" button passes neither and gets day-of defaults.
+    // A time-less row (the seeded default) is filled in place before
+    // anything is appended.
     addReminderRow(time, date) {
-      if (this.reminderRows.length >= MAX_REMINDER_ROWS) return;
       const rowTime =
         time || defaultReminderTimeFor(this.scheduledFor) || "09:00";
       const offset = date ? deriveOffset(this.scheduledFor, date) : "day_of";
-      const resolved =
-        offset === "custom" ? date : subtractDaysISO(this.scheduledFor, 0);
-      if (this.hasRowAt(date || resolved, rowTime)) return;
+      const resolved = date || this.scheduledFor;
+      if (this.hasRowAt(resolved, rowTime)) return;
+      const empty = this.reminderRows.find((row) => !row.time);
+      if (empty) {
+        empty.offset = offset;
+        empty.customDate = offset === "custom" ? date : "";
+        empty.time = rowTime;
+        return;
+      }
+      if (this.reminderRows.length >= MAX_REMINDER_ROWS) return;
       this.reminderRows.push({
         id: ++_rowIdCounter,
         offset,
