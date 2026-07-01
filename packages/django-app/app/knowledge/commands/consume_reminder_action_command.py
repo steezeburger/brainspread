@@ -167,6 +167,8 @@ class ConsumeReminderActionCommand(AbstractBaseCommand):
 
 
 _SNOOZE_DELTAS = {
+    ReminderAction.ACTION_SNOOZE_15M: timedelta(minutes=15),
+    ReminderAction.ACTION_SNOOZE_30M: timedelta(minutes=30),
     ReminderAction.ACTION_SNOOZE_1H: timedelta(hours=1),
     ReminderAction.ACTION_SNOOZE_1D: timedelta(days=1),
 }
@@ -177,6 +179,10 @@ def _executed_detail(action: str) -> str:
         return "Marked the block as done."
     if action == ReminderAction.ACTION_MARK_DOING:
         return "Marked the block as doing."
+    if action == ReminderAction.ACTION_SNOOZE_15M:
+        return "Snoozed for 15 minutes."
+    if action == ReminderAction.ACTION_SNOOZE_30M:
+        return "Snoozed for 30 minutes."
     if action == ReminderAction.ACTION_SNOOZE_1H:
         return "Snoozed for 1 hour."
     if action == ReminderAction.ACTION_SNOOZE_1D:

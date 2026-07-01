@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional
 
 from django.db import transaction
@@ -9,6 +9,7 @@ from common.repositories.base_repository import BaseRepository
 
 from ..models import Block, Page
 from ..services.automation_spec import AUTOMATION_TAG_SLUG
+from ..services.due_dates import start_of_local_day
 
 
 class BlockRepository(BaseRepository):
@@ -46,6 +47,69 @@ class BlockRepository(BaseRepository):
             .prefetch_related("reminders")
             .order_by("order")
         )
+
+    @classmethod
+    def get_referenced_blocks(
+        cls, page: Page, order_by: Iterable[str] = ()
+    ) -> List[Block]:
+        """Blocks on *other* pages tagged with ``page`` (its "linked
+        references"), with redundant descendants removed.
+
+        A tagged block is dropped when one of its ancestors is also tagged
+        with the same page: the references list renders each reference's
+        full subtree, so the descendant already shows up nested under that
+        ancestor. Surfacing it again as its own top-level entry would just
+        duplicate it.
+
+        ``order_by`` is applied to the underlying query (defaults to the
+        model's Meta ordering). The ancestor walk fetches intermediate
+        (untagged) ancestors in bulk per depth level, so it costs one
+        query per level rather than one per block.
+        """
+        qs = (
+            cls.get_queryset()
+            .filter(pages=page)
+            .exclude(page=page)
+            .select_related("user", "page", "asset")
+            .prefetch_related("reminders")
+        )
+        if order_by:
+            qs = qs.order_by(*order_by)
+        tagged = list(qs)
+        if not tagged:
+            return []
+
+        tagged_ids = {b.id for b in tagged}
+
+        parent_of: Dict[int, Optional[int]] = {b.id: b.parent_id for b in tagged}
+        frontier = {
+            b.parent_id
+            for b in tagged
+            if b.parent_id is not None and b.parent_id not in parent_of
+        }
+        while frontier:
+            rows = list(
+                cls.get_queryset()
+                .filter(id__in=frontier)
+                .values_list("id", "parent_id")
+            )
+            for block_id, parent_id in rows:
+                parent_of[block_id] = parent_id
+            frontier = {
+                parent_id
+                for _block_id, parent_id in rows
+                if parent_id is not None and parent_id not in parent_of
+            }
+
+        def has_tagged_ancestor(block_id: int) -> bool:
+            parent_id = parent_of.get(block_id)
+            while parent_id is not None:
+                if parent_id in tagged_ids:
+                    return True
+                parent_id = parent_of.get(parent_id)
+            return False
+
+        return [b for b in tagged if not has_tagged_ancestor(b.id)]
 
     @classmethod
     def get_child_blocks(cls, parent_block: Block) -> QuerySet:
@@ -245,9 +309,9 @@ class BlockRepository(BaseRepository):
     def get_undone_todos(cls, user) -> QuerySet:
         """Get undone TODO blocks from daily pages before today.
 
-        Dated blocks (scheduled_for is set) are excluded — they surface on
-        their scheduled page via the overdue query instead, keeping the
-        original page intact as history.
+        Dated blocks (due_at is set) are excluded — they surface on their
+        due page via the overdue query instead, keeping the original page
+        intact as history.
 
         "Today" is resolved against the user's timezone via the shared
         today_for_user helper (added on main).
@@ -260,7 +324,7 @@ class BlockRepository(BaseRepository):
                 block_type="todo",
                 page__page_type="daily",
                 page__date__lt=today,
-                scheduled_for__isnull=True,
+                due_at__isnull=True,
             )
             .select_related("page")
             .order_by("page__date", "order")
@@ -268,25 +332,28 @@ class BlockRepository(BaseRepository):
 
     @classmethod
     def get_overdue_blocks(cls, user, today) -> QuerySet:
-        """Get overdue scheduled blocks for a user as of the given date.
+        """Get overdue blocks for a user as of the given date.
 
-        Predicate per issue #59:
-            scheduled_for < today
+        Predicate per issue #59, by due *date* in the user's timezone:
+            due_at < start-of-today (user-local)
             AND block_type IN (todo, doing, later)
             AND completed_at IS NULL
             AND user = request.user
+
+        Both all-day and timed items compare by date — a timed item due
+        today (even at 3pm) is "due today", not overdue, until tomorrow.
         """
         return (
             cls.get_queryset()
             .filter(
                 user=user,
-                scheduled_for__lt=today,
+                due_at__lt=start_of_local_day(today, user.tz()),
                 block_type__in=("todo", "doing", "later"),
                 completed_at__isnull=True,
             )
             .select_related("page", "user")
             .prefetch_related("reminders")
-            .order_by("scheduled_for", "order")
+            .order_by("due_at", "order")
         )
 
     @classmethod
@@ -297,18 +364,20 @@ class BlockRepository(BaseRepository):
         end_date: date,
         limit: int,
     ) -> List[Block]:
-        """Blocks with scheduled_for in the inclusive range, ordered for
-        a calendar / upcoming-list view."""
+        """Blocks due within the inclusive date range, ordered for a
+        calendar / upcoming-list view. The date range is widened to
+        datetime bounds in the user's timezone since due_at is a datetime
+        (``[start 00:00, day-after-end 00:00)``)."""
         return list(
             cls.get_queryset()
             .filter(
                 user=user,
-                scheduled_for__gte=start_date,
-                scheduled_for__lte=end_date,
+                due_at__gte=start_of_local_day(start_date, user.tz()),
+                due_at__lt=start_of_local_day(end_date + timedelta(days=1), user.tz()),
             )
             .select_related("page")
             .prefetch_related("reminders")
-            .order_by("scheduled_for", "order")[:limit]
+            .order_by("due_at", "order")[:limit]
         )
 
     @classmethod
@@ -480,13 +549,26 @@ class BlockRepository(BaseRepository):
             .filter(
                 user=user,
                 block_type="todo",
-                scheduled_for__isnull=True,
+                due_at__isnull=True,
                 completed_at__isnull=True,
                 created_at__lt=cutoff_dt,
             )
             .select_related("page")
             .order_by("created_at")[:limit]
         )
+
+    @classmethod
+    def _compiled_base_queryset(cls, user, compiled) -> QuerySet:
+        """Shared filter/exclude logic for a CompiledQuery, before ordering
+        and serialization hints. Used by both ``run_compiled_query`` (which
+        adds select_related/ordering) and ``count_compiled_query`` (which
+        only needs the row count). Keeping the template-page exclusion in
+        one place so the two paths can never drift.
+        """
+        qs = cls.get_queryset().filter(user=user).filter(compiled.filter_q)
+        if not compiled.includes_page_type:
+            qs = qs.exclude(page__page_type="template")
+        return qs
 
     @classmethod
     def run_compiled_query(
@@ -500,7 +582,7 @@ class BlockRepository(BaseRepository):
         across users. When the spec doesn't supply a sort we fall back to
         ``-created_at`` (newest first) — "what did I add lately" is the
         most useful default for an open-ended block list; the older
-        ``scheduled_for, order`` default surfaced undated items at the
+        ``due_at, order`` default surfaced undated items at the
         top, which felt random for views like "all #brainspread #bugs".
 
         Template-page blocks are excluded by default — they're
@@ -510,14 +592,10 @@ class BlockRepository(BaseRepository):
         and the exclusion is skipped, putting the spec back in control.
         """
         qs = (
-            cls.get_queryset()
-            .filter(user=user)
-            .filter(compiled.filter_q)
+            cls._compiled_base_queryset(user, compiled)
             .select_related("page", "user")
             .prefetch_related("reminders")
         )
-        if not compiled.includes_page_type:
-            qs = qs.exclude(page__page_type="template")
         if compiled.order_by:
             qs = qs.order_by(*compiled.order_by)
         else:
@@ -525,6 +603,28 @@ class BlockRepository(BaseRepository):
         if limit is not None:
             qs = qs[:limit]
         return qs
+
+    @classmethod
+    def count_compiled_query(
+        cls,
+        user,
+        compiled,
+        limit: Optional[int] = None,
+    ) -> int:
+        """Count the blocks a CompiledQuery matches, without fetching or
+        serializing the rows. Used by collapsed saved-view embeds, which
+        only need the header count — running the full ``run_compiled_query``
+        + ``to_dict`` for a header number is wasteful when a daily page can
+        carry many collapsed embeds.
+
+        ``limit`` caps the count (via a sliced subquery) so callers can
+        cheaply distinguish "exactly N" from "at least N" for truncation
+        badges; pass ``limit + 1`` and compare against ``limit``.
+        """
+        qs = cls._compiled_base_queryset(user, compiled)
+        if limit is not None:
+            qs = qs[:limit]
+        return qs.count()
 
     @classmethod
     def clone_block_tree_to_page(
@@ -539,7 +639,7 @@ class BlockRepository(BaseRepository):
         Used by the page-template / duplicate / add-from-template flows
         (issue #106). Each cloned block gets a fresh UUID; parent/child
         structure, order, block_type, content, properties, media_url,
-        asset, scheduled_for, and the M2M tag set are preserved.
+        asset, due_at / due_at_has_time, and the M2M tag set are preserved.
         completed_at is intentionally cleared on clone — a duplicated
         todo starts uncompleted even if the source was done.
 
@@ -577,7 +677,8 @@ class BlockRepository(BaseRepository):
                     media_metadata=src.media_metadata,
                     properties=dict(src.properties or {}),
                     asset=src.asset,
-                    scheduled_for=src.scheduled_for,
+                    due_at=src.due_at,
+                    due_at_has_time=src.due_at_has_time,
                     collapsed=src.collapsed,
                 )
                 uuid_map[src.id] = new_block

@@ -72,6 +72,9 @@ from knowledge.commands.move_block_to_daily_command import MoveBlockToDailyComma
 from knowledge.commands.run_saved_view_command import RunSavedViewCommand
 from knowledge.commands.schedule_block_command import ScheduleBlockCommand
 from knowledge.commands.search_notes_command import SearchNotesCommand
+from knowledge.commands.set_block_completed_at_command import (
+    SetBlockCompletedAtCommand,
+)
 from knowledge.commands.set_block_type_command import SetBlockTypeCommand
 from knowledge.commands.snooze_block_command import SnoozeBlockCommand
 from knowledge.commands.tag_blocks_command import TagBlocksCommand, UntagBlocksCommand
@@ -114,6 +117,7 @@ from knowledge.forms.move_block_to_daily_form import MoveBlockToDailyForm
 from knowledge.forms.run_saved_view_form import RunSavedViewForm
 from knowledge.forms.schedule_block_form import ScheduleBlockForm
 from knowledge.forms.search_notes_form import SearchNotesForm
+from knowledge.forms.set_block_completed_at_form import SetBlockCompletedAtForm
 from knowledge.forms.set_block_type_form import SetBlockTypeForm
 from knowledge.forms.snooze_block_form import SnoozeBlockForm
 from knowledge.forms.tag_blocks_form import TagBlocksForm, UntagBlocksForm
@@ -637,14 +641,36 @@ def _edit_block(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
         # this block when the caller only wanted to change content/type.
         form_data["parent"] = block.parent.uuid
 
-    if len(form_data) == 2:
+    completed_at = args.get("completed_at")
+    has_block_fields = len(form_data) > 2
+
+    if not has_block_fields and completed_at is None:
         # Only user + block — nothing to update.
         return {"error": "no fields provided to update"}
 
-    form = UpdateBlockForm(form_data)
-    if not form.is_valid():
-        return {"error": _first_form_error(form)}
-    updated = UpdateBlockCommand(form).execute()
+    updated = block
+    if has_block_fields:
+        form = UpdateBlockForm(form_data)
+        if not form.is_valid():
+            return {"error": _first_form_error(form)}
+        updated = UpdateBlockCommand(form).execute()
+
+    # Apply completed_at last: when the same call also flips the block to
+    # done/wontdo, UpdateBlockCommand has already stamped completed_at to
+    # "now", and this override replaces it with the caller's value. The
+    # block must be terminal (the form enforces it) — which it now is.
+    if completed_at is not None:
+        ca_form = SetBlockCompletedAtForm(
+            {
+                "user": ctx.user.id,
+                "block": str(updated.uuid),
+                "completed_at": completed_at,
+            }
+        )
+        if not ca_form.is_valid():
+            return {"error": _first_form_error(ca_form)}
+        updated = SetBlockCompletedAtCommand(ca_form).execute()
+
     return {
         "updated": True,
         "block": {
@@ -653,6 +679,9 @@ def _edit_block(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
             "block_type": updated.block_type,
             "parent_uuid": (str(updated.parent.uuid) if updated.parent else None),
             "order": updated.order,
+            "completed_at": (
+                updated.completed_at.isoformat() if updated.completed_at else None
+            ),
             "page_uuid": str(updated.page.uuid) if updated.page else None,
         },
         "affected_page_uuids": ([str(updated.page.uuid)] if updated.page else []),
@@ -753,13 +782,11 @@ def _schedule_block(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
 
     today = ctx.user.today()
     try:
-        scheduled_for = _parse_relative_date(args.get("scheduled_for"), today)
+        due_date = _parse_relative_date(args.get("due_date"), today)
     except ValueError as e:
-        return {"error": f"scheduled_for: {e}"}
-    if scheduled_for is None:
-        return {
-            "error": ("scheduled_for is required (use clear_schedule to unschedule)")
-        }
+        return {"error": f"due_date: {e}"}
+    if due_date is None:
+        return {"error": ("due_date is required (use clear_schedule to unschedule)")}
 
     try:
         reminder_date = _parse_relative_date(args.get("reminder_date"), today)
@@ -781,8 +808,11 @@ def _schedule_block(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
     form_data: Dict[str, Any] = {
         "user": ctx.user.id,
         "block": block.uuid,
-        "scheduled_for": scheduled_for.isoformat(),
+        "due_date": due_date.isoformat(),
     }
+    # Optional time-of-day; absent leaves the due all-day.
+    if args.get("due_time"):
+        form_data["due_time"] = args["due_time"]
     if reminder_date is not None:
         form_data["reminder_date"] = reminder_date.isoformat()
     if resolved_time:
@@ -807,8 +837,8 @@ def _clear_schedule(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
     if not block:
         return {"error": f"No block found with uuid {block_uuid}"}
 
-    # ScheduleBlockForm treats a missing scheduled_for as "clear" (the
-    # field is required=False; cleaned_data["scheduled_for"] is None).
+    # ScheduleBlockForm treats a missing due_date as "clear" (the
+    # field is required=False; cleaned_data["due_date"] is None).
     form = ScheduleBlockForm(
         {
             "user": ctx.user.id,
@@ -994,6 +1024,9 @@ def _bulk_schedule(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
         "block_uuids": args.get("block_uuids") or [],
         "new_date": new_date.isoformat(),
     }
+    # Optional time-of-day; absent leaves the dues all-day.
+    if args.get("new_time"):
+        form_data["new_time"] = args["new_time"]
     if reminder_date is not None:
         form_data["reminder_date"] = reminder_date.isoformat()
     if resolved_time:
@@ -1206,7 +1239,7 @@ def _resolve_reminder_time(
 
     - Empty / None    -> (None, None) — caller should leave reminder unset.
     - 'HH:MM'         -> (None, 'HH:MM') — let the form parse it; the
-                          caller's reminder_date / scheduled_for fallback
+                          caller's reminder_date / due_date fallback
                           decides which day it fires on.
     - '+Nm' / '+Nh'   -> (target_date, 'HH:MM') in the user's tz, computed
                           from now() + offset. The date is returned so the

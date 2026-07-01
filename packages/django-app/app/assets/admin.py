@@ -112,7 +112,7 @@ class AssetAdmin(admin.ModelAdmin):
             return format_html(
                 '<a href="{}" target="_blank" rel="noopener">'
                 '<img src="{}" style="max-width: 480px; max-height: 360px; '
-                'border: 1px solid #ccc; border-radius: 3px;" alt="{}" />'
+                'border: 1px solid #ccc; border-radius: 0;" alt="{}" />'
                 "</a>",
                 url,
                 url,
@@ -125,7 +125,7 @@ class AssetAdmin(admin.ModelAdmin):
         ):
             return format_html(
                 '<iframe src="{}" style="width: 100%; max-width: 720px; '
-                'height: 360px; border: 1px solid #ccc; border-radius: 3px;"></iframe>'
+                'height: 360px; border: 1px solid #ccc; border-radius: 0;"></iframe>'
                 '<div style="margin-top: 0.4rem;">'
                 '<a href="{}" target="_blank" rel="noopener">open in new tab</a>'
                 "</div>",

@@ -9,18 +9,19 @@ from ..forms.bulk_schedule_form import BulkScheduleForm
 from ..forms.schedule_block_form import ScheduleBlockForm
 from ..models import Block
 from ..repositories import BlockRepository
+from ..services.due_dates import build_due_at
 from .schedule_block_command import ScheduleBlockCommand
 
 
 class BulkScheduleCommand(AbstractBaseCommand):
-    """Set the same `new_date` on N blocks, optionally creating /
-    replacing pending reminders on each.
+    """Set the same `new_date` (+ optional `new_time`) on N blocks,
+    optionally creating / replacing pending reminders on each.
 
     Reminder-mode (reminder_time supplied) routes each block through
     ScheduleBlockCommand so the existing replace-pending-reminder
-    semantics apply uniformly. Date-only mode just sets scheduled_for
-    and shifts each existing pending reminder by the per-block delta
-    (preserving time-of-day).
+    semantics apply uniformly. Date-only mode just sets due_at and shifts
+    each existing pending reminder by the per-block delta (preserving
+    time-of-day).
     """
 
     def __init__(self, form: BulkScheduleForm) -> None:
@@ -32,27 +33,43 @@ class BulkScheduleCommand(AbstractBaseCommand):
         user = self.form.cleaned_data["user"]
         block_uuids: List[str] = self.form.cleaned_data["block_uuids"]
         new_date: date = self.form.cleaned_data["new_date"]
+        new_time: Optional[time] = self.form.cleaned_data.get("new_time")
+        reminders: Optional[list] = self.form.cleaned_data.get("reminders")
         reminder_time: Optional[time] = self.form.cleaned_data.get("reminder_time")
         reminder_date: Optional[date] = self.form.cleaned_data.get("reminder_date")
 
         # Route mode is decided once for the whole batch — either everyone
-        # gets a reminder set (replace semantics) or nobody does (preserve
-        # existing reminders, shift fire_at).
+        # gets the same reminder set (replace semantics) or nobody does
+        # (preserve existing reminders, shift fire_at). The popover sends
+        # a `reminders` list; the tools send single reminder_date/time.
+        if reminders:
+            return self._execute_with_reminders(
+                user=user,
+                block_uuids=block_uuids,
+                new_date=new_date,
+                new_time=new_time,
+                reminders=reminders,
+            )
         if reminder_time is not None:
             return self._execute_with_reminders(
                 user=user,
                 block_uuids=block_uuids,
                 new_date=new_date,
-                reminder_date=reminder_date or new_date,
-                reminder_time=reminder_time,
+                new_time=new_time,
+                reminders=[
+                    {
+                        "date": (reminder_date or new_date).isoformat(),
+                        "time": reminder_time.strftime("%H:%M"),
+                    }
+                ],
             )
         return self._execute_date_only(
-            user=user, block_uuids=block_uuids, new_date=new_date
+            user=user, block_uuids=block_uuids, new_date=new_date, new_time=new_time
         )
 
     @staticmethod
     def _execute_date_only(
-        *, user, block_uuids: List[str], new_date: date
+        *, user, block_uuids: List[str], new_date: date, new_time: Optional[time]
     ) -> Dict[str, Any]:
         updated_count = 0
         missing: List[str] = []
@@ -66,16 +83,21 @@ class BulkScheduleCommand(AbstractBaseCommand):
                     continue
 
                 # Per-block delta lets us shift the pending reminder by
-                # the same amount the date moved, preserving time-of-day.
-                old_date = block.scheduled_for
-                block.scheduled_for = new_date
-                block.save(update_fields=["scheduled_for", "modified_at"])
+                # the same number of days the due date moved, preserving
+                # time-of-day. old_date is the block's prior due *date* in
+                # the user's timezone (due_at is a datetime).
+                old_date = (
+                    block.due_at.astimezone(user.tz()).date() if block.due_at else None
+                )
+                block.due_at, block.due_at_has_time = build_due_at(
+                    new_date, new_time, user.tz()
+                )
+                block.save(update_fields=["due_at", "due_at_has_time", "modified_at"])
 
                 if old_date is not None:
                     delta = new_date - old_date
                     if delta != timedelta(0):
-                        pending = block.get_pending_reminder()
-                        if pending is not None:
+                        for pending in block.get_pending_reminders():
                             pending.fire_at = pending.fire_at + delta
                             pending.save(update_fields=["fire_at", "modified_at"])
 
@@ -97,13 +119,13 @@ class BulkScheduleCommand(AbstractBaseCommand):
         user,
         block_uuids: List[str],
         new_date: date,
-        reminder_date: date,
-        reminder_time: time,
+        new_time: Optional[time],
+        reminders: list,
     ) -> Dict[str, Any]:
         updated_count = 0
         missing: List[str] = []
         affected_page_uuids: Set[str] = set()
-        reminder_iso = reminder_time.strftime("%H:%M")
+        due_time_iso = new_time.strftime("%H:%M") if new_time else ""
 
         with transaction.atomic():
             for block_uuid in block_uuids:
@@ -116,9 +138,9 @@ class BulkScheduleCommand(AbstractBaseCommand):
                     {
                         "user": user.id,
                         "block": str(block.uuid),
-                        "scheduled_for": new_date.isoformat(),
-                        "reminder_date": reminder_date.isoformat(),
-                        "reminder_time": reminder_iso,
+                        "due_date": new_date.isoformat(),
+                        "due_time": due_time_iso,
+                        "reminders": reminders,
                     }
                 )
                 if not inner.is_valid():
@@ -134,7 +156,6 @@ class BulkScheduleCommand(AbstractBaseCommand):
             "missing": missing,
             "new_date": new_date.isoformat(),
             "reminder_set": True,
-            "reminder_date": reminder_date.isoformat(),
-            "reminder_time": reminder_iso,
+            "reminders_count": len(reminders),
             "affected_page_uuids": sorted(affected_page_uuids),
         }

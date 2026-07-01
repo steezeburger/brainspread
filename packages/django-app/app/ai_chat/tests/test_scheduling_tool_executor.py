@@ -15,7 +15,7 @@ from ai_chat.tools.notes_tools import (
 )
 from core.test.helpers import UserFactory
 from knowledge.models import Reminder
-from knowledge.test.helpers import BlockFactory, PageFactory
+from knowledge.test.helpers import BlockFactory, PageFactory, due_dt
 
 
 class ParseRelativeDateTestCase(TestCase):
@@ -121,18 +121,18 @@ class ScheduleBlockToolTestCase(TestCase):
             user=cls.user, page=cls.page, content="ship feature", block_type="todo"
         )
 
-    def test_sets_scheduled_for(self):
+    def test_sets_due_date(self):
         ex = NotesToolExecutor(self.user, allow_writes=True)
 
         result = ex.execute(
             "schedule_block",
-            {"block_uuid": str(self.block.uuid), "scheduled_for": "2026-06-15"},
+            {"block_uuid": str(self.block.uuid), "due_date": "2026-06-15"},
         )
 
         self.assertTrue(result.get("scheduled"))
-        self.assertEqual(result["block"]["scheduled_for"], "2026-06-15")
+        self.assertEqual(result["block"]["due_date"], "2026-06-15")
         self.block.refresh_from_db()
-        self.assertEqual(self.block.scheduled_for, date(2026, 6, 15))
+        self.assertEqual(self.block._due_local_date(), "2026-06-15")
 
     def test_creates_reminder_when_time_provided(self):
         ex = NotesToolExecutor(self.user, allow_writes=True)
@@ -141,7 +141,7 @@ class ScheduleBlockToolTestCase(TestCase):
             "schedule_block",
             {
                 "block_uuid": str(self.block.uuid),
-                "scheduled_for": "2026-06-15",
+                "due_date": "2026-06-15",
                 "reminder_time": "09:30",
             },
         )
@@ -162,7 +162,7 @@ class ScheduleBlockToolTestCase(TestCase):
 
         result = ex.execute(
             "schedule_block",
-            {"block_uuid": str(self.block.uuid), "scheduled_for": "tomorrow"},
+            {"block_uuid": str(self.block.uuid), "due_date": "tomorrow"},
         )
 
         self.assertTrue(result.get("scheduled"))
@@ -171,7 +171,8 @@ class ScheduleBlockToolTestCase(TestCase):
         # today_for_user, which is what the tool uses.
 
         self.assertEqual(
-            self.block.scheduled_for, self.user.today() + timedelta(days=1)
+            self.block._due_local_date(),
+            (self.user.today() + timedelta(days=1)).isoformat(),
         )
 
     def test_rejects_other_users_block(self):
@@ -179,19 +180,19 @@ class ScheduleBlockToolTestCase(TestCase):
 
         result = ex.execute(
             "schedule_block",
-            {"block_uuid": str(self.block.uuid), "scheduled_for": "2026-06-15"},
+            {"block_uuid": str(self.block.uuid), "due_date": "2026-06-15"},
         )
 
         self.assertIn("error", result)
         self.block.refresh_from_db()
-        self.assertIsNone(self.block.scheduled_for)
+        self.assertIsNone(self.block.due_at)
 
     def test_rejects_garbage_date(self):
         ex = NotesToolExecutor(self.user, allow_writes=True)
 
         result = ex.execute(
             "schedule_block",
-            {"block_uuid": str(self.block.uuid), "scheduled_for": "next thursday"},
+            {"block_uuid": str(self.block.uuid), "due_date": "next thursday"},
         )
 
         self.assertIn("error", result)
@@ -204,9 +205,7 @@ class ClearScheduleToolTestCase(TestCase):
         cls.page = PageFactory(user=cls.user)
 
     def test_clears_schedule_and_pending_reminder(self):
-        block = BlockFactory(
-            user=self.user, page=self.page, scheduled_for=date(2026, 5, 30)
-        )
+        block = BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 5, 30))
         Reminder.objects.create(
             block=block, fire_at=timezone.now() + timedelta(hours=1)
         )
@@ -216,7 +215,7 @@ class ClearScheduleToolTestCase(TestCase):
 
         self.assertTrue(result.get("cleared"))
         block.refresh_from_db()
-        self.assertIsNone(block.scheduled_for)
+        self.assertIsNone(block.due_at)
         self.assertEqual(
             Reminder.objects.filter(block=block, sent_at__isnull=True).count(), 0
         )
@@ -311,14 +310,14 @@ class ListReadToolsTestCase(TestCase):
             page=self.page,
             content="overdue todo",
             block_type="todo",
-            scheduled_for=today - timedelta(days=2),
+            due_at=due_dt(today - timedelta(days=2)),
         )
         BlockFactory(
             user=self.user,
             page=self.page,
             content="future todo",
             block_type="todo",
-            scheduled_for=today + timedelta(days=2),
+            due_at=due_dt(today + timedelta(days=2)),
         )
         # Other user's overdue must NOT leak through.
         BlockFactory(
@@ -326,7 +325,7 @@ class ListReadToolsTestCase(TestCase):
             page=self.other_page,
             content="someone else overdue",
             block_type="todo",
-            scheduled_for=today - timedelta(days=2),
+            due_at=due_dt(today - timedelta(days=2)),
         )
         ex = NotesToolExecutor(self.user)
 
@@ -369,13 +368,13 @@ class ListReadToolsTestCase(TestCase):
             user=self.user,
             page=self.page,
             content="in range",
-            scheduled_for=today + timedelta(days=3),
+            due_at=due_dt(today + timedelta(days=3)),
         )
         BlockFactory(
             user=self.user,
             page=self.page,
             content="too far",
-            scheduled_for=today + timedelta(days=60),
+            due_at=due_dt(today + timedelta(days=60)),
         )
         ex = NotesToolExecutor(self.user)
 
@@ -485,7 +484,7 @@ class ScheduleBlockRelativeTimeTestCase(TestCase):
             "schedule_block",
             {
                 "block_uuid": str(block.uuid),
-                "scheduled_for": "today",
+                "due_date": "today",
                 "reminder_time": "+3m",
             },
         )

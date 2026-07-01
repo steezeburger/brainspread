@@ -267,32 +267,40 @@ class ApiService {
   }
 
   /**
-   * Set or clear a block's scheduled_for date.
-   *   scheduledFor: "" or "YYYY-MM-DD"   (empty clears the schedule)
-   *   reminderDate: "" or "YYYY-MM-DD"   (the day the reminder fires;
-   *                                       defaults to scheduledFor on the
-   *                                       backend if omitted, so callers
-   *                                       can leave this empty for
-   *                                       "remind day-of")
-   *   reminderTime: "" or "HH:MM"        (presence triggers reminder
-   *                                       creation; user-local time)
-   * Re-saving always replaces any pending reminder for the block.
+   * Set or clear a block's due date/time and reminders.
+   *   dueDate: "" or "YYYY-MM-DD"   (empty clears the due date)
+   *   dueTime: "" or "HH:MM"        (empty = all-day "due that day";
+   *                                  present = due at that time)
+   *   reminders: [{date, time}, …]  (each date "YYYY-MM-DD", time "HH:MM"
+   *                                  in the user's local timezone)
+   * Re-saving always replaces the block's whole pending reminder set.
    */
-  async scheduleBlock(
-    blockUuid,
-    scheduledFor,
-    reminderDate = "",
-    reminderTime = ""
-  ) {
+  async scheduleBlock(blockUuid, dueDate, dueTime = "", reminders = []) {
     const payload = {
       block: blockUuid,
-      scheduled_for: scheduledFor || "",
-      reminder_date: reminderDate || "",
-      reminder_time: reminderTime || "",
+      due_date: dueDate || "",
+      due_time: dueTime || "",
+      reminders: reminders || [],
     };
     return await this.request("/knowledge/api/blocks/schedule/", {
       method: "POST",
       body: JSON.stringify(payload),
+    });
+  }
+
+  /**
+   * Override a completed (done / wontdo) block's completed_at timestamp.
+   *   completedAt: ISO-8601 datetime string (with timezone offset; the
+   *                backend reads a naive value in the user's timezone).
+   * Only valid for terminal blocks — the backend rejects anything else.
+   */
+  async setBlockCompletedAt(blockUuid, completedAt) {
+    return await this.request("/knowledge/api/blocks/set-completed-at/", {
+      method: "POST",
+      body: JSON.stringify({
+        block: blockUuid,
+        completed_at: completedAt,
+      }),
     });
   }
 
@@ -361,6 +369,21 @@ class ApiService {
       body: JSON.stringify({
         blocks: blockUuids,
         target_page: targetPageUuid,
+      }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
+  async bulkScheduleBlocks(blockUuids, dueDate, dueTime = "", reminders = []) {
+    return await this.request("/knowledge/api/blocks/bulk-schedule/", {
+      method: "POST",
+      body: JSON.stringify({
+        block_uuids: blockUuids,
+        new_date: dueDate || "",
+        new_time: dueTime || "",
+        reminders: reminders || [],
       }),
       headers: {
         "Content-Type": "application/json",
@@ -870,6 +893,7 @@ class ApiService {
     slug = null,
     limit = 100,
     contextDate = null,
+    countOnly = false,
   } = {}) {
     const params = new URLSearchParams();
     if (uuid) params.set("view_uuid", uuid);
@@ -880,6 +904,10 @@ class ApiService {
     // view's ``dates_relative_to_daily`` flag is on; otherwise it's a
     // no-op. Pass null for non-daily surfaces.
     if (contextDate) params.set("context_date", contextDate);
+    // countOnly returns just the matched-block count (+ truncation flag)
+    // without serializing the rows — used by collapsed embeds for their
+    // header count.
+    if (countOnly) params.set("count_only", "true");
     return await this.request(`/knowledge/api/views/run/?${params.toString()}`);
   }
 

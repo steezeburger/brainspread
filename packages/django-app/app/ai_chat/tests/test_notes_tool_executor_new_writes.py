@@ -8,7 +8,7 @@ current-page-and-bulk branch:
   NotesToolExecutor.current_page_uuid)
 """
 
-from datetime import date, datetime, time, timedelta
+from datetime import datetime, time, timedelta
 from datetime import timezone as dt_timezone
 from typing import Any, Dict
 
@@ -19,7 +19,7 @@ from django.utils import timezone
 from ai_chat.tools.notes_tool_executor import NotesToolExecutor
 from core.test.helpers import UserFactory
 from knowledge.models import Block, Reminder
-from knowledge.test.helpers import BlockFactory, PageFactory
+from knowledge.test.helpers import BlockFactory, PageFactory, due_dt
 
 
 def _writable(user, current_page_uuid: str | None = None) -> NotesToolExecutor:
@@ -48,7 +48,7 @@ class SnoozeBlockTests(TestCase):
             page=cls.page,
             content="needs work",
             block_type="todo",
-            scheduled_for=date(2025, 6, 1),
+            due_at=due_dt(2025, 6, 1),
         )
         cls.reminder = Reminder.objects.create(
             block=cls.scheduled_block,
@@ -59,7 +59,7 @@ class SnoozeBlockTests(TestCase):
             user=cls.user, page=cls.page, content="floating", block_type="todo"
         )
 
-    def test_shifts_scheduled_for_by_days_and_reminder_by_full_delta(self):
+    def test_shifts_due_by_days_and_reminder_by_full_delta(self):
         ex = _writable(self.user)
         result = ex.execute(
             "snooze_block",
@@ -69,7 +69,7 @@ class SnoozeBlockTests(TestCase):
         self.assertTrue(result.get("snoozed"))
         self.scheduled_block.refresh_from_db()
         self.reminder.refresh_from_db()
-        self.assertEqual(self.scheduled_block.scheduled_for, date(2025, 6, 3))
+        self.assertEqual(self.scheduled_block._due_local_date(), "2025-06-03")
         self.assertEqual(self.reminder.fire_at, _utc(datetime(2025, 6, 3, 10, 0)))
 
     def test_hours_only_shifts_reminder_not_date(self):
@@ -81,8 +81,25 @@ class SnoozeBlockTests(TestCase):
 
         self.scheduled_block.refresh_from_db()
         self.reminder.refresh_from_db()
-        self.assertEqual(self.scheduled_block.scheduled_for, date(2025, 6, 1))
+        self.assertEqual(self.scheduled_block._due_local_date(), "2025-06-01")
         self.assertEqual(self.reminder.fire_at, _utc(datetime(2025, 6, 1, 12, 0)))
+
+    def test_shifts_every_pending_reminder(self):
+        second = Reminder.objects.create(
+            block=self.scheduled_block,
+            fire_at=_utc(datetime(2025, 6, 1, 15, 0)),
+            channel=Reminder.CHANNEL_DISCORD_WEBHOOK,
+        )
+        ex = _writable(self.user)
+        ex.execute(
+            "snooze_block",
+            {"block_uuid": str(self.scheduled_block.uuid), "days": 1},
+        )
+
+        self.reminder.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(self.reminder.fire_at, _utc(datetime(2025, 6, 2, 9, 0)))
+        self.assertEqual(second.fire_at, _utc(datetime(2025, 6, 2, 15, 0)))
 
     def test_errors_on_block_with_no_schedule(self):
         ex = _writable(self.user)
@@ -111,7 +128,7 @@ class CancelReminderTests(TestCase):
             user=cls.user,
             page=cls.page,
             block_type="todo",
-            scheduled_for=date(2025, 6, 1),
+            due_at=due_dt(2025, 6, 1),
         )
 
     def setUp(self):
@@ -123,18 +140,26 @@ class CancelReminderTests(TestCase):
             channel=Reminder.CHANNEL_DISCORD_WEBHOOK,
         )
 
-    def test_cancels_pending_reminder_and_keeps_schedule(self):
+    def test_cancels_all_pending_reminders_and_keeps_schedule(self):
+        second = Reminder.objects.create(
+            block=self.block,
+            fire_at=_utc(datetime(2025, 6, 1, 15, 0)),
+            channel=Reminder.CHANNEL_DISCORD_WEBHOOK,
+        )
         ex = _writable(self.user)
         result = ex.execute("cancel_reminder", {"block_uuid": str(self.block.uuid)})
 
         self.assertTrue(result.get("cancelled"))
+        self.assertEqual(result["cancelled_count"], 2)
+        second.refresh_from_db()
+        self.assertEqual(second.status, Reminder.STATUS_CANCELLED)
         self.assertEqual(result["status"], Reminder.STATUS_CANCELLED)
         self.reminder.refresh_from_db()
         self.assertEqual(self.reminder.status, Reminder.STATUS_CANCELLED)
         self.assertIsNotNone(self.reminder.sent_at)
         # Schedule is untouched.
         self.block.refresh_from_db()
-        self.assertEqual(self.block.scheduled_for, date(2025, 6, 1))
+        self.assertEqual(self.block._due_local_date(), "2025-06-01")
 
     def test_returns_error_when_block_has_no_pending_reminder(self):
         # Cancel once to clear the only pending reminder, then try again.
@@ -293,13 +318,13 @@ class BulkScheduleTests(TestCase):
             user=cls.user,
             page=cls.page,
             block_type="todo",
-            scheduled_for=date(2025, 6, 1),
+            due_at=due_dt(2025, 6, 1),
         )
         cls.b2 = BlockFactory(
             user=cls.user,
             page=cls.page,
             block_type="todo",
-            scheduled_for=date(2025, 6, 5),
+            due_at=due_dt(2025, 6, 5),
         )
 
     def test_moves_blocks_and_shifts_per_block_reminder(self):
@@ -320,8 +345,8 @@ class BulkScheduleTests(TestCase):
         self.assertEqual(result["updated_count"], 2)
         self.b1.refresh_from_db()
         self.b2.refresh_from_db()
-        self.assertEqual(self.b1.scheduled_for, date(2025, 6, 10))
-        self.assertEqual(self.b2.scheduled_for, date(2025, 6, 10))
+        self.assertEqual(self.b1._due_local_date(), "2025-06-10")
+        self.assertEqual(self.b2._due_local_date(), "2025-06-10")
         # b1 was June 1, shifted +9 days to June 10. Reminder fire_at
         # should also shift +9 days, preserving the 09:00 time.
         reminder = self.b1.reminders.get()
@@ -357,13 +382,12 @@ class BulkScheduleTests(TestCase):
 
         self.assertEqual(result["updated_count"], 2)
         self.assertTrue(result["reminder_set"])
-        self.assertEqual(result["reminder_time"], "09:00")
-        self.assertEqual(result["reminder_date"], "2025-06-10")
+        self.assertEqual(result["reminders_count"], 1)
 
         # Each block should have exactly one pending reminder at 09:00 UTC.
         for block in (self.b1, self.b2):
             block.refresh_from_db()
-            self.assertEqual(block.scheduled_for, date(2025, 6, 10))
+            self.assertEqual(block._due_local_date(), "2025-06-10")
             pendings = list(block.reminders.filter(sent_at__isnull=True))
             self.assertEqual(len(pendings), 1)
             self.assertEqual(pendings[0].fire_at, _utc(datetime(2025, 6, 10, 9, 0)))
@@ -382,7 +406,7 @@ class BulkScheduleTests(TestCase):
 
         self.assertEqual(result["updated_count"], 1)
         self.b1.refresh_from_db()
-        self.assertEqual(self.b1.scheduled_for, date(2025, 6, 10))
+        self.assertEqual(self.b1._due_local_date(), "2025-06-10")
         reminder = self.b1.reminders.get(sent_at__isnull=True)
         self.assertEqual(reminder.fire_at, _utc(datetime(2025, 6, 9, 17, 30)))
 
@@ -465,13 +489,13 @@ class BulkClearScheduleTests(TestCase):
             user=cls.user,
             page=cls.page,
             block_type="todo",
-            scheduled_for=date(2025, 6, 1),
+            due_at=due_dt(2025, 6, 1),
         )
         cls.b_date_only = BlockFactory(
             user=cls.user,
             page=cls.page,
             block_type="todo",
-            scheduled_for=date(2025, 6, 5),
+            due_at=due_dt(2025, 6, 5),
         )
         cls.b_unscheduled = BlockFactory(
             user=cls.user, page=cls.page, block_type="todo"
@@ -500,8 +524,8 @@ class BulkClearScheduleTests(TestCase):
         self.assertEqual(result["cleared_count"], 2)
         self.b_with_reminder.refresh_from_db()
         self.b_date_only.refresh_from_db()
-        self.assertIsNone(self.b_with_reminder.scheduled_for)
-        self.assertIsNone(self.b_date_only.scheduled_for)
+        self.assertIsNone(self.b_with_reminder.due_at)
+        self.assertIsNone(self.b_date_only.due_at)
         # ScheduleBlockCommand deletes pending reminders on a clear.
         self.assertFalse(
             self.b_with_reminder.reminders.filter(sent_at__isnull=True).exists()
@@ -527,19 +551,19 @@ class BulkCancelRemindersTests(TestCase):
             user=cls.user,
             page=cls.page,
             block_type="todo",
-            scheduled_for=date(2025, 6, 1),
+            due_at=due_dt(2025, 6, 1),
         )
         cls.b2 = BlockFactory(
             user=cls.user,
             page=cls.page,
             block_type="todo",
-            scheduled_for=date(2025, 6, 1),
+            due_at=due_dt(2025, 6, 1),
         )
         cls.b_no_reminder = BlockFactory(
             user=cls.user,
             page=cls.page,
             block_type="todo",
-            scheduled_for=date(2025, 6, 1),
+            due_at=due_dt(2025, 6, 1),
         )
 
     def setUp(self):
@@ -575,7 +599,7 @@ class BulkCancelRemindersTests(TestCase):
         self.assertEqual(self.r2.status, Reminder.STATUS_CANCELLED)
         # Dates untouched.
         self.b1.refresh_from_db()
-        self.assertEqual(self.b1.scheduled_for, date(2025, 6, 1))
+        self.assertEqual(self.b1._due_local_date(), "2025-06-01")
 
 
 class BulkSnoozeTests(TestCase):
@@ -587,13 +611,13 @@ class BulkSnoozeTests(TestCase):
             user=cls.user,
             page=cls.page,
             block_type="todo",
-            scheduled_for=date(2025, 6, 1),
+            due_at=due_dt(2025, 6, 1),
         )
         cls.b2 = BlockFactory(
             user=cls.user,
             page=cls.page,
             block_type="todo",
-            scheduled_for=date(2025, 6, 5),
+            due_at=due_dt(2025, 6, 5),
         )
         cls.b_floating = BlockFactory(user=cls.user, page=cls.page, block_type="todo")
 
@@ -620,8 +644,8 @@ class BulkSnoozeTests(TestCase):
         self.b2.refresh_from_db()
         self.r1.refresh_from_db()
         # Dates shifted by 2 days.
-        self.assertEqual(self.b1.scheduled_for, date(2025, 6, 3))
-        self.assertEqual(self.b2.scheduled_for, date(2025, 6, 7))
+        self.assertEqual(self.b1._due_local_date(), "2025-06-03")
+        self.assertEqual(self.b2._due_local_date(), "2025-06-07")
         # Reminder shifted by 2 days + 3 hours.
         self.assertEqual(self.r1.fire_at, _utc(datetime(2025, 6, 3, 12, 0)))
 

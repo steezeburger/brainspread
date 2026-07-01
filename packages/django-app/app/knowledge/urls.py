@@ -36,6 +36,11 @@ urlpatterns = [
     path("api/blocks/toggle-todo/", views.toggle_block_todo, name="toggle_block_todo"),
     path("api/blocks/schedule/", views.schedule_block, name="schedule_block"),
     path(
+        "api/blocks/set-completed-at/",
+        views.set_block_completed_at,
+        name="set_block_completed_at",
+    ),
+    path(
         "api/blocks/move-undone-todos/",
         views.move_undone_todos,
         name="move_undone_todos",
@@ -69,6 +74,11 @@ urlpatterns = [
         "api/blocks/bulk-move-to-page/",
         views.bulk_move_blocks_to_page,
         name="bulk_move_blocks_to_page",
+    ),
+    path(
+        "api/blocks/bulk-schedule/",
+        views.bulk_schedule_blocks,
+        name="bulk_schedule_blocks",
     ),
     # Page-centric API endpoints
     path("api/pages/", views.create_page, name="create_page"),

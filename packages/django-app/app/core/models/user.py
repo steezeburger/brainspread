@@ -1,3 +1,4 @@
+import logging
 from datetime import date, tzinfo
 from typing import TypedDict
 
@@ -11,6 +12,13 @@ from common.models.crud_timestamps_mixin import CRUDTimestampsMixin
 from common.models.soft_delete_timestamp_mixin import SoftDeleteTimestampMixin
 from common.models.uuid_mixin import UUIDModelMixin
 from core.managers import UserManager
+
+logger = logging.getLogger(__name__)
+
+# Invalid timezone strings we've already logged about — tz() sits on hot
+# serialization paths (once per block), so warn once per bad value per
+# process instead of flooding the logs.
+_warned_bad_timezones: set[str] = set()
 
 
 class User(
@@ -113,7 +121,13 @@ class User(
             if self.timezone:
                 return pytz.timezone(self.timezone)
         except pytz.UnknownTimeZoneError:
-            pass
+            if self.timezone not in _warned_bad_timezones:
+                _warned_bad_timezones.add(self.timezone)
+                logger.warning(
+                    "user %s has invalid timezone %r; falling back to UTC",
+                    self.pk,
+                    self.timezone,
+                )
         return pytz.UTC
 
     def today(self) -> date:

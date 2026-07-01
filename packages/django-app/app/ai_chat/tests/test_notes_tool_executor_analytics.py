@@ -14,7 +14,7 @@ from django.utils import timezone
 from ai_chat.tools.notes_tool_executor import NotesToolExecutor
 from core.test.helpers import UserFactory
 from knowledge.models import Block
-from knowledge.test.helpers import BlockFactory, PageFactory
+from knowledge.test.helpers import BlockFactory, PageFactory, due_dt
 
 
 def _set_block_completed_at(block: Block, dt) -> None:
@@ -377,7 +377,7 @@ class FindStaleTodosTests(TestCase):
             page=cls.page,
             content="scheduled",
             block_type="todo",
-            scheduled_for=date(2025, 7, 1),
+            due_at=due_dt(2025, 7, 1),
         )
         # Done — completed_at is set, should be excluded.
         cls.completed_done = BlockFactory(

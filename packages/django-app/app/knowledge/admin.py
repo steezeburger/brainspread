@@ -40,14 +40,15 @@ class BlockAdmin(admin.ModelAdmin):
         "block_type",
         "content_type",
         "order",
-        "scheduled_for",
+        "due_at",
         "completed_at",
         "created_at",
     )
     list_filter = (
         "block_type",
         "content_type",
-        "scheduled_for",
+        "due_at",
+        "due_at_has_time",
         "created_at",
         "modified_at",
     )
@@ -65,10 +66,10 @@ class BlockAdmin(admin.ModelAdmin):
         (
             "Scheduling",
             {
-                "fields": ("scheduled_for", "completed_at"),
+                "fields": ("due_at", "due_at_has_time", "completed_at"),
                 "description": (
-                    "scheduled_for is the daily page this block should "
-                    "surface on. completed_at is set automatically on "
+                    "due_at is when this block is due (all-day unless "
+                    "due_at_has_time). completed_at is set automatically on "
                     "transition to a terminal block_type (done/wontdo)."
                 ),
             },

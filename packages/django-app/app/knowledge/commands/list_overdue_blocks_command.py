@@ -8,7 +8,7 @@ from ..repositories.block_repository import BlockRepository
 
 class ListOverdueBlocksCommand(AbstractBaseCommand):
     """List the user's overdue scheduled blocks (todo / doing / later
-    with scheduled_for before today in their timezone). Same predicate
+    with due_at before today in their timezone). Same predicate
     that drives the daily-page overdue section.
     """
 

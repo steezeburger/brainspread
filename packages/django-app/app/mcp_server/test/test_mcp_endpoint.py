@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 from core.test.helpers import UserFactory
 from knowledge.models import Block, Page
 from knowledge.repositories import PageRepository
-from knowledge.test.helpers import BlockFactory, PageFactory
+from knowledge.test.helpers import BlockFactory, PageFactory, due_dt
 
 
 def _rpc(method: str, params: dict | None = None, req_id: int | str = 1) -> dict:
@@ -89,6 +89,7 @@ class MCPEndpointTestCase(TestCase):
                 "create_block",
                 "create_page",
                 "edit_block",
+                "reorder_blocks",
                 "list_today_todos",
                 "list_overdue",
                 "list_scheduled",
@@ -272,21 +273,21 @@ class MCPEndpointTestCase(TestCase):
 
     # --- schedule_block ------------------------------------------------
 
-    def test_schedule_block_sets_scheduled_for(self):
+    def test_schedule_block_sets_due_date(self):
         page = PageFactory(user=self.user)
         block = BlockFactory(user=self.user, page=page, block_type="todo")
         response = self.client.post(
             "/api/mcp/",
             _tool_call(
                 "schedule_block",
-                {"block_uuid": str(block.uuid), "scheduled_for": "2026-07-15"},
+                {"block_uuid": str(block.uuid), "due_date": "2026-07-15"},
             ),
             format="json",
         )
         body = response.json()
         self.assertFalse(body["result"]["isError"], body)
         block.refresh_from_db()
-        self.assertEqual(block.scheduled_for.isoformat(), "2026-07-15")
+        self.assertEqual(block._due_local_date(), "2026-07-15")
 
     def test_unknown_tool_returns_tool_error(self):
         response = self.client.post(
@@ -377,6 +378,100 @@ class MCPEndpointTestCase(TestCase):
         block.refresh_from_db()
         self.assertEqual(block.content, "theirs")
 
+    def test_edit_block_updates_order(self):
+        page = PageFactory(user=self.user)
+        block = BlockFactory(user=self.user, page=page, content="x", order=0)
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call("edit_block", {"block_uuid": str(block.uuid), "order": 3}),
+            format="json",
+        )
+        self.assertFalse(response.json()["result"]["isError"])
+        block.refresh_from_db()
+        self.assertEqual(block.order, 3)
+
+    def test_edit_block_rejects_non_integer_order(self):
+        page = PageFactory(user=self.user)
+        block = BlockFactory(user=self.user, page=page, content="x", order=0)
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call("edit_block", {"block_uuid": str(block.uuid), "order": "abc"}),
+            format="json",
+        )
+        body = response.json()
+        self.assertTrue(body["result"]["isError"])
+        self.assertIn("order", body["result"]["content"][0]["text"])
+        block.refresh_from_db()
+        self.assertEqual(block.order, 0)
+
+    # --- reorder_blocks ----------------------------------------------
+
+    def test_reorder_blocks_resequences_siblings(self):
+        page = PageFactory(user=self.user)
+        first = BlockFactory(user=self.user, page=page, content="a", order=0)
+        second = BlockFactory(user=self.user, page=page, content="b", order=1)
+        third = BlockFactory(user=self.user, page=page, content="c", order=2)
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "reorder_blocks",
+                {
+                    "blocks": [
+                        {"block_uuid": str(third.uuid), "order": 0},
+                        {"block_uuid": str(first.uuid), "order": 1},
+                        {"block_uuid": str(second.uuid), "order": 2},
+                    ]
+                },
+            ),
+            format="json",
+        )
+        body = response.json()
+        self.assertFalse(body["result"]["isError"], body)
+        payload = _content_json(body)
+        self.assertTrue(payload["reordered"])
+        self.assertEqual(payload["count"], 3)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        third.refresh_from_db()
+        self.assertEqual(third.order, 0)
+        self.assertEqual(first.order, 1)
+        self.assertEqual(second.order, 2)
+
+    def test_reorder_blocks_rejects_empty_list(self):
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call("reorder_blocks", {"blocks": []}),
+            format="json",
+        )
+        body = response.json()
+        self.assertTrue(body["result"]["isError"])
+        self.assertIn("non-empty", body["result"]["content"][0]["text"])
+
+    def test_reorder_blocks_user_isolation(self):
+        other = UserFactory(email="reorder-other@example.com")
+        mine = BlockFactory(user=self.user, content="mine", order=0)
+        theirs = BlockFactory(user=other, content="theirs", order=0)
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "reorder_blocks",
+                {
+                    "blocks": [
+                        {"block_uuid": str(mine.uuid), "order": 1},
+                        {"block_uuid": str(theirs.uuid), "order": 0},
+                    ]
+                },
+            ),
+            format="json",
+        )
+        # The whole reorder is rejected when any block isn't owned, leaving
+        # every order untouched.
+        self.assertTrue(response.json()["result"]["isError"])
+        mine.refresh_from_db()
+        theirs.refresh_from_db()
+        self.assertEqual(mine.order, 0)
+        self.assertEqual(theirs.order, 0)
+
     # --- create_block nesting ----------------------------------------
 
     def test_create_block_nests_under_parent_block(self):
@@ -435,7 +530,7 @@ class MCPEndpointTestCase(TestCase):
             page=page,
             content="overdue thing",
             block_type="todo",
-            scheduled_for=yesterday,
+            due_at=due_dt(yesterday),
         )
         # Future scheduled block — should not appear.
         BlockFactory(
@@ -443,7 +538,7 @@ class MCPEndpointTestCase(TestCase):
             page=page,
             content="future thing",
             block_type="todo",
-            scheduled_for=today + timedelta(days=3),
+            due_at=due_dt(today + timedelta(days=3)),
         )
 
         response = self.client.post(
@@ -465,14 +560,14 @@ class MCPEndpointTestCase(TestCase):
             page=page,
             content="this week",
             block_type="todo",
-            scheduled_for=today + timedelta(days=2),
+            due_at=due_dt(today + timedelta(days=2)),
         )
         out_of_range = BlockFactory(
             user=self.user,
             page=page,
             content="next month",
             block_type="todo",
-            scheduled_for=today + timedelta(days=30),
+            due_at=due_dt(today + timedelta(days=30)),
         )
 
         response = self.client.post(
@@ -653,13 +748,16 @@ class MCPEndpointTestCase(TestCase):
             "/api/mcp/",
             _tool_call(
                 "schedule_block",
-                {"block_uuid": str(block.uuid), "scheduled_for": "+3d"},
+                {"block_uuid": str(block.uuid), "due_date": "+3d"},
             ),
             format="json",
         )
         self.assertFalse(response.json()["result"]["isError"])
         block.refresh_from_db()
-        self.assertEqual(block.scheduled_for, self.user.today() + timedelta(days=3))
+        self.assertEqual(
+            block._due_local_date(),
+            (self.user.today() + timedelta(days=3)).isoformat(),
+        )
 
     def test_schedule_block_rejects_garbage_date(self):
         page = PageFactory(user=self.user)
@@ -668,13 +766,13 @@ class MCPEndpointTestCase(TestCase):
             "/api/mcp/",
             _tool_call(
                 "schedule_block",
-                {"block_uuid": str(block.uuid), "scheduled_for": "next thursday"},
+                {"block_uuid": str(block.uuid), "due_date": "next thursday"},
             ),
             format="json",
         )
         body = response.json()
         self.assertTrue(body["result"]["isError"])
-        self.assertIn("scheduled_for", body["result"]["content"][0]["text"])
+        self.assertIn("due_date", body["result"]["content"][0]["text"])
 
     def test_get_page_accepts_relative_date_token(self):
         today = self.user.today()
@@ -699,14 +797,14 @@ class MCPEndpointTestCase(TestCase):
             page=page,
             content="this week",
             block_type="todo",
-            scheduled_for=today + timedelta(days=2),
+            due_at=due_dt(today + timedelta(days=2)),
         )
         BlockFactory(
             user=self.user,
             page=page,
             content="far future",
             block_type="todo",
-            scheduled_for=today + timedelta(days=30),
+            due_at=due_dt(today + timedelta(days=30)),
         )
         response = self.client.post(
             "/api/mcp/",

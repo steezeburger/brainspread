@@ -16,7 +16,7 @@ from django.test import TestCase
 from knowledge.repositories import BlockRepository
 from knowledge.services import query_engine
 
-from ..helpers import BlockFactory, PageFactory, UserFactory
+from ..helpers import BlockFactory, PageFactory, UserFactory, due_dt
 
 
 def _utc_noon(d: date) -> datetime:
@@ -80,51 +80,52 @@ class ScheduledForTests(_EngineTestBase):
         yesterday = BlockFactory(
             user=self.user,
             page=self.page,
-            scheduled_for=date(2026, 4, 23),
+            due_at=due_dt(2026, 4, 23),
             block_type="todo",
         )
         BlockFactory(
             user=self.user,
             page=self.page,
-            scheduled_for=date(2026, 4, 25),
+            due_at=due_dt(2026, 4, 25),
             block_type="todo",
         )
-        out = self.run_query({"scheduled_for": {"lt": "today"}})
+        out = self.run_query({"due_at": {"lt": "today"}})
         self.assertEqual([b.id for b in out], [yesterday.id])
 
     def test_between_inclusive(self):
-        a = BlockFactory(
-            user=self.user, page=self.page, scheduled_for=date(2026, 4, 23)
-        )
-        b = BlockFactory(
-            user=self.user, page=self.page, scheduled_for=date(2026, 4, 25)
-        )
-        BlockFactory(user=self.user, page=self.page, scheduled_for=date(2026, 5, 1))
-        out = self.run_query(
-            {"scheduled_for": {"between": ["2026-04-23", "2026-04-25"]}}
-        )
+        a = BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 4, 23))
+        b = BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 4, 25))
+        BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 5, 1))
+        out = self.run_query({"due_at": {"between": ["2026-04-23", "2026-04-25"]}})
         self.assertEqual({b.id for b in out}, {a.id, b.id})
 
     def test_iso_eq(self):
-        match = BlockFactory(
-            user=self.user, page=self.page, scheduled_for=date(2026, 5, 1)
-        )
-        BlockFactory(user=self.user, page=self.page, scheduled_for=date(2026, 5, 2))
-        out = self.run_query({"scheduled_for": "2026-05-01"})
+        match = BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 5, 1))
+        BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 5, 2))
+        out = self.run_query({"due_at": "2026-05-01"})
         self.assertEqual([b.id for b in out], [match.id])
 
     def test_n_days_ago_token(self):
         # 7 days ago = 2026-04-17
-        match = BlockFactory(
-            user=self.user, page=self.page, scheduled_for=date(2026, 4, 17)
-        )
-        BlockFactory(user=self.user, page=self.page, scheduled_for=date(2026, 4, 18))
-        out = self.run_query({"scheduled_for": {"eq": "7 days ago"}})
+        match = BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 4, 17))
+        BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 4, 18))
+        out = self.run_query({"due_at": {"eq": "7 days ago"}})
         self.assertEqual([b.id for b in out], [match.id])
 
     def test_unrecognized_token_rejected(self):
         with self.assertRaises(query_engine.QueryEngineError):
-            query_engine.compile({"scheduled_for": {"lt": "soon-ish"}}, user=self.user)
+            query_engine.compile({"due_at": {"lt": "soon-ish"}}, user=self.user)
+
+    def test_legacy_scheduled_for_alias(self):
+        """Back-compat: filters/sorts authored before the due_at rename
+        still compile via the scheduled_for alias."""
+        early = BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 4, 21))
+        late = BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 4, 23))
+        out = self.run_query(
+            {"scheduled_for": {"lt": "today"}},
+            sort=[{"field": "scheduled_for", "dir": "asc"}],
+        )
+        self.assertEqual([b.id for b in out], [early.id, late.id])
 
 
 class CompletedAtTests(_EngineTestBase):
@@ -449,7 +450,7 @@ class CombinatorTests(_EngineTestBase):
             user=self.user,
             page=self.page,
             block_type="todo",
-            scheduled_for=yesterday,
+            due_at=due_dt(yesterday),
             completed_at=None,
         )
         # done — excluded
@@ -457,7 +458,7 @@ class CombinatorTests(_EngineTestBase):
             user=self.user,
             page=self.page,
             block_type="done",
-            scheduled_for=yesterday,
+            due_at=due_dt(yesterday),
             completed_at=_utc_noon(self.today),
         )
         # todo but completed — excluded
@@ -465,7 +466,7 @@ class CombinatorTests(_EngineTestBase):
             user=self.user,
             page=self.page,
             block_type="todo",
-            scheduled_for=yesterday,
+            due_at=due_dt(yesterday),
             completed_at=_utc_noon(self.today),
         )
         # not yet due — excluded
@@ -473,14 +474,14 @@ class CombinatorTests(_EngineTestBase):
             user=self.user,
             page=self.page,
             block_type="todo",
-            scheduled_for=date(2026, 4, 25),
+            due_at=due_dt(2026, 4, 25),
             completed_at=None,
         )
         out = self.run_query(
             {
                 "all": [
                     {"block_type": {"in": ["todo", "doing", "later"]}},
-                    {"scheduled_for": {"lt": "today"}},
+                    {"due_at": {"lt": "today"}},
                     {"completed_at": {"is_null": True}},
                 ]
             }
@@ -584,19 +585,13 @@ class NotCombinatorTests(_EngineTestBase):
 
 
 class SortTests(_EngineTestBase):
-    def test_sort_asc_by_scheduled_for(self):
-        a = BlockFactory(
-            user=self.user, page=self.page, scheduled_for=date(2026, 4, 23)
-        )
-        b = BlockFactory(
-            user=self.user, page=self.page, scheduled_for=date(2026, 4, 21)
-        )
-        c = BlockFactory(
-            user=self.user, page=self.page, scheduled_for=date(2026, 4, 22)
-        )
+    def test_sort_asc_by_due_at(self):
+        a = BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 4, 23))
+        b = BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 4, 21))
+        c = BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 4, 22))
         out = self.run_query(
-            {"scheduled_for": {"lt": "today"}},
-            sort=[{"field": "scheduled_for", "dir": "asc"}],
+            {"due_at": {"lt": "today"}},
+            sort=[{"field": "due_at", "dir": "asc"}],
         )
         self.assertEqual([blk.id for blk in out], [b.id, c.id, a.id])
 
@@ -667,7 +662,7 @@ class SortTests(_EngineTestBase):
     def test_default_sort_is_newest_first(self):
         """When the spec omits sort, the repository falls back to
         ``-created_at`` (newest first). This pins the contract so the
-        default doesn't drift back to ``scheduled_for`` (which felt
+        default doesn't drift back to ``due_at`` (which felt
         random for tag-only views that have no dates)."""
         import time
 
@@ -815,44 +810,36 @@ class ContextDateTests(_EngineTestBase):
         # ``self.today`` (pinned via the base class) is 2026-04-24. A
         # context_date of 2026-04-20 should make ``today`` resolve to
         # that date instead.
-        match = BlockFactory(
-            user=self.user, page=self.page, scheduled_for=date(2026, 4, 20)
-        )
-        BlockFactory(user=self.user, page=self.page, scheduled_for=date(2026, 4, 24))
+        match = BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 4, 20))
+        BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 4, 24))
         out = self._run_with_context(
-            {"scheduled_for": "today"}, context_date=date(2026, 4, 20)
+            {"due_at": "today"}, context_date=date(2026, 4, 20)
         )
         self.assertEqual([b.id for b in out], [match.id])
 
     def test_yesterday_rebases_off_context_date(self):
         # context_date=2026-04-20 → yesterday=2026-04-19
-        match = BlockFactory(
-            user=self.user, page=self.page, scheduled_for=date(2026, 4, 19)
-        )
-        BlockFactory(user=self.user, page=self.page, scheduled_for=date(2026, 4, 23))
+        match = BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 4, 19))
+        BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 4, 23))
         out = self._run_with_context(
-            {"scheduled_for": "yesterday"}, context_date=date(2026, 4, 20)
+            {"due_at": "yesterday"}, context_date=date(2026, 4, 20)
         )
         self.assertEqual([b.id for b in out], [match.id])
 
     def test_n_days_ago_rebases_off_context_date(self):
         # context_date=2026-04-20, "3 days ago" → 2026-04-17
-        match = BlockFactory(
-            user=self.user, page=self.page, scheduled_for=date(2026, 4, 17)
-        )
-        BlockFactory(user=self.user, page=self.page, scheduled_for=date(2026, 4, 21))
+        match = BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 4, 17))
+        BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 4, 21))
         out = self._run_with_context(
-            {"scheduled_for": {"eq": "3 days ago"}}, context_date=date(2026, 4, 20)
+            {"due_at": {"eq": "3 days ago"}}, context_date=date(2026, 4, 20)
         )
         self.assertEqual([b.id for b in out], [match.id])
 
     def test_iso_date_is_absolute_and_ignores_context(self):
-        match = BlockFactory(
-            user=self.user, page=self.page, scheduled_for=date(2026, 5, 1)
-        )
-        BlockFactory(user=self.user, page=self.page, scheduled_for=date(2026, 4, 20))
+        match = BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 5, 1))
+        BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 4, 20))
         out = self._run_with_context(
-            {"scheduled_for": "2026-05-01"}, context_date=date(2026, 4, 20)
+            {"due_at": "2026-05-01"}, context_date=date(2026, 4, 20)
         )
         self.assertEqual([b.id for b in out], [match.id])
 
@@ -881,10 +868,10 @@ class ContextDateTests(_EngineTestBase):
         # Sanity: passing context_date=None (or omitting it) keeps the
         # existing "live today" semantics, so non-rebased views still
         # behave as before.
-        match = BlockFactory(user=self.user, page=self.page, scheduled_for=self.today)
-        BlockFactory(user=self.user, page=self.page, scheduled_for=date(2026, 4, 20))
+        match = BlockFactory(user=self.user, page=self.page, due_at=due_dt(self.today))
+        BlockFactory(user=self.user, page=self.page, due_at=due_dt(2026, 4, 20))
         compiled = query_engine.compile(
-            {"scheduled_for": "today"}, user=self.user, context_date=None
+            {"due_at": "today"}, user=self.user, context_date=None
         )
         out = list(BlockRepository.run_compiled_query(self.user, compiled))
         self.assertEqual([b.id for b in out], [match.id])

@@ -7,7 +7,7 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 from ..forms.run_saved_view_form import RunSavedViewForm
 from ..repositories import SavedViewRepository
 from ..services import query_engine
-from ..services.view_execution import run_view
+from ..services.view_execution import count_view, run_view
 
 
 class RunSavedViewCommand(AbstractBaseCommand):
@@ -27,6 +27,7 @@ class RunSavedViewCommand(AbstractBaseCommand):
 
         user = self.form.cleaned_data["user"]
         limit = self.form.cleaned_data.get("limit") or 100
+        count_only = self.form.cleaned_data.get("count_only")
         view_uuid = self.form.cleaned_data.get("view_uuid")
         view_slug = self.form.cleaned_data.get("view_slug")
         context_date = self.form.cleaned_data.get("context_date")
@@ -48,6 +49,23 @@ class RunSavedViewCommand(AbstractBaseCommand):
         effective_context_date = context_date if view.dates_relative_to_daily else None
 
         try:
+            # Collapsed embeds only need the header count — count without
+            # serializing rows so a daily page full of collapsed embeds
+            # stays cheap, with the same truncation badge as the full path.
+            if count_only:
+                count, truncated = count_view(
+                    user,
+                    view,
+                    limit=limit,
+                    context_date=effective_context_date,
+                )
+                return {
+                    "view": view.to_dict(),
+                    "count": count,
+                    "results": [],
+                    "truncated": truncated,
+                }
+
             rows, truncated = run_view(
                 user,
                 view,

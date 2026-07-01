@@ -11,7 +11,7 @@ from core.repositories import UserRepository
 class BulkClearScheduleForm(BaseForm):
     """Inputs for the assistant's bulk_clear_schedule tool.
 
-    Mirrors the single clear_schedule shape (drop scheduled_for AND
+    Mirrors the single clear_schedule shape (drop due_at AND
     cancel any pending reminder) but applies it to many blocks in one
     approval.
     """

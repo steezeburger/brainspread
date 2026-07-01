@@ -69,8 +69,12 @@ const Page = {
       schedulePopoverOpen: false,
       schedulePopoverBlock: null,
       schedulePopoverInitialDate: "",
-      schedulePopoverInitialReminderDate: "",
-      schedulePopoverInitialTime: "",
+      schedulePopoverInitialDueTime: "",
+      schedulePopoverInitialReminders: [],
+      // When the schedule popover is opened for a multi-select, these hold
+      // the bulk context so onSchedulePopoverSave routes to the bulk path.
+      schedulePopoverBulk: false,
+      schedulePopoverBulkUuids: [],
       blockChatPopoverOpen: false,
       blockChatPopoverBlock: null,
       blockInfoModalOpen: false,
@@ -141,7 +145,7 @@ const Page = {
     // sortMode. Falls back to directBlocks for "manual" so the v-for
     // reference stays identity-stable in the common case. Nulls
     // always sort last regardless of direction (a block with no
-    // scheduled_for date shouldn't pop to the top when listing
+    // due date shouldn't pop to the top when listing
     // scheduled · latest). Manual `order` is used as the
     // stable tiebreaker so equal keys preserve their curated layout.
     displayBlocks() {
@@ -167,12 +171,12 @@ const Page = {
           case "updated-desc":
             return cmpNullsLast(b.modified_at, a.modified_at);
           case "scheduled-asc":
-            return cmpNullsLast(a.scheduled_for, b.scheduled_for);
+            return cmpNullsLast(a.due_date, b.due_date);
           case "scheduled-desc": {
-            if (a.scheduled_for == null && b.scheduled_for == null) return 0;
-            if (a.scheduled_for == null) return 1;
-            if (b.scheduled_for == null) return -1;
-            return cmpNullsLast(b.scheduled_for, a.scheduled_for);
+            if (a.due_date == null && b.due_date == null) return 0;
+            if (a.due_date == null) return 1;
+            if (b.due_date == null) return -1;
+            return cmpNullsLast(b.due_date, a.due_date);
           }
           case "type": {
             const t = cmpNullsLast(a.block_type, b.block_type);
@@ -297,6 +301,14 @@ const Page = {
       "brainspread:request-archive",
       this.handleRequestArchive
     );
+    // An embed (or any other surface) toggled / scheduled / deleted a
+    // block we might also be rendering in the page tree. Refresh so the
+    // page copy reflects the change — embeds already sync via this same
+    // event, but the page itself wasn't listening.
+    document.addEventListener(
+      "brainspread:block-changed",
+      this.handleBlockChanged
+    );
     // When a same-page deep link fires (e.g. spotlight block result on
     // the current page), the URL hash changes without a reload. Listen
     // so we still scroll the matching block into view.
@@ -338,6 +350,14 @@ const Page = {
       "brainspread:request-archive",
       this.handleRequestArchive
     );
+    document.removeEventListener(
+      "brainspread:block-changed",
+      this.handleBlockChanged
+    );
+    if (this._blockChangedTimer) {
+      clearTimeout(this._blockChangedTimer);
+      this._blockChangedTimer = null;
+    }
   },
 
   methods: {
@@ -462,6 +482,61 @@ const Page = {
       }, 300);
     },
 
+    broadcastBlockChanged(uuid) {
+      // Single entry point for the page's own block-changed broadcasts.
+      // Tagging the event with `source: this` lets handleBlockChanged
+      // ignore our own notifications — the page already updated its tree
+      // in place, so reloading from the same event would just churn.
+      if (!uuid) return;
+      document.dispatchEvent(
+        new CustomEvent("brainspread:block-changed", {
+          detail: { uuid, source: this },
+        })
+      );
+    },
+
+    pageHasBlock(uuid) {
+      // True when `uuid` is rendered anywhere on this page — the direct
+      // tree, the referenced-block tree, or the overdue list. Used to
+      // skip reloads for changes to blocks we aren't showing.
+      const inTree = (blocks) =>
+        this.flattenBlockTree(blocks).some((b) => b.uuid === uuid);
+      return (
+        inTree(this.directBlocks) ||
+        inTree(this.referencedBlocks) ||
+        inTree(this.overdueBlocks)
+      );
+    },
+
+    handleBlockChanged(event) {
+      // Another surface (typically a saved-view embed on this page)
+      // changed a block we also render. Reload silently so the page copy
+      // picks up the new state — e.g. a TODO toggled to DONE in an embed
+      // should also flip on the bullet list.
+      const uuid = event?.detail?.uuid;
+      if (!uuid) return;
+      // Our own broadcast — the mutating method already patched the tree.
+      if (event.detail.source === this) return;
+      if (!this.page || !this.pageHasBlock(uuid)) return;
+      // Debounce + active-edit guard, mirroring handleNotesModified: skip
+      // the reload while the user is typing in a block on this page so we
+      // don't clobber an in-progress edit.
+      if (this._blockChangedTimer) clearTimeout(this._blockChangedTimer);
+      this._blockChangedTimer = setTimeout(() => {
+        this._blockChangedTimer = null;
+        const active = document.activeElement;
+        if (
+          active &&
+          active.tagName === "TEXTAREA" &&
+          this.$el &&
+          this.$el.contains(active)
+        ) {
+          return;
+        }
+        this.loadPage({ silent: true });
+      }, 300);
+    },
+
     async loadPage({ silent = false } = {}) {
       if (!silent) this.loading = true;
       this.error = null;
@@ -489,7 +564,9 @@ const Page = {
           this.directBlocks = this.setupParentReferences(
             result.data.direct_blocks || []
           );
-          this.referencedBlocks = result.data.referenced_blocks || [];
+          this.referencedBlocks = this.setupParentReferences(
+            result.data.referenced_blocks || []
+          );
           this.overdueBlocks = result.data.overdue_blocks || [];
           this.embeddedViews = result.data.embedded_views || [];
           this.$emit("page-loaded", this.page);
@@ -668,6 +745,10 @@ const Page = {
           block.content = newContent;
           if (result.data && result.data.block_type) {
             block.block_type = result.data.block_type;
+            // A content prefix (e.g. typing "DONE ") can flip the type
+            // to/from a terminal state; mirror the server's completed_at
+            // so the block-info modal stays accurate without a reload.
+            block.completed_at = result.data.completed_at;
           }
           // Inline URL detection on save: if the user typed (or pasted
           // without the paste handler firing, e.g. mobile) a bare URL,
@@ -813,11 +894,7 @@ const Page = {
         if (result.success) {
           // Notify embeds that may still be displaying this block —
           // their saved view re-run will drop the now-gone row.
-          document.dispatchEvent(
-            new CustomEvent("brainspread:block-changed", {
-              detail: { uuid: block.uuid },
-            })
-          );
+          this.broadcastBlockChanged(block.uuid);
           await this.loadPage();
         }
       } catch (error) {
@@ -877,15 +954,15 @@ const Page = {
         if (result.success) {
           block.block_type = result.data.block_type;
           block.content = result.data.content;
+          // Keep completed_at in sync so the block-info modal shows the
+          // right time without a reload: entering done/wontdo stamps it,
+          // cycling back out clears it to null.
+          block.completed_at = result.data.completed_at;
           this.error = null;
           // Embeds may be showing this block — let them re-run so the
           // bullet / DONE strikethrough reflects the new state without
           // a manual collapse-expand.
-          document.dispatchEvent(
-            new CustomEvent("brainspread:block-changed", {
-              detail: { uuid: block.uuid },
-            })
-          );
+          this.broadcastBlockChanged(block.uuid);
         } else {
           this.error =
             result.errors?.non_field_errors?.[0] || "Failed to toggle todo";
@@ -1057,11 +1134,7 @@ const Page = {
         // Let any QueryEmbedBlock on this page re-run its saved view —
         // the moved block's page_slug just changed and embeds keep
         // their own copy of the block until they refetch.
-        document.dispatchEvent(
-          new CustomEvent("brainspread:block-changed", {
-            detail: { uuid: block.uuid },
-          })
-        );
+        this.broadcastBlockChanged(block.uuid);
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to move block to today:", error);
@@ -1078,6 +1151,33 @@ const Page = {
     closeBlockInfoModal() {
       this.blockInfoModalOpen = false;
       this.blockInfoModalBlock = null;
+    },
+
+    async onSaveBlockCompletedAt({ iso }) {
+      const block = this.blockInfoModalBlock;
+      if (!block || !iso) return;
+      try {
+        const result = await window.apiService.setBlockCompletedAt(
+          block.uuid,
+          iso
+        );
+        if (result.success) {
+          // Reassign so the modal (and its watcher) pick up the new
+          // timestamp and drop out of edit mode.
+          this.blockInfoModalBlock = {
+            ...block,
+            completed_at: result.data?.completed_at || iso,
+          };
+          this.$parent?.addToast?.("completion time updated", "success");
+          this.broadcastBlockChanged(block.uuid);
+          await this.loadPage({ silent: true });
+        } else {
+          this.$parent?.addToast?.("failed to update completion time", "error");
+        }
+      } catch (err) {
+        console.error("setBlockCompletedAt failed:", err);
+        this.$parent?.addToast?.("failed to update completion time", "error");
+      }
     },
 
     async openMovePagePicker(block) {
@@ -1126,11 +1226,7 @@ const Page = {
         // See moveBlockToToday for rationale — embeds keep their own
         // copy of the block until they refetch, and the move just
         // updated page_slug on the server.
-        document.dispatchEvent(
-          new CustomEvent("brainspread:block-changed", {
-            detail: { uuid: block.uuid },
-          })
-        );
+        this.broadcastBlockChanged(block.uuid);
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to move block to page:", error);
@@ -2472,29 +2568,56 @@ const Page = {
       if (!block) return;
 
       if (clear) {
-        await this._submitSchedule(block, "", "", "");
+        await this._submitSchedule(block, "", "", []);
         return;
       }
 
       this.schedulePopoverBlock = block;
-      this.schedulePopoverInitialDate = block.scheduled_for || "";
-      this.schedulePopoverInitialReminderDate =
-        block.pending_reminder_date || "";
-      this.schedulePopoverInitialTime = block.pending_reminder_time || "";
+      this.schedulePopoverInitialDate =
+        block.due_date || this._defaultScheduleDate();
+      this.schedulePopoverInitialDueTime = block.due_time || "";
+      this.schedulePopoverInitialReminders = block.pending_reminders || [];
       this.schedulePopoverOpen = true;
     },
 
-    onSchedulePopoverSave({ scheduledFor, reminderDate, reminderTime }) {
+    // Default due date for an unscheduled block. On a future daily page we
+    // seed the page's own date — the user navigated to that day on purpose,
+    // so a TODO they're scheduling almost certainly belongs on it, not
+    // today. Today's/past daily pages and non-daily pages return "" so the
+    // popover falls back to its own "today" default.
+    _defaultScheduleDate() {
+      if (!this.isDaily) return "";
+      const pageDate = this.page?.date;
+      if (!pageDate) return "";
+      const now = new Date();
+      const tzOffsetMs = now.getTimezoneOffset() * 60_000;
+      const todayIso = new Date(now.getTime() - tzOffsetMs)
+        .toISOString()
+        .slice(0, 10);
+      return pageDate > todayIso ? pageDate : "";
+    },
+
+    onSchedulePopoverSave({ scheduledFor, dueTime, reminders }) {
+      const bulk = this.schedulePopoverBulk;
+      const bulkUuids = this.schedulePopoverBulkUuids;
       const block = this.schedulePopoverBlock;
       this.schedulePopoverOpen = false;
       this.schedulePopoverBlock = null;
+      this.schedulePopoverBulk = false;
+      this.schedulePopoverBulkUuids = [];
+      if (bulk) {
+        this._submitBulkSchedule(bulkUuids, scheduledFor, dueTime, reminders);
+        return;
+      }
       if (!block) return;
-      this._submitSchedule(block, scheduledFor, reminderDate, reminderTime);
+      this._submitSchedule(block, scheduledFor, dueTime, reminders);
     },
 
     onSchedulePopoverCancel() {
       this.schedulePopoverOpen = false;
       this.schedulePopoverBlock = null;
+      this.schedulePopoverBulk = false;
+      this.schedulePopoverBulkUuids = [];
     },
 
     openBlockChatPopover(block) {
@@ -2520,39 +2643,35 @@ const Page = {
       this.blockChatPopoverBlock = null;
     },
 
-    async _submitSchedule(block, scheduledFor, reminderDate, reminderTime) {
+    async _submitSchedule(block, scheduledFor, dueTime, reminders) {
       try {
         const result = await window.apiService.scheduleBlock(
           block.uuid,
           scheduledFor,
-          reminderDate,
-          reminderTime
+          dueTime,
+          reminders
         );
         if (result.success) {
           let msg;
+          const count = (reminders || []).length;
           if (!scheduledFor) {
             msg = "schedule cleared";
-          } else if (reminderTime) {
-            const formatted =
-              window.formatTimeForUser?.(reminderTime) || reminderTime;
-            const onDate =
-              reminderDate && reminderDate !== scheduledFor
-                ? ` on ${reminderDate}`
-                : "";
+          } else if (count === 1) {
+            const r = reminders[0];
+            const formatted = window.formatTimeForUser?.(r.time) || r.time;
+            const onDate = r.date !== scheduledFor ? ` on ${r.date}` : "";
             msg = `scheduled for ${scheduledFor} · remind${onDate} at ${formatted}`;
+          } else if (count > 1) {
+            msg = `scheduled for ${scheduledFor} · ${count} reminders`;
           } else {
             msg = `scheduled for ${scheduledFor}`;
           }
           this.$parent?.addToast?.(msg, "success");
           // Notify any embeds on the page that show this block so
           // they re-run their saved view — keeps the displayed
-          // scheduled_for / due meta in sync without a manual
+          // due date / time meta in sync without a manual
           // collapse-expand.
-          document.dispatchEvent(
-            new CustomEvent("brainspread:block-changed", {
-              detail: { uuid: block.uuid },
-            })
-          );
+          this.broadcastBlockChanged(block.uuid);
           await this.loadPage({ silent: true });
         } else {
           this.$parent?.addToast?.("failed to schedule block", "error");
@@ -3017,55 +3136,40 @@ const Page = {
     },
 
     async handleUrlPaste(block, url) {
-      // Empty block: promote it to an embed in place. Otherwise append a
-      // sibling embed block after the current one (matches paste-as-list
-      // behaviour for consistency).
-      const blockIsEmpty = !block.content || block.content.trim() === "";
-      let targetBlock = block;
-
+      // Only called for an empty block: promote it to an embed in place.
+      // (Pasting a URL into a non-empty block is handled as a plain text
+      // paste by onBlockPaste and never reaches here.)
       try {
-        if (blockIsEmpty) {
-          const result = await window.apiService.updateBlock(block.uuid, {
-            content: url,
-            content_type: "embed",
-            media_url: url,
-          });
-          if (!result.success) throw new Error("update block failed");
-          block.content = url;
-          block.content_type = "embed";
-          block.media_url = url;
-        } else {
-          const parentUuid = block.parent ? block.parent.uuid : null;
-          const newOrder = block.order + 1;
-          const siblings = block.parent
-            ? block.parent.children
-            : this.directBlocks;
-          const blocksToShift = siblings.filter(
-            (b) => b.uuid !== block.uuid && b.order >= newOrder
-          );
-          if (blocksToShift.length > 0) {
-            const reorderPayload = blocksToShift.map((b) => ({
-              uuid: b.uuid,
-              order: b.order + 1,
-            }));
-            const reorderResult =
-              await window.apiService.reorderBlocks(reorderPayload);
-            if (!reorderResult.success) throw new Error("reorder failed");
-          }
-          const createResult = await window.apiService.createBlock({
-            page: this.page.uuid,
-            parent: parentUuid,
-            content: url,
-            content_type: "embed",
-            block_type: "bullet",
-            media_url: url,
-            order: newOrder,
-          });
-          if (!createResult.success) throw new Error("create block failed");
-          targetBlock = { uuid: createResult.data.uuid };
-        }
+        const result = await window.apiService.updateBlock(block.uuid, {
+          content: url,
+          content_type: "embed",
+          media_url: url,
+        });
+        if (!result.success) throw new Error("update block failed");
+        block.content = url;
+        block.content_type = "embed";
+        block.media_url = url;
+        // Keep the user in the block, focused in the embed's label field.
+        // The block was being edited as plain text, so flipping straight
+        // to an editing embed swaps one focused textarea for another and
+        // the old one's blur tears down edit mode mid-flight. Instead drop
+        // out of edit mode first (rendering the embed's static label, fully
+        // removing the plain textarea), then re-enter on the next tick. That
+        // clean false->true isEditing transition focuses the label field and
+        // lets BlockComponent's watcher swap the raw URL for the empty
+        // "label this link…" placeholder — the same path as clicking an
+        // embed's label to rename it.
+        //
+        // isNavigating makes the plain textarea's teardown blur bail out of
+        // stopEditing (same guard block-to-block navigation uses); otherwise
+        // its async save would race the watcher and repopulate the label
+        // with the raw URL just after we cleared it.
+        this.isNavigating = true;
+        block.isEditing = false;
+        this.$nextTick(() => {
+          this.startEditing(block);
+        });
         // Archiving is opt-in - user clicks "archive" on the embed card.
-        void targetBlock;
       } catch (error) {
         console.error("url paste failed:", error);
         this.emitToast("could not save URL", "error");
@@ -3233,10 +3337,14 @@ const Page = {
       const text = clipboardData.getData("text/plain");
       if (!text) return;
 
-      // URL paste gets first shot. If the clipboard is a bare URL, create an
-      // embed block and kick off an archive capture in the background.
+      // URL paste gets first shot, but only into an empty block: there we
+      // promote the block to an embed in place. Pasting a URL into a block
+      // that already has content should behave like an ordinary paste -
+      // drop the URL text in at the cursor, don't hijack it into an embed
+      // (or a stray sibling block).
       const trimmed = text.trim();
-      if (this.isBareUrl(trimmed)) {
+      const blockIsEmptyForUrl = !block.content || block.content.trim() === "";
+      if (this.isBareUrl(trimmed) && blockIsEmptyForUrl) {
         event.preventDefault();
         await this.handleUrlPaste(block, trimmed);
         return;
@@ -3772,6 +3880,72 @@ const Page = {
         );
       }
     },
+
+    bulkScheduleSelected() {
+      // Reuse the single-block schedule popover for the whole selection.
+      // We snapshot the selected uuids now; the popover's save handler
+      // routes back through _submitBulkSchedule once the user picks a date.
+      const uuids = [...this.selectedBlockUuids];
+      if (uuids.length === 0) {
+        this.$parent?.addToast?.("no blocks selected", "info");
+        return;
+      }
+      this.schedulePopoverBulk = true;
+      this.schedulePopoverBulkUuids = uuids;
+      this.schedulePopoverBlock = null;
+      // No shared starting point across N blocks — let the popover default
+      // to today rather than seeding from one block's existing schedule.
+      this.schedulePopoverInitialDate = "";
+      this.schedulePopoverInitialDueTime = "";
+      this.schedulePopoverInitialReminders = [];
+      this.schedulePopoverOpen = true;
+    },
+
+    async _submitBulkSchedule(uuids, scheduledFor, dueTime, reminders) {
+      if (!uuids || uuids.length === 0) return;
+      if (!scheduledFor) {
+        this.$parent?.addToast?.("pick a date to schedule", "info");
+        return;
+      }
+      try {
+        const result = await window.apiService.bulkScheduleBlocks(
+          uuids,
+          scheduledFor,
+          dueTime,
+          reminders
+        );
+        if (!result || !result.success) {
+          throw new Error(
+            result?.errors?.non_field_errors?.[0] || "bulk schedule failed"
+          );
+        }
+        const count = result.data?.updated_count ?? 0;
+        let msg = `scheduled ${count} block${
+          count === 1 ? "" : "s"
+        } for ${scheduledFor}`;
+        const reminderCount = (reminders || []).length;
+        if (result.data?.reminder_set && reminderCount === 1) {
+          const formatted =
+            window.formatTimeForUser?.(reminders[0].time) || reminders[0].time;
+          msg += ` · remind at ${formatted}`;
+        } else if (result.data?.reminder_set && reminderCount > 1) {
+          msg += ` · ${reminderCount} reminders each`;
+        }
+        this.$parent?.addToast?.(msg, "success");
+        // Keep any embeds that surface these blocks in sync, same as the
+        // single-block schedule path.
+        uuids.forEach((uuid) => this.broadcastBlockChanged(uuid));
+        this.clearBlockSelection();
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("failed to bulk-schedule blocks:", error);
+        this.error = "failed to schedule selected blocks";
+        this.$parent?.addToast?.(
+          `failed to schedule selected blocks: ${error.message || error}`,
+          "error"
+        );
+      }
+    },
   },
 
   template: `
@@ -4018,6 +4192,13 @@ const Page = {
             >move to page…</button>
             <button
               type="button"
+              class="btn btn-outline selection-toolbar-action"
+              :disabled="selectedBlockCount === 0"
+              @click="bulkScheduleSelected"
+              title="Schedule selected blocks (set a due date / reminder)"
+            >schedule…</button>
+            <button
+              type="button"
               class="btn btn-outline selection-toolbar-action selection-toolbar-danger"
               :disabled="selectedBlockCount === 0"
               @click="bulkDeleteSelected"
@@ -4040,8 +4221,8 @@ const Page = {
           <div class="overdue-blocks-container">
             <div v-for="block in overdueBlocks" :key="block.uuid" class="referenced-block-wrapper overdue-block-wrapper" :class="{ 'in-context': isBlockInContext(block.uuid) }" :data-block-uuid="block.uuid">
               <div class="block-meta">
-                <span v-if="block.scheduled_for" class="overdue-due-date">due {{ formatDate(block.scheduled_for) }}</span>
                 <a class="page-title clickable" :href="pageBlockHref(block.page_slug, block.uuid)">{{ block.page_type === 'daily' ? formatDate(block.page_title) : block.page_title }}</a>
+                <span v-if="block.due_date" class="overdue-due-date">due {{ formatDate(block.due_date) }}<template v-if="block.due_time"> {{ block.due_time }}</template></span>
               </div>
               <BlockComponent
                 :block="block"
@@ -4159,6 +4340,7 @@ const Page = {
               </div>
               <BlockComponent
                 :block="block"
+                :reference-mode="true"
                 :onBlockContentChange="onBlockContentChange"
                 :onBlockKeyDown="onBlockKeyDown"
                 :startEditing="startEditing"
@@ -4197,8 +4379,8 @@ const Page = {
       <ScheduleBlockPopover
         :is-open="schedulePopoverOpen"
         :initial-date="schedulePopoverInitialDate"
-        :initial-reminder-date="schedulePopoverInitialReminderDate"
-        :initial-time="schedulePopoverInitialTime"
+        :initial-due-time="schedulePopoverInitialDueTime"
+        :initial-reminders="schedulePopoverInitialReminders"
         @save="onSchedulePopoverSave"
         @cancel="onSchedulePopoverCancel"
       />
@@ -4215,6 +4397,7 @@ const Page = {
         :is-open="blockInfoModalOpen"
         :block="blockInfoModalBlock"
         @close="closeBlockInfoModal"
+        @save-completed-at="onSaveBlockCompletedAt"
       />
 
       <!-- Share modal (issue #90) -->

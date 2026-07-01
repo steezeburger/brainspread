@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("knowledge", "0036_savedview_dates_relative_to_daily"),
+        ("knowledge", "0040_block_due_at_index"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

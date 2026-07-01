@@ -899,7 +899,7 @@ window.LeftNav = {
             stroke-linejoin="round"
             aria-hidden="true"
           >
-            <rect x="2" y="3.5" width="12" height="10.5" rx="0.5"/>
+            <rect x="2" y="3.5" width="12" height="10.5" rx="0"/>
             <line x1="2" y1="7" x2="14" y2="7"/>
             <line x1="5" y1="2" x2="5" y2="5"/>
             <line x1="11" y1="2" x2="11" y2="5"/>
@@ -1017,7 +1017,7 @@ window.LeftNav = {
                   stroke-linecap="round"
                   stroke-linejoin="round"
                 >
-                  <rect x="2" y="3.5" width="12" height="10.5" rx="0.5"/>
+                  <rect x="2" y="3.5" width="12" height="10.5" rx="0"/>
                   <line x1="2" y1="7" x2="14" y2="7"/>
                   <line x1="5" y1="2" x2="5" y2="5"/>
                   <line x1="11" y1="2" x2="11" y2="5"/>

@@ -8,7 +8,7 @@ from django.utils import timezone
 from knowledge.commands import GetPageWithBlocksCommand
 from knowledge.forms import GetPageWithBlocksForm
 
-from ..helpers import BlockFactory, PageFactory, UserFactory
+from ..helpers import BlockFactory, PageFactory, UserFactory, due_dt
 
 
 def _utc_noon(d: date) -> datetime:
@@ -48,7 +48,7 @@ class TestGetPageWithBlocksOverdue(TestCase):
             page=old_page,
             content="TODO overdue",
             block_type="todo",
-            scheduled_for=yesterday,
+            due_at=due_dt(yesterday),
         )
 
         _, direct_blocks, _, overdue_blocks, _ = self._run(date=today)
@@ -78,7 +78,7 @@ class TestGetPageWithBlocksOverdue(TestCase):
             page=old_page,
             content="TODO overdue",
             block_type="todo",
-            scheduled_for=yesterday,
+            due_at=due_dt(yesterday),
         )
 
         _, _, _, overdue_blocks, _ = self._run(date=two_days_ago)
@@ -107,7 +107,7 @@ class TestGetPageWithBlocksOverdue(TestCase):
             page=old_page,
             content="TODO overdue",
             block_type="todo",
-            scheduled_for=yesterday,
+            due_at=due_dt(yesterday),
         )
 
         _, _, _, overdue_blocks, _ = self._run(slug=regular_page.slug)
@@ -132,7 +132,7 @@ class TestGetPageWithBlocksOverdue(TestCase):
             page=old_page,
             content="WONTDO nope",
             block_type="wontdo",
-            scheduled_for=yesterday,
+            due_at=due_dt(yesterday),
         )
         # done — terminal, excluded
         BlockFactory(
@@ -140,7 +140,7 @@ class TestGetPageWithBlocksOverdue(TestCase):
             page=old_page,
             content="DONE shipped",
             block_type="done",
-            scheduled_for=yesterday,
+            due_at=due_dt(yesterday),
         )
         # todo but completed_at is set — excluded via completed_at predicate
         BlockFactory(
@@ -148,7 +148,7 @@ class TestGetPageWithBlocksOverdue(TestCase):
             page=old_page,
             content="TODO finished",
             block_type="todo",
-            scheduled_for=yesterday,
+            due_at=due_dt(yesterday),
             completed_at=timezone.now(),
         )
         # doing — not terminal, included
@@ -157,7 +157,7 @@ class TestGetPageWithBlocksOverdue(TestCase):
             page=old_page,
             content="DOING real one",
             block_type="doing",
-            scheduled_for=yesterday,
+            due_at=due_dt(yesterday),
         )
 
         _, _, _, overdue_blocks, _ = self._run(date=today)
@@ -182,7 +182,7 @@ class TestGetPageWithBlocksOverdue(TestCase):
             page=other_page,
             content="TODO other user's overdue",
             block_type="todo",
-            scheduled_for=yesterday,
+            due_at=due_dt(yesterday),
         )
 
         _, _, _, overdue_blocks, _ = self._run(date=today)

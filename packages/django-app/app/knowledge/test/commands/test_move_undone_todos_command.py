@@ -8,7 +8,7 @@ from knowledge.commands import MoveUndoneTodosCommand
 from knowledge.forms import MoveUndoneTodosForm
 from knowledge.models import Block
 
-from ..helpers import BlockFactory, PageFactory, UserFactory
+from ..helpers import BlockFactory, PageFactory, UserFactory, due_dt
 
 
 def _utc_noon(d: date) -> datetime:
@@ -627,7 +627,7 @@ class TestMoveUndoneTodosCommand(TestCase):
 
     @patch("core.models.user.timezone")
     def test_should_skip_dated_blocks_during_rollover(self, mock_timezone):
-        """Dated blocks (scheduled_for set) stay on their original page —
+        """Dated blocks (due_at set) stay on their original page —
         they surface via the overdue query instead."""
         today = date(2025, 6, 30)
         mock_timezone.now.return_value = _utc_noon(today)
@@ -654,7 +654,7 @@ class TestMoveUndoneTodosCommand(TestCase):
             content="TODO dated task",
             block_type="todo",
             order=2,
-            scheduled_for=yesterday,
+            due_at=due_dt(yesterday),
         )
 
         form = MoveUndoneTodosForm({"user": self.user})

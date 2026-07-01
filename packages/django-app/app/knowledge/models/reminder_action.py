@@ -34,11 +34,15 @@ class ReminderAction(UUIDModelMixin, CRUDTimestampsMixin):
 
     ACTION_COMPLETE = "complete"
     ACTION_MARK_DOING = "mark_doing"
+    ACTION_SNOOZE_15M = "snooze_15m"
+    ACTION_SNOOZE_30M = "snooze_30m"
     ACTION_SNOOZE_1H = "snooze_1h"
     ACTION_SNOOZE_1D = "snooze_1d"
     ACTION_CHOICES = [
         (ACTION_COMPLETE, "Mark complete"),
         (ACTION_MARK_DOING, "Mark doing"),
+        (ACTION_SNOOZE_15M, "Snooze 15 minutes"),
+        (ACTION_SNOOZE_30M, "Snooze 30 minutes"),
         (ACTION_SNOOZE_1H, "Snooze 1 hour"),
         (ACTION_SNOOZE_1D, "Snooze 1 day"),
     ]

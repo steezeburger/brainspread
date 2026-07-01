@@ -13,6 +13,10 @@ class RunSavedViewForm(UserForm):
     # ``dates_relative_to_daily=True``; otherwise the command ignores it
     # so a stray context_date can't shift a "live today" view.
     context_date = forms.DateField(required=False)
+    # When true, return only the matched-block count (and truncation flag)
+    # without serializing the rows. Collapsed embeds use this for their
+    # header count — see RunSavedViewCommand.
+    count_only = forms.BooleanField(required=False)
 
     def clean(self):
         cleaned = super().clean()

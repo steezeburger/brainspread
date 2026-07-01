@@ -11,7 +11,7 @@ from ..repositories.block_repository import BlockRepository
 
 
 class FindStaleTodosCommand(AbstractBaseCommand):
-    """Open TODO blocks (block_type='todo', no scheduled_for, not yet
+    """Open TODO blocks (block_type='todo', no due_at, not yet
     completed) that are older than `older_than_days`. Age is measured
     from the start of the cutoff day in the user's timezone so the
     threshold matches what the user sees.

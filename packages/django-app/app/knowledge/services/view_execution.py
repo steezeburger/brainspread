@@ -19,6 +19,15 @@ from ..repositories import BlockRepository, SavedViewRepository
 from . import query_engine
 
 
+def _compile(user, view: SavedView, context_date: Optional[date]):
+    return query_engine.compile(
+        view.filter,
+        user=user,
+        sort=view.sort,
+        context_date=context_date,
+    )
+
+
 def run_view(
     user,
     view: SavedView,
@@ -29,18 +38,28 @@ def run_view(
     """Execute an already-resolved view. Returns ``(blocks, truncated)``:
     at most ``limit`` rows, with ``truncated`` True when the view matched
     more."""
-    compiled = query_engine.compile(
-        view.filter,
-        user=user,
-        sort=view.sort,
-        context_date=context_date,
-    )
-
+    compiled = _compile(user, view, context_date)
     rows = list(BlockRepository.run_compiled_query(user, compiled, limit=limit + 1))
     truncated = len(rows) > limit
     if truncated:
         rows = rows[:limit]
     return rows, truncated
+
+
+def count_view(
+    user,
+    view: SavedView,
+    *,
+    limit: int,
+    context_date: Optional[date] = None,
+) -> Tuple[int, bool]:
+    """Count an already-resolved view's matches without fetching rows.
+    Returns ``(count, truncated)`` with ``count`` capped at ``limit`` —
+    the cheap path for collapsed embeds that only render a header
+    number."""
+    compiled = _compile(user, view, context_date)
+    matched = BlockRepository.count_compiled_query(user, compiled, limit=limit + 1)
+    return min(matched, limit), matched > limit
 
 
 def resolve_and_run_view(
