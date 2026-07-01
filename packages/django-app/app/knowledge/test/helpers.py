@@ -10,7 +10,9 @@ from core.test.helpers import UserFactory
 from knowledge.models import Block, Page
 
 
-def due_dt(*args, tz="UTC", hour=0, minute=0):
+def due_dt(
+    *args: "date | int", tz: str = "UTC", hour: int = 0, minute: int = 0
+) -> datetime:
     """Build a Block.due_at value for tests.
 
     due_at is a datetime; an all-day due is stored at user-local midnight.

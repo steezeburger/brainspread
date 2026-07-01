@@ -30,7 +30,7 @@ class ScheduleBlockCommand(AbstractBaseCommand):
         reminder_time = self.form.cleaned_data.get("reminder_time")
 
         block.due_at, block.due_at_has_time = build_due_at(
-            due_date, due_time, user.timezone
+            due_date, due_time, user.tz()
         )
         block.save(update_fields=["due_at", "due_at_has_time", "modified_at"])
 
@@ -50,7 +50,7 @@ class ScheduleBlockCommand(AbstractBaseCommand):
             target_date = reminder_date or due_date
             if target_date:
                 fire_at = combine_local_to_utc(
-                    target_date, reminder_time, block.user.timezone
+                    target_date, reminder_time, block.user.tz()
                 )
                 Reminder.objects.create(
                     block=block,

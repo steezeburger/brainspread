@@ -38,6 +38,7 @@ class BulkSnoozeCommand(AbstractBaseCommand):
         affected_page_uuids: Set[str] = set()
 
         reminder_delta = timedelta(days=days, hours=hours)
+        tz = user.tz()
 
         with transaction.atomic():
             for block_uuid in block_uuids:
@@ -52,7 +53,7 @@ class BulkSnoozeCommand(AbstractBaseCommand):
 
                 if block.due_at is not None and days != 0:
                     block.due_at = shift_due_days(
-                        block.due_at, block.due_at_has_time, days, user.timezone
+                        block.due_at, block.due_at_has_time, days, tz
                     )
                     block.save(update_fields=["due_at", "modified_at"])
 

@@ -76,7 +76,7 @@ class BulkScheduleCommand(AbstractBaseCommand):
                     block.due_at.astimezone(user.tz()).date() if block.due_at else None
                 )
                 block.due_at, block.due_at_has_time = build_due_at(
-                    new_date, new_time, user.timezone
+                    new_date, new_time, user.tz()
                 )
                 block.save(update_fields=["due_at", "due_at_has_time", "modified_at"])
 

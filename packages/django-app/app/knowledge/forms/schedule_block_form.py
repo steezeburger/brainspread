@@ -40,6 +40,17 @@ class ScheduleBlockForm(BaseForm):
             raise ValidationError("Block not found")
         return block
 
+    def clean(self) -> dict:
+        # A missing due_date means "clear the schedule", so a stale client
+        # still sending the pre-rename `scheduled_for` key would silently
+        # wipe schedules and pending reminders. Reject it loudly instead.
+        if "scheduled_for" in self.data:
+            raise ValidationError(
+                "scheduled_for was renamed to due_date — refusing to treat "
+                "this legacy payload as a schedule clear. Reload the app."
+            )
+        return super().clean()
+
     def clean_user(self) -> User:
         user = self.cleaned_data.get("user")
         if not user:

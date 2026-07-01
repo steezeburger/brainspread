@@ -24,13 +24,19 @@ def backfill_due_at(apps, schema_editor):
     Block = apps.get_model("knowledge", "Block")
     utc = pytz.UTC
     blocks = Block.objects.filter(due_at__isnull=False).select_related("user")
+    batch = []
     for block in blocks.iterator():
         cal_date = block.due_at.astimezone(utc).date()
         tz = _resolve_tz(block.user.timezone)
         local_midnight = tz.localize(datetime.combine(cal_date, time.min))
         block.due_at = local_midnight.astimezone(utc)
         block.due_at_has_time = False
-        block.save(update_fields=["due_at", "due_at_has_time"])
+        batch.append(block)
+        if len(batch) >= 1000:
+            Block.objects.bulk_update(batch, ["due_at", "due_at_has_time"])
+            batch = []
+    if batch:
+        Block.objects.bulk_update(batch, ["due_at", "due_at_has_time"])
 
 
 def _rename_filter_keys(node):
@@ -68,6 +74,7 @@ def rename_saved_view_fields(apps, schema_editor):
     this their filters silently stop matching once the model field is gone.
     """
     SavedView = apps.get_model("knowledge", "SavedView")
+    dirty_views = []
     for view in SavedView.objects.all().iterator():
         dirty = False
         if view.filter:
@@ -80,7 +87,9 @@ def rename_saved_view_fields(apps, schema_editor):
             view.sort = new_sort
             dirty = True
         if dirty:
-            view.save(update_fields=["filter", "sort"])
+            dirty_views.append(view)
+    if dirty_views:
+        SavedView.objects.bulk_update(dirty_views, ["filter", "sort"], batch_size=500)
 
 
 class Migration(migrations.Migration):

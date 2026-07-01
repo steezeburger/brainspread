@@ -1,12 +1,13 @@
 import re
+from datetime import time
 from typing import Optional, TypedDict
 
-import pytz
 from django.conf import settings
 from django.db import models
 
 from common.models.crud_timestamps_mixin import CRUDTimestampsMixin
 from common.models.uuid_mixin import UUIDModelMixin
+from knowledge.services.due_dates import combine_local_to_utc
 
 
 class Block(UUIDModelMixin, CRUDTimestampsMixin):
@@ -138,6 +139,23 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
         else:
             return f"Block {self.uuid}: [empty]"
 
+    def clean(self) -> None:
+        """Normalize the all-day due invariant on validated saves.
+
+        An all-day due (due_at_has_time=False) must sit at user-local
+        midnight or _due_local_date() reads back a different calendar day.
+        Command write paths guarantee this via services.due_dates.build_due_at;
+        direct edits (Django admin runs full_clean) don't — so snap the value
+        to midnight of its local date here rather than erroring, preserving
+        the editor's intent of "due that local day".
+        """
+        super().clean()
+        if self.due_at and not self.due_at_has_time and self.user_id:
+            tz = self.user.tz()
+            local = self.due_at.astimezone(tz)
+            if local.time() != time.min:
+                self.due_at = combine_local_to_utc(local.date(), time.min, tz)
+
     def get_children(self):
         """Get direct children blocks"""
         return self.children.all().order_by("order")
@@ -257,6 +275,8 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
 
     def to_dict(self, include_page_context: bool = False) -> "BlockData":
         """Convert block to dictionary with proper typing"""
+        due_date, due_time = self._due_local()
+        pending_reminder_date, pending_reminder_time = self._pending_reminder_local()
         data: BlockData = {
             "uuid": str(self.uuid),
             "content": self.content,
@@ -277,8 +297,8 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             # `due_at` is the raw UTC instant; `due_date` / `due_time` are the
             # user-local pieces the UI renders (time is None for all-day items).
             "due_at": (self.due_at.isoformat() if self.due_at else None),
-            "due_date": self._due_local_date(),
-            "due_time": self._due_local_time(),
+            "due_date": due_date,
+            "due_time": due_time,
             "due_at_has_time": self.due_at_has_time,
             "completed_at": (
                 self.completed_at.isoformat() if self.completed_at else None
@@ -288,8 +308,8 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             # single pending reminder for the block (or None for both).
             # `pending_reminder_date` may differ from `due_date` —
             # users can choose to be reminded N days before due, etc.
-            "pending_reminder_date": self._pending_reminder_local_date(),
-            "pending_reminder_time": self._pending_reminder_local_time(),
+            "pending_reminder_date": pending_reminder_date,
+            "pending_reminder_time": pending_reminder_time,
             # Page context fields (optional)
             "page_title": None,
             "page_type": None,
@@ -314,11 +334,7 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
         """
         if not self.due_at:
             return (None, None)
-        try:
-            tz = pytz.timezone(self.user.timezone or "UTC")
-        except pytz.UnknownTimeZoneError:
-            tz = pytz.UTC
-        local = self.due_at.astimezone(tz)
+        local = self.due_at.astimezone(self.user.tz())
         time_str = local.strftime("%H:%M") if self.due_at_has_time else None
         return (local.strftime("%Y-%m-%d"), time_str)
 
@@ -336,18 +352,8 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
         pending = self.reminders.filter(sent_at__isnull=True).first()
         if not pending:
             return (None, None)
-        try:
-            tz = pytz.timezone(self.user.timezone or "UTC")
-        except pytz.UnknownTimeZoneError:
-            tz = pytz.UTC
-        local = pending.fire_at.astimezone(tz)
+        local = pending.fire_at.astimezone(self.user.tz())
         return (local.strftime("%Y-%m-%d"), local.strftime("%H:%M"))
-
-    def _pending_reminder_local_time(self) -> Optional[str]:
-        return self._pending_reminder_local()[1]
-
-    def _pending_reminder_local_date(self) -> Optional[str]:
-        return self._pending_reminder_local()[0]
 
     def get_pending_reminder(self):
         """Return this block's pending reminder, if any.
@@ -366,13 +372,15 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
         properties, tags, and parent — but rich enough that the chat
         surface can render the row without a follow-up fetch.
         """
+        due_date, due_time = self._due_local()
+        pending_reminder_date, pending_reminder_time = self._pending_reminder_local()
         return {
             "block_uuid": str(self.uuid),
             "content": self.content,
             "block_type": self.block_type,
             "due_at": (self.due_at.isoformat() if self.due_at else None),
-            "due_date": self._due_local_date(),
-            "due_time": self._due_local_time(),
+            "due_date": due_date,
+            "due_time": due_time,
             "due_at_has_time": self.due_at_has_time,
             "completed_at": (
                 self.completed_at.isoformat() if self.completed_at else None
@@ -380,8 +388,8 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             "page_uuid": str(self.page.uuid) if self.page else None,
             "page_title": self.page.title if self.page else None,
             "page_slug": self.page.slug if self.page else None,
-            "pending_reminder_date": self._pending_reminder_local_date(),
-            "pending_reminder_time": self._pending_reminder_local_time(),
+            "pending_reminder_date": pending_reminder_date,
+            "pending_reminder_time": pending_reminder_time,
         }
 
     def to_dict_with_children(self, include_page_context: bool = False) -> "BlockData":

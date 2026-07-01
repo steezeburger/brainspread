@@ -36,12 +36,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Callable, Dict, List
 
 from django.db.models import Exists, OuterRef, Q
 
 from knowledge.models import Block
+from knowledge.services.due_dates import start_of_local_day
 
 # ---------------------------------------------------------------------------
 # Errors
@@ -126,9 +127,10 @@ def _resolve_date_token(raw: Any, user, context_date: "date | None" = None) -> d
 
 
 def _start_of_local_day(d: date, user) -> datetime:
-    """Aware datetime at midnight of d in the user's timezone. pytz needs
-    ``localize()`` rather than ``tzinfo=`` to pick the right DST offset."""
-    return user.tz().localize(datetime.combine(d, time.min))
+    """Aware datetime at midnight of d in the user's timezone. Thin adapter
+    over the shared implementation in services.due_dates so day-boundary
+    semantics can't drift from the repository's."""
+    return start_of_local_day(d, user.tz())
 
 
 # ---------------------------------------------------------------------------

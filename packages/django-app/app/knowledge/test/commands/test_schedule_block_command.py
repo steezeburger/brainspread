@@ -176,6 +176,37 @@ class TestScheduleBlockCommand(TestCase):
         self.assertEqual(reminders.count(), 1)
         self.assertEqual(reminders.first().fire_at, self._to_utc(due, time(hour=9)))
 
+    def test_rejects_legacy_scheduled_for_key(self):
+        """A stale client still posting the pre-rename `scheduled_for` key
+        must get a validation error, not a silent schedule clear."""
+        block = BlockFactory(
+            user=self.user,
+            page=self.page,
+            due_at=self._to_utc(date(2026, 4, 30), time.min),
+        )
+        form = ScheduleBlockForm(
+            {
+                "user": self.user.id,
+                "block": str(block.uuid),
+                "scheduled_for": "2026-05-01",
+            }
+        )
+        self.assertFalse(form.is_valid())
+        block.refresh_from_db()
+        self.assertIsNotNone(block.due_at)
+
+    def test_clean_normalizes_all_day_due_to_local_midnight(self):
+        """full_clean (the admin path) snaps a non-midnight all-day due_at
+        to user-local midnight of its local calendar date."""
+        block = BlockFactory(user=self.user, page=self.page)
+        # 15:00 New York local on 2026-04-30, stored with has_time=False —
+        # the invalid state a raw admin edit could produce.
+        block.due_at = self._to_utc(date(2026, 4, 30), time(hour=15))
+        block.due_at_has_time = False
+        block.full_clean()
+        self.assertEqual(block.due_at, self._to_utc(date(2026, 4, 30), time.min))
+        self.assertEqual(block._due_local_date(), "2026-04-30")
+
     def test_reschedule_preserves_already_sent_reminders(self):
         """Sent reminders are history and must not be deleted on reschedule."""
         block = BlockFactory(user=self.user, page=self.page)

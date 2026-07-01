@@ -271,8 +271,7 @@ def _build_payload(
         embed["description"] = "\n\n".join(description_lines)
 
     if block.due_at:
-        due_value = block._due_local_date()
-        due_time = block._due_local_time()
+        due_value, due_time = block._due_local()
         if block.due_at_has_time and due_time:
             due_value = f"{due_value} {due_time}"
         embed["fields"] = [

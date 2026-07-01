@@ -38,7 +38,7 @@ class SnoozeBlockCommand(AbstractBaseCommand):
 
         if block.due_at is not None and days != 0:
             block.due_at = shift_due_days(
-                block.due_at, block.due_at_has_time, days, block.user.timezone
+                block.due_at, block.due_at_has_time, days, block.user.tz()
             )
             update_fields.append("due_at")
 

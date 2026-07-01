@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional
 
 from django.db import transaction
@@ -8,14 +8,7 @@ from django.db.models.functions import TruncDate
 from common.repositories.base_repository import BaseRepository
 
 from ..models import Block, Page
-
-
-def _start_of_local_day(d: date, user) -> datetime:
-    """Aware datetime at midnight of ``d`` in the user's timezone. Used to
-    turn date-shaped boundaries into datetime bounds for the (now datetime)
-    ``due_at`` field. pytz needs ``localize()`` rather than ``tzinfo=`` to
-    pick the right DST offset."""
-    return user.tz().localize(datetime.combine(d, time.min))
+from ..services.due_dates import start_of_local_day
 
 
 class BlockRepository(BaseRepository):
@@ -326,7 +319,7 @@ class BlockRepository(BaseRepository):
             cls.get_queryset()
             .filter(
                 user=user,
-                due_at__lt=_start_of_local_day(today, user),
+                due_at__lt=start_of_local_day(today, user.tz()),
                 block_type__in=("todo", "doing", "later"),
                 completed_at__isnull=True,
             )
@@ -351,8 +344,8 @@ class BlockRepository(BaseRepository):
             cls.get_queryset()
             .filter(
                 user=user,
-                due_at__gte=_start_of_local_day(start_date, user),
-                due_at__lt=_start_of_local_day(end_date + timedelta(days=1), user),
+                due_at__gte=start_of_local_day(start_date, user.tz()),
+                due_at__lt=start_of_local_day(end_date + timedelta(days=1), user.tz()),
             )
             .select_related("page")
             .prefetch_related("reminders")
