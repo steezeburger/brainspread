@@ -28,12 +28,18 @@ from typing import Callable, Dict, List, Tuple
 from core.llm_tools import parse_relative_date
 from core.models import User
 
+from ..commands.add_template_blocks_to_page_command import (
+    AddTemplateBlocksToPageCommand,
+)
 from ..commands.bulk_move_blocks_command import BulkMoveBlocksCommand
 from ..commands.bulk_set_block_type_command import BulkSetBlockTypeCommand
+from ..forms.add_template_blocks_to_page_form import AddTemplateBlocksToPageForm
 from ..forms.bulk_move_blocks_form import BulkMoveBlocksForm
 from ..forms.bulk_set_block_type_form import BulkSetBlockTypeForm
 from ..models import Block
+from ..repositories.page_repository import PageRepository
 from .automation_spec import ActionSpec
+from .discord_webhook import post_webhook
 
 
 class ActionError(ValueError):
@@ -45,6 +51,10 @@ class ActionError(ValueError):
 class ActionContext:
     user: User
     allow: frozenset
+    # Whether the automation declared a query::. Lets a dual-mode action
+    # like `notify` distinguish "query matched nothing → stay quiet" from
+    # "no query at all → send the bare message".
+    has_query: bool = False
     origin: str = "automation"
 
 
@@ -158,7 +168,110 @@ def _set_type(
     )
 
 
+# Cap how many block lines ride in a notify embed; Discord embeds top out
+# well above this, but a nudge listing 500 items is noise, not a nudge.
+_NOTIFY_MAX_LINES = 10
+
+
+def _notify(
+    ctx: ActionContext, blocks: List[Block], args: Tuple[str, ...]
+) -> ActionResult:
+    """Dual-mode Discord nudge. With a query: one message listing the
+    matched blocks — and silence when nothing matches, which is what makes
+    a `type:doing` nudge self-stopping. Without a query: the bare message
+    (e.g. `trash night`)."""
+    if not args or not args[0].strip():
+        raise ActionError('`notify` needs a message, e.g. notify "still on this?"')
+    message = args[0].strip()
+
+    if ctx.has_query and not blocks:
+        return ActionResult(
+            affected=0, details=[{"sent": False, "reason": "no matches"}]
+        )
+
+    url = ctx.user.discord_webhook_url
+    if not url:
+        raise ActionError("no Discord webhook configured for this user")
+
+    embed: dict = {"title": message[:240], "footer": {"text": "Automation"}}
+    if blocks:
+        lines = [
+            f"• {block.first_content_line() or '(untitled block)'}"
+            for block in blocks[:_NOTIFY_MAX_LINES]
+        ]
+        if len(blocks) > _NOTIFY_MAX_LINES:
+            lines.append(f"…and {len(blocks) - _NOTIFY_MAX_LINES} more")
+        embed["description"] = "\n".join(lines)
+
+    content = f"<@{ctx.user.discord_user_id}>" if ctx.user.discord_user_id else ""
+    result = post_webhook(url, content, embeds=[embed])
+    if not result.ok:
+        raise ActionError(f"notify delivery failed: {result.error}")
+
+    return ActionResult(
+        affected=len(blocks) if ctx.has_query else 1,
+        details=[{"sent": True, "blocks": len(blocks)}],
+    )
+
+
+def _apply_template(
+    ctx: ActionContext, blocks: List[Block], args: Tuple[str, ...]
+) -> ActionResult:
+    """Standalone action: copy a template's block tree onto a daily page,
+    e.g. `apply_template "morning routine" to today`. Target defaults to
+    today's daily; the query result is ignored."""
+    if not args or not args[0].strip():
+        raise ActionError(
+            "`apply_template` needs a template name, e.g. "
+            'apply_template "morning routine" to today'
+        )
+    name = args[0].strip()
+
+    if len(args) == 1:
+        target_token = "today"
+    elif len(args) == 3 and args[1].lower() == "to":
+        target_token = args[2]
+    else:
+        raise ActionError('expected `apply_template "<template name>" [to <date>]`')
+
+    try:
+        target_date = parse_relative_date(target_token, ctx.user.today())
+    except ValueError as exc:
+        raise ActionError(str(exc)) from exc
+
+    template = PageRepository.get_template_by_title(ctx.user, name)
+    if template is None:
+        raise ActionError(f"template `{name}` not found")
+
+    target_page, _ = PageRepository.get_or_create_daily_note(ctx.user, target_date)
+
+    form = AddTemplateBlocksToPageForm(
+        data={
+            "user": ctx.user.id,
+            "template": str(template.uuid),
+            "target_page": str(target_page.uuid),
+        }
+    )
+    if not form.is_valid():
+        raise ActionError(form.errors.as_json())
+    outcome = AddTemplateBlocksToPageCommand(form).execute()
+    return ActionResult(
+        affected=outcome["added"],
+        details=[
+            {
+                "added": outcome["added"],
+                "template": template.title,
+                "target_page_uuid": outcome["target_page"]["uuid"],
+            }
+        ],
+    )
+
+
 COMMAND_ACTIONS: Dict[str, ActionDef] = {
     "move_to_daily": ActionDef(handler=_move_to_daily, capability="move_to_daily"),
     "set_type": ActionDef(handler=_set_type, capability="set_type"),
+    "notify": ActionDef(handler=_notify, capability="notify", requires_query=False),
+    "apply_template": ActionDef(
+        handler=_apply_template, capability="apply_template", requires_query=False
+    ),
 }

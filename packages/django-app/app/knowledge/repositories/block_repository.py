@@ -196,10 +196,8 @@ class BlockRepository(BaseRepository):
         return queryset
 
     @classmethod
-    def get_automation_blocks(cls, user) -> List[Block]:
-        """Blocks the user tagged ``#automation`` — the definitions for the
-        automations platform (issue #143). Each block carries its config as
-        ``key:: value`` props in ``block.properties``.
+    def _automation_blocks_qs(cls, user=None) -> QuerySet:
+        """Discovery predicate for ``#automation`` definition blocks.
 
         Matches the ``has_tag`` semantics from the query engine: the M2M
         tag OR living on a page with the tag's slug both count, so a block
@@ -210,15 +208,45 @@ class BlockRepository(BaseRepository):
         (mirrors ``run_compiled_query``'s template exclusion).
 
         ``distinct()`` guards against the join multiplying a block tagged
-        with multiple pages; ordered by creation for stable run ordering."""
-        return list(
-            cls.get_queryset()
-            .filter(user=user)
-            .filter(
+        with multiple pages."""
+        qs = cls.get_queryset()
+        if user is not None:
+            qs = qs.filter(user=user)
+        return (
+            qs.filter(
                 Q(pages__slug=AUTOMATION_TAG_SLUG) | Q(page__slug=AUTOMATION_TAG_SLUG)
             )
             .exclude(page__page_type="template")
             .distinct()
+        )
+
+    @classmethod
+    def get_automation_blocks(cls, user) -> List[Block]:
+        """The user's ``#automation`` definition blocks — the automations
+        platform's discovery path (issue #143). Each block carries its
+        config as ``key:: value`` props in ``block.properties``. Ordered
+        by creation for stable run ordering."""
+        return list(cls._automation_blocks_qs(user).order_by("created_at"))
+
+    @classmethod
+    def lock_automation_blocks(cls) -> List[Block]:
+        """ALL users' automation definition blocks, row-locked with
+        ``SKIP LOCKED`` for a scheduler dispatch tick — concurrent pollers
+        (or a stacked run from the previous tick) each grab a disjoint
+        set instead of double-firing. Must be called inside
+        ``transaction.atomic()``.
+
+        Postgres forbids ``FOR UPDATE`` with ``DISTINCT``, so the tag-join
+        discovery query resolves to pks first and the lock is taken on a
+        plain pk filter."""
+        ids = list(cls._automation_blocks_qs().values_list("pk", flat=True))
+        if not ids:
+            return []
+        return list(
+            cls.get_queryset()
+            .filter(pk__in=ids)
+            .select_related("user")
+            .select_for_update(skip_locked=True, of=("self",))
             .order_by("created_at")
         )
 

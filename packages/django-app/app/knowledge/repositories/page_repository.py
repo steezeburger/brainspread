@@ -249,3 +249,14 @@ class PageRepository(BaseRepository):
         return (
             cls.get_queryset().filter(user=user, page_type="template").order_by("title")
         )
+
+    @classmethod
+    def get_template_by_title(cls, user, title: str) -> Optional[Page]:
+        """The user's template page with this title (case-insensitive), or
+        None. Used by the automations `apply_template` action, where the
+        template is referenced by its human name."""
+        return (
+            cls.get_queryset()
+            .filter(user=user, page_type="template", title__iexact=title.strip())
+            .first()
+        )

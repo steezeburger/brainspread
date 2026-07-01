@@ -46,7 +46,9 @@ class RunAutomationCommand(AbstractBaseCommand):
 
         user = self.form.cleaned_data["user"]
         block = self.form.cleaned_data["automation_block"]
-        trigger = self.form.cleaned_data["trigger"]
+        # BaseForm.clean drops keys that weren't submitted, so the field
+        # default never survives — resolve the fallback here.
+        trigger = self.form.cleaned_data.get("trigger") or AutomationRun.TRIGGER_MANUAL
 
         run = AutomationRunRepository.create(
             user=user,
@@ -109,7 +111,9 @@ class RunAutomationCommand(AbstractBaseCommand):
                     error=f"saved view `{spec.query.view_slug}` not found",
                 )
 
-        ctx = automation_actions.ActionContext(user=user, allow=spec.allow)
+        ctx = automation_actions.ActionContext(
+            user=user, allow=spec.allow, has_query=spec.query is not None
+        )
 
         try:
             with transaction.atomic():

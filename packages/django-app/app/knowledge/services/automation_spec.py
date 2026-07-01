@@ -19,7 +19,7 @@ Recognized props (slice 1 — schedule + manual triggers, command actions):
 
 - ``trigger::`` ``schedule <cadence>`` | ``manual``
   cadence: ``daily HH:MM`` | ``hourly`` | ``weekly <dow> HH:MM`` |
-  ``cron <expr>`` (raw escape hatch)
+  ``every <N>m|<N>h`` | ``cron <expr>`` (raw escape hatch)
 - ``query::``   ``view:<saved-view-slug>`` (optional for ``manual``; the
   action decides whether it needs a result set)
 - ``action::``  ``<verb> <args...>`` — verbs are validated by the action
@@ -50,7 +50,10 @@ TRIGGER_MANUAL = "manual"
 SCHEDULE_DAILY = "daily"
 SCHEDULE_HOURLY = "hourly"
 SCHEDULE_WEEKLY = "weekly"
+SCHEDULE_EVERY = "every"
 SCHEDULE_CRON = "cron"
+
+_EVERY_RE = re.compile(r"^(\d+)([mh])$")
 
 # Monday-first, matching Python's date.weekday().
 _WEEKDAYS = {
@@ -86,10 +89,11 @@ class ScheduleSpec:
     this is purely the parsed shape."""
 
     raw: str
-    kind: str  # SCHEDULE_DAILY | SCHEDULE_HOURLY | SCHEDULE_WEEKLY | SCHEDULE_CRON
+    kind: str  # daily | hourly | weekly | every | cron (SCHEDULE_* constants)
     hour: Optional[int] = None
     minute: Optional[int] = None
     weekday: Optional[int] = None  # 0 = Monday
+    interval_minutes: Optional[int] = None  # SCHEDULE_EVERY only
     cron: Optional[str] = None
 
 
@@ -241,6 +245,19 @@ def _parse_schedule(raw: str, errors: List[str]) -> Optional[ScheduleSpec]:
             minute=hm[1],
         )
 
+    if head == SCHEDULE_EVERY:
+        token = parts[1].lower() if len(parts) > 1 else ""
+        m = _EVERY_RE.match(token)
+        if not m:
+            errors.append("`every` expects an interval like `every 15m` or `every 2h`")
+            return None
+        amount, unit = int(m.group(1)), m.group(2)
+        minutes = amount * 60 if unit == "h" else amount
+        if minutes < 1:
+            errors.append("`every` interval must be at least 1 minute")
+            return None
+        return ScheduleSpec(raw=raw, kind=SCHEDULE_EVERY, interval_minutes=minutes)
+
     if head == SCHEDULE_CRON:
         cron = raw.split(maxsplit=1)[1].strip() if len(parts) > 1 else ""
         if len(cron.split()) != 5:
@@ -248,7 +265,9 @@ def _parse_schedule(raw: str, errors: List[str]) -> Optional[ScheduleSpec]:
             return None
         return ScheduleSpec(raw=raw, kind=SCHEDULE_CRON, cron=cron)
 
-    errors.append(f"unknown cadence `{head}` (expected daily / hourly / weekly / cron)")
+    errors.append(
+        f"unknown cadence `{head}` (expected daily / hourly / weekly / every / cron)"
+    )
     return None
 
 

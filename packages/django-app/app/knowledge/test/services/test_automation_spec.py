@@ -6,6 +6,7 @@ from knowledge.models import Block
 from knowledge.services.automation_spec import (
     SCHEDULE_CRON,
     SCHEDULE_DAILY,
+    SCHEDULE_EVERY,
     SCHEDULE_HOURLY,
     SCHEDULE_WEEKLY,
     TRIGGER_MANUAL,
@@ -78,6 +79,23 @@ class TestParseAutomationBlock(SimpleTestCase):
         )
         self.assertEqual(cron.trigger.schedule.kind, SCHEDULE_CRON)
         self.assertEqual(cron.trigger.schedule.cron, "0 6 * * 1")
+
+    def test_parses_every_cadence(self):
+        minutes = parse_automation_block(
+            _block({"trigger": "schedule every 15m", "action": "set_type done"})
+        )
+        self.assertEqual(minutes.trigger.schedule.kind, SCHEDULE_EVERY)
+        self.assertEqual(minutes.trigger.schedule.interval_minutes, 15)
+
+        hours = parse_automation_block(
+            _block({"trigger": "schedule every 2h", "action": "set_type done"})
+        )
+        self.assertEqual(hours.trigger.schedule.interval_minutes, 120)
+
+        with self.assertRaises(AutomationSpecError):
+            parse_automation_block(
+                _block({"trigger": "schedule every banana", "action": "set_type done"})
+            )
 
     def test_quoted_prompt_action_is_one_arg(self):
         spec = parse_automation_block(
