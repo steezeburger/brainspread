@@ -38,6 +38,8 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from django.utils.text import slugify
 
+from .query_dsl import QueryDSLError, compile_inline_query
+
 if TYPE_CHECKING:
     from knowledge.models import Block
 
@@ -103,10 +105,16 @@ class TriggerSpec:
     schedule: Optional[ScheduleSpec] = None
 
 
+QUERY_VIEW = "view"
+QUERY_INLINE = "inline"
+
+
 @dataclass(frozen=True)
 class QuerySpec:
-    kind: str  # "view" (slice 1: SavedView reference only)
-    view_slug: str
+    kind: str  # QUERY_VIEW | QUERY_INLINE
+    view_slug: str = ""
+    # Compiled query-engine filter dict — QUERY_INLINE only.
+    filter_spec: Optional[dict] = None
 
 
 @dataclass(frozen=True)
@@ -287,9 +295,13 @@ def _parse_query(raw: str, errors: List[str]) -> Optional[QuerySpec]:
         if not slug:
             errors.append("`query:: view:` needs a saved-view slug")
             return None
-        return QuerySpec(kind="view", view_slug=slug)
-    errors.append(f"unsupported query `{raw}` (expected `view:<slug>`)")
-    return None
+        return QuerySpec(kind=QUERY_VIEW, view_slug=slug)
+    try:
+        filter_spec = compile_inline_query(raw)
+    except QueryDSLError as exc:
+        errors.append(f"bad query: {exc}")
+        return None
+    return QuerySpec(kind=QUERY_INLINE, filter_spec=filter_spec)
 
 
 def _parse_action(raw: str, errors: List[str]) -> Optional[ActionSpec]:

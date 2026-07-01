@@ -155,18 +155,52 @@ class TestParseAutomationBlock(SimpleTestCase):
             )
         self.assertIn("telepathy", "; ".join(ctx.exception.errors))
 
-    def test_unsupported_query_form_is_rejected(self):
+    def test_inline_query_compiles_to_filter_spec(self):
+        spec = parse_automation_block(
+            _block(
+                {
+                    "trigger": "manual",
+                    "action": "move_to_daily today",
+                    "query": "tag:sticky and type:todo,doing",
+                }
+            )
+        )
+        self.assertEqual(spec.query.kind, "inline")
+        self.assertEqual(
+            spec.query.filter_spec,
+            {
+                "all": [
+                    {"has_tag": "sticky"},
+                    {"block_type": {"in": ["todo", "doing"]}},
+                ]
+            },
+        )
+
+    def test_malformed_inline_query_is_rejected(self):
         with self.assertRaises(AutomationSpecError) as ctx:
             parse_automation_block(
                 _block(
                     {
                         "trigger": "manual",
                         "action": "move_to_daily today",
-                        "query": "tag:sticky",
+                        "query": "bogus~~query",
                     }
                 )
             )
         self.assertIn("query", "; ".join(ctx.exception.errors))
+
+    def test_hashtag_in_query_is_rejected_with_guidance(self):
+        with self.assertRaises(AutomationSpecError) as ctx:
+            parse_automation_block(
+                _block(
+                    {
+                        "trigger": "manual",
+                        "action": "move_to_daily today",
+                        "query": "#sticky",
+                    }
+                )
+            )
+        self.assertIn("tag:", "; ".join(ctx.exception.errors))
 
     def test_bad_cron_arity_is_rejected(self):
         with self.assertRaises(AutomationSpecError) as ctx:

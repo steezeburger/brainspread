@@ -37,6 +37,7 @@ from .get_streaks_command import GetStreaksCommand
 from .get_tag_content_command import GetTagContentCommand
 from .get_tag_graph_command import GetTagGraphCommand
 from .get_user_pages_command import GetUserPagesCommand
+from .list_automations_command import ListAutomationsCommand
 from .list_overdue_blocks_command import ListOverdueBlocksCommand
 from .list_pending_reminders_command import ListPendingRemindersCommand
 from .list_saved_views_command import ListSavedViewsCommand

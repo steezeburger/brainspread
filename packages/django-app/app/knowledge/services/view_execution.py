@@ -62,6 +62,30 @@ def count_view(
     return min(matched, limit), matched > limit
 
 
+def run_filter(
+    user,
+    filter_spec: dict,
+    *,
+    limit: int,
+    context_date: Optional[date] = None,
+) -> Tuple[List[Block], bool]:
+    """Execute a raw query-engine filter dict (e.g. from an automation's
+    inline query DSL). Same ``(blocks, truncated)`` contract as
+    ``run_view``; default engine sort applies since there's no view to
+    carry one."""
+    compiled = query_engine.compile(
+        filter_spec,
+        user=user,
+        sort=None,
+        context_date=context_date,
+    )
+    rows = list(BlockRepository.run_compiled_query(user, compiled, limit=limit + 1))
+    truncated = len(rows) > limit
+    if truncated:
+        rows = rows[:limit]
+    return rows, truncated
+
+
 def resolve_and_run_view(
     user,
     *,

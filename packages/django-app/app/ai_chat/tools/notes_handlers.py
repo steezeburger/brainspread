@@ -62,6 +62,7 @@ from knowledge.commands.get_recent_activity_command import GetRecentActivityComm
 from knowledge.commands.get_saved_view_command import GetSavedViewCommand
 from knowledge.commands.get_streaks_command import GetStreaksCommand
 from knowledge.commands.get_tag_graph_command import GetTagGraphCommand
+from knowledge.commands.list_automations_command import ListAutomationsCommand
 from knowledge.commands.list_overdue_blocks_command import ListOverdueBlocksCommand
 from knowledge.commands.list_pending_reminders_command import (
     ListPendingRemindersCommand,
@@ -69,6 +70,7 @@ from knowledge.commands.list_pending_reminders_command import (
 from knowledge.commands.list_saved_views_command import ListSavedViewsCommand
 from knowledge.commands.list_scheduled_blocks_command import ListScheduledBlocksCommand
 from knowledge.commands.move_block_to_daily_command import MoveBlockToDailyCommand
+from knowledge.commands.run_automation_command import RunAutomationCommand
 from knowledge.commands.run_saved_view_command import RunSavedViewCommand
 from knowledge.commands.schedule_block_command import ScheduleBlockCommand
 from knowledge.commands.search_notes_command import SearchNotesCommand
@@ -109,11 +111,13 @@ from knowledge.forms.get_recent_activity_form import GetRecentActivityForm
 from knowledge.forms.get_saved_view_form import GetSavedViewForm
 from knowledge.forms.get_streaks_form import GetStreaksForm
 from knowledge.forms.get_tag_graph_form import GetTagGraphForm
+from knowledge.forms.list_automations_form import ListAutomationsForm
 from knowledge.forms.list_overdue_blocks_form import ListOverdueBlocksForm
 from knowledge.forms.list_pending_reminders_form import ListPendingRemindersForm
 from knowledge.forms.list_saved_views_form import ListSavedViewsForm
 from knowledge.forms.list_scheduled_blocks_form import ListScheduledBlocksForm
 from knowledge.forms.move_block_to_daily_form import MoveBlockToDailyForm
+from knowledge.forms.run_automation_form import RunAutomationForm
 from knowledge.forms.run_saved_view_form import RunSavedViewForm
 from knowledge.forms.schedule_block_form import ScheduleBlockForm
 from knowledge.forms.search_notes_form import SearchNotesForm
@@ -379,6 +383,25 @@ def _list_saved_views(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
         return {"error": _first_form_error(form)}
     views = ListSavedViewsCommand(form).execute()
     return {"views": [v.to_dict() for v in views]}
+
+
+def _list_automations(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
+    form = ListAutomationsForm({"user": ctx.user.id})
+    if not form.is_valid():
+        return {"error": _first_form_error(form)}
+    return {"automations": ListAutomationsCommand(form).execute()}
+
+
+def _run_automation(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
+    data: Dict[str, Any] = {"user": ctx.user.id, "trigger": "manual"}
+    if args.get("automation_uuid"):
+        data["automation_block"] = str(args["automation_uuid"]).strip()
+    if args.get("automation_slug"):
+        data["automation_slug"] = str(args["automation_slug"]).strip()
+    form = RunAutomationForm(data)
+    if not form.is_valid():
+        return {"error": _first_form_error(form)}
+    return RunAutomationCommand(form).execute()
 
 
 def _get_saved_view(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -1306,6 +1329,7 @@ READ_HANDLERS = {
     "find_stale_todos": _find_stale_todos,
     "list_scheduled_blocks": _list_scheduled_blocks,
     "list_saved_views": _list_saved_views,
+    "list_automations": _list_automations,
     "get_saved_view": _get_saved_view,
     "run_saved_view": _run_saved_view,
     "list_page_embedded_views": _list_page_embedded_views,
@@ -1337,4 +1361,5 @@ WRITE_HANDLERS = {
     "duplicate_saved_view": _duplicate_saved_view,
     "embed_view_on_page": _embed_view_on_page,
     "delete_page_embed": _delete_page_embed,
+    "run_automation": _run_automation,
 }

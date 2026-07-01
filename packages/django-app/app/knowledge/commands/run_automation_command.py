@@ -11,10 +11,11 @@ from ..models import AutomationRun, AutomationRunData, Block
 from ..repositories import AutomationRunRepository
 from ..services import automation_actions, query_engine
 from ..services.automation_spec import (
+    QUERY_VIEW,
     AutomationSpecError,
     parse_automation_block,
 )
-from ..services.view_execution import resolve_and_run_view
+from ..services.view_execution import resolve_and_run_view, run_filter
 
 logger = logging.getLogger(__name__)
 
@@ -95,20 +96,27 @@ class RunAutomationCommand(AbstractBaseCommand):
         truncated = False
         if spec.query is not None:
             try:
-                view, blocks, truncated = resolve_and_run_view(
-                    user,
-                    limit=MAX_ACTION_BLOCKS,
-                    view_slug=spec.query.view_slug,
-                )
+                if spec.query.kind == QUERY_VIEW:
+                    view, blocks, truncated = resolve_and_run_view(
+                        user,
+                        limit=MAX_ACTION_BLOCKS,
+                        view_slug=spec.query.view_slug,
+                    )
+                    if view is None:
+                        return self._finish(
+                            run,
+                            AutomationRun.STATUS_FAILED,
+                            error=(f"saved view `{spec.query.view_slug}` not found"),
+                        )
+                else:
+                    blocks, truncated = run_filter(
+                        user,
+                        spec.query.filter_spec or {},
+                        limit=MAX_ACTION_BLOCKS,
+                    )
             except query_engine.QueryEngineError as exc:
                 return self._finish(
                     run, AutomationRun.STATUS_FAILED, error=f"query error: {exc}"
-                )
-            if view is None:
-                return self._finish(
-                    run,
-                    AutomationRun.STATUS_FAILED,
-                    error=f"saved view `{spec.query.view_slug}` not found",
                 )
 
         ctx = automation_actions.ActionContext(

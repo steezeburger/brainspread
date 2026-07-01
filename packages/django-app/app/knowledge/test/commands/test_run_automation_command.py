@@ -232,6 +232,29 @@ class TestRunAutomationCommand(TestCase):
         self.assertEqual(run.status, AutomationRun.STATUS_FAILED)
         self.assertIsNotNone(run.finished_at)
 
+    def test_inline_query_runs_end_to_end(self):
+        source = PageFactory(user=self.user, title="Notes", slug="notes-inline")
+        todo = BlockFactory(
+            user=self.user, page=source, block_type="todo", content="TODO inline"
+        )
+        bullet = BlockFactory(
+            user=self.user, page=source, block_type="bullet", content="just a note"
+        )
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action="set_type done",
+            allow="set_type",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        todo.refresh_from_db()
+        bullet.refresh_from_db()
+        self.assertEqual(todo.block_type, "done")
+        self.assertEqual(bullet.block_type, "bullet")
+
     def test_bulk_action_counts_only_top_blocks_as_affected(self):
         # A matched child riding along with its matched parent counts the
         # parent as the moved unit; matched=2 but affected=1.

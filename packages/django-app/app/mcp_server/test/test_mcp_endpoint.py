@@ -102,6 +102,8 @@ class MCPEndpointTestCase(TestCase):
                 "schedule_block",
                 "tag_block",
                 "untag_block",
+                "list_automations",
+                "run_automation",
             },
         )
 
