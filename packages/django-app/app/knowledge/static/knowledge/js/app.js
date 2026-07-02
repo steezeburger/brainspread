@@ -21,6 +21,7 @@ const KnowledgeApp = createApp({
     const cachedUser = window.apiService.getCurrentUser();
 
     const isGraphRoute = window.location.pathname === "/knowledge/graph/";
+    const isPagesRoute = window.location.pathname === "/knowledge/pages/";
     const viewsMatch = window.location.pathname.match(
       /^\/knowledge\/views(?:\/([^\/]+))?\/?$/
     );
@@ -31,9 +32,11 @@ const KnowledgeApp = createApp({
     const initialView = isAuth
       ? isGraphRoute
         ? "graph"
-        : isViewsRoute
-          ? "views"
-          : "journal"
+        : isPagesRoute
+          ? "pages"
+          : isViewsRoute
+            ? "views"
+            : "journal"
       : "login";
 
     return {
@@ -79,6 +82,7 @@ const KnowledgeApp = createApp({
     SpotlightSearch: window.SpotlightSearch,
     GraphView: window.GraphView,
     SavedViewsPage: window.SavedViewsPage,
+    PagesListPage: window.PagesListPage,
   },
 
   computed: {
@@ -100,10 +104,11 @@ const KnowledgeApp = createApp({
     },
 
     showChatPanel() {
-      // Whiteboards, graph view, and saved-views surface use the full
-      // column width; chat is noise there.
+      // Whiteboards, graph view, and the saved-views / all-pages
+      // surfaces use the full column width; chat is noise there.
       if (this.currentView === "graph") return false;
       if (this.currentView === "views") return false;
+      if (this.currentView === "pages") return false;
       return this.currentPagePageType !== "whiteboard";
     },
   },
@@ -152,6 +157,13 @@ const KnowledgeApp = createApp({
       /^\/knowledge\/views(?:\/[^\/]+)?\/?$/.test(window.location.pathname)
     ) {
       this.currentView = "views";
+    }
+
+    if (
+      this.isAuthenticated &&
+      window.location.pathname === "/knowledge/pages/"
+    ) {
+      this.currentView = "pages";
     }
 
     // Reapply theme after auth check in case user data was updated
@@ -531,6 +543,10 @@ const KnowledgeApp = createApp({
       window.location.href = "/knowledge/views/";
     },
 
+    navigateToPages() {
+      window.location.href = "/knowledge/pages/";
+    },
+
     // Fired by child components (CustomEvent 'brainspread:toast', detail = {message, type, duration}).
     // Bridges DOM events into the toast state without coupling the children to this component.
     handleToastEvent(event) {
@@ -736,6 +752,12 @@ const KnowledgeApp = createApp({
           label: "graph",
           description: "view the knowledge graph",
           icon: "◉",
+        },
+        {
+          id: "all-pages",
+          label: "all pages",
+          description: "browse the full list of pages",
+          icon: "☰",
         },
         {
           id: "toggle-sidebar",
@@ -985,6 +1007,9 @@ const KnowledgeApp = createApp({
         case "graph":
           this.navigateToGraph();
           break;
+        case "all-pages":
+          this.navigateToPages();
+          break;
         case "toggle-sidebar":
           this.toggleLeftNav();
           break;
@@ -1081,6 +1106,7 @@ const KnowledgeApp = createApp({
                             @navigate-today="redirectToToday"
                             @navigate-graph="navigateToGraph"
                             @navigate-views="navigateToViews"
+                            @navigate-pages="navigateToPages"
                             @open-search="openSpotlight"
                             @create-page="createNewPage"
                             @create-whiteboard="createNewWhiteboard"
@@ -1098,6 +1124,7 @@ const KnowledgeApp = createApp({
                             @navigate-today="redirectToToday"
                             @navigate-graph="navigateToGraph"
                             @navigate-views="navigateToViews"
+                            @navigate-pages="navigateToPages"
                             @open-search="openSpotlight"
                             @create-page="createNewPage"
                             @create-whiteboard="createNewWhiteboard"
@@ -1109,6 +1136,26 @@ const KnowledgeApp = createApp({
                             <SavedViewsPage :initial-slug="viewsSlug" />
                         </div>
                     </div>
+                    <div v-else-if="currentView === 'pages'" class="views-layout">
+                        <LeftNav
+                            ref="leftNav"
+                            :user="user"
+                            @navigate-to-slug="onNavigateToSlug"
+                            @navigate-today="redirectToToday"
+                            @navigate-graph="navigateToGraph"
+                            @navigate-views="navigateToViews"
+                            @navigate-pages="navigateToPages"
+                            @open-search="openSpotlight"
+                            @create-page="createNewPage"
+                            @create-whiteboard="createNewWhiteboard"
+                            @use-template="useTemplate"
+                            @open-settings="openSettings"
+                            @open-help="openHelp"
+                            @logout="requestLogout" />
+                        <div class="main-content-area">
+                            <PagesListPage />
+                        </div>
+                    </div>
                     <div v-else class="content-layout">
                         <LeftNav
                             ref="leftNav"
@@ -1117,6 +1164,7 @@ const KnowledgeApp = createApp({
                             @navigate-today="redirectToToday"
                             @navigate-graph="navigateToGraph"
                             @navigate-views="navigateToViews"
+                            @navigate-pages="navigateToPages"
                             @open-search="openSpotlight"
                             @create-page="createNewPage"
                             @create-whiteboard="createNewWhiteboard"

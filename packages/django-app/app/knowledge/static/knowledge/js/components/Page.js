@@ -128,6 +128,29 @@ const Page = {
       return this.page?.page_type === "daily";
     },
 
+    // Prev/next daily navigation (issue #133). Real <a> hrefs so
+    // middle/cmd-click opens the adjacent day in a new tab; plain
+    // clicks ride the default navigation since the app routes with
+    // hard page loads anyway. The backend materializes missing
+    // dailies on load, so any target date is valid.
+    prevDayUrl() {
+      if (!this.isDaily || !this.page?.date) return null;
+      return `/knowledge/page/${this.shiftDateString(this.page.date, -1)}/`;
+    },
+
+    nextDayUrl() {
+      if (!this.isDaily || !this.page?.date) return null;
+      return `/knowledge/page/${this.shiftDateString(this.page.date, 1)}/`;
+    },
+
+    isViewingToday() {
+      return this.isDaily && this.page?.date === this.todayDateString();
+    },
+
+    todayUrl() {
+      return `/knowledge/page/${this.todayDateString()}/`;
+    },
+
     isWhiteboard() {
       return this.page?.page_type === "whiteboard";
     },
@@ -2783,6 +2806,24 @@ const Page = {
       }
     },
 
+    // Shift a YYYY-MM-DD string by whole days in local time. Going
+    // through a local Date (not Date.parse of the bare string, which
+    // is UTC) keeps the result aligned with the user's calendar day.
+    shiftDateString(dateStr, days) {
+      const [year, month, day] = dateStr.split("-").map(Number);
+      const date = new Date(year, month - 1, day + days);
+      const m = String(date.getMonth() + 1).padStart(2, "0");
+      const d = String(date.getDate()).padStart(2, "0");
+      return `${date.getFullYear()}-${m}-${d}`;
+    },
+
+    todayDateString() {
+      const today = new Date();
+      const m = String(today.getMonth() + 1).padStart(2, "0");
+      const d = String(today.getDate()).padStart(2, "0");
+      return `${today.getFullYear()}-${m}-${d}`;
+    },
+
     openDatePicker(event) {
       // Wired on .title-left so the click is captured whether the user
       // hits the date text, the input padding, or the calendar glyph
@@ -4015,23 +4056,43 @@ const Page = {
           <div class="page-title-container">
             <!-- Daily Note Header -->
             <div v-if="isDaily" class="daily-note-title current-note page-header-flex">
-              <div class="title-left" @click="openDatePicker">
-                <button
-                  type="button"
-                  class="page-favorite-toggle"
-                  :class="{ 'is-favorited': isFavorited }"
-                  @click="toggleFavorited"
-                  :title="isFavorited ? 'Remove from favorites' : 'Add to favorites'"
-                  :aria-pressed="isFavorited"
-                >{{ isFavorited ? '★' : '☆' }}</button>
-                <input
-                  ref="dateInput"
-                  type="date"
-                  v-model="selectedDate"
-                  @change="onDateChange"
-                  class="date-picker"
-                  title="Navigate to date"
-                />
+              <div class="daily-nav">
+                <a
+                  :href="prevDayUrl"
+                  class="daily-nav-btn"
+                  title="Previous day"
+                  aria-label="Go to previous day"
+                >‹</a>
+                <div class="title-left" @click="openDatePicker">
+                  <button
+                    type="button"
+                    class="page-favorite-toggle"
+                    :class="{ 'is-favorited': isFavorited }"
+                    @click="toggleFavorited"
+                    :title="isFavorited ? 'Remove from favorites' : 'Add to favorites'"
+                    :aria-pressed="isFavorited"
+                  >{{ isFavorited ? '★' : '☆' }}</button>
+                  <input
+                    ref="dateInput"
+                    type="date"
+                    v-model="selectedDate"
+                    @change="onDateChange"
+                    class="date-picker"
+                    title="Navigate to date"
+                  />
+                </div>
+                <a
+                  :href="nextDayUrl"
+                  class="daily-nav-btn"
+                  title="Next day"
+                  aria-label="Go to next day"
+                >›</a>
+                <a
+                  v-if="!isViewingToday"
+                  :href="todayUrl"
+                  class="daily-nav-btn daily-nav-today"
+                  title="Go to today's daily note"
+                >today</a>
               </div>
               <div class="header-controls">
                 <div class="context-menu-container page-sort-container">

@@ -166,10 +166,12 @@ class ApiService {
     publishedOnly = true,
     limit = 10,
     offset = 0,
-    pageType = null
+    pageType = null,
+    orderBy = null
   ) {
     let url = `/knowledge/api/pages/list/?published_only=${publishedOnly}&limit=${limit}&offset=${offset}`;
     if (pageType) url += `&page_type=${encodeURIComponent(pageType)}`;
+    if (orderBy) url += `&order_by=${encodeURIComponent(orderBy)}`;
     return await this.request(url);
   }
 

@@ -3,7 +3,7 @@ from typing import Any, Dict
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.get_user_pages_form import GetUserPagesForm
-from ..models import Page
+from ..repositories.page_repository import PageRepository
 
 
 class GetUserPagesCommand(AbstractBaseCommand):
@@ -21,24 +21,16 @@ class GetUserPagesCommand(AbstractBaseCommand):
         limit = self.form.cleaned_data.get("limit", 10)
         offset = self.form.cleaned_data.get("offset", 0)
         page_type = self.form.cleaned_data.get("page_type") or None
+        # "modified" default keeps the page picker's empty-query landing
+        # state surfacing what the user has been touching lately; the
+        # All Pages surface passes "title" / "date" explicitly.
+        order_by = self.form.cleaned_data.get("order_by") or "modified"
 
-        # Order by most-recently-modified first so the page picker's
-        # empty-query landing state surfaces what the user has been
-        # touching lately. Title is a stable tiebreaker for pages
-        # modified at the same instant (e.g. bulk imports). This is the
-        # only caller today; if a future caller wants alphabetical it
-        # should pass an explicit order_by once that's plumbed through.
-        queryset = Page.objects.filter(user=user).order_by("-modified_at", "title")
-        if published_only:
-            queryset = queryset.filter(is_published=True)
-        if page_type:
-            queryset = queryset.filter(page_type=page_type)
-
-        pages = queryset[offset : offset + limit]
-        total_count = queryset.count()
-
-        return {
-            "pages": list(pages),
-            "total_count": total_count,
-            "has_more": (offset + limit) < total_count,
-        }
+        return PageRepository.get_user_pages(
+            user=user,
+            published_only=published_only,
+            limit=limit,
+            offset=offset,
+            page_type=page_type,
+            order_by=order_by,
+        )

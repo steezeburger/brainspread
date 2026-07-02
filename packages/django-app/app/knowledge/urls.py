@@ -145,4 +145,7 @@ urlpatterns = [
     # the SavedViewPage component based on the slug).
     path("views/", views.index, name="views_index"),
     path("views/<str:slug>/", views.index, name="views_detail"),
+    # All-pages browser (issue #133) — SPA shell again; app.js mounts
+    # PagesListPage for this path.
+    path("pages/", views.index, name="pages_index"),
 ]
