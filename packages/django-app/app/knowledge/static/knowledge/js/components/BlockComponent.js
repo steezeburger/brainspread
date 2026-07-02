@@ -564,10 +564,23 @@ const BlockComponent = {
       this.applyResizableHandles();
     },
 
+    ownResizableEls(selector) {
+      // Scope subtree queries to THIS block's own resizable elements.
+      // $el is the block's `[data-block-uuid]` root and contains the
+      // children's DOM too, so an unscoped querySelectorAll would let
+      // an ancestor block (usually with no saved size) stomp the width
+      // a nested block just applied — nested image resizes looked
+      // saved until the next render/reload, then snapped back.
+      if (!this.$el || this.$el.nodeType !== 1) return [];
+      return [...this.$el.querySelectorAll(selector)].filter(
+        (el) => el.closest("[data-block-uuid]") === this.$el
+      );
+    },
+
     applyResizableHandles() {
       // Apply the persisted block-level width to every resizable
-      // wrapper inside this block, and wire up corner-handle drag.
-      // A block has a single properties.size today, so multiple
+      // wrapper belonging to this block, and wire up corner-handle
+      // drag. A block has a single properties.size today, so multiple
       // resizables in one block share the same width — fine for the
       // current shapes (one mermaid wrapper per block; an asset block
       // has either an image or a renderable text-shaped asset, never
@@ -578,8 +591,7 @@ const BlockComponent = {
       if (this.$el.querySelector(".block-resize-handle.is-resizing")) return;
       const savedWidth = this.block.properties?.size?.width || null;
       const target = savedWidth ? String(savedWidth) : "";
-      const wrappers = this.$el.querySelectorAll(".block-resizable");
-      wrappers.forEach((el) => {
+      this.ownResizableEls(".block-resizable").forEach((el) => {
         if (el.dataset.savedSizeApplied === target) return;
         if (savedWidth) {
           el.style.width = `${savedWidth}px`;
@@ -590,10 +602,9 @@ const BlockComponent = {
         }
         el.dataset.savedSizeApplied = target;
       });
-      const handles = this.$el.querySelectorAll(
+      this.ownResizableEls(
         ".block-resize-handle:not([data-resize-bound])"
-      );
-      handles.forEach((handle) => {
+      ).forEach((handle) => {
         handle.dataset.resizeBound = "true";
         handle.addEventListener("mousedown", (event) =>
           this.startResize(event, handle)
@@ -1467,13 +1478,11 @@ const BlockComponent = {
       // wrappers fall back to their natural defaults (image at
       // intrinsic size, mermaid at column width).
       this.setBlockProperties(this.block, { size: null });
-      if (this.$el) {
-        this.$el.querySelectorAll(".block-resizable").forEach((el) => {
-          el.style.width = "";
-          el.classList.remove("has-saved-size");
-          el.dataset.savedSizeApplied = "";
-        });
-      }
+      this.ownResizableEls(".block-resizable").forEach((el) => {
+        el.style.width = "";
+        el.classList.remove("has-saved-size");
+        el.dataset.savedSizeApplied = "";
+      });
     },
 
     async fetchAssetSource() {
@@ -2106,6 +2115,7 @@ const BlockComponent = {
           :stopEditing="stopEditing"
           :deleteBlock="deleteBlock"
           :toggleBlockTodo="toggleBlockTodo"
+          :setBlockProperties="setBlockProperties"
           :formatContentWithTags="formatContentWithTags"
           :isBlockInContext="isBlockInContext"
           :isBlockSelected="isBlockSelected"

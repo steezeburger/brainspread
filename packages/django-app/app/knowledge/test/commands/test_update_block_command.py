@@ -566,3 +566,45 @@ class TestUpdateBlockCommand(TestCase):
         self.block.refresh_from_db()
         self.assertEqual(self.block.properties.get("priority"), "high")
         self.assertEqual(self.block.properties.get("size"), {"width": 180})
+
+    def test_should_preserve_parent_on_properties_only_update(self):
+        """A partial update that omits `parent` (e.g. the image resize
+        handle persisting `properties.size`) must leave nesting alone.
+        The command used to re-root the block whenever the key was
+        missing, which silently flattened nested blocks on every
+        properties-only save."""
+        parent = BlockFactory(page=self.page, user=self.user)
+        child = BlockFactory(page=self.page, user=self.user, parent=parent)
+
+        form = UpdateBlockForm(
+            {
+                "user": self.user.id,
+                "block": str(child.uuid),
+                "properties": {"size": {"width": 320}},
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        UpdateBlockCommand(form).execute()
+
+        child.refresh_from_db()
+        self.assertEqual(child.parent_id, parent.id)
+        self.assertEqual(child.properties.get("size"), {"width": 320})
+
+    def test_should_clear_parent_on_explicit_null(self):
+        """Submitting `parent: null` is still the outdent path — the
+        omitted-key behavior above must not swallow explicit clears."""
+        parent = BlockFactory(page=self.page, user=self.user)
+        child = BlockFactory(page=self.page, user=self.user, parent=parent)
+
+        form = UpdateBlockForm(
+            {
+                "user": self.user.id,
+                "block": str(child.uuid),
+                "parent": None,
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        UpdateBlockCommand(form).execute()
+
+        child.refresh_from_db()
+        self.assertIsNone(child.parent_id)
