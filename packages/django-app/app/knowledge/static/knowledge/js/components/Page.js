@@ -918,7 +918,9 @@ const Page = {
           // Notify embeds that may still be displaying this block —
           // their saved view re-run will drop the now-gone row.
           this.broadcastBlockChanged(block.uuid);
-          await this.loadPage();
+          // Silent: swap in the fresh tree without flashing the whole
+          // page through the "Loading..." state.
+          await this.loadPage({ silent: true });
         }
       } catch (error) {
         console.error("failed to delete block:", error);
@@ -4057,6 +4059,14 @@ const Page = {
             <!-- Daily Note Header -->
             <div v-if="isDaily" class="daily-note-title current-note page-header-flex">
               <div class="daily-nav">
+                <button
+                  type="button"
+                  class="page-favorite-toggle"
+                  :class="{ 'is-favorited': isFavorited }"
+                  @click="toggleFavorited"
+                  :title="isFavorited ? 'Remove from favorites' : 'Add to favorites'"
+                  :aria-pressed="isFavorited"
+                >{{ isFavorited ? '★' : '☆' }}</button>
                 <a
                   :href="prevDayUrl"
                   class="daily-nav-btn"
@@ -4064,14 +4074,6 @@ const Page = {
                   aria-label="Go to previous day"
                 >‹</a>
                 <div class="title-left" @click="openDatePicker">
-                  <button
-                    type="button"
-                    class="page-favorite-toggle"
-                    :class="{ 'is-favorited': isFavorited }"
-                    @click="toggleFavorited"
-                    :title="isFavorited ? 'Remove from favorites' : 'Add to favorites'"
-                    :aria-pressed="isFavorited"
-                  >{{ isFavorited ? '★' : '☆' }}</button>
                   <input
                     ref="dateInput"
                     type="date"

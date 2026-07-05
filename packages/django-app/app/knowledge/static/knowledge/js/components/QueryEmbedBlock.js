@@ -205,7 +205,12 @@ window.QueryEmbedBlock = {
       // the matched rows. Expanding later triggers a full fetch (see the
       // collapsed watcher).
       const countOnly = this.collapsed;
-      this.loading = true;
+      // Stale-while-refresh: when rows are already on screen, keep them
+      // during the refetch instead of flipping to "Loading…". Blanking
+      // collapses the embed's height for the round-trip, which made the
+      // whole page jump every time a block was toggled anywhere.
+      const isRefresh = !countOnly && this.detailLoaded && !!this.result;
+      if (!isRefresh) this.loading = true;
       try {
         const r = await window.apiService.runSavedView({
           uuid: this.savedView.uuid,

@@ -5327,6 +5327,7 @@ a.sidebar-item:visited {
    visual vocabulary. */
 .page-header-flex-left:hover .page-favorite-toggle,
 .title-left:hover .page-favorite-toggle,
+.daily-nav:hover .page-favorite-toggle,
 .saved-view-title-row:hover .page-favorite-toggle,
 .page-favorite-toggle:focus-visible,
 .page-favorite-toggle.is-favorited {
@@ -8537,5 +8538,47 @@ a.hashtag-mention:hover,
 
   .pages-list-modified {
     display: none;
+  }
+}
+
+/* ── Touch-device tap hardening (issue #133 follow-up) ──────────────
+   Two-tap fixes for phones/tablets:
+   - Controls that desktop reveals on :hover don't exist for a touch
+     user until a first tap applies the emulated hover — so the first
+     tap reads as dead. Keep them visible (dimmed) on touch instead.
+   - touch-action: manipulation removes the browser's double-tap-to-
+     zoom wait on the app's interactive controls, so single taps fire
+     immediately. */
+@media (hover: none) and (pointer: coarse) {
+  .block-collapse-toggle,
+  .block-code-copy,
+  .leftnav-template-edit {
+    opacity: 1;
+  }
+
+  .block-due-add {
+    opacity: 0.45;
+  }
+
+  .block-mermaid-open {
+    opacity: 0.7;
+  }
+
+  /* The copy button occupies the same top-right corner the language
+     badge does; desktop swaps them on hover. With copy pinned visible
+     on touch, hide the badge so they don't overlap. */
+  .block-code-wrapper .block-code-lang {
+    opacity: 0;
+  }
+
+  button,
+  select,
+  [role="button"],
+  .leftnav-item,
+  .leftnav-rail-btn,
+  .daily-nav-btn,
+  .block-content-display,
+  .date-picker {
+    touch-action: manipulation;
   }
 }
