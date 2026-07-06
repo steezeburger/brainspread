@@ -5533,14 +5533,16 @@ a.sidebar-item:visited {
   align-items: center;
   justify-content: center;
   align-self: stretch;
-  min-width: 2.1rem;
-  padding: 0 0.5rem;
-  border: 2px solid var(--border-secondary);
+  /* Bare glyphs — no border/background so the arrows don't compete
+     with the date input. min-width keeps a finger-sized hit area. */
+  min-width: 1.9rem;
+  padding: 0 0.35rem;
+  border: none;
   border-radius: 0;
-  background: var(--bg-primary);
-  color: var(--text-primary);
+  background: transparent;
+  color: var(--text-secondary);
   font-family: inherit;
-  font-size: 1.1rem;
+  font-size: 1.4rem;
   line-height: 1;
   text-decoration: none;
   cursor: pointer;
@@ -5548,8 +5550,6 @@ a.sidebar-item:visited {
 }
 
 .daily-nav-btn:hover {
-  background: var(--hover-bg);
-  border-color: var(--border-primary);
   color: var(--text-primary);
 }
 
@@ -5558,9 +5558,20 @@ a.sidebar-item:visited {
   outline-offset: 2px;
 }
 
+/* "today" is a text label, not a glyph — keep it as a bordered chip
+   matching the date input so it still reads as a button. */
 .daily-nav-today {
+  border: 2px solid var(--border-secondary);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  padding: 0 0.5rem;
   font-size: 0.85rem;
   letter-spacing: 0.02em;
+}
+
+.daily-nav-today:hover {
+  background: var(--hover-bg);
+  border-color: var(--border-primary);
 }
 
 /* Spotlight Search Styles */
