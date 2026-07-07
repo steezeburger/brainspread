@@ -8576,3 +8576,46 @@ a.hashtag-mention:hover,
     touch-action: manipulation;
   }
 }
+
+/* ── Block drag-and-drop indicators (issue #133 follow-up) ─────────
+   Dragging a block by its bullet: the hovered row shows an insertion
+   line (top 30% → before, bottom 30% → after as sibling) or a nest
+   highlight (middle → becomes the row's last child). Desktop-only —
+   HTML5 drag events don't fire on touch. */
+.block.block-drop-before,
+.block.block-drop-after {
+  position: relative;
+}
+
+.block.block-drop-before::before,
+.block.block-drop-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--border-primary);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.block.block-drop-before::before {
+  top: -1px;
+}
+
+.block.block-drop-after::after {
+  bottom: -1px;
+}
+
+.block.block-drop-child {
+  background: var(--hover-bg);
+  box-shadow: inset 0 0 0 2px var(--border-primary);
+}
+
+/* Grab affordance on non-todo bullets; todo bullets keep their
+   pointer cursor since click-to-toggle is their primary action. */
+.block-bullet[draggable="true"]:not(.todo):not(.doing):not(.done):not(
+    .later
+  ):not(.wontdo) {
+  cursor: grab;
+}

@@ -331,10 +331,16 @@ class ApiService {
     });
   }
 
-  async moveBlockToPage(blockUuid, targetPageUuid) {
+  async moveBlockToPage(blockUuid, targetPageUuid, targetParentUuid = null) {
+    // targetParentUuid nests the block under an existing block (the
+    // "move under…" flow); the backend derives the page from it, so
+    // targetPageUuid may be null in that case.
+    const body = { block: blockUuid };
+    if (targetPageUuid) body.target_page = targetPageUuid;
+    if (targetParentUuid) body.target_parent = targetParentUuid;
     return await this.request("/knowledge/api/blocks/move-to-page/", {
       method: "POST",
-      body: JSON.stringify({ block: blockUuid, target_page: targetPageUuid }),
+      body: JSON.stringify(body),
       headers: {
         "Content-Type": "application/json",
       },
@@ -365,13 +371,17 @@ class ApiService {
     });
   }
 
-  async bulkMoveBlocksToPage(blockUuids, targetPageUuid) {
+  async bulkMoveBlocksToPage(
+    blockUuids,
+    targetPageUuid,
+    targetParentUuid = null
+  ) {
+    const body = { blocks: blockUuids };
+    if (targetPageUuid) body.target_page = targetPageUuid;
+    if (targetParentUuid) body.target_parent = targetParentUuid;
     return await this.request("/knowledge/api/blocks/bulk-move-to-page/", {
       method: "POST",
-      body: JSON.stringify({
-        blocks: blockUuids,
-        target_page: targetPageUuid,
-      }),
+      body: JSON.stringify(body),
       headers: {
         "Content-Type": "application/json",
       },

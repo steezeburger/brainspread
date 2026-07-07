@@ -120,6 +120,12 @@ const Page = {
       shareModalOpen: false,
       shareSavingMode: null,
       shareLinkCopied: false,
+      // Block drag-and-drop (issue #133 follow-up). blockDrag holds the
+      // dragged uuid set while a drag is live; blockDropTarget is
+      // {uuid, zone} for the row under the pointer, where zone is
+      // 'before' | 'after' (sibling insert) or 'child' (nest under).
+      blockDrag: null,
+      blockDropTarget: null,
     };
   },
 
@@ -1252,6 +1258,196 @@ const Page = {
           "error"
         );
       }
+    },
+
+    async openMoveUnderPicker(block) {
+      // "Move under…": pick any block (on any page) and nest this
+      // block + its subtree as that block's last child. Complements
+      // openMovePagePicker, which can only drop at a page's root.
+      if (!window.appModals?.pickBlock) {
+        console.error("appModals.pickBlock is not available");
+        return;
+      }
+      const target = await window.appModals.pickBlock({
+        title: "move under block",
+        message: "the block (and its children) will nest under the pick:",
+        placeholder: "search block content…",
+        confirmLabel: "move",
+        excludeUuids: [block.uuid],
+      });
+      if (!target || !block) return;
+
+      try {
+        if (block.isEditing) {
+          await this.updateBlock(block, block.content, true);
+        }
+
+        const result = await window.apiService.moveBlockToPage(
+          block.uuid,
+          null,
+          target.uuid
+        );
+
+        if (!result.success) {
+          throw new Error(
+            result.errors?.non_field_errors?.[0] || "move failed"
+          );
+        }
+
+        const targetTitle = result.data?.target_page?.title || "page";
+        this.$parent?.addToast?.(
+          result.data?.moved
+            ? `moved block under "${this.truncateForToast(target.content)}" on ${targetTitle}`
+            : result.data?.message || "block already there",
+          result.data?.moved ? "success" : "info"
+        );
+
+        this.broadcastBlockChanged(block.uuid);
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("failed to move block under target:", error);
+        this.$parent?.addToast?.(
+          `failed to move block: ${error.message || error}`,
+          "error"
+        );
+      }
+    },
+
+    truncateForToast(text, max = 40) {
+      const t = (text || "").trim();
+      return t.length > max ? `${t.slice(0, max)}…` : t || "(empty block)";
+    },
+
+    // ── Block drag-and-drop ─────────────────────────────────────────
+    // Desktop-only (HTML5 drag events don't fire on touch; mobile has
+    // the "move under…" picker instead). Dragging a block that's part
+    // of the current selection moves the whole selection.
+
+    onMoveDragStart(block, event) {
+      const uuids =
+        this.selectionMode && this.selectedBlockUuids.has(block.uuid)
+          ? [...this.selectedBlockUuids]
+          : [block.uuid];
+      this.blockDrag = { uuids: new Set(uuids) };
+      this.blockDropTarget = null;
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+        // Firefox refuses to start a drag with no data attached.
+        event.dataTransfer.setData("text/plain", block.uuid);
+      }
+    },
+
+    onMoveDragOver(block, event) {
+      if (!this.blockDrag) return; // not a block drag (e.g. an OS file)
+      if (this._dropForbidden(block)) {
+        this.blockDropTarget = null;
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+      const rect = event.currentTarget.getBoundingClientRect();
+      const ratio = (event.clientY - rect.top) / Math.max(rect.height, 1);
+      const zone = ratio < 0.3 ? "before" : ratio > 0.7 ? "after" : "child";
+      const current = this.blockDropTarget;
+      if (!current || current.uuid !== block.uuid || current.zone !== zone) {
+        this.blockDropTarget = { uuid: block.uuid, zone };
+      }
+    },
+
+    async onMoveDrop(block, event) {
+      if (!this.blockDrag) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const target = this.blockDropTarget;
+      const forbidden = this._dropForbidden(block);
+      const movers = this._draggedTopBlocks();
+      this.blockDrag = null;
+      this.blockDropTarget = null;
+      if (forbidden || !target || target.uuid !== block.uuid || !movers.length)
+        return;
+
+      try {
+        if (target.zone === "child") {
+          // Nest under the target row as its last children, in order.
+          for (const mover of movers) {
+            const result = await window.apiService.moveBlockToPage(
+              mover.uuid,
+              null,
+              block.uuid
+            );
+            if (!result.success) {
+              throw new Error(
+                result.errors?.non_field_errors?.[0] || "move failed"
+              );
+            }
+          }
+        } else {
+          // Insert as siblings before/after the target within its
+          // parent: shift the later siblings out of the way, then
+          // point each mover at the freed slots.
+          const parentUuid = block.parent ? block.parent.uuid : null;
+          const siblings = block.parent
+            ? block.parent.children
+            : this.directBlocks;
+          const moverUuids = new Set(movers.map((m) => m.uuid));
+          const insertOrder =
+            target.zone === "before" ? block.order : block.order + 1;
+          const shifts = siblings
+            .filter((b) => !moverUuids.has(b.uuid) && b.order >= insertOrder)
+            .map((b) => ({ uuid: b.uuid, order: b.order + movers.length }));
+          if (shifts.length) {
+            const reorder = await window.apiService.reorderBlocks(shifts);
+            if (!reorder.success) throw new Error("failed to reorder siblings");
+          }
+          for (let i = 0; i < movers.length; i++) {
+            const result = await window.apiService.updateBlock(movers[i].uuid, {
+              parent: parentUuid,
+              order: insertOrder + i,
+            });
+            if (!result.success) throw new Error("failed to move block");
+          }
+        }
+        this.clearBlockSelection();
+        movers.forEach((m) => this.broadcastBlockChanged(m.uuid));
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("block drop failed:", error);
+        this.$parent?.addToast?.(
+          `failed to move: ${error.message || error}`,
+          "error"
+        );
+        // Reload regardless — some of the writes may have landed.
+        await this.loadPage({ silent: true });
+      }
+    },
+
+    onMoveDragEnd() {
+      this.blockDrag = null;
+      this.blockDropTarget = null;
+    },
+
+    _dropForbidden(block) {
+      // A dragged block can't drop onto itself or anything inside its
+      // own subtree — that would detach the subtree from the tree.
+      if (!this.blockDrag) return true;
+      let current = block;
+      while (current) {
+        if (this.blockDrag.uuids.has(current.uuid)) return true;
+        current = current.parent || null;
+      }
+      return false;
+    },
+
+    _draggedTopBlocks() {
+      // Dragged blocks whose parent isn't also dragged — the top of
+      // the dragged forest, in document order. Mirrors the backend's
+      // bulk-move logic; descendants ride along with their ancestor.
+      const uuids = this.blockDrag?.uuids;
+      if (!uuids) return [];
+      return this.flattenBlockTree(this.directBlocks).filter(
+        (b) => uuids.has(b.uuid) && !(b.parent && uuids.has(b.parent.uuid))
+      );
     },
 
     onBlockContentChange(block, newContent) {
@@ -3909,6 +4105,59 @@ const Page = {
       }
     },
 
+    async bulkMoveSelectedUnder() {
+      // Bulk "move under…": nest every selected top block (and its
+      // subtree) under a picked block. The backend skips any selected
+      // block that contains the target inside its own subtree.
+      const uuids = [...this.selectedBlockUuids];
+      if (uuids.length === 0) {
+        this.$parent?.addToast?.("no blocks selected", "info");
+        return;
+      }
+      if (!window.appModals?.pickBlock) {
+        console.error("appModals.pickBlock is not available");
+        return;
+      }
+
+      const target = await window.appModals.pickBlock({
+        title: "move selected under block",
+        message: "selected blocks will nest under the pick:",
+        placeholder: "search block content…",
+        confirmLabel: "move",
+        excludeUuids: uuids,
+      });
+      if (!target) return;
+
+      try {
+        const result = await window.apiService.bulkMoveBlocksToPage(
+          uuids,
+          null,
+          target.uuid
+        );
+        if (!result || !result.success) {
+          throw new Error(
+            result?.errors?.non_field_errors?.[0] || "bulk move failed"
+          );
+        }
+        const moved = result.data?.moved_count ?? 0;
+        const targetTitle = result.data?.target_page?.title || "page";
+        this.$parent?.addToast?.(
+          moved > 0
+            ? `moved ${moved} block${moved === 1 ? "" : "s"} under "${this.truncateForToast(target.content)}" on ${targetTitle}`
+            : "selected blocks already there",
+          moved > 0 ? "success" : "info"
+        );
+        this.clearBlockSelection();
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("failed to bulk-move blocks under target:", error);
+        this.$parent?.addToast?.(
+          `failed to move selected blocks: ${error.message || error}`,
+          "error"
+        );
+      }
+    },
+
     bulkScheduleSelected() {
       // Reuse the single-block schedule popover for the whole selection.
       // We snapshot the selected uuids now; the popover's save handler
@@ -4236,6 +4485,13 @@ const Page = {
               type="button"
               class="btn btn-outline selection-toolbar-action"
               :disabled="selectedBlockCount === 0"
+              @click="bulkMoveSelectedUnder"
+              title="Nest selected blocks under any block…"
+            >move under…</button>
+            <button
+              type="button"
+              class="btn btn-outline selection-toolbar-action"
+              :disabled="selectedBlockCount === 0"
               @click="bulkScheduleSelected"
               title="Schedule selected blocks (set a due date / reminder)"
             >schedule…</button>
@@ -4288,6 +4544,7 @@ const Page = {
                 :moveBlockDown="moveBlockDown"
                 :moveBlockToToday="moveBlockToToday"
                 :openMovePagePicker="openMovePagePicker"
+                :openMoveUnderPicker="openMoveUnderPicker"
                 :openBlockInfoModal="openBlockInfoModal"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"
@@ -4348,6 +4605,13 @@ const Page = {
                 :moveBlockDown="moveBlockDown"
                 :moveBlockToToday="moveBlockToToday"
                 :openMovePagePicker="openMovePagePicker"
+                :openMoveUnderPicker="openMoveUnderPicker"
+                :moveDraggable="true"
+                :moveDropTarget="blockDropTarget"
+                :onMoveDragStart="onMoveDragStart"
+                :onMoveDragOver="onMoveDragOver"
+                :onMoveDrop="onMoveDrop"
+                :onMoveDragEnd="onMoveDragEnd"
                 :openBlockInfoModal="openBlockInfoModal"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"
@@ -4359,6 +4623,7 @@ const Page = {
                 :selectedBlockCount="selectedBlockCount"
                 :bulkDeleteSelected="bulkDeleteSelected"
                 :bulkMoveSelectedToToday="bulkMoveSelectedToToday"
+                :bulkMoveSelectedUnder="bulkMoveSelectedUnder"
                 :selectionMode="selectionMode"
               />
             </template>
@@ -4403,6 +4668,7 @@ const Page = {
                 :moveBlockDown="moveBlockDown"
                 :moveBlockToToday="moveBlockToToday"
                 :openMovePagePicker="openMovePagePicker"
+                :openMoveUnderPicker="openMoveUnderPicker"
                 :openBlockInfoModal="openBlockInfoModal"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"

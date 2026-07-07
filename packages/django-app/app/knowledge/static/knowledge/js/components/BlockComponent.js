@@ -87,6 +87,37 @@ const BlockComponent = {
       type: Function,
       default: () => () => {},
     },
+    openMoveUnderPicker: {
+      type: Function,
+      default: () => () => {},
+    },
+    // Block drag-and-drop (issue #133 follow-up). Only the main page
+    // tree passes real handlers + moveDraggable; linked-reference and
+    // overdue lists render without drag affordances.
+    moveDraggable: {
+      type: Boolean,
+      default: false,
+    },
+    moveDropTarget: {
+      type: Object,
+      default: null,
+    },
+    onMoveDragStart: {
+      type: Function,
+      default: () => () => {},
+    },
+    onMoveDragOver: {
+      type: Function,
+      default: () => () => {},
+    },
+    onMoveDrop: {
+      type: Function,
+      default: () => () => {},
+    },
+    onMoveDragEnd: {
+      type: Function,
+      default: () => () => {},
+    },
     openBlockInfoModal: {
       type: Function,
       default: () => () => {},
@@ -124,6 +155,10 @@ const BlockComponent = {
       default: 0,
     },
     bulkDeleteSelected: {
+      type: Function,
+      default: () => () => {},
+    },
+    bulkMoveSelectedUnder: {
       type: Function,
       default: () => () => {},
     },
@@ -276,6 +311,13 @@ const BlockComponent = {
     },
     hasChildren() {
       return this.block.children?.length > 0;
+    },
+    moveDropZone() {
+      // 'before' | 'after' | 'child' when a live block drag hovers
+      // this row; null otherwise. Drives the drop-indicator classes.
+      return this.moveDropTarget && this.moveDropTarget.uuid === this.block.uuid
+        ? this.moveDropTarget.zone
+        : null;
     },
     childrenCount() {
       return this.block.children?.length || 0;
@@ -1429,6 +1471,9 @@ const BlockComponent = {
         case "moveToPage":
           this.openMovePagePicker(this.block);
           break;
+        case "moveUnder":
+          this.openMoveUnderPicker(this.block);
+          break;
         case "blockInfo":
           this.openBlockInfoModal(this.block);
           break;
@@ -1443,6 +1488,9 @@ const BlockComponent = {
           break;
         case "bulkMoveToToday":
           this.bulkMoveSelectedToToday();
+          break;
+        case "bulkMoveUnder":
+          this.bulkMoveSelectedUnder();
           break;
         case "schedule":
           this.scheduleBlock(this.block);
@@ -1593,7 +1641,7 @@ const BlockComponent = {
   },
   template: `
     <div class="block-wrapper" :class="{ 'child-block': block.parent, 'in-context': blockInContext, 'selected': blockSelected, 'in-selection-mode': selectionMode }" :data-block-uuid="block.uuid" @dragover="handleBlockDragOver" @drop="handleBlockDrop">
-      <div class="block" :class="{ 'has-children': hasChildren, 'is-collapsed': hasChildren && isCollapsed }" @click="handleRowClick($event)">
+      <div class="block" :class="{ 'has-children': hasChildren, 'is-collapsed': hasChildren && isCollapsed, 'block-drop-before': moveDropZone === 'before', 'block-drop-after': moveDropZone === 'after', 'block-drop-child': moveDropZone === 'child' }" @click="handleRowClick($event)" @dragover="moveDraggable ? onMoveDragOver(block, $event) : null" @drop="moveDraggable ? onMoveDrop(block, $event) : null">
         <button
           v-if="selectionMode"
           type="button"
@@ -1621,6 +1669,9 @@ const BlockComponent = {
             'later': block.block_type === 'later',
             'wontdo': block.block_type === 'wontdo'
           }"
+          :draggable="moveDraggable"
+          @dragstart="moveDraggable ? onMoveDragStart(block, $event) : null"
+          @dragend="moveDraggable ? onMoveDragEnd() : null"
           @click="selectionMode ? handleSelectToggleClick($event) : (['todo', 'doing', 'done', 'later', 'wontdo'].includes(block.block_type) ? toggleBlockTodo(block) : null)"
           @touchstart="handleTouchStart"
           @touchend="selectionMode ? null : handleTodoTouchEnd($event)"
@@ -2039,6 +2090,10 @@ const BlockComponent = {
           <span class="context-menu-icon">→</span>
           <span>move to page…</span>
         </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('moveUnder')">
+          <span class="context-menu-icon">⤷</span>
+          <span>move under block…</span>
+        </button>
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('copyLink')">
           <span class="context-menu-icon">↗</span>
           <span>copy link to block</span>
@@ -2096,6 +2151,10 @@ const BlockComponent = {
             <span class="context-menu-icon">⇨</span>
             <span>move {{ selectedBlockCount }} selected to today</span>
           </button>
+          <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('bulkMoveUnder')">
+            <span class="context-menu-icon">⤷</span>
+            <span>move {{ selectedBlockCount }} selected under…</span>
+          </button>
           <button class="context-menu-item context-menu-danger" role="menuitem" tabindex="-1" @click="handleContextMenuAction('bulkDelete')">
             <span class="context-menu-icon">×</span>
             <span>delete {{ selectedBlockCount }} selected</span>
@@ -2129,6 +2188,13 @@ const BlockComponent = {
           :moveBlockDown="moveBlockDown"
           :moveBlockToToday="moveBlockToToday"
           :openMovePagePicker="openMovePagePicker"
+          :openMoveUnderPicker="openMoveUnderPicker"
+          :moveDraggable="moveDraggable"
+          :moveDropTarget="moveDropTarget"
+          :onMoveDragStart="onMoveDragStart"
+          :onMoveDragOver="onMoveDragOver"
+          :onMoveDrop="onMoveDrop"
+          :onMoveDragEnd="onMoveDragEnd"
           :openBlockInfoModal="openBlockInfoModal"
           :onBlockPaste="onBlockPaste"
           :onBlockDrop="onBlockDrop"
@@ -2140,6 +2206,7 @@ const BlockComponent = {
           :selectedBlockCount="selectedBlockCount"
           :bulkDeleteSelected="bulkDeleteSelected"
           :bulkMoveSelectedToToday="bulkMoveSelectedToToday"
+          :bulkMoveSelectedUnder="bulkMoveSelectedUnder"
           :selectionMode="selectionMode"
           :reference-mode="referenceMode"
         />

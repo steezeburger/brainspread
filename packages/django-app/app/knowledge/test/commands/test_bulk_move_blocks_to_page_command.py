@@ -141,3 +141,69 @@ class TestBulkMoveBlocksToPageCommand(TestCase):
         result = BulkMoveBlocksToPageCommand(form).execute()
         self.assertEqual(result["moved_count"], 0)
         self.assertEqual(result["skipped_count"], 0)
+
+
+class TestBulkMoveBlocksToPageWithTargetParent(TestCase):
+    """Bulk "move under…": every selected top block nests under the
+    target parent; intra-selection hierarchy is preserved."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+        cls.source_page = PageFactory(user=cls.user, title="Daily", slug="2026-01-02")
+        cls.target_page = PageFactory(user=cls.user, title="Project", slug="project-b")
+        cls.target_parent = BlockFactory(
+            user=cls.user, page=cls.target_page, content="epic", order=1
+        )
+
+    def _bulk_move(self, blocks, **extra):
+        form = BulkMoveBlocksToPageForm(
+            {
+                "user": self.user,
+                "blocks": [str(b.uuid) for b in blocks],
+                **extra,
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return BulkMoveBlocksToPageCommand(form).execute()
+
+    def test_should_nest_selection_under_target_parent(self):
+        a = BlockFactory(user=self.user, page=self.source_page, content="a", order=1)
+        a_child = BlockFactory(
+            user=self.user, page=self.source_page, parent=a, content="a1"
+        )
+        b = BlockFactory(user=self.user, page=self.source_page, content="b", order=2)
+
+        result = self._bulk_move([a, a_child, b], target_parent=self.target_parent.uuid)
+
+        self.assertEqual(result["moved_count"], 2)  # a + b; a1 rides along
+        for blk in (a, a_child, b):
+            blk.refresh_from_db()
+        self.assertEqual(a.parent_id, self.target_parent.id)
+        self.assertEqual(b.parent_id, self.target_parent.id)
+        self.assertEqual(a_child.parent_id, a.id)
+        self.assertEqual(a_child.page_id, self.target_page.id)
+        # Relative order preserved under the new parent.
+        self.assertLess(a.order, b.order)
+
+    def test_should_skip_block_containing_target_parent(self):
+        # Selecting an ancestor of the target parent must not nuke the
+        # tree — that block is skipped, others still move.
+        container = BlockFactory(
+            user=self.user, page=self.target_page, content="container", order=2
+        )
+        nested_parent = BlockFactory(
+            user=self.user, page=self.target_page, parent=container, content="nest"
+        )
+        mover = BlockFactory(
+            user=self.user, page=self.source_page, content="mover", order=1
+        )
+
+        result = self._bulk_move([container, mover], target_parent=nested_parent.uuid)
+
+        self.assertEqual(result["moved_count"], 1)
+        self.assertEqual(result["skipped_count"], 1)
+        container.refresh_from_db()
+        mover.refresh_from_db()
+        self.assertIsNone(container.parent_id)
+        self.assertEqual(mover.parent_id, nested_parent.id)
