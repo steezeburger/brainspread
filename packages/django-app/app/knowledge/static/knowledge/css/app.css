@@ -5519,9 +5519,8 @@ a.sidebar-item:visited {
 }
 
 /* Prev/next daily navigation (issue #133). The arrows flank the date
-   picker inside .daily-nav; "today" only renders when viewing another
-   day. align-self: stretch keys the buttons' height off the date
-   input so the row reads as one control group. */
+   picker inside .daily-nav; align-self: stretch keys them off the
+   date input's height so the row reads as one control group. */
 .daily-nav {
   display: flex;
   align-items: center;
@@ -5556,22 +5555,6 @@ a.sidebar-item:visited {
 .daily-nav-btn:focus-visible {
   outline: 2px solid var(--border-primary);
   outline-offset: 2px;
-}
-
-/* "today" is a text label, not a glyph — keep it as a bordered chip
-   matching the date input so it still reads as a button. */
-.daily-nav-today {
-  border: 2px solid var(--border-secondary);
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  padding: 0 0.5rem;
-  font-size: 0.85rem;
-  letter-spacing: 0.02em;
-}
-
-.daily-nav-today:hover {
-  background: var(--hover-bg);
-  border-color: var(--border-primary);
 }
 
 /* Spotlight Search Styles */

@@ -143,14 +143,6 @@ const Page = {
       return `/knowledge/page/${this.shiftDateString(this.page.date, 1)}/`;
     },
 
-    isViewingToday() {
-      return this.isDaily && this.page?.date === this.todayDateString();
-    },
-
-    todayUrl() {
-      return `/knowledge/page/${this.todayDateString()}/`;
-    },
-
     isWhiteboard() {
       return this.page?.page_type === "whiteboard";
     },
@@ -2819,13 +2811,6 @@ const Page = {
       return `${date.getFullYear()}-${m}-${d}`;
     },
 
-    todayDateString() {
-      const today = new Date();
-      const m = String(today.getMonth() + 1).padStart(2, "0");
-      const d = String(today.getDate()).padStart(2, "0");
-      return `${today.getFullYear()}-${m}-${d}`;
-    },
-
     openDatePicker(event) {
       // Wired on .title-left so the click is captured whether the user
       // hits the date text, the input padding, or the calendar glyph
@@ -4089,12 +4074,6 @@ const Page = {
                   title="Next day"
                   aria-label="Go to next day"
                 >›</a>
-                <a
-                  v-if="!isViewingToday"
-                  :href="todayUrl"
-                  class="daily-nav-btn daily-nav-today"
-                  title="Go to today's daily note"
-                >today</a>
               </div>
               <div class="header-controls">
                 <div class="context-menu-container page-sort-container">
