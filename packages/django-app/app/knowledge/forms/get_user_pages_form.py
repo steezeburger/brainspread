@@ -20,6 +20,17 @@ class GetUserPagesForm(BaseForm):
         choices=Page._meta.get_field("page_type").choices,
         required=False,
     )
+    # Optional ordering — vocabulary lives in
+    # PageRepository.get_user_pages. Defaults to "modified" when
+    # omitted so existing picker callers keep their behavior.
+    order_by = forms.ChoiceField(
+        choices=[
+            ("modified", "Recently modified"),
+            ("title", "Title"),
+            ("date", "Date"),
+        ],
+        required=False,
+    )
 
     def clean_user(self) -> User:
         user = self.cleaned_data.get("user")

@@ -87,6 +87,37 @@ const BlockComponent = {
       type: Function,
       default: () => () => {},
     },
+    openMoveUnderPicker: {
+      type: Function,
+      default: () => () => {},
+    },
+    // Block drag-and-drop (issue #133 follow-up). Only the main page
+    // tree passes real handlers + moveDraggable; linked-reference and
+    // overdue lists render without drag affordances.
+    moveDraggable: {
+      type: Boolean,
+      default: false,
+    },
+    moveDropTarget: {
+      type: Object,
+      default: null,
+    },
+    onMoveDragStart: {
+      type: Function,
+      default: () => () => {},
+    },
+    onMoveDragOver: {
+      type: Function,
+      default: () => () => {},
+    },
+    onMoveDrop: {
+      type: Function,
+      default: () => () => {},
+    },
+    onMoveDragEnd: {
+      type: Function,
+      default: () => () => {},
+    },
     openBlockInfoModal: {
       type: Function,
       default: () => () => {},
@@ -124,6 +155,10 @@ const BlockComponent = {
       default: 0,
     },
     bulkDeleteSelected: {
+      type: Function,
+      default: () => () => {},
+    },
+    bulkMoveSelectedUnder: {
       type: Function,
       default: () => () => {},
     },
@@ -276,6 +311,13 @@ const BlockComponent = {
     },
     hasChildren() {
       return this.block.children?.length > 0;
+    },
+    moveDropZone() {
+      // 'before' | 'after' | 'child' when a live block drag hovers
+      // this row; null otherwise. Drives the drop-indicator classes.
+      return this.moveDropTarget && this.moveDropTarget.uuid === this.block.uuid
+        ? this.moveDropTarget.zone
+        : null;
     },
     childrenCount() {
       return this.block.children?.length || 0;
@@ -564,10 +606,23 @@ const BlockComponent = {
       this.applyResizableHandles();
     },
 
+    ownResizableEls(selector) {
+      // Scope subtree queries to THIS block's own resizable elements.
+      // $el is the block's `[data-block-uuid]` root and contains the
+      // children's DOM too, so an unscoped querySelectorAll would let
+      // an ancestor block (usually with no saved size) stomp the width
+      // a nested block just applied — nested image resizes looked
+      // saved until the next render/reload, then snapped back.
+      if (!this.$el || this.$el.nodeType !== 1) return [];
+      return [...this.$el.querySelectorAll(selector)].filter(
+        (el) => el.closest("[data-block-uuid]") === this.$el
+      );
+    },
+
     applyResizableHandles() {
       // Apply the persisted block-level width to every resizable
-      // wrapper inside this block, and wire up corner-handle drag.
-      // A block has a single properties.size today, so multiple
+      // wrapper belonging to this block, and wire up corner-handle
+      // drag. A block has a single properties.size today, so multiple
       // resizables in one block share the same width — fine for the
       // current shapes (one mermaid wrapper per block; an asset block
       // has either an image or a renderable text-shaped asset, never
@@ -578,8 +633,7 @@ const BlockComponent = {
       if (this.$el.querySelector(".block-resize-handle.is-resizing")) return;
       const savedWidth = this.block.properties?.size?.width || null;
       const target = savedWidth ? String(savedWidth) : "";
-      const wrappers = this.$el.querySelectorAll(".block-resizable");
-      wrappers.forEach((el) => {
+      this.ownResizableEls(".block-resizable").forEach((el) => {
         if (el.dataset.savedSizeApplied === target) return;
         if (savedWidth) {
           el.style.width = `${savedWidth}px`;
@@ -590,10 +644,9 @@ const BlockComponent = {
         }
         el.dataset.savedSizeApplied = target;
       });
-      const handles = this.$el.querySelectorAll(
+      this.ownResizableEls(
         ".block-resize-handle:not([data-resize-bound])"
-      );
-      handles.forEach((handle) => {
+      ).forEach((handle) => {
         handle.dataset.resizeBound = "true";
         handle.addEventListener("mousedown", (event) =>
           this.startResize(event, handle)
@@ -1418,6 +1471,9 @@ const BlockComponent = {
         case "moveToPage":
           this.openMovePagePicker(this.block);
           break;
+        case "moveUnder":
+          this.openMoveUnderPicker(this.block);
+          break;
         case "blockInfo":
           this.openBlockInfoModal(this.block);
           break;
@@ -1432,6 +1488,9 @@ const BlockComponent = {
           break;
         case "bulkMoveToToday":
           this.bulkMoveSelectedToToday();
+          break;
+        case "bulkMoveUnder":
+          this.bulkMoveSelectedUnder();
           break;
         case "schedule":
           this.scheduleBlock(this.block);
@@ -1467,13 +1526,11 @@ const BlockComponent = {
       // wrappers fall back to their natural defaults (image at
       // intrinsic size, mermaid at column width).
       this.setBlockProperties(this.block, { size: null });
-      if (this.$el) {
-        this.$el.querySelectorAll(".block-resizable").forEach((el) => {
-          el.style.width = "";
-          el.classList.remove("has-saved-size");
-          el.dataset.savedSizeApplied = "";
-        });
-      }
+      this.ownResizableEls(".block-resizable").forEach((el) => {
+        el.style.width = "";
+        el.classList.remove("has-saved-size");
+        el.dataset.savedSizeApplied = "";
+      });
     },
 
     async fetchAssetSource() {
@@ -1584,7 +1641,7 @@ const BlockComponent = {
   },
   template: `
     <div class="block-wrapper" :class="{ 'child-block': block.parent, 'in-context': blockInContext, 'selected': blockSelected, 'in-selection-mode': selectionMode }" :data-block-uuid="block.uuid" @dragover="handleBlockDragOver" @drop="handleBlockDrop">
-      <div class="block" :class="{ 'has-children': hasChildren, 'is-collapsed': hasChildren && isCollapsed }" @click="handleRowClick($event)">
+      <div class="block" :class="{ 'has-children': hasChildren, 'is-collapsed': hasChildren && isCollapsed, 'block-drop-before': moveDropZone === 'before', 'block-drop-after': moveDropZone === 'after', 'block-drop-child': moveDropZone === 'child' }" @click="handleRowClick($event)" @dragover="moveDraggable ? onMoveDragOver(block, $event) : null" @drop="moveDraggable ? onMoveDrop(block, $event) : null">
         <button
           v-if="selectionMode"
           type="button"
@@ -1612,6 +1669,9 @@ const BlockComponent = {
             'later': block.block_type === 'later',
             'wontdo': block.block_type === 'wontdo'
           }"
+          :draggable="moveDraggable"
+          @dragstart="moveDraggable ? onMoveDragStart(block, $event) : null"
+          @dragend="moveDraggable ? onMoveDragEnd() : null"
           @click="selectionMode ? handleSelectToggleClick($event) : (['todo', 'doing', 'done', 'later', 'wontdo'].includes(block.block_type) ? toggleBlockTodo(block) : null)"
           @touchstart="handleTouchStart"
           @touchend="selectionMode ? null : handleTodoTouchEnd($event)"
@@ -2030,6 +2090,10 @@ const BlockComponent = {
           <span class="context-menu-icon">→</span>
           <span>move to page…</span>
         </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('moveUnder')">
+          <span class="context-menu-icon">⤷</span>
+          <span>move under block…</span>
+        </button>
         <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('copyLink')">
           <span class="context-menu-icon">↗</span>
           <span>copy link to block</span>
@@ -2087,6 +2151,10 @@ const BlockComponent = {
             <span class="context-menu-icon">⇨</span>
             <span>move {{ selectedBlockCount }} selected to today</span>
           </button>
+          <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('bulkMoveUnder')">
+            <span class="context-menu-icon">⤷</span>
+            <span>move {{ selectedBlockCount }} selected under…</span>
+          </button>
           <button class="context-menu-item context-menu-danger" role="menuitem" tabindex="-1" @click="handleContextMenuAction('bulkDelete')">
             <span class="context-menu-icon">×</span>
             <span>delete {{ selectedBlockCount }} selected</span>
@@ -2106,6 +2174,7 @@ const BlockComponent = {
           :stopEditing="stopEditing"
           :deleteBlock="deleteBlock"
           :toggleBlockTodo="toggleBlockTodo"
+          :setBlockProperties="setBlockProperties"
           :formatContentWithTags="formatContentWithTags"
           :isBlockInContext="isBlockInContext"
           :isBlockSelected="isBlockSelected"
@@ -2119,6 +2188,13 @@ const BlockComponent = {
           :moveBlockDown="moveBlockDown"
           :moveBlockToToday="moveBlockToToday"
           :openMovePagePicker="openMovePagePicker"
+          :openMoveUnderPicker="openMoveUnderPicker"
+          :moveDraggable="moveDraggable"
+          :moveDropTarget="moveDropTarget"
+          :onMoveDragStart="onMoveDragStart"
+          :onMoveDragOver="onMoveDragOver"
+          :onMoveDrop="onMoveDrop"
+          :onMoveDragEnd="onMoveDragEnd"
           :openBlockInfoModal="openBlockInfoModal"
           :onBlockPaste="onBlockPaste"
           :onBlockDrop="onBlockDrop"
@@ -2130,6 +2206,7 @@ const BlockComponent = {
           :selectedBlockCount="selectedBlockCount"
           :bulkDeleteSelected="bulkDeleteSelected"
           :bulkMoveSelectedToToday="bulkMoveSelectedToToday"
+          :bulkMoveSelectedUnder="bulkMoveSelectedUnder"
           :selectionMode="selectionMode"
           :reference-mode="referenceMode"
         />

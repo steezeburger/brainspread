@@ -24,7 +24,11 @@ class UpdateBlockCommand(AbstractBaseCommand):
         user = self.form.cleaned_data["user"]
         block = self.form.cleaned_data["block"]
 
-        # Update fields
+        # Update fields. Parent only changes when the caller submitted
+        # the key: an explicit null re-roots the block (outdent), while
+        # omitting it leaves nesting alone. The old "omitted → clear"
+        # behavior silently re-rooted nested blocks on partial updates
+        # like the resize handle's properties-only save.
         content_updated = False
         if "parent" in self.form.cleaned_data:
             parent = self.form.cleaned_data["parent"]
@@ -35,9 +39,6 @@ class UpdateBlockCommand(AbstractBaseCommand):
                 )
 
             block.parent = parent
-        else:
-            # If no parent is provided, ensure parent is set to None
-            block.parent = None
 
         # Update other fields
         for field in [

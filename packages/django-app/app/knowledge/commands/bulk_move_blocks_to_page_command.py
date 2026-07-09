@@ -1,5 +1,6 @@
 from typing import List, TypedDict
 
+from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from common.commands.abstract_base_command import AbstractBaseCommand
@@ -23,6 +24,11 @@ class BulkMoveBlocksToPageCommand(AbstractBaseCommand):
     parent is not in the selection) are moved individually in
     document order so their relative order on the target page
     matches the source.
+
+    With ``target_parent`` set, each top block nests under that block
+    instead of the page root. A top block that contains the target
+    parent in its own subtree is skipped (the per-block circular
+    guard rejects it) rather than failing the whole batch.
     """
 
     def __init__(self, form: BulkMoveBlocksToPageForm) -> None:
@@ -34,6 +40,7 @@ class BulkMoveBlocksToPageCommand(AbstractBaseCommand):
         user = self.form.cleaned_data["user"]
         uuids: List[str] = self.form.cleaned_data["blocks"]
         target_page = self.form.cleaned_data["target_page"]
+        target_parent = self.form.cleaned_data.get("target_parent")
 
         blocks_qs = BlockRepository.get_queryset().filter(user=user, uuid__in=uuids)
         blocks_by_uuid = {str(b.uuid): b for b in blocks_qs}
@@ -56,17 +63,24 @@ class BulkMoveBlocksToPageCommand(AbstractBaseCommand):
         skipped = len(uuids) - len(selected_uuids)
         with transaction.atomic():
             for block in top_blocks:
-                inner = MoveBlockToPageForm(
-                    {
-                        "user": user.id,
-                        "block": str(block.uuid),
-                        "target_page": str(target_page.uuid),
-                    }
-                )
+                inner_data = {
+                    "user": user.id,
+                    "block": str(block.uuid),
+                    "target_page": str(target_page.uuid),
+                }
+                if target_parent:
+                    inner_data["target_parent"] = str(target_parent.uuid)
+                inner = MoveBlockToPageForm(inner_data)
                 if not inner.is_valid():
                     skipped += 1
                     continue
-                result = MoveBlockToPageCommand(inner).execute()
+                try:
+                    result = MoveBlockToPageCommand(inner).execute()
+                except ValidationError:
+                    # e.g. the target parent lives inside this block's own
+                    # subtree — skip the offender, keep moving the rest.
+                    skipped += 1
+                    continue
                 if result.get("moved"):
                     moved += 1
 

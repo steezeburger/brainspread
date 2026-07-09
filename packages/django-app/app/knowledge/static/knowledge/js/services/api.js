@@ -166,10 +166,12 @@ class ApiService {
     publishedOnly = true,
     limit = 10,
     offset = 0,
-    pageType = null
+    pageType = null,
+    orderBy = null
   ) {
     let url = `/knowledge/api/pages/list/?published_only=${publishedOnly}&limit=${limit}&offset=${offset}`;
     if (pageType) url += `&page_type=${encodeURIComponent(pageType)}`;
+    if (orderBy) url += `&order_by=${encodeURIComponent(orderBy)}`;
     return await this.request(url);
   }
 
@@ -329,10 +331,16 @@ class ApiService {
     });
   }
 
-  async moveBlockToPage(blockUuid, targetPageUuid) {
+  async moveBlockToPage(blockUuid, targetPageUuid, targetParentUuid = null) {
+    // targetParentUuid nests the block under an existing block (the
+    // "move under…" flow); the backend derives the page from it, so
+    // targetPageUuid may be null in that case.
+    const body = { block: blockUuid };
+    if (targetPageUuid) body.target_page = targetPageUuid;
+    if (targetParentUuid) body.target_parent = targetParentUuid;
     return await this.request("/knowledge/api/blocks/move-to-page/", {
       method: "POST",
-      body: JSON.stringify({ block: blockUuid, target_page: targetPageUuid }),
+      body: JSON.stringify(body),
       headers: {
         "Content-Type": "application/json",
       },
@@ -363,13 +371,17 @@ class ApiService {
     });
   }
 
-  async bulkMoveBlocksToPage(blockUuids, targetPageUuid) {
+  async bulkMoveBlocksToPage(
+    blockUuids,
+    targetPageUuid,
+    targetParentUuid = null
+  ) {
+    const body = { blocks: blockUuids };
+    if (targetPageUuid) body.target_page = targetPageUuid;
+    if (targetParentUuid) body.target_parent = targetParentUuid;
     return await this.request("/knowledge/api/blocks/bulk-move-to-page/", {
       method: "POST",
-      body: JSON.stringify({
-        blocks: blockUuids,
-        target_page: targetPageUuid,
-      }),
+      body: JSON.stringify(body),
       headers: {
         "Content-Type": "application/json",
       },

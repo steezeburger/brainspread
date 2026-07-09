@@ -2168,24 +2168,19 @@ kbd {
     align-items: center;
   }
 
-  /* On the daily page, sit the date picker and context menu side by
-     side, centered as a pair. Anchoring the menu to the far right
-     would put it under the AI chat-toggle in the top-right corner. */
+  /* On the daily page, sit the date navigation and context menu side
+     by side, centered as a pair, wrapping the menu to a second row on
+     narrow screens. Anchoring the menu to the far right would put it
+     under the AI chat-toggle in the top-right corner. */
   .daily-note-title.page-header-flex {
     justify-content: center;
     gap: 0.5rem;
+    flex-wrap: wrap;
   }
 
-  /* Pull the favorite star out of flow on mobile so it doesn't shift
-     the date input off-center inside the centered pair. The star sits
-     just to the left of the date input, .title-left's width equals the
-     date input alone, and the pair stays visually centered. */
-  .daily-note-title .title-left .page-favorite-toggle {
-    position: absolute;
-    right: 100%;
-    top: 50%;
-    transform: translateY(-50%);
-    margin-right: 0.25rem;
+  .daily-nav {
+    flex-wrap: wrap;
+    justify-content: center;
   }
 
   .child-block {
@@ -5332,6 +5327,7 @@ a.sidebar-item:visited {
    visual vocabulary. */
 .page-header-flex-left:hover .page-favorite-toggle,
 .title-left:hover .page-favorite-toggle,
+.daily-nav:hover .page-favorite-toggle,
 .saved-view-title-row:hover .page-favorite-toggle,
 .page-favorite-toggle:focus-visible,
 .page-favorite-toggle.is-favorited {
@@ -5520,6 +5516,45 @@ a.sidebar-item:visited {
 .date-picker:focus {
   outline: none;
   border-color: var(--border-primary);
+}
+
+/* Prev/next daily navigation (issue #133). The arrows flank the date
+   picker inside .daily-nav; align-self: stretch keys them off the
+   date input's height so the row reads as one control group. */
+.daily-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.daily-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  /* Bare glyphs — no border/background so the arrows don't compete
+     with the date input. min-width keeps a finger-sized hit area. */
+  min-width: 1.9rem;
+  padding: 0 0.35rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 1.4rem;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.daily-nav-btn:hover {
+  color: var(--text-primary);
+}
+
+.daily-nav-btn:focus-visible {
+  outline: 2px solid var(--border-primary);
+  outline-offset: 2px;
 }
 
 /* Spotlight Search Styles */
@@ -8269,4 +8304,318 @@ a.hashtag-mention:hover,
   color: var(--text-secondary);
   font-size: 0.9rem;
   padding: 0.5rem 0;
+}
+
+/* ── All Pages browser (issue #133) ─────────────────────────────── */
+
+.pages-list-page {
+  padding: 1.25rem 1.75rem 4rem;
+  max-width: 950px;
+  margin: 0 auto;
+  width: 100%;
+  color: var(--text-primary);
+}
+
+.pages-list-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.pages-list-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pages-list-count {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.pages-list-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.pages-list-search {
+  position: relative;
+  flex: 1 1 220px;
+  min-width: 180px;
+  max-width: 340px;
+}
+
+.pages-list-search-input {
+  width: 100%;
+  padding: 0.4rem 1.75rem 0.4rem 0.6rem;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 2px solid var(--border-secondary);
+  border-radius: 0;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.pages-list-search-input:focus {
+  outline: none;
+  border-color: var(--border-primary);
+}
+
+.pages-list-search-clear {
+  position: absolute;
+  right: 0.35rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.1rem 0.25rem;
+  cursor: pointer;
+}
+
+.pages-list-search-clear:hover {
+  color: var(--text-primary);
+}
+
+.pages-list-type-filters {
+  display: inline-flex;
+  flex-wrap: wrap;
+}
+
+.pages-list-type-btn {
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border: 2px solid var(--border-secondary);
+  border-radius: 0;
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+  /* Collapse shared edges so the group reads as one segmented control. */
+  margin-right: -2px;
+}
+
+.pages-list-type-btn:last-child {
+  margin-right: 0;
+}
+
+.pages-list-type-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.pages-list-type-btn.is-active {
+  background: var(--tag-bg, var(--bg-secondary));
+  /* Pair --tag-bg with --tag-text: in several themes --tag-bg matches
+     --text-primary's hue, which would render the active label
+     invisible against its own background. */
+  color: var(--tag-text, var(--text-primary));
+  border-color: var(--border-primary);
+  /* Keep the active segment's border on top of its neighbors'. */
+  position: relative;
+  z-index: 1;
+}
+
+.pages-list-order {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.pages-list-order select {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 2px solid var(--border-secondary);
+  border-radius: 0;
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 0.3rem 0.4rem;
+  cursor: pointer;
+}
+
+.pages-list-order select:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pages-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  background: var(--bg-secondary);
+}
+
+.pages-list li {
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.pages-list li:last-child {
+  border-bottom: none;
+}
+
+.pages-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.9rem;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.pages-list-row:hover {
+  background: var(--hover-bg);
+}
+
+.pages-list-title {
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pages-list-star {
+  color: var(--text-secondary);
+  margin-right: 0.15rem;
+}
+
+.pages-list-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: none;
+}
+
+.pages-list-page .page-type-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  padding: 0.05em 0.5em;
+}
+
+.pages-list-modified {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pages-list-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+@media (max-width: 768px) {
+  .pages-list-page {
+    padding: 1rem 1rem 3rem;
+    /* Clear the fixed 45×45 leftnav-rail-toggle pinned to the top-left
+       corner on mobile, same as the page-title-container rule above. */
+    padding-top: calc(45px + 0.75rem);
+  }
+
+  .pages-list-modified {
+    display: none;
+  }
+}
+
+/* ── Touch-device tap hardening (issue #133 follow-up) ──────────────
+   Two-tap fixes for phones/tablets:
+   - Controls that desktop reveals on :hover don't exist for a touch
+     user until a first tap applies the emulated hover — so the first
+     tap reads as dead. Keep them visible (dimmed) on touch instead.
+   - touch-action: manipulation removes the browser's double-tap-to-
+     zoom wait on the app's interactive controls, so single taps fire
+     immediately. */
+@media (hover: none) and (pointer: coarse) {
+  .block-collapse-toggle,
+  .block-code-copy,
+  .leftnav-template-edit {
+    opacity: 1;
+  }
+
+  .block-due-add {
+    opacity: 0.45;
+  }
+
+  .block-mermaid-open {
+    opacity: 0.7;
+  }
+
+  /* The copy button occupies the same top-right corner the language
+     badge does; desktop swaps them on hover. With copy pinned visible
+     on touch, hide the badge so they don't overlap. */
+  .block-code-wrapper .block-code-lang {
+    opacity: 0;
+  }
+
+  button,
+  select,
+  [role="button"],
+  .leftnav-item,
+  .leftnav-rail-btn,
+  .daily-nav-btn,
+  .block-content-display,
+  .date-picker {
+    touch-action: manipulation;
+  }
+}
+
+/* ── Block drag-and-drop indicators (issue #133 follow-up) ─────────
+   Dragging a block by its bullet: the hovered row shows an insertion
+   line (top 30% → before, bottom 30% → after as sibling) or a nest
+   highlight (middle → becomes the row's last child). Desktop-only —
+   HTML5 drag events don't fire on touch. */
+.block.block-drop-before,
+.block.block-drop-after {
+  position: relative;
+}
+
+.block.block-drop-before::before,
+.block.block-drop-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--border-primary);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.block.block-drop-before::before {
+  top: -1px;
+}
+
+.block.block-drop-after::after {
+  bottom: -1px;
+}
+
+.block.block-drop-child {
+  background: var(--hover-bg);
+  box-shadow: inset 0 0 0 2px var(--border-primary);
+}
+
+/* Grab affordance on non-todo bullets; todo bullets keep their
+   pointer cursor since click-to-toggle is their primary action. */
+.block-bullet[draggable="true"]:not(.todo):not(.doing):not(.done):not(
+    .later
+  ):not(.wontdo) {
+  cursor: grab;
 }
