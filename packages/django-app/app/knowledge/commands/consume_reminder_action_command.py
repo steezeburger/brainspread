@@ -7,8 +7,10 @@ from django.utils import timezone
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.consume_reminder_action_form import ConsumeReminderActionForm
+from ..forms.move_block_to_daily_form import MoveBlockToDailyForm
 from ..forms.set_block_type_form import SetBlockTypeForm
 from ..models import Block, Reminder, ReminderAction
+from .move_block_to_daily_command import MoveBlockToDailyCommand
 from .set_block_type_command import SetBlockTypeCommand
 
 
@@ -120,6 +122,10 @@ class ConsumeReminderActionCommand(AbstractBaseCommand):
             self._set_block_type(block, "doing")
             return
 
+        if action == ReminderAction.ACTION_MOVE_TO_TODAY:
+            self._move_block_to_today(block)
+            return
+
         delta = _SNOOZE_DELTAS.get(action)
         if delta is None:
             # Choices are constrained at the model layer, so we'd only
@@ -144,6 +150,31 @@ class ConsumeReminderActionCommand(AbstractBaseCommand):
         if not set_form.is_valid():
             raise AssertionError(f"SetBlockTypeForm invalid: {set_form.errors}")
         SetBlockTypeCommand(set_form).execute()
+
+    @staticmethod
+    def _move_block_to_today(block: Block) -> None:
+        # Routing through MoveBlockToDailyCommand keeps the move
+        # consistent with the in-app "move to daily" flow — descendants
+        # come along, the block lands at the bottom of the target page,
+        # and both pages get their modified_at bumped. `target_date` is
+        # omitted so the command resolves "today" in the user's
+        # timezone at click time. Already on today's daily → graceful
+        # no-op inside the command. The reminder is left alone: moving
+        # a block is neither completing nor deferring it.
+        move_form = MoveBlockToDailyForm(
+            {
+                "user": block.user_id,
+                "block": str(block.uuid),
+            }
+        )
+        if not move_form.is_valid():
+            raise AssertionError(f"MoveBlockToDailyForm invalid: {move_form.errors}")
+        MoveBlockToDailyCommand(move_form).execute()
+        # The move command works on its own instance of the block, so
+        # refresh ours — the caller reads `block.page.slug` to build the
+        # confirmation page's "Open block" link, which should now point
+        # at the daily note the block landed on.
+        block.refresh_from_db()
 
     @staticmethod
     def _snooze_reminder(reminder: Reminder, delta: timedelta, now) -> None:
@@ -179,6 +210,8 @@ def _executed_detail(action: str) -> str:
         return "Marked the block as done."
     if action == ReminderAction.ACTION_MARK_DOING:
         return "Marked the block as doing."
+    if action == ReminderAction.ACTION_MOVE_TO_TODAY:
+        return "Moved the block to today's daily note."
     if action == ReminderAction.ACTION_SNOOZE_15M:
         return "Snoozed for 15 minutes."
     if action == ReminderAction.ACTION_SNOOZE_30M:

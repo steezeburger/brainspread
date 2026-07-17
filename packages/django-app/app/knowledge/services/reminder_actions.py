@@ -18,15 +18,16 @@ def create_action_tokens(
     Returns a `{action: ReminderAction}` dict so callers can look up
     the per-action token without re-querying. `actions` defaults to
     the full set we surface in Discord (`complete`, `mark_doing`,
-    `snooze_15m`, `snooze_30m`, `snooze_1h`, `snooze_1d`) — pass a
-    subset if you ever want to hide an action (e.g. the status-change
-    actions are dropped for non-task blocks).
+    `move_to_today`, `snooze_15m`, `snooze_30m`, `snooze_1h`,
+    `snooze_1d`) — pass a subset if you ever want to hide an action
+    (e.g. the status-change actions are dropped for non-task blocks).
     """
     moment = now or timezone.now()
     expires_at = moment + (ttl or ReminderAction.DEFAULT_TTL)
     chosen = actions or [
         ReminderAction.ACTION_COMPLETE,
         ReminderAction.ACTION_MARK_DOING,
+        ReminderAction.ACTION_MOVE_TO_TODAY,
         ReminderAction.ACTION_SNOOZE_15M,
         ReminderAction.ACTION_SNOOZE_30M,
         ReminderAction.ACTION_SNOOZE_1H,

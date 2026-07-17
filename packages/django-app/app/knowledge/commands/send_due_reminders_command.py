@@ -173,14 +173,33 @@ def _actions_for_block(block) -> List[str]:
 
     Snooze is always offered. The status-change actions are added only
     for task-like blocks so non-task blocks (bullet/heading/quote/...)
-    don't get a confusing "Mark done" link.
+    don't get a confusing "Mark done" link. "Move to today" is offered
+    for every block type — it relocates rather than advances state —
+    but is dropped when the block already lives on today's daily note,
+    where the link would be a no-op.
     """
     actions: List[str] = []
     if block.block_type in _TASK_BLOCK_TYPES:
         actions.append(ReminderAction.ACTION_COMPLETE)
         actions.append(ReminderAction.ACTION_MARK_DOING)
+    if not _is_on_todays_daily(block):
+        actions.append(ReminderAction.ACTION_MOVE_TO_TODAY)
     actions.extend(_SNOOZE_ACTIONS)
     return actions
+
+
+def _is_on_todays_daily(block) -> bool:
+    """True when the block's page is the user's daily note for today.
+
+    "Today" is computed in the user's timezone at send time. The user
+    could of course click the link after midnight, but the consume
+    command handles the already-there case as a graceful no-op, so
+    this check is purely about not rendering a useless link.
+    """
+    if not block.page_id:
+        return False
+    page = block.page
+    return page.page_type == "daily" and page.date == block.user.today()
 
 
 def _action_urls_for(
@@ -326,10 +345,12 @@ def _author_block(environment: str, pr_number: str, pr_url: str) -> dict:
 # Order matters: this is the order the links appear in the embed.
 # "Mark doing" sits between "Mark done" and the snoozes so the two
 # status-change actions cluster together on the left and the deferrals
-# cluster on the right (shortest snooze first).
+# cluster on the right (shortest snooze first). "Move to today" sits
+# between them — it neither completes nor defers, it relocates.
 _ACTION_LABELS = [
     (ReminderAction.ACTION_COMPLETE, "Mark done"),
     (ReminderAction.ACTION_MARK_DOING, "Mark doing"),
+    (ReminderAction.ACTION_MOVE_TO_TODAY, "Move to today"),
     (ReminderAction.ACTION_SNOOZE_15M, "Snooze 15m"),
     (ReminderAction.ACTION_SNOOZE_30M, "Snooze 30m"),
     (ReminderAction.ACTION_SNOOZE_1H, "Snooze 1h"),
