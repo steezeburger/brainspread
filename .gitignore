@@ -141,3 +141,6 @@ node_modules
 
 # claude
 .claude/settings.local.json
+
+# Database backup dumps #
+backups/

@@ -308,6 +308,30 @@ create-json-backup location=default_backups_location:
   mkdir -p {{location}}
   just dump-data > {{location}}/`date +%Y-%m-%d_%H-%M-%S`-brainspread-dump.json
 
+# Compressed pg_dump with retention pruning. Used by the nightly backup
+# workflow (.github/workflows/backup.yml) but safe to run by hand too.
+backup retention_days="14" location=default_backups_location:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  mkdir -p {{location}}
+  dump_path="{{location}}/$(date +%Y-%m-%d_%H-%M-%S)-brainspread-dump.sql.gz"
+  docker compose exec -T db pg_dump -U $POSTGRES_USER $POSTGRES_DB | gzip > "$dump_path"
+  gzip -t "$dump_path"
+  echo "wrote $dump_path ($(du -h "$dump_path" | cut -f1))"
+  find {{location}} -name '*-brainspread-dump.sql.gz' -mtime +{{retention_days}} -delete
+
+# Restore a pg_dump backup (.sql or .sql.gz) into the dockerized db.
+# Expects an empty database — to start clean, drop and recreate first:
+#   just down && docker volume rm ${POSTGRES_VOLUME_NAME:-brainspread_postgres}
+#   just create-volumes && just up-d
+restore-pgdump dumpfile:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  case "{{dumpfile}}" in
+    *.gz) gunzip -c "{{dumpfile}}" | docker compose exec -T db psql -U $POSTGRES_USER $POSTGRES_DB ;;
+    *) docker compose exec -T db psql -U $POSTGRES_USER $POSTGRES_DB < "{{dumpfile}}" ;;
+  esac
+
 # Format Python code
 format-py:
   docker compose run --rm -w /code/app web python -m black . --exclude="migrations/"
