@@ -1,0 +1,12 @@
+# Job schedule for the scheduler container. bin/run-scheduler.sh runs
+# this file with supercronic, so jobs live in git — edit here and
+# deploy to change them; nothing to install or edit on the host.
+#
+# Times are UTC (the container timezone).
+
+# dispatch due Discord reminders (no-ops unless REMINDERS_ENABLED=true)
+* * * * * python /code/app/manage.py send_due_reminders
+
+# nightly database backup at 09:17 UTC (~2:17am PT); retention is
+# controlled by BACKUP_RETENTION_DAYS (see bin/backup.sh)
+17 9 * * * /code/bin/backup.sh

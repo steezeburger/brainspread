@@ -4,8 +4,17 @@ ENV UV_PROJECT_ENVIRONMENT="/usr/local"
 
 # install uv and compilation dependencies
 # https://cryptography.io/en/latest/installation/
-RUN apt-get update && apt-get install -y build-essential libssl-dev libffi-dev python3-dev cargo
+# postgresql-client provides pg_dump for the scheduler's nightly backup
+# job (bookworm ships client 15, matching the postgres:15.4 db image)
+RUN apt-get update && apt-get install -y build-essential libssl-dev libffi-dev python3-dev cargo curl postgresql-client
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# supercronic runs the repo crontab in the scheduler service
+# (see crontab and bin/run-scheduler.sh)
+ARG TARGETARCH
+RUN curl -fsSL -o /usr/local/bin/supercronic \
+    "https://github.com/aptible/supercronic/releases/download/v0.2.33/supercronic-linux-${TARGETARCH:-amd64}" \
+  && chmod +x /usr/local/bin/supercronic
 
 # install python dependencies
 RUN mkdir /code

@@ -144,4 +144,3 @@ node_modules
 
 # Database backup dumps #
 backups/
-cron.log

@@ -39,9 +39,10 @@ services:
     depends_on:
       - db
     restart: unless-stopped
-  # Periodic task runner — polls the reminders table once a minute and
-  # dispatches any that are due. See bin/run-scheduler.sh and issue #59.
-  # Gated by REMINDERS_ENABLED (defaults to false); the staging deploy
+  # Periodic task runner — supercronic executes the jobs defined in
+  # the repo's crontab file (reminders dispatch, nightly db backup).
+  # See crontab, bin/run-scheduler.sh, and issue #59. Reminders are
+  # gated by REMINDERS_ENABLED (defaults to false); the staging deploy
   # workflow and prod .env both set it to true. Non-prod environments
   # get an `[<env>]` label on each message via ENVIRONMENT.
   scheduler:
