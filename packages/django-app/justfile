@@ -308,8 +308,8 @@ create-json-backup location=default_backups_location:
   mkdir -p {{location}}
   just dump-data > {{location}}/`date +%Y-%m-%d_%H-%M-%S`-brainspread-dump.json
 
-# Compressed pg_dump with retention pruning. Used by the nightly backup
-# workflow (.github/workflows/backup.yml) but safe to run by hand too.
+# Compressed pg_dump with retention pruning. Runs nightly on the prod
+# host via cron (see cron-nightly / install-cron) but safe to run by hand.
 backup retention_days="14" location=default_backups_location:
   #!/usr/bin/env bash
   set -euo pipefail
@@ -331,6 +331,31 @@ restore-pgdump dumpfile:
     *.gz) gunzip -c "{{dumpfile}}" | docker compose exec -T db psql -U $POSTGRES_USER $POSTGRES_DB ;;
     *) docker compose exec -T db psql -U $POSTGRES_USER $POSTGRES_DB < "{{dumpfile}}" ;;
   esac
+
+# Parent entry point for the host's nightly cron — add future nightly
+# jobs here so the crontab never needs to change.
+cron-nightly:
+  just backup
+
+# Idempotently install the nightly cron entry on this host. Re-running
+# replaces the existing entry (it's keyed on the marker comment), so it
+# is safe to call on every deploy. Times are server-local.
+install-cron:
+  #!/usr/bin/env bash
+  set -euo pipefail
+  marker="# brainspread-nightly"
+  just_bin="$(command -v just)"
+  # cron's default PATH is bare — include just's and docker's dirs so
+  # nested `just`/`docker compose` calls inside recipes resolve.
+  cron_path="$(dirname "${just_bin}"):$(dirname "$(command -v docker)"):/usr/bin:/bin"
+  line="17 2 * * * PATH=${cron_path}; cd {{justfile_directory()}} && ${just_bin} cron-nightly >> {{justfile_directory()}}/cron.log 2>&1 ${marker}"
+  tmp="$(mktemp)"
+  { crontab -l 2>/dev/null || true; } | { grep -v "${marker}" || true; } > "$tmp"
+  echo "$line" >> "$tmp"
+  crontab "$tmp"
+  rm -f "$tmp"
+  echo "installed cron entry:"
+  crontab -l | grep "${marker}"
 
 # Format Python code
 format-py:
@@ -432,6 +457,7 @@ update:
   just migrate
   docker compose stop web scheduler
   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d web scheduler
+  just install-cron
 
 # AI Tools
 # start playwright mcp server
