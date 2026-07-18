@@ -26,16 +26,21 @@ I want a notes app that gives me:
 
 ## Capture and tags
 
-Everything you write lands on today's daily page, which already exists when
-you open the app. Organization comes from tags, and a tag is a page (and a
-page is a tag). Typing `#strength-training` in a block makes that block a
+The app opens to today's daily page, which already exists and is where most
+writing happens. You can go to any page and create blocks there directly;
+the daily is just the default landing spot when you don't want to think
+about where something goes. Organization comes from tags, and a tag is a
+page (and a page is a tag). Typing `#strength-training` in a block makes that block a
 member of the strength-training page. Open the page and every block you've
 ever tagged with it is sitting there. A block can belong to as many pages as
 you tag it with.
 
-Blocks can also be moved onto a page for real, one-off or in bulk. The goal
-is for an automation to do that sorting for you: everything matching some
-tag or `key:: value` gets swept onto its page on a schedule.
+Blocks can also be moved onto a page for real, one-off or in bulk. A
+pattern I use constantly: write a pile of notes nested under a single block
+on the daily, tag that block with the page I want them to end up on, and
+move the whole thing over later. The goal is for an automation to do that
+sorting for you: everything matching some tag or `key:: value` gets swept
+onto its page on a schedule.
 
 There's also `[[wiki link]]` syntax that gives you backlinks between pages.
 Honestly I never use it. Tags cover it for me.
