@@ -13,6 +13,7 @@ I want a notes app that gives me:
 
 - as little friction as possible when writing something down and keeping it
   organized
+- powerful sorting and filtering of tags
 - something that keeps me on track, and can nudge me if I ask it to
 - a way to loop forgotten things back into my life instead of letting them
   rot below the fold
