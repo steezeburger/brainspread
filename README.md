@@ -5,7 +5,7 @@ A note-taking app I built for myself. The two big influences are Logseq
 (tags do the organizing). It also has an MCP server, so Claude Code can read
 and write your notes.
 
-![Brainspread screenshot](docs/images/screenshot2.png)
+![Brainspread screenshot](docs/images/screenshot3.png)
 
 ## Why
 
