@@ -105,14 +105,35 @@ template can carry both its checklist and an open-todos embed in one apply.
 
 ### The MCP server
 
-Brainspread exposes an MCP server at `/api/mcp/` (streamable HTTP), so
-Claude Code or any other MCP client can operate on your notes directly. This
-is where a lot of the leverage is. Some real prompts:
+To be clear, the app doesn't need AI to be worth using. The daily page,
+tags, views, and (soon) automations carry it on their own. But it exposes an
+MCP server at `/api/mcp/` (streamable HTTP), so Claude Code or any other MCP
+client can operate on your notes directly, and that turns out to be a big
+multiplier. Some real prompts:
 
 - "what's on my plate today?"
 - "reschedule everything overdue to spread over the next week"
 - "read my dailies from last week and write a review on today's page"
 - "find my untagged workout notes and tag them #strength-training"
+
+It gets better when you connect the server to a Claude Code remote session,
+because that session is reachable from the Claude mobile/desktop/web apps.
+Your notes become something you can talk to from anywhere, including by
+voice. Stuff I actually use this for:
+
+- hands-free capture: "hey brainspread, remind me to flip the laundry in 30
+  minutes"
+- sitting back down and asking "what was I doing?"
+- pasting garbage in and getting structure out. I once pasted an HTML table
+  as plain text and asked for a block; it made a CSV table because it knew
+  brainspread renders those nicely.
+- the usual assistant stuff (research, planning a trip, packing lists) works
+  too, with the difference that the results land in my notes instead of
+  dying in a chat log
+
+And once automations land, creating one by voice is the endgame: "every
+Tuesday and Thursday, copy my workout to the daily page" said out loud on a
+walk, and it exists.
 
 It's a small surface, 16 tools covering pages, blocks, todos, search,
 scheduling, and tagging, each a thin wrapper over the same commands the UI
