@@ -109,12 +109,18 @@ To be clear, the app doesn't need AI to be worth using. The daily page,
 tags, views, and (soon) automations carry it on their own. But it exposes an
 MCP server at `/api/mcp/` (streamable HTTP), so Claude Code or any other MCP
 client can operate on your notes directly, and that turns out to be a big
-multiplier. Some real prompts:
+multiplier. Every AI note app can summarize your week or answer questions
+about your notes. What's different here is that the agent gets the same
+primitives the app is built on: due dates, tags that are pages,
+`key:: value` properties, saved views, templates, reminders. So the prompts
+worth typing look like:
 
-- "what's on my plate today?"
-- "reschedule everything overdue to spread over the next week"
-- "read my dailies from last week and write a review on today's page"
-- "find my untagged workout notes and tag them #strength-training"
+- "reschedule everything overdue, spread it over the next week"
+- "sweep the recipe blocks scattered across my dailies onto the recipes
+  page"
+- "put priority:: p1 on the deploy todos and pin a view of open p1s"
+- "apply my packing template to today and set a reminder for 7am to start
+  on it"
 
 It gets better when you connect the server to a Claude Code remote session,
 because that session is reachable from the Claude mobile/desktop/web apps.
