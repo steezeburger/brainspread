@@ -20,7 +20,8 @@ I want a notes app that gives me:
   - copy my workout to the daily page on Tuesday and Thursday
   - estimate calories and macros whenever a new block tagged `#food-log` is
     created
-  - summarize a pasted web page with AI and nest the summary under the link
+  - write up new recipes and generate this week's grocery list from past
+    grocery lists and whatever I'm planning to cook
   - sweep everything tagged `#recipe` onto the recipes page once a week
 
 ## Capture and tags
