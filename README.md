@@ -1,15 +1,12 @@
 # Brainspread
 
-A note-taking app I built for myself. The two big influences are Logseq
-(every day gets its own page, and that's where you write) and zettelkasten
-(tags do the organizing). It also has an MCP server, so Claude Code can read
-and write your notes.
+Note-taking app I built for myself. Big influences: Logseq (daily pages,
+everything is an outline) and zettelkasten (tags do the organizing). There's
+an MCP server so Claude Code can read and write your notes.
 
 ![Brainspread screenshot](docs/images/screenshot2.png)
 
-## Why
-
-I want a notes app that gives me:
+## Goals
 
 - as little friction as possible when writing something down and keeping it
   organized
@@ -17,161 +14,126 @@ I want a notes app that gives me:
 - something that keeps me on track, and can nudge me if I ask it to
 - a way to loop forgotten things back into my life instead of letting them
   rot below the fold
-- a way to automate the stuff I do repeatedly, like:
+- automate the stuff I do repeatedly, like:
   - copy my workout to the daily page on Tuesday and Thursday
   - estimate calories and macros whenever a new block tagged `#food-log` is
     created
-  - write up new recipes and generate this week's grocery list from past
-    grocery lists and whatever I'm planning to cook
+  - write up new recipes and generate grocery lists from past grocery lists
+    and whatever I'm planning to cook
   - sweep everything tagged `#recipe` onto the recipes page once a week
 
-## Capture and tags
+## How it works
 
-The app opens to today's daily page, which already exists and is where most
-writing happens. You can go to any page and create blocks there directly;
-the daily is just the default landing spot when you don't want to think
-about where something goes. Organization comes from tags, and a tag is a
-page (and a page is a tag). Typing `#strength-training` in a block makes that block a
-member of the strength-training page. Open the page and every block you've
-ever tagged with it is sitting there. A block can belong to as many pages as
-you tag it with.
+The app opens to today's daily page and most notes start there. You can
+write on any page directly. The daily just means you never have to figure
+out where a note should go before writing it.
 
-Blocks can also be moved onto a page for real, one-off or in bulk. A
-pattern I use constantly: write a pile of notes nested under a single block
-on the daily, tag that block with the page I want them to end up on, and
-move the whole thing over later. The goal is for an automation to do that
-sorting for you: everything matching some tag or `key:: value` gets swept
-onto its page on a schedule.
+A tag is a page and a page is a tag. Typing `#strength-training` in a block
+puts that block on the strength-training page. Blocks can be on as many
+pages as you tag them with. I'll often dump a bunch of notes under one
+tagged block on the daily and move them to their real page later. The plan
+is for automations to handle that sorting eventually (by tag, `key:: value`,
+whatever).
 
-There's also `[[wiki link]]` syntax that gives you backlinks between pages.
-Honestly I never use it. Tags cover it for me.
+There's also `[[wiki link]]` syntax with backlinks. I never use it.
 
-## Where it's headed
+## Automations (in progress)
 
-The next big piece is automations
-([#143](https://github.com/steezeburger/brainspread/issues/143)): blocks
-tagged `#automation` whose `trigger:: / query:: / action::` properties make
-them do things. The automation examples in the Why section are all this
-feature. A few more:
+The part I'm most excited about
+([#143](https://github.com/steezeburger/brainspread/issues/143)). An
+automation is a block tagged `#automation` with
+`trigger:: / query:: / action::` properties. The examples under goals are
+all this feature. More:
 
 - roll sticky todos onto today every morning
-- ping Discord every 15 minutes while a block is marked `doing`
-  ("still on this?")
+- ping Discord every 15 minutes while a block is `doing` ("still on this?")
 - apply the morning routine template on a schedule
+- resurface stale stuff I've forgotten about
 
-This is also the plan for looping forgotten things back in: an automation
-(or Claude Code over MCP) queries for stale stuff and resurfaces it, so it
-doesn't depend on me remembering to go look. Automations live in the graph
-as ordinary blocks, which means a template containing one becomes a
-shareable automation pack. A declarative widget layer (habit heatmaps,
-streaks, countdowns) is sketched in
-[#168](https://github.com/steezeburger/brainspread/issues/168). Parts of the
-engine are built and it's landing in slices.
+Automations are ordinary blocks, so a template containing one is basically
+an installable automation pack. There's also a sketch for declarative
+widgets (habit heatmaps, streaks, countdowns) in
+[#168](https://github.com/steezeburger/brainspread/issues/168). The engine
+is partially built and landing in slices.
 
-## The pieces
+## What's in it
 
-### Blocks, todos, and days
+### Blocks and pages
 
-Everything is a block in a nested outline. Blocks can be bullets, todos
-(`todo` / `doing` / `done`, plus `later` and `wontdo`), headings, quotes,
-code, images, files. Every day gets its own page automatically, and past
-dailies stay browsable, so the app doubles as a journal.
+Everything is a block in a nested outline: bullets, todos
+(`todo` / `doing` / `done` / `later` / `wontdo`), headings, quotes, code,
+images, files. Daily pages are created automatically and old ones stick
+around, so it works as a journal too.
 
-### Scheduling, rollover, and reminders
+### Scheduling and reminders
 
-Scheduling a block gives it a due date without moving it. It stays where you
-wrote it and surfaces on the daily page for that date. Anything that slips
-shows up in the built-in Overdue view, and undone todos can be rolled
-forward onto today.
+Scheduling gives a block a due date without moving it. It shows up on that
+day's daily page. Overdue stuff collects in the built-in Overdue view, and
+undone todos can be rolled forward onto today.
 
-Reminders are the louder version. Attach a time to a block and a scheduler
-posts it to Discord with a mention, so it hits your phone. The message
-carries action links (mark done, mark doing, move to today, snooze
-15m/30m/1h/1d), so you can handle it from the notification without opening
-the app.
+Reminders post to Discord through a webhook, with a mention so it hits your
+phone. The message has action links (mark done, mark doing, move to today,
+snooze 15m/30m/1h/1d) so you can deal with it from the notification.
 
 ### Saved views
 
-Saved views are queries over your blocks: filter by block type, tags, due or
-completed dates, `key:: value` properties, or content, combined with
-and/or/not. Pin a view to the sidebar, or embed it on a page so its results
-render inline. An embed can also be pinned to the daily page as a concept,
-so a "due today" embed follows you from day to day. Two ship out of the box:
-Overdue and Done this week.
+Queries over your blocks: block type, tags, due/completed dates,
+`key:: value` properties, content, combined with and/or/not. Pin them to the
+sidebar or embed them on a page. Embeds can also follow "the daily page", so
+a due-today embed shows up on whichever day you have open. Overdue and Done
+this week come built in.
 
-Blocks parse `key:: value` lines into queryable properties, so views can
-slice on whatever structure you invent (`project:: roadmap`,
-`priority:: p1`, etc).
+Blocks parse `key:: value` lines into queryable properties
+(`project:: roadmap`, `priority:: p1`, whatever you invent).
 
 ### Templates
 
-A template is a page whose block tree can be stamped onto any other page.
-Copies are independent, so checking off a cloned todo doesn't touch the
-template. Tags and embedded views come along too, so a morning routine
-template can carry both its checklist and an open-todos embed in one apply.
+A template's block tree can be stamped onto any page. Copies are
+independent, so checking off a cloned todo doesn't touch the template. Tags
+and embedded views copy over too. My morning routine template brings its
+checklist and an open-todos embed with it.
 
-### The MCP server
+### MCP server
 
-To be clear, the app doesn't need AI to be worth using. The daily page,
-tags, views, and (soon) automations carry it on their own. But it exposes an
-MCP server at `/api/mcp/` (streamable HTTP), so Claude Code or any other MCP
-client can operate on your notes directly, and that turns out to be a big
-multiplier. Every AI note app can summarize your week or answer questions
-about your notes. What's different here is that the agent gets the same
-primitives the app is built on: due dates, tags that are pages,
-`key:: value` properties, saved views, templates, reminders. So the prompts
-worth typing look like:
+The app works fine with zero AI. That said, there's an MCP server at
+`/api/mcp/` (streamable HTTP), and pointing Claude Code at it is really
+useful because the agent gets the same primitives the app is built on: due
+dates, tags, properties, views, templates, reminders.
 
 - "reschedule everything overdue, spread it over the next week"
 - "sweep the recipe blocks scattered across my dailies onto the recipes
   page"
 - "put priority:: p1 on the deploy todos and pin a view of open p1s"
-- "apply my packing template to today and set a reminder for 7am to start
-  on it"
+- "apply my packing template to today and set a reminder for 7am"
 
-It gets better when you connect the server to a Claude Code remote session,
-because that session is reachable from the Claude mobile/desktop/web apps.
-Your notes become something you can talk to from anywhere, including by
-voice. Stuff I actually use this for:
+Connect the server to a Claude Code remote session and it's reachable from
+the Claude mobile/desktop/web apps, including voice. I use that for
+hands-free capture ("remind me to flip the laundry in 30 minutes"), asking
+what I was doing when I sit back down, and formatting. One time I pasted an
+html table as plain text and asked for a block, and it made a csv table
+because brainspread renders those nicely. Once automations land you'll be
+able to create one by voice.
 
-- hands-free capture: "hey brainspread, remind me to flip the laundry in 30
-  minutes"
-- sitting back down and asking "what was I doing?"
-- pasting garbage in and getting structure out. I once pasted an HTML table
-  as plain text and asked for a block; it made a CSV table because it knew
-  brainspread renders those nicely.
-- the usual assistant stuff (research, planning a trip, packing lists) works
-  too, with the difference that the results land in my notes instead of
-  dying in a chat log
-
-And once automations land, creating one by voice is the endgame: "every
-Tuesday and Thursday, copy my workout to the daily page" said out loud on a
-walk, and it exists.
-
-It's a small surface, 16 tools covering pages, blocks, todos, search,
-scheduling, and tagging, each a thin wrapper over the same commands the UI
-uses.
-
-Auth is the same token the web app gets when you log in (visible in the
-Django admin under Auth Tokens):
+16 tools: pages, blocks, todos, search, scheduling, tagging. Each is a thin
+wrapper over the same commands the UI uses. Auth is the token you get when
+you log in (visible in the Django admin under Auth Tokens):
 
 ```bash
 claude mcp add --transport http brainspread http://localhost:8001/api/mcp/ \
   --header "Authorization: Token YOUR_TOKEN"
 ```
 
-### The in-app chat
+### Chat
 
-There's also a chat panel next to your notes, with persistent history,
-bring-your-own-key support for Anthropic/OpenAI/Google, web search, and a
-bigger toolset with an approval gate on writes. Good for quick stuff like
-"what did I get done this week?" without leaving the app.
+There's a chat panel in the app too: persistent history, bring your own
+keys for Anthropic/OpenAI/Google, web search, approval gate on writes. Good
+for quick questions without leaving the app.
 
-### Odds and ends
+### Other stuff
 
-Whiteboards (tldraw), web archives (save a readable copy of a link, attached
-to the block that mentions it), public share links for pages, favorites, a
-graph view, file attachments, and search on Cmd+K.
+Whiteboards (tldraw), web archives (saves a readable copy of a link on the
+block that mentions it), public share links for pages, favorites, graph
+view, file attachments, Cmd+K search.
 
 ## Quick start
 
@@ -199,8 +161,8 @@ Then open:
 - Login: `admin@email.com` / `password`
 
 For Discord reminders, set your webhook URL and Discord user ID in user
-settings and run with `REMINDERS_ENABLED=true`. The scheduler container
-checks for due reminders every minute.
+settings and run with `REMINDERS_ENABLED=true`. The scheduler checks for due
+reminders every minute.
 
 See [`.ai/PROJECT_SETUP.md`](.ai/PROJECT_SETUP.md) for the full setup
 walkthrough.
