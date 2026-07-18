@@ -55,6 +55,14 @@ class SavedView(UUIDModelMixin, CRUDTimestampsMixin):
         default=False,
         help_text="Pinned views surface in the left-nav for one-click access",
     )
+    archived = models.BooleanField(
+        default=False,
+        help_text=(
+            "Archived views are tucked away from the main saved-views "
+            "list and the left-nav until unarchived — for short-lived "
+            "views that shouldn't clutter the list"
+        ),
+    )
     dates_relative_to_daily = models.BooleanField(
         default=False,
         help_text=(
@@ -86,6 +94,7 @@ class SavedView(UUIDModelMixin, CRUDTimestampsMixin):
             "sort": self.sort or [],
             "is_system": self.is_system,
             "pinned": self.pinned,
+            "archived": self.archived,
             "dates_relative_to_daily": self.dates_relative_to_daily,
             "user_uuid": str(self.user.uuid),
             "created_at": self.created_at.isoformat(),
@@ -102,6 +111,7 @@ class SavedViewData(TypedDict):
     sort: List[Dict[str, Any]]
     is_system: bool
     pinned: bool
+    archived: bool
     dates_relative_to_daily: bool
     user_uuid: str
     created_at: str

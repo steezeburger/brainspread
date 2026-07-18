@@ -57,6 +57,7 @@ from .send_due_reminders_command import SendDueRemindersCommand
 from .set_block_completed_at_command import SetBlockCompletedAtCommand
 from .set_block_type_command import SetBlockTypeCommand
 from .set_page_favorited_command import SetPageFavoritedCommand
+from .set_saved_view_archived_command import SetSavedViewArchivedCommand
 from .set_saved_view_pinned_command import SetSavedViewPinnedCommand
 from .share_page_command import SharePageCommand
 from .snooze_block_command import SnoozeBlockCommand

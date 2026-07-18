@@ -2685,6 +2685,18 @@ kbd {
   display: block;
 }
 
+/* Saved views get a funnel (filter/query) SVG so the nav icon no
+   longer reads as a resized twin of the "☰" all-pages glyph. Same
+   em-based sizing rationale as .leftnav-today-svg; inside the panel's
+   .leftnav-icon span it needs inline-block + vertical-align to sit on
+   the text baseline like the glyph it replaced. */
+.leftnav-views-svg {
+  width: 1.05em;
+  height: 1.05em;
+  display: inline-block;
+  vertical-align: -0.15em;
+}
+
 .leftnav-label {
   flex: 1;
   min-width: 0;
@@ -7921,6 +7933,48 @@ a.hashtag-mention:hover,
   color: var(--text-secondary);
 }
 
+/* Index rows carry an always-visible star so favoriting is
+   discoverable without opening the view — same reason the detail
+   star below stays visible instead of hover-only. */
+.saved-view-list-row {
+  display: flex;
+  align-items: center;
+}
+.saved-view-list-row > a {
+  flex: 1;
+  min-width: 0;
+}
+.saved-view-row-star {
+  font-size: 1.05rem;
+  padding: 0.15rem 0.2rem 0.15rem 0.6rem;
+}
+.saved-view-list .saved-view-row-star,
+.saved-view-title-row .page-favorite-toggle {
+  opacity: 1;
+}
+
+/* Archived views: collapsed section at the bottom of the index.
+   Reuses the left-nav section-toggle look, sized up slightly for the
+   main content column. */
+.saved-view-archived-section {
+  margin-top: 1.25rem;
+}
+.saved-view-archived-toggle {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.1rem;
+  margin-bottom: 0.4rem;
+}
+.saved-view-list-row.is-archived > a {
+  color: var(--text-secondary);
+}
+.saved-view-unarchive-btn {
+  margin-right: 0.6rem;
+  flex: 0 0 auto;
+}
+.saved-views-page .archived-pill {
+  color: var(--text-muted);
+}
+
 .saved-view-editor {
   border: 1px solid var(--border-primary);
   border-radius: 0;
@@ -8182,13 +8236,19 @@ a.hashtag-mention:hover,
 .result-due {
   flex: 0 0 auto;
   align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   font-size: 0.8rem;
   color: var(--text-secondary);
-  font-family: var(--font-mono, monospace);
+  font-family: inherit;
   white-space: nowrap;
   border: 1px solid var(--border-primary);
   border-radius: 3px;
   padding: 0 5px;
+}
+.result-due.overdue {
+  color: var(--error-color, #c0392b);
 }
 .result-block-type {
   display: inline-block;
@@ -8314,6 +8374,69 @@ a.hashtag-mention:hover,
   margin: 0 auto;
   width: 100%;
   color: var(--text-primary);
+}
+
+/* Templates browser (/knowledge/templates/) — same column framing as
+   the all-pages browser, list rows shaped like the saved-views index
+   with an inline action pair per row. */
+.templates-page {
+  padding: 1.25rem 1.75rem 4rem;
+  max-width: 950px;
+  margin: 0 auto;
+  width: 100%;
+  color: var(--text-primary);
+}
+.templates-page-hint {
+  margin: 0 0 1.25rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  max-width: 60ch;
+}
+.templates-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  background: var(--bg-secondary);
+}
+.templates-list-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--border-primary);
+}
+.templates-list-row:last-child {
+  border-bottom: none;
+}
+.templates-list-link {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.7rem 0.9rem;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.templates-list-link:hover {
+  background: var(--hover-bg);
+}
+.templates-list-name {
+  font-weight: 600;
+}
+.templates-list-modified {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.templates-list-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 0.5rem;
+  padding-right: 0.9rem;
+}
+.templates-list-actions .btn {
+  text-decoration: none;
 }
 
 .pages-list-header {
@@ -8523,7 +8646,8 @@ a.hashtag-mention:hover,
 }
 
 @media (max-width: 768px) {
-  .pages-list-page {
+  .pages-list-page,
+  .templates-page {
     padding: 1rem 1rem 3rem;
     /* Clear the fixed 45×45 leftnav-rail-toggle pinned to the top-left
        corner on mobile, same as the page-title-container rule above. */
