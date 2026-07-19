@@ -4,12 +4,17 @@ Speaks just enough of the MCP wire protocol to support tools-only
 servers (no resources/prompts). One POST endpoint that dispatches
 JSON-RPC requests to a small set of handlers.
 
-Auth: standard DRF token auth. The MCP client sends
-``Authorization: Token <brainspread-token>`` on every request; the
-authenticated user is what each tool acts on. This is intentionally
-*not* OAuth — the MCP spec recommends OAuth for public servers, but
-this server is per-user and reuses the existing token an account
-already has.
+Auth: two interchangeable schemes, both resolving to a brainspread
+user that every tool acts on:
+
+- ``Authorization: Bearer <oauth-access-token>`` — tokens issued by
+  the OAuth 2.1 flow in ``oauth_views`` (what Claude Desktop /
+  claude.ai custom connectors use). Listed first so unauthenticated
+  requests get the ``WWW-Authenticate: Bearer resource_metadata=...``
+  challenge MCP clients use to discover the OAuth flow.
+- ``Authorization: Token <brainspread-token>`` — the account's
+  existing DRF token, for scripted clients and stdio bridges like
+  mcp-remote.
 
 We always respond with ``application/json`` (no SSE) since every
 tool here completes synchronously. Streaming can be added later if a
@@ -21,12 +26,18 @@ import logging
 from typing import Any
 
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.authentication import SessionAuthentication, TokenAuthentication
+from rest_framework.decorators import (
+    api_view,
+    authentication_classes,
+    permission_classes,
+)
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from core.llm_tools import ToolContext, ToolError, to_mcp
 
+from .authentication import OAuthBearerAuthentication
 from .tools import REGISTRY
 
 logger = logging.getLogger(__name__)
@@ -158,6 +169,9 @@ def _dispatch_single(user, message: dict[str, Any]) -> dict[str, Any] | None:
 
 
 @api_view(["POST"])
+@authentication_classes(
+    [OAuthBearerAuthentication, TokenAuthentication, SessionAuthentication]
+)
 @permission_classes([IsAuthenticated])
 def mcp_endpoint(request):
     """The single Streamable-HTTP MCP endpoint."""
