@@ -409,21 +409,23 @@ class TestSendDueRemindersCommand(TestCase):
         self.assertIn("[Mark done]", description)
         self.assertIn("[Mark doing]", description)
         self.assertIn("[Move to today]", description)
+        self.assertIn("[Snooze 5m]", description)
         self.assertIn("[Snooze 15m]", description)
         self.assertIn("[Snooze 30m]", description)
         self.assertIn("[Snooze 1h]", description)
         self.assertIn("[Snooze 1d]", description)
 
-        # Seven action rows minted, all linked to this reminder, none
+        # Eight action rows minted, all linked to this reminder, none
         # consumed yet.
         actions = list(ReminderAction.objects.filter(reminder=reminder))
-        self.assertEqual(len(actions), 7)
+        self.assertEqual(len(actions), 8)
         self.assertEqual(
             {a.action for a in actions},
             {
                 ReminderAction.ACTION_COMPLETE,
                 ReminderAction.ACTION_MARK_DOING,
                 ReminderAction.ACTION_MOVE_TO_TODAY,
+                ReminderAction.ACTION_SNOOZE_5M,
                 ReminderAction.ACTION_SNOOZE_15M,
                 ReminderAction.ACTION_SNOOZE_30M,
                 ReminderAction.ACTION_SNOOZE_1H,
@@ -457,6 +459,7 @@ class TestSendDueRemindersCommand(TestCase):
         self.assertNotIn("[Mark done]", description)
         self.assertNotIn("[Mark doing]", description)
         self.assertIn("[Move to today]", description)
+        self.assertIn("[Snooze 5m]", description)
         self.assertIn("[Snooze 15m]", description)
         self.assertIn("[Snooze 30m]", description)
         self.assertIn("[Snooze 1h]", description)
@@ -466,6 +469,7 @@ class TestSendDueRemindersCommand(TestCase):
             {a.action for a in ReminderAction.objects.filter(reminder=reminder)},
             {
                 ReminderAction.ACTION_MOVE_TO_TODAY,
+                ReminderAction.ACTION_SNOOZE_5M,
                 ReminderAction.ACTION_SNOOZE_15M,
                 ReminderAction.ACTION_SNOOZE_30M,
                 ReminderAction.ACTION_SNOOZE_1H,

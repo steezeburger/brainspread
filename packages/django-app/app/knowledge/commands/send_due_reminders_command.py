@@ -161,6 +161,7 @@ _COLOR_DEFAULT = 0x6B7280  # gray (local / unknown)
 _TASK_BLOCK_TYPES = {"todo", "doing", "later"}
 
 _SNOOZE_ACTIONS = [
+    ReminderAction.ACTION_SNOOZE_5M,
     ReminderAction.ACTION_SNOOZE_15M,
     ReminderAction.ACTION_SNOOZE_30M,
     ReminderAction.ACTION_SNOOZE_1H,
@@ -351,6 +352,7 @@ _ACTION_LABELS = [
     (ReminderAction.ACTION_COMPLETE, "Mark done"),
     (ReminderAction.ACTION_MARK_DOING, "Mark doing"),
     (ReminderAction.ACTION_MOVE_TO_TODAY, "Move to today"),
+    (ReminderAction.ACTION_SNOOZE_5M, "Snooze 5m"),
     (ReminderAction.ACTION_SNOOZE_15M, "Snooze 15m"),
     (ReminderAction.ACTION_SNOOZE_30M, "Snooze 30m"),
     (ReminderAction.ACTION_SNOOZE_1H, "Snooze 1h"),

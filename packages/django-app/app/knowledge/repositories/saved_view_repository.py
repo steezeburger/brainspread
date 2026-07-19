@@ -100,9 +100,13 @@ class SavedViewRepository(BaseRepository):
 
     @classmethod
     def list_pinned_for_user(cls, user) -> List[SavedView]:
-        """Pinned views for the left-nav, ordered by name within is_system."""
+        """Pinned views for the left-nav, ordered by name within is_system.
+
+        Archived views are excluded — archiving hides a view everywhere
+        without clearing its pinned flag, so unarchiving restores the pin.
+        """
         return list(
             cls.get_queryset()
-            .filter(user=user, pinned=True)
+            .filter(user=user, pinned=True, archived=False)
             .order_by("-is_system", "name")
         )

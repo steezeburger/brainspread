@@ -36,6 +36,10 @@ class UpdatePageEmbeddedViewCommand(AbstractBaseCommand):
         order = self.form.cleaned_data.get("order")
         if order is not None:
             fields["order"] = order
+        # None = color wasn't in the request; "" = explicit clear.
+        color = self.form.cleaned_data.get("color")
+        if color is not None:
+            fields["color"] = color
         if not fields:
             return embed
 

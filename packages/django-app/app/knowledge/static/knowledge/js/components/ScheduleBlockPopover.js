@@ -133,7 +133,7 @@ window.ScheduleBlockPopover = {
     // the target date and target time so the chip lands on the right
     // calendar day even if "now + offset" crosses midnight.
     relativeTimePresets() {
-      return [30, 60].map((minutes) => {
+      return [5, 15, 30, 60].map((minutes) => {
         const target = new Date(this.nowMs + minutes * 60_000);
         const { date, time } = localDateTimeISO(target);
         return {

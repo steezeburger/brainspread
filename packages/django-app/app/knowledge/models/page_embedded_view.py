@@ -13,6 +13,20 @@ SCOPE_CHOICES = [
     (SCOPE_DAILY, "Daily"),
 ]
 
+# Accent palette for embeds. Named keys rather than raw hex so the CSS
+# owns the actual values (and can tune them per theme). Empty string =
+# no accent (the default plain border).
+EMBED_COLOR_NONE = ""
+EMBED_COLOR_CHOICES = [
+    (EMBED_COLOR_NONE, "None"),
+    ("red", "Red"),
+    ("orange", "Orange"),
+    ("yellow", "Yellow"),
+    ("green", "Green"),
+    ("blue", "Blue"),
+    ("purple", "Purple"),
+]
+
 
 class PageEmbeddedView(UUIDModelMixin, CRUDTimestampsMixin):
     """A SavedView embedded on a Page as a pinned widget.
@@ -65,6 +79,16 @@ class PageEmbeddedView(UUIDModelMixin, CRUDTimestampsMixin):
         default=False,
         help_text="When true, the embed renders header-only on the page",
     )
+    color = models.CharField(
+        max_length=16,
+        choices=EMBED_COLOR_CHOICES,
+        default=EMBED_COLOR_NONE,
+        blank=True,
+        help_text=(
+            "Accent color for the embed's border/title on the page — lets "
+            "an embed (e.g. an overdue view) stand out. Empty = no accent."
+        ),
+    )
 
     class Meta:
         db_table = "page_embedded_views"
@@ -95,6 +119,7 @@ class PageEmbeddedView(UUIDModelMixin, CRUDTimestampsMixin):
             "uuid": str(self.uuid),
             "order": self.order,
             "collapsed": self.collapsed,
+            "color": self.color,
             "saved_view": {
                 "uuid": str(self.saved_view.uuid),
                 "name": self.saved_view.name,
@@ -113,4 +138,5 @@ class PageEmbeddedViewData(TypedDict):
     uuid: str
     order: int
     collapsed: bool
+    color: str
     saved_view: PageEmbeddedViewSavedViewSummary

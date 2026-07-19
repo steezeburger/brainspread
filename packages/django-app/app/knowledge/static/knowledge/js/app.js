@@ -22,6 +22,8 @@ const KnowledgeApp = createApp({
 
     const isGraphRoute = window.location.pathname === "/knowledge/graph/";
     const isPagesRoute = window.location.pathname === "/knowledge/pages/";
+    const isTemplatesRoute =
+      window.location.pathname === "/knowledge/templates/";
     const viewsMatch = window.location.pathname.match(
       /^\/knowledge\/views(?:\/([^\/]+))?\/?$/
     );
@@ -34,9 +36,11 @@ const KnowledgeApp = createApp({
         ? "graph"
         : isPagesRoute
           ? "pages"
-          : isViewsRoute
-            ? "views"
-            : "journal"
+          : isTemplatesRoute
+            ? "templates"
+            : isViewsRoute
+              ? "views"
+              : "journal"
       : "login";
 
     return {
@@ -83,6 +87,7 @@ const KnowledgeApp = createApp({
     GraphView: window.GraphView,
     SavedViewsPage: window.SavedViewsPage,
     PagesListPage: window.PagesListPage,
+    TemplatesPage: window.TemplatesPage,
   },
 
   computed: {
@@ -104,11 +109,13 @@ const KnowledgeApp = createApp({
     },
 
     showChatPanel() {
-      // Whiteboards, graph view, and the saved-views / all-pages
-      // surfaces use the full column width; chat is noise there.
+      // Whiteboards, graph view, and the saved-views / all-pages /
+      // templates surfaces use the full column width; chat is noise
+      // there.
       if (this.currentView === "graph") return false;
       if (this.currentView === "views") return false;
       if (this.currentView === "pages") return false;
+      if (this.currentView === "templates") return false;
       return this.currentPagePageType !== "whiteboard";
     },
   },
@@ -164,6 +171,13 @@ const KnowledgeApp = createApp({
       window.location.pathname === "/knowledge/pages/"
     ) {
       this.currentView = "pages";
+    }
+
+    if (
+      this.isAuthenticated &&
+      window.location.pathname === "/knowledge/templates/"
+    ) {
+      this.currentView = "templates";
     }
 
     // Reapply theme after auth check in case user data was updated
@@ -545,6 +559,10 @@ const KnowledgeApp = createApp({
 
     navigateToPages() {
       window.location.href = "/knowledge/pages/";
+    },
+
+    navigateToTemplates() {
+      window.location.href = "/knowledge/templates/";
     },
 
     // Fired by child components (CustomEvent 'brainspread:toast', detail = {message, type, duration}).
@@ -1107,6 +1125,7 @@ const KnowledgeApp = createApp({
                             @navigate-graph="navigateToGraph"
                             @navigate-views="navigateToViews"
                             @navigate-pages="navigateToPages"
+                            @navigate-templates="navigateToTemplates"
                             @open-search="openSpotlight"
                             @create-page="createNewPage"
                             @create-whiteboard="createNewWhiteboard"
@@ -1125,6 +1144,7 @@ const KnowledgeApp = createApp({
                             @navigate-graph="navigateToGraph"
                             @navigate-views="navigateToViews"
                             @navigate-pages="navigateToPages"
+                            @navigate-templates="navigateToTemplates"
                             @open-search="openSpotlight"
                             @create-page="createNewPage"
                             @create-whiteboard="createNewWhiteboard"
@@ -1145,6 +1165,7 @@ const KnowledgeApp = createApp({
                             @navigate-graph="navigateToGraph"
                             @navigate-views="navigateToViews"
                             @navigate-pages="navigateToPages"
+                            @navigate-templates="navigateToTemplates"
                             @open-search="openSpotlight"
                             @create-page="createNewPage"
                             @create-whiteboard="createNewWhiteboard"
@@ -1156,6 +1177,27 @@ const KnowledgeApp = createApp({
                             <PagesListPage />
                         </div>
                     </div>
+                    <div v-else-if="currentView === 'templates'" class="views-layout">
+                        <LeftNav
+                            ref="leftNav"
+                            :user="user"
+                            @navigate-to-slug="onNavigateToSlug"
+                            @navigate-today="redirectToToday"
+                            @navigate-graph="navigateToGraph"
+                            @navigate-views="navigateToViews"
+                            @navigate-pages="navigateToPages"
+                            @navigate-templates="navigateToTemplates"
+                            @open-search="openSpotlight"
+                            @create-page="createNewPage"
+                            @create-whiteboard="createNewWhiteboard"
+                            @use-template="useTemplate"
+                            @open-settings="openSettings"
+                            @open-help="openHelp"
+                            @logout="requestLogout" />
+                        <div class="main-content-area">
+                            <TemplatesPage />
+                        </div>
+                    </div>
                     <div v-else class="content-layout">
                         <LeftNav
                             ref="leftNav"
@@ -1165,6 +1207,7 @@ const KnowledgeApp = createApp({
                             @navigate-graph="navigateToGraph"
                             @navigate-views="navigateToViews"
                             @navigate-pages="navigateToPages"
+                            @navigate-templates="navigateToTemplates"
                             @open-search="openSpotlight"
                             @create-page="createNewPage"
                             @create-whiteboard="createNewWhiteboard"

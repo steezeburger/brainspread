@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from common.forms import BaseForm, UUIDModelChoiceField
 from core.repositories import UserRepository
 
+from ..models import Block
 from ..repositories import BlockRepository, PageRepository
 
 VALID_BLOCK_TYPES = (
@@ -36,6 +37,9 @@ class CreateBlocksBulkForm(BaseForm):
         queryset=BlockRepository.get_queryset(), required=False
     )
     blocks = forms.JSONField()
+    # Provenance stamp forwarded to every created block — the AI-chat
+    # handler passes "ai_chat"; absent means "web".
+    created_via = forms.ChoiceField(choices=Block.CREATED_VIA_CHOICES, required=False)
 
     def clean(self):
         cleaned = super().clean()

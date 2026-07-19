@@ -64,7 +64,6 @@ const Page = {
       page: null,
       directBlocks: [], // Blocks that belong directly to this page
       referencedBlocks: [], // Blocks from other pages that reference this page
-      overdueBlocks: [], // Dated blocks past their due date (today's daily only)
       embeddedViews: [], // SavedView widgets pinned to this page (PageEmbeddedView)
       schedulePopoverOpen: false,
       schedulePopoverBlock: null,
@@ -239,14 +238,6 @@ const Page = {
       return this.selectedBlockUuids.size;
     },
 
-    totalOverdueBlocks() {
-      return this.overdueBlocks.length;
-    },
-
-    hasOverdueBlocks() {
-      return this.overdueBlocks.length > 0;
-    },
-
     // Sharing is meaningful for regular pages only. Daily notes and
     // whiteboards are intentionally excluded — sharing a moving date or a
     // tldraw snapshot has different UX considerations we can revisit later.
@@ -410,9 +401,9 @@ const Page = {
     },
 
     // Copy an absolute deep link to the block to the user's
-    // clipboard. Uses `block.page_slug` when present (referenced /
-    // overdue blocks set it via `include_page_context=True`) and
-    // falls back to the current page's slug for direct blocks.
+    // clipboard. Uses `block.page_slug` when present (referenced
+    // blocks set it via `include_page_context=True`) and falls back
+    // to the current page's slug for direct blocks.
     // Mirrors the share-link clipboard fallback so non-secure
     // contexts (private network IPs, http://) still work.
     async copyBlockLink(block) {
@@ -456,8 +447,8 @@ const Page = {
     // Read `#block-<uuid>` from the current URL and scroll the
     // matching block into view, if any. Looks up the block via the
     // existing `data-block-uuid` attribute the BlockComponent already
-    // renders, so this works for direct, referenced, AND overdue
-    // blocks without extra plumbing. Skips silently when the
+    // renders, so this works for direct and referenced blocks
+    // without extra plumbing. Skips silently when the
     // fragment is missing or the block didn't render (e.g. the link
     // is stale because the block was deleted or moved). Tracks the
     // last fragment we scrolled to so silent reloads (AI chat,
@@ -518,15 +509,11 @@ const Page = {
 
     pageHasBlock(uuid) {
       // True when `uuid` is rendered anywhere on this page — the direct
-      // tree, the referenced-block tree, or the overdue list. Used to
-      // skip reloads for changes to blocks we aren't showing.
+      // tree or the referenced-block tree. Used to skip reloads for
+      // changes to blocks we aren't showing.
       const inTree = (blocks) =>
         this.flattenBlockTree(blocks).some((b) => b.uuid === uuid);
-      return (
-        inTree(this.directBlocks) ||
-        inTree(this.referencedBlocks) ||
-        inTree(this.overdueBlocks)
-      );
+      return inTree(this.directBlocks) || inTree(this.referencedBlocks);
     },
 
     handleBlockChanged(event) {
@@ -588,7 +575,6 @@ const Page = {
           this.referencedBlocks = this.setupParentReferences(
             result.data.referenced_blocks || []
           );
-          this.overdueBlocks = result.data.overdue_blocks || [];
           this.embeddedViews = result.data.embedded_views || [];
           this.$emit("page-loaded", this.page);
           // Flatten the block tree for consumers (e.g. ChatPanel's
@@ -608,7 +594,7 @@ const Page = {
         }
 
         // If the URL carries a `#block-<uuid>` fragment (e.g. the
-        // user followed a Discord reminder or an overdue link), wait
+        // user followed a Discord reminder or a deep link), wait
         // for the freshly-loaded blocks to render and then scroll
         // that block into view. Done after every loadPage, not just
         // mount, so silent reloads from the AI chat don't clobber
@@ -843,6 +829,24 @@ const Page = {
         }
       } catch (err) {
         console.error("toggle embed collapsed failed:", err);
+        this.embeddedViews[idx] = embed; // rollback
+      }
+    },
+
+    async setEmbedColor(embed, color) {
+      // Same optimistic-update shape as toggleEmbedCollapsed.
+      const idx = this.embeddedViews.findIndex((e) => e.uuid === embed.uuid);
+      if (idx === -1) return;
+      this.embeddedViews[idx] = { ...embed, color };
+      try {
+        const r = await window.apiService.updatePageEmbeddedView(embed.uuid, {
+          color,
+        });
+        if (!r || !r.success) {
+          this.embeddedViews[idx] = embed; // rollback
+        }
+      } catch (err) {
+        console.error("set embed color failed:", err);
         this.embeddedViews[idx] = embed; // rollback
       }
     },
@@ -4348,6 +4352,10 @@ const Page = {
                     <button @click="moveUndoneTodos" class="context-menu-item" :disabled="loading" role="menuitem">
                       move undone TODOs here
                     </button>
+                    <button @click="addFromTemplate" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">+</span>
+                      <span>add from template…</span>
+                    </button>
                     <button @click="enterSelectionMode" class="context-menu-item" role="menuitem">
                       <span class="context-menu-icon">◉</span>
                       <span>select multiple</span>
@@ -4511,52 +4519,6 @@ const Page = {
           </div>
         </div>
 
-        <!-- Overdue Section (today's daily page only) -->
-        <div v-if="hasOverdueBlocks" class="overdue-section">
-          <h3 class="overdue-title">
-            {{ totalOverdueBlocks }} overdue
-          </h3>
-          <div class="overdue-blocks-container">
-            <div v-for="block in overdueBlocks" :key="block.uuid" class="referenced-block-wrapper overdue-block-wrapper" :class="{ 'in-context': isBlockInContext(block.uuid) }" :data-block-uuid="block.uuid">
-              <div class="block-meta">
-                <a class="page-title clickable" :href="pageBlockHref(block.page_slug, block.uuid)">{{ block.page_type === 'daily' ? formatDate(block.page_title) : block.page_title }}</a>
-                <span v-if="block.due_date" class="overdue-due-date">due {{ formatDate(block.due_date) }}<template v-if="block.due_time"> {{ block.due_time }}</template></span>
-              </div>
-              <BlockComponent
-                :block="block"
-                :onBlockContentChange="onBlockContentChange"
-                :onBlockKeyDown="onBlockKeyDown"
-                :startEditing="startEditing"
-                :stopEditing="stopEditing"
-                :deleteBlock="deleteBlock"
-                :toggleBlockTodo="toggleBlockTodo"
-                :setBlockProperties="setBlockProperties"
-                :formatContentWithTags="formatContentWithTags"
-                :isBlockInContext="isBlockInContext"
-                :isBlockSelected="isBlockSelected"
-                :onBlockAddToContext="onBlockAddToContext"
-                :onBlockRemoveFromContext="onBlockRemoveFromContext"
-                :indentBlock="indentBlock"
-                :outdentBlock="outdentBlock"
-                :createBlockAfter="createBlockAfter"
-                :createBlockBefore="createBlockBefore"
-                :moveBlockUp="moveBlockUp"
-                :moveBlockDown="moveBlockDown"
-                :moveBlockToToday="moveBlockToToday"
-                :openMovePagePicker="openMovePagePicker"
-                :openMoveUnderPicker="openMoveUnderPicker"
-                :openBlockInfoModal="openBlockInfoModal"
-                :onBlockPaste="onBlockPaste"
-                :onBlockDrop="onBlockDrop"
-                :onBlockAttachPick="onBlockAttachPick"
-                :scheduleBlock="scheduleBlock"
-                :copyBlockLink="copyBlockLink"
-                :openBlockChatPopover="openBlockChatPopover"
-              />
-            </div>
-          </div>
-        </div>
-
         <!-- Embedded Views Section (pinned above bullets) -->
         <div v-if="embeddedViews.length" class="embedded-views-section">
           <QueryEmbedBlock
@@ -4566,6 +4528,7 @@ const Page = {
             :context-date="currentDate"
             :on-delete="deleteEmbed"
             :on-toggle-collapsed="toggleEmbedCollapsed"
+            :on-set-color="setEmbedColor"
             :on-move-up="idx > 0 ? moveEmbedUp : null"
             :on-move-down="idx < embeddedViews.length - 1 ? moveEmbedDown : null"
             :on-schedule-block="scheduleBlock"

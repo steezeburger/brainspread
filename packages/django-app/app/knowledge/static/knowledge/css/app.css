@@ -359,6 +359,24 @@ body {
   box-shadow: 2px 2px 0 var(--border-primary);
 }
 
+/* Compact variant for buttons living inside list rows — the full-size
+   .btn (0.75rem padding + 3px border + 4px shadow) is taller than a
+   row and overflows its container. Same brutalist look, row-scale. */
+.btn.btn-compact {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+  border-width: 2px;
+  box-shadow: 2px 2px 0 var(--border-primary);
+}
+.btn.btn-compact:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--border-primary);
+}
+.btn.btn-compact:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--border-primary);
+}
+
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -2683,6 +2701,18 @@ kbd {
   width: 1.1em;
   height: 1.1em;
   display: block;
+}
+
+/* Saved views get a funnel (filter/query) SVG so the nav icon no
+   longer reads as a resized twin of the "☰" all-pages glyph. Same
+   em-based sizing rationale as .leftnav-today-svg; inside the panel's
+   .leftnav-icon span it needs inline-block + vertical-align to sit on
+   the text baseline like the glyph it replaced. */
+.leftnav-views-svg {
+  width: 1.05em;
+  height: 1.05em;
+  display: inline-block;
+  vertical-align: -0.15em;
 }
 
 .leftnav-label {
@@ -6626,38 +6656,6 @@ kbd {
   min-width: 12rem;
 }
 
-/* Overdue section on today's daily page (see issue #59) */
-.overdue-section {
-  margin-bottom: 1.5rem;
-  padding: 0.75rem 1rem;
-  border-left: 3px solid var(--error-color, #c0392b);
-  background: color-mix(in srgb, var(--error-color, #c0392b) 6%, transparent);
-  border-radius: 0;
-}
-
-.overdue-title {
-  margin: 0 0 0.5rem;
-  font-size: 0.95rem;
-  text-transform: lowercase;
-  color: var(--error-color, #c0392b);
-}
-
-.overdue-due-date {
-  /* Pushed to the right of the meta row (page name sits on the left) so
-     the due date reads as its own field — matches the embed rows'
-     right-aligned due chip, keeping the overdue red emphasis. */
-  margin-left: auto;
-  flex: 0 0 auto;
-  font-size: 0.8rem;
-  color: var(--error-color, #c0392b);
-  font-family: var(--font-mono, monospace);
-  white-space: nowrap;
-  border: 1px solid var(--error-color, #c0392b);
-  border-radius: 3px;
-  padding: 0 5px;
-  opacity: 0.85;
-}
-
 /* Inline due-date chip on blocks (issue #59) */
 .block-due-pill {
   display: inline-flex;
@@ -7921,6 +7919,48 @@ a.hashtag-mention:hover,
   color: var(--text-secondary);
 }
 
+/* Index rows carry an always-visible star so favoriting is
+   discoverable without opening the view — same reason the detail
+   star below stays visible instead of hover-only. */
+.saved-view-list-row {
+  display: flex;
+  align-items: center;
+}
+.saved-view-list-row > a {
+  flex: 1;
+  min-width: 0;
+}
+.saved-view-row-star {
+  font-size: 1.05rem;
+  padding: 0.15rem 0.2rem 0.15rem 0.6rem;
+}
+.saved-view-list .saved-view-row-star,
+.saved-view-title-row .page-favorite-toggle {
+  opacity: 1;
+}
+
+/* Archived views: collapsed section at the bottom of the index.
+   Reuses the left-nav section-toggle look, sized up slightly for the
+   main content column. */
+.saved-view-archived-section {
+  margin-top: 1.25rem;
+}
+.saved-view-archived-toggle {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.1rem;
+  margin-bottom: 0.4rem;
+}
+.saved-view-list-row.is-archived > a {
+  color: var(--text-secondary);
+}
+.saved-view-unarchive-btn {
+  margin: 0.35rem 0.6rem 0.35rem 0;
+  flex: 0 0 auto;
+}
+.saved-views-page .archived-pill {
+  color: var(--text-muted);
+}
+
 .saved-view-editor {
   border: 1px solid var(--border-primary);
   border-radius: 0;
@@ -8182,13 +8222,19 @@ a.hashtag-mention:hover,
 .result-due {
   flex: 0 0 auto;
   align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   font-size: 0.8rem;
   color: var(--text-secondary);
-  font-family: var(--font-mono, monospace);
+  font-family: inherit;
   white-space: nowrap;
   border: 1px solid var(--border-primary);
   border-radius: 3px;
   padding: 0 5px;
+}
+.result-due.overdue {
+  color: var(--error-color, #c0392b);
 }
 .result-block-type {
   display: inline-block;
@@ -8219,6 +8265,77 @@ a.hashtag-mention:hover,
 }
 .block-query-embed.is-collapsed {
   padding-bottom: 0.6rem;
+}
+
+/* Embed accent colors. Each accent class only sets --embed-accent;
+   the shared rules below consume it for the left-border + tinted
+   background + title color (same visual language as the retired
+   overdue section, which used --error-color this way). Muted hexes
+   chosen to read on both light and dark themes. */
+.embed-accent-red {
+  --embed-accent: #c0392b;
+}
+.embed-accent-orange {
+  --embed-accent: #d35400;
+}
+.embed-accent-yellow {
+  --embed-accent: #b7950b;
+}
+.embed-accent-green {
+  --embed-accent: #1e8449;
+}
+.embed-accent-blue {
+  --embed-accent: #2471a3;
+}
+.embed-accent-purple {
+  --embed-accent: #7d3c98;
+}
+.block-query-embed[class*="embed-accent-"] {
+  border-left: 3px solid var(--embed-accent);
+  background: color-mix(in srgb, var(--embed-accent) 6%, var(--bg-secondary));
+}
+.block-query-embed[class*="embed-accent-"] .block-query-embed-title {
+  color: var(--embed-accent);
+}
+
+/* Accent swatch picker in the embed header actions. The trigger dot
+   takes the current accent (muted gray when none); the menu is a
+   simple inline swatch row anchored under the button. */
+.embed-color-picker {
+  position: relative;
+  display: inline-flex;
+}
+.embed-color-btn {
+  color: var(--embed-accent, var(--text-muted));
+}
+.embed-color-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  gap: 2px;
+  padding: 3px 5px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+}
+.embed-color-swatch {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--embed-accent, var(--text-muted));
+}
+.embed-color-swatch:hover {
+  border-color: var(--border-primary);
+  background: var(--hover-bg);
+}
+.embed-color-swatch.is-current {
+  border-color: var(--text-primary);
 }
 .block-query-embed-header {
   display: flex;
@@ -8282,10 +8399,19 @@ a.hashtag-mention:hover,
 }
 .block-query-embed-actions {
   display: inline-flex;
+  align-items: center;
   gap: 0.25rem;
   margin-left: 0.25rem;
 }
 .block-query-embed-iconbtn {
+  /* Fixed flex-centered square: arrow/×/dot glyphs have wildly
+     different baselines, so baseline layout leaves them looking
+     off-center in the bordered box. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.4rem;
   background: transparent;
   border: 1px solid var(--border-primary);
   border-radius: 0;
@@ -8294,7 +8420,7 @@ a.hashtag-mention:hover,
   font: inherit;
   font-size: 0.85rem;
   line-height: 1;
-  padding: 0.1rem 0.4rem;
+  padding: 0;
 }
 .block-query-embed-iconbtn:hover {
   background: var(--hover-bg);
@@ -8314,6 +8440,70 @@ a.hashtag-mention:hover,
   margin: 0 auto;
   width: 100%;
   color: var(--text-primary);
+}
+
+/* Templates browser (/knowledge/templates/) — same column framing as
+   the all-pages browser, list rows shaped like the saved-views index
+   with an inline action pair per row. */
+.templates-page {
+  padding: 1.25rem 1.75rem 4rem;
+  max-width: 950px;
+  margin: 0 auto;
+  width: 100%;
+  color: var(--text-primary);
+}
+.templates-page-hint {
+  margin: 0 0 1.25rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  max-width: 60ch;
+}
+.templates-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  background: var(--bg-secondary);
+}
+.templates-list-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--border-primary);
+}
+.templates-list-row:last-child {
+  border-bottom: none;
+}
+.templates-list-link {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.7rem 0.9rem;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.templates-list-link:hover {
+  background: var(--hover-bg);
+}
+.templates-list-name {
+  font-weight: 600;
+}
+.templates-list-modified {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.templates-list-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.9rem 0.35rem 0;
+}
+.templates-list-actions .btn {
+  text-decoration: none;
 }
 
 .pages-list-header {
@@ -8523,7 +8713,8 @@ a.hashtag-mention:hover,
 }
 
 @media (max-width: 768px) {
-  .pages-list-page {
+  .pages-list-page,
+  .templates-page {
     padding: 1rem 1rem 3rem;
     /* Clear the fixed 45×45 leftnav-rail-toggle pinned to the top-left
        corner on mobile, same as the page-title-container rule above. */

@@ -3,33 +3,23 @@ from typing import List, Tuple
 from django.core.exceptions import ValidationError
 
 from common.commands.abstract_base_command import AbstractBaseCommand
-from knowledge.models import (
-    SYSTEM_VIEW_OVERDUE,
-    Block,
-    Page,
-    PageEmbeddedView,
-)
+from knowledge.models import Block, Page, PageEmbeddedView
 from knowledge.repositories import (
     BlockRepository,
     PageEmbeddedViewRepository,
     PageRepository,
-    SavedViewRepository,
 )
-from knowledge.services import query_engine
 
 from ..forms.get_page_with_blocks_form import GetPageWithBlocksForm
-from ..services.system_views import seed_system_views_for_user
 
 
 class GetPageWithBlocksCommand(AbstractBaseCommand):
     """Command to get a page with all its blocks (and pinned embeds).
 
-    Returns ``(page, direct_blocks, referenced_blocks, overdue_blocks,
-    embedded_views)``. The Overdue block list remains a parallel
-    pre-rendered section (full-fidelity BlockComponent) so users can
-    still mark items done from the daily page without going to the
-    source. Embedded views are the saved-view widgets pinned above
-    the bullet area.
+    Returns ``(page, direct_blocks, referenced_blocks, embedded_views)``.
+    Embedded views are the saved-view widgets pinned above the bullet
+    area — including the system ``overdue`` view for users who embed it,
+    which replaced the old hard-coded Overdue section on today's daily.
     """
 
     def __init__(self, form: GetPageWithBlocksForm) -> None:
@@ -37,7 +27,7 @@ class GetPageWithBlocksCommand(AbstractBaseCommand):
 
     def execute(
         self,
-    ) -> Tuple[Page, List[Block], List[Block], List[Block], List[PageEmbeddedView]]:
+    ) -> Tuple[Page, List[Block], List[Block], List[PageEmbeddedView]]:
         super().execute()
 
         user = self.form.cleaned_data.get("user")
@@ -68,37 +58,11 @@ class GetPageWithBlocksCommand(AbstractBaseCommand):
         # ancestor's reference, so a standalone entry would just duplicate.
         referenced_blocks = BlockRepository.get_referenced_blocks(page)
 
-        overdue_blocks: List[Block] = []
-        if page.page_type == "daily" and page.date == today:
-            overdue_blocks = self._fetch_overdue_via_system_view(user)
-
         embedded_views = list(PageEmbeddedViewRepository.list_for_page(page))
 
         return (
             page,
             list(direct_blocks),
             list(referenced_blocks),
-            overdue_blocks,
             embedded_views,
         )
-
-    def _fetch_overdue_via_system_view(self, user) -> List[Block]:
-        """Run the seeded ``overdue`` SavedView for the user.
-
-        Lazily seeds the system views if the user predates the seed
-        migration somehow (the migration backfilled existing users, but
-        defensive: missing seed shouldn't 500 the daily page). On a
-        compile error we fall through to an empty list rather than break
-        the page render.
-        """
-        view = SavedViewRepository.get_system_view(SYSTEM_VIEW_OVERDUE, user=user)
-        if view is None:
-            seed_system_views_for_user(user)
-            view = SavedViewRepository.get_system_view(SYSTEM_VIEW_OVERDUE, user=user)
-        if view is None:
-            return []
-        try:
-            compiled = query_engine.compile(view.filter, user=user, sort=view.sort)
-        except query_engine.QueryEngineError:
-            return []
-        return list(BlockRepository.run_compiled_query(user, compiled))

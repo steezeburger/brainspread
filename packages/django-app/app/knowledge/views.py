@@ -50,6 +50,7 @@ from knowledge.commands import (
     SearchPagesCommand,
     SetBlockCompletedAtCommand,
     SetPageFavoritedCommand,
+    SetSavedViewArchivedCommand,
     SetSavedViewPinnedCommand,
     SharePageCommand,
     ToggleBlockTodoCommand,
@@ -111,6 +112,7 @@ from knowledge.forms import (
     SearchPagesForm,
     SetBlockCompletedAtForm,
     SetPageFavoritedForm,
+    SetSavedViewArchivedForm,
     SetSavedViewPinnedForm,
     SharePageForm,
     ToggleBlockTodoForm,
@@ -915,7 +917,6 @@ def get_page_with_blocks(request):
                 page,
                 direct_blocks,
                 referenced_blocks,
-                overdue_blocks,
                 embedded_views,
             ) = command.execute()
 
@@ -927,9 +928,6 @@ def get_page_with_blocks(request):
                 referenced_blocks=[
                     block.to_dict_with_children(include_page_context=True)
                     for block in referenced_blocks
-                ],
-                overdue_blocks=[
-                    block.to_dict(include_page_context=True) for block in overdue_blocks
                 ],
                 embedded_views=[embed.to_dict() for embed in embedded_views],
             )
@@ -1996,6 +1994,22 @@ def set_saved_view_pinned(request):
         return _saved_view_response(False, errors=form.errors)
     try:
         view = SetSavedViewPinnedCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
+    return _saved_view_response(True, data=view.to_dict())
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def set_saved_view_archived(request):
+    """Archive or unarchive a saved view — hides it from the main list."""
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = SetSavedViewArchivedForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        view = SetSavedViewArchivedCommand(form).execute()
     except ValidationError as exc:
         return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
     return _saved_view_response(True, data=view.to_dict())

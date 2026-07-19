@@ -652,6 +652,11 @@ class BlockRepository(BaseRepository):
                     due_at=src.due_at,
                     due_at_has_time=src.due_at_has_time,
                     collapsed=src.collapsed,
+                    # Clones are stamped as web-created: duplicate-page and
+                    # template flows are only reachable from the web UI
+                    # today, and the clone is a fresh authored row — the
+                    # source block keeps its own provenance.
+                    created_via=Block.CREATED_VIA_WEB,
                 )
                 uuid_map[src.id] = new_block
                 created.append(new_block)

@@ -971,6 +971,13 @@ class ApiService {
     return await this.request("/knowledge/api/views/pinned/");
   }
 
+  async setSavedViewArchived(viewUuid, archived) {
+    return await this.request("/knowledge/api/views/archive/", {
+      method: "POST",
+      body: JSON.stringify({ view: viewUuid, archived: !!archived }),
+    });
+  }
+
   // ---- Page embedded views (issue #60 follow-up) ---------------------
 
   async createPageEmbeddedView(pageUuid, savedViewUuid) {

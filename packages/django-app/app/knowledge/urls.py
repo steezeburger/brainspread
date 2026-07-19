@@ -131,6 +131,11 @@ urlpatterns = [
         views.list_pinned_saved_views,
         name="list_pinned_saved_views",
     ),
+    path(
+        "api/views/archive/",
+        views.set_saved_view_archived,
+        name="set_saved_view_archived",
+    ),
     # Page embedded views (issue #60 follow-up) — embeds live in their
     # own table and have their own CRUD endpoints.
     path("api/embeds/", views.create_page_embedded_view, name="create_embed"),
@@ -148,4 +153,7 @@ urlpatterns = [
     # All-pages browser (issue #133) — SPA shell again; app.js mounts
     # PagesListPage for this path.
     path("pages/", views.index, name="pages_index"),
+    # Templates browser — SPA shell again; app.js mounts TemplatesPage
+    # for this path.
+    path("templates/", views.index, name="templates_index"),
 ]

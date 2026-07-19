@@ -57,6 +57,7 @@ from .send_due_reminders_form import SendDueRemindersForm
 from .set_block_completed_at_form import SetBlockCompletedAtForm
 from .set_block_type_form import SetBlockTypeForm
 from .set_page_favorited_form import SetPageFavoritedForm
+from .set_saved_view_archived_form import SetSavedViewArchivedForm
 from .set_saved_view_pinned_form import SetSavedViewPinnedForm
 from .share_page_form import SharePageForm
 from .snooze_block_form import SnoozeBlockForm

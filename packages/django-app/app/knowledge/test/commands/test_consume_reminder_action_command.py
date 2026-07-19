@@ -111,7 +111,52 @@ class ConsumeReminderActionCommandTests(TestCase):
         action.refresh_from_db()
         self.assertIsNotNone(action.used_at)
 
-    def test_snooze_1d_resets_pending_with_new_fire_at(self) -> None:
+    def test_snooze_5m_resets_pending_with_new_fire_at(self) -> None:
+        action = self._make_action(ReminderAction.ACTION_SNOOZE_5M)
+        pinned = timezone.now()
+
+        result = self._run(action.token, now=pinned)
+
+        self.assertEqual(result["status"], "executed")
+        self.assertEqual(result["detail"], "Snoozed for 5 minutes.")
+
+        self.reminder.refresh_from_db()
+        self.assertEqual(self.reminder.status, Reminder.STATUS_PENDING)
+        self.assertIsNone(self.reminder.sent_at)
+        self.assertEqual(
+            self.reminder.fire_at.replace(microsecond=0),
+            (pinned + timedelta(minutes=5)).replace(microsecond=0),
+        )
+
+    def test_snooze_1d_fires_same_time_tomorrow(self) -> None:
+        # Day-level snooze is a calendar statement, not an alarm-clock
+        # offset: it re-fires at the reminder's own time-of-day tomorrow,
+        # not at click-time + 24h.
+        fire_at = timezone.now().replace(microsecond=0) - timedelta(minutes=5)
+        self.reminder.fire_at = fire_at
+        self.reminder.save(update_fields=["fire_at"])
+        action = self._make_action(ReminderAction.ACTION_SNOOZE_1D)
+        pinned = timezone.now()
+
+        result = self._run(action.token, now=pinned)
+
+        self.assertEqual(result["status"], "executed")
+        self.assertEqual(result["detail"], "Snoozed until the same time tomorrow.")
+
+        self.reminder.refresh_from_db()
+        self.assertEqual(self.reminder.status, Reminder.STATUS_PENDING)
+        self.assertIsNone(self.reminder.sent_at)
+        # Default test user tz is UTC, so "same local time tomorrow" is
+        # exactly original fire_at + 1 day.
+        self.assertEqual(self.reminder.fire_at, fire_at + timedelta(days=1))
+
+    def test_snooze_1d_clicked_days_late_lands_tomorrow(self) -> None:
+        # A link clicked long after the reminder fired still snoozes to
+        # the future — tomorrow at the original time-of-day — instead of
+        # a moment that already passed.
+        fire_at = timezone.now().replace(microsecond=0) - timedelta(days=3)
+        self.reminder.fire_at = fire_at
+        self.reminder.save(update_fields=["fire_at"])
         action = self._make_action(ReminderAction.ACTION_SNOOZE_1D)
         pinned = timezone.now()
 
@@ -120,11 +165,8 @@ class ConsumeReminderActionCommandTests(TestCase):
         self.assertEqual(result["status"], "executed")
 
         self.reminder.refresh_from_db()
-        self.assertEqual(self.reminder.status, Reminder.STATUS_PENDING)
-        self.assertEqual(
-            self.reminder.fire_at.replace(microsecond=0),
-            (pinned + timedelta(days=1)).replace(microsecond=0),
-        )
+        self.assertGreater(self.reminder.fire_at, pinned)
+        self.assertEqual(self.reminder.fire_at, fire_at + timedelta(days=4))
 
     def test_mark_doing_flips_block_to_doing_and_consumes_token(self) -> None:
         # The block starts as "todo"; clicking Mark doing should land

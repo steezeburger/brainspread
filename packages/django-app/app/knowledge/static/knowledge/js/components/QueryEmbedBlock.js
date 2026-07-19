@@ -37,6 +37,7 @@ window.QueryEmbedBlock = {
     onToggleCollapsed: { type: Function, default: null },
     onMoveUp: { type: Function, default: null },
     onMoveDown: { type: Function, default: null },
+    onSetColor: { type: Function, default: null },
     // Host-page delegates forwarded straight to each EmbedResultRow.
     // Schedule + Block info need a modal that lives on the host;
     // Move-to-today / Move-to-page need to trigger the host's own
@@ -57,6 +58,18 @@ window.QueryEmbedBlock = {
       // embeds fetch count-only, so this stays false until they expand —
       // it's how the expand watcher knows it still needs the rows.
       detailLoaded: false,
+      // Accent swatch row visibility. Keys mirror the backend's
+      // EMBED_COLOR_CHOICES; "" = clear the accent.
+      showColorMenu: false,
+      colorOptions: [
+        { key: "", label: "none" },
+        { key: "red", label: "red" },
+        { key: "orange", label: "orange" },
+        { key: "yellow", label: "yellow" },
+        { key: "green", label: "green" },
+        { key: "blue", label: "blue" },
+        { key: "purple", label: "purple" },
+      ],
     };
   },
 
@@ -74,6 +87,10 @@ window.QueryEmbedBlock = {
     },
     collapsed() {
       return !!(this.embed && this.embed.collapsed);
+    },
+    accentClass() {
+      const c = this.embed && this.embed.color;
+      return c ? `embed-accent-${c}` : "";
     },
     // The date-anchor badge: tells the reader whether this embed's date
     // tokens resolved against the daily it's on, or against live today.
@@ -270,10 +287,15 @@ window.QueryEmbedBlock = {
       if (!this.onMoveDown) return;
       this.onMoveDown(this.embed);
     },
+    onColorPick(colorKey) {
+      this.showColorMenu = false;
+      if (!this.onSetColor) return;
+      this.onSetColor(this.embed, colorKey);
+    },
   },
 
   template: `
-    <div class="block-query-embed" :class="{ 'is-collapsed': collapsed }" :data-embed-uuid="embed.uuid">
+    <div class="block-query-embed" :class="[{ 'is-collapsed': collapsed }, accentClass]" :data-embed-uuid="embed.uuid">
       <div class="block-query-embed-header">
         <button
           v-if="onToggleCollapsed"
@@ -305,6 +327,29 @@ window.QueryEmbedBlock = {
           {{ result.count }}<span v-if="result.truncated">+ truncated</span>
         </span>
         <span class="block-query-embed-actions">
+          <span v-if="onSetColor" class="embed-color-picker">
+            <button
+              type="button"
+              class="block-query-embed-iconbtn embed-color-btn"
+              @click="showColorMenu = !showColorMenu"
+              title="Set accent color"
+              aria-label="Set accent color"
+              :aria-expanded="showColorMenu"
+            >●</button>
+            <span v-if="showColorMenu" class="embed-color-menu" role="menu">
+              <button
+                v-for="c in colorOptions"
+                :key="c.key || 'none'"
+                type="button"
+                class="embed-color-swatch"
+                :class="[c.key ? 'embed-accent-' + c.key : '', { 'is-current': (embed.color || '') === c.key }]"
+                @click="onColorPick(c.key)"
+                :title="c.label"
+                :aria-label="'Accent color: ' + c.label"
+                role="menuitem"
+              >{{ c.key ? '●' : '×' }}</button>
+            </span>
+          </span>
           <button
             v-if="onMoveUp"
             type="button"

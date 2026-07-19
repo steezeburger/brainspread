@@ -127,6 +127,7 @@ class MCPEndpointTestCase(TestCase):
         payload = _content_json(response.json())
         self.assertEqual(payload["block"]["content"], "random thought")
         self.assertEqual(payload["block"]["block_type"], "bullet")
+        self.assertEqual(payload["block"]["created_via"], "mcp")
         self.assertEqual(payload["page"]["page_type"], "daily")
 
     def test_create_block_with_explicit_block_type(self):

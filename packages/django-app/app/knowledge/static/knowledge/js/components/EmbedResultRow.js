@@ -110,6 +110,82 @@ window.EmbedResultRow = {
         b && b.block_type
       );
     },
+    dueLabel(b) {
+      // "2026-04-30" -> "apr 30" (or "apr 30, 2027" for non-current year),
+      // with the time appended for timed dues — same formatting as the
+      // page block tree's scheduledForLabel so both surfaces read alike.
+      const raw = b && b.due_date;
+      if (!raw) return "";
+      const [y, m, d] = raw.split("-").map(Number);
+      const months = [
+        "jan",
+        "feb",
+        "mar",
+        "apr",
+        "may",
+        "jun",
+        "jul",
+        "aug",
+        "sep",
+        "oct",
+        "nov",
+        "dec",
+      ];
+      const sameYear = y === new Date().getFullYear();
+      const dateLabel = sameYear
+        ? `${months[m - 1]} ${d}`
+        : `${months[m - 1]} ${d}, ${y}`;
+      const t = b.due_time;
+      if (t) {
+        return `${dateLabel} ${window.formatTimeForUser?.(t) || t}`;
+      }
+      return dateLabel;
+    },
+    isDueOverdue(b) {
+      if (!b || !b.due_date) return false;
+      if (b.completed_at) return false;
+      if (!["todo", "doing", "later"].includes(b.block_type)) return false;
+      // en-CA toLocaleDateString gives YYYY-MM-DD in the user's local tz —
+      // same comparison the page block tree uses.
+      const todayISO = new Date().toLocaleDateString("en-CA");
+      return b.due_date < todayISO;
+    },
+    reminderInlineLabel(b) {
+      // Same shape as the page block tree's reminderInlineLabel: the
+      // earliest pending reminder's time (user-formatted), prefixed with
+      // its date only when it differs from the due date, with a "+N"
+      // suffix when more pending reminders exist.
+      const t = b && b.pending_reminder_time;
+      if (!t) return "";
+      const timeLabel = window.formatTimeForUser?.(t) || t;
+      const r = b.pending_reminder_date;
+      let dateLabel = "";
+      if (r && b.due_date && r !== b.due_date) {
+        const [y, m, d] = r.split("-").map(Number);
+        const months = [
+          "jan",
+          "feb",
+          "mar",
+          "apr",
+          "may",
+          "jun",
+          "jul",
+          "aug",
+          "sep",
+          "oct",
+          "nov",
+          "dec",
+        ];
+        const sameYear = y === new Date().getFullYear();
+        dateLabel = sameYear
+          ? `${months[m - 1]} ${d}`
+          : `${months[m - 1]} ${d}, ${y}`;
+      }
+      let label = dateLabel ? `${dateLabel}, ${timeLabel}` : timeLabel;
+      const extra = (b.pending_reminders || []).length - 1;
+      if (extra > 0) label += ` +${extra}`;
+      return label;
+    },
     bulletSymbol(b) {
       switch (b && b.block_type) {
         case "todo":
@@ -333,7 +409,12 @@ window.EmbedResultRow = {
             <span v-if="block.page_title"> · {{ block.page_title }}</span>
           </a>
         </div>
-        <span v-if="block.due_date" class="result-due">due {{ block.due_date }}<template v-if="block.due_time"> {{ block.due_time }}</template></span>
+        <span
+          v-if="block.due_date"
+          class="result-due"
+          :class="{ 'overdue': isDueOverdue(block) }"
+          :title="'Due ' + dueLabel(block) + (reminderInlineLabel(block) ? ' · reminder at ' + reminderInlineLabel(block) : '') + (isDueOverdue(block) ? ' (overdue)' : '')"
+        ><svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="0"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg> {{ dueLabel(block) }}<span v-if="reminderInlineLabel(block)"> · <svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><circle cx="8" cy="8" r="6.25"/><polyline points="8,4.5 8,8 11,9.5"/></g></svg> {{ reminderInlineLabel(block) }}</span></span>
         <button
           type="button"
           class="block-menu result-row-menu-btn"

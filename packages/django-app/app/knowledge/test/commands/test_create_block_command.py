@@ -347,3 +347,46 @@ class TestCreateBlockCommand(TestCase):
 
         self.page.refresh_from_db()
         self.assertGreater(self.page.modified_at, original_modified_at)
+
+    def test_created_via_defaults_to_web(self):
+        """The web endpoint never sends created_via — the default stamp
+        must read as human-authored."""
+        form = CreateBlockForm(
+            {
+                "user": self.user.id,
+                "page": self.page.uuid,
+                "content": "typed by a human",
+            }
+        )
+        form.is_valid()
+        block = CreateBlockCommand(form).execute()
+
+        self.assertEqual(block.created_via, "web")
+        self.assertEqual(block.to_dict()["created_via"], "web")
+
+    def test_created_via_honors_explicit_value(self):
+        """Tool surfaces (AI chat, MCP) stamp their own provenance."""
+        form = CreateBlockForm(
+            {
+                "user": self.user.id,
+                "page": self.page.uuid,
+                "content": "written by a tool",
+                "created_via": "mcp",
+            }
+        )
+        form.is_valid()
+        block = CreateBlockCommand(form).execute()
+
+        self.assertEqual(block.created_via, "mcp")
+
+    def test_created_via_rejects_unknown_value(self):
+        form = CreateBlockForm(
+            {
+                "user": self.user.id,
+                "page": self.page.uuid,
+                "content": "bogus source",
+                "created_via": "carrier_pigeon",
+            }
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("created_via", form.errors)
