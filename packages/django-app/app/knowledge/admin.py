@@ -39,6 +39,7 @@ class BlockAdmin(admin.ModelAdmin):
         "parent",
         "block_type",
         "content_type",
+        "created_via",
         "order",
         "due_at",
         "completed_at",
@@ -47,6 +48,7 @@ class BlockAdmin(admin.ModelAdmin):
     list_filter = (
         "block_type",
         "content_type",
+        "created_via",
         "due_at",
         "due_at_has_time",
         "created_at",
@@ -98,7 +100,7 @@ class BlockAdmin(admin.ModelAdmin):
         (
             "Metadata",
             {
-                "fields": ("id", "uuid", "created_at", "modified_at"),
+                "fields": ("id", "uuid", "created_via", "created_at", "modified_at"),
                 "classes": ("collapse",),
             },
         ),

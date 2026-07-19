@@ -359,6 +359,24 @@ body {
   box-shadow: 2px 2px 0 var(--border-primary);
 }
 
+/* Compact variant for buttons living inside list rows — the full-size
+   .btn (0.75rem padding + 3px border + 4px shadow) is taller than a
+   row and overflows its container. Same brutalist look, row-scale. */
+.btn.btn-compact {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+  border-width: 2px;
+  box-shadow: 2px 2px 0 var(--border-primary);
+}
+.btn.btn-compact:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--border-primary);
+}
+.btn.btn-compact:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--border-primary);
+}
+
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -7968,7 +7986,7 @@ a.hashtag-mention:hover,
   color: var(--text-secondary);
 }
 .saved-view-unarchive-btn {
-  margin-right: 0.6rem;
+  margin: 0.35rem 0.6rem 0.35rem 0;
   flex: 0 0 auto;
 }
 .saved-views-page .archived-pill {
@@ -8432,8 +8450,9 @@ a.hashtag-mention:hover,
 .templates-list-actions {
   flex: 0 0 auto;
   display: flex;
+  align-items: center;
   gap: 0.5rem;
-  padding-right: 0.9rem;
+  padding: 0.35rem 0.9rem 0.35rem 0;
 }
 .templates-list-actions .btn {
   text-decoration: none;

@@ -1060,7 +1060,7 @@ const SavedViewsPage = {
                 </a>
                 <button
                   type="button"
-                  class="btn saved-view-unarchive-btn"
+                  class="btn btn-compact saved-view-unarchive-btn"
                   @click.stop="toggleArchived(v)"
                 >Unarchive</button>
               </li>

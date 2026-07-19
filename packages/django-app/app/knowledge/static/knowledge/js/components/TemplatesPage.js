@@ -136,6 +136,41 @@ const TemplatesPage = {
       }
     },
 
+    async addToPage(t) {
+      // Append this template's block tree onto an existing page —
+      // same backend flow as the page menu's "add from template…",
+      // approached from the template side instead of the page side.
+      if (!window.appModals?.pickPage) {
+        console.error("appModals.pickPage is not available");
+        return;
+      }
+      const page = await window.appModals.pickPage({
+        title: `add "${this.displayTitle(t)}" to a page`,
+        message: "search by page title, or pick from recent:",
+        placeholder: "page title…",
+        confirmLabel: "add",
+      });
+      if (!page || !page.uuid) return;
+      try {
+        const result = await window.apiService.addTemplateBlocksToPage(
+          t.uuid,
+          page.uuid
+        );
+        if (result && result.success) {
+          window.location.href = `/knowledge/page/${encodeURIComponent(page.slug)}/`;
+        } else {
+          this._toast(
+            "failed to add template blocks: " +
+              (result?.errors?.non_field_errors?.[0] || "unknown error"),
+            "error"
+          );
+        }
+      } catch (err) {
+        console.error("addToPage failed:", err);
+        this._toast("failed to add template blocks", "error");
+      }
+    },
+
     _toast(message, type = "info") {
       document.dispatchEvent(
         new CustomEvent("brainspread:toast", { detail: { message, type } })
@@ -170,8 +205,9 @@ const TemplatesPage = {
             <span class="templates-list-modified" v-if="formatModified(t)">last modified {{ formatModified(t) }}</span>
           </a>
           <div class="templates-list-actions">
-            <button type="button" class="btn" @click="useTemplate(t)" :title="'Create a new page from ' + displayTitle(t)">Use</button>
-            <a :href="pageUrl(t)" class="btn" :title="'Open ' + displayTitle(t) + ' for editing'">Edit</a>
+            <button type="button" class="btn btn-compact" @click="useTemplate(t)" :title="'Create a new page from ' + displayTitle(t)">Use</button>
+            <button type="button" class="btn btn-compact" @click="addToPage(t)" :title="'Append ' + displayTitle(t) + '\\'s blocks to an existing page'">Add to page…</button>
+            <a :href="pageUrl(t)" class="btn btn-compact" :title="'Open ' + displayTitle(t) + ' for editing'">Edit</a>
           </div>
         </li>
       </ul>
