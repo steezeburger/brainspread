@@ -4348,6 +4348,10 @@ const Page = {
                     <button @click="moveUndoneTodos" class="context-menu-item" :disabled="loading" role="menuitem">
                       move undone TODOs here
                     </button>
+                    <button @click="addFromTemplate" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">+</span>
+                      <span>add from template…</span>
+                    </button>
                     <button @click="enterSelectionMode" class="context-menu-item" role="menuitem">
                       <span class="context-menu-icon">◉</span>
                       <span>select multiple</span>
