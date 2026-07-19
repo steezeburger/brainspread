@@ -84,7 +84,7 @@ def _page_for_slug_or_today(user: User, slug: str | None):
     form = GetPageWithBlocksForm(data=data)
     if not form.is_valid():
         raise ToolError(_form_errors_to_str(form))
-    page, _direct, _refs, _overdue, _embeds = GetPageWithBlocksCommand(form).execute()
+    page, _direct, _refs, _embeds = GetPageWithBlocksCommand(form).execute()
     return page
 
 
@@ -278,12 +278,20 @@ def _list_today_todos(ctx: ToolContext, _args: dict[str, Any]) -> dict[str, Any]
     form = GetPageWithBlocksForm(data={"user": ctx.user.id})
     if not form.is_valid():
         raise ToolError(_form_errors_to_str(form))
-    page, direct, _refs, overdue, _embeds = GetPageWithBlocksCommand(form).execute()
+    page, direct, _refs, _embeds = GetPageWithBlocksCommand(form).execute()
     undone = [b.to_dict() for b in direct if b.block_type in {"todo", "doing", "later"}]
+    # The page payload no longer carries overdue blocks (the daily-page
+    # overdue section was replaced by embeddable saved views), so the
+    # overdue list comes from the dedicated command instead — keeps this
+    # tool's output shape stable for agents.
+    overdue_form = ListOverdueBlocksForm(data={"user": ctx.user.id})
+    if not overdue_form.is_valid():
+        raise ToolError(_form_errors_to_str(overdue_form))
+    overdue = ListOverdueBlocksCommand(overdue_form).execute()
     return {
         "page": page.to_dict(),
         "undone_today": undone,
-        "overdue": [b.to_dict(include_page_context=True) for b in overdue],
+        "overdue": overdue["results"],
     }
 
 
@@ -323,12 +331,11 @@ def _get_page(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     form = GetPageWithBlocksForm(data=data)
     if not form.is_valid():
         raise ToolError(_form_errors_to_str(form))
-    page, direct, refs, overdue, _embeds = GetPageWithBlocksCommand(form).execute()
+    page, direct, refs, _embeds = GetPageWithBlocksCommand(form).execute()
     return {
         "page": page.to_dict(),
         "direct_blocks": [b.to_dict_with_children() for b in direct],
         "referenced_blocks": [b.to_dict(include_page_context=True) for b in refs],
-        "overdue_blocks": [b.to_dict(include_page_context=True) for b in overdue],
     }
 
 

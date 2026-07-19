@@ -6656,38 +6656,6 @@ kbd {
   min-width: 12rem;
 }
 
-/* Overdue section on today's daily page (see issue #59) */
-.overdue-section {
-  margin-bottom: 1.5rem;
-  padding: 0.75rem 1rem;
-  border-left: 3px solid var(--error-color, #c0392b);
-  background: color-mix(in srgb, var(--error-color, #c0392b) 6%, transparent);
-  border-radius: 0;
-}
-
-.overdue-title {
-  margin: 0 0 0.5rem;
-  font-size: 0.95rem;
-  text-transform: lowercase;
-  color: var(--error-color, #c0392b);
-}
-
-.overdue-due-date {
-  /* Pushed to the right of the meta row (page name sits on the left) so
-     the due date reads as its own field — matches the embed rows'
-     right-aligned due chip, keeping the overdue red emphasis. */
-  margin-left: auto;
-  flex: 0 0 auto;
-  font-size: 0.8rem;
-  color: var(--error-color, #c0392b);
-  font-family: var(--font-mono, monospace);
-  white-space: nowrap;
-  border: 1px solid var(--error-color, #c0392b);
-  border-radius: 3px;
-  padding: 0 5px;
-  opacity: 0.85;
-}
-
 /* Inline due-date chip on blocks (issue #59) */
 .block-due-pill {
   display: inline-flex;
@@ -8297,6 +8265,77 @@ a.hashtag-mention:hover,
 }
 .block-query-embed.is-collapsed {
   padding-bottom: 0.6rem;
+}
+
+/* Embed accent colors. Each accent class only sets --embed-accent;
+   the shared rules below consume it for the left-border + tinted
+   background + title color (same visual language as the retired
+   overdue section, which used --error-color this way). Muted hexes
+   chosen to read on both light and dark themes. */
+.embed-accent-red {
+  --embed-accent: #c0392b;
+}
+.embed-accent-orange {
+  --embed-accent: #d35400;
+}
+.embed-accent-yellow {
+  --embed-accent: #b7950b;
+}
+.embed-accent-green {
+  --embed-accent: #1e8449;
+}
+.embed-accent-blue {
+  --embed-accent: #2471a3;
+}
+.embed-accent-purple {
+  --embed-accent: #7d3c98;
+}
+.block-query-embed[class*="embed-accent-"] {
+  border-left: 3px solid var(--embed-accent);
+  background: color-mix(in srgb, var(--embed-accent) 6%, var(--bg-secondary));
+}
+.block-query-embed[class*="embed-accent-"] .block-query-embed-title {
+  color: var(--embed-accent);
+}
+
+/* Accent swatch picker in the embed header actions. The trigger dot
+   takes the current accent (muted gray when none); the menu is a
+   simple inline swatch row anchored under the button. */
+.embed-color-picker {
+  position: relative;
+  display: inline-flex;
+}
+.embed-color-btn {
+  color: var(--embed-accent, var(--text-muted));
+}
+.embed-color-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  gap: 2px;
+  padding: 3px 5px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+}
+.embed-color-swatch {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--embed-accent, var(--text-muted));
+}
+.embed-color-swatch:hover {
+  border-color: var(--border-primary);
+  background: var(--hover-bg);
+}
+.embed-color-swatch.is-current {
+  border-color: var(--text-primary);
 }
 .block-query-embed-header {
   display: flex;

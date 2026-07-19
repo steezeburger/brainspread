@@ -917,7 +917,6 @@ def get_page_with_blocks(request):
                 page,
                 direct_blocks,
                 referenced_blocks,
-                overdue_blocks,
                 embedded_views,
             ) = command.execute()
 
@@ -929,9 +928,6 @@ def get_page_with_blocks(request):
                 referenced_blocks=[
                     block.to_dict_with_children(include_page_context=True)
                     for block in referenced_blocks
-                ],
-                overdue_blocks=[
-                    block.to_dict(include_page_context=True) for block in overdue_blocks
                 ],
                 embedded_views=[embed.to_dict() for embed in embedded_views],
             )
