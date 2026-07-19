@@ -8399,10 +8399,19 @@ a.hashtag-mention:hover,
 }
 .block-query-embed-actions {
   display: inline-flex;
+  align-items: center;
   gap: 0.25rem;
   margin-left: 0.25rem;
 }
 .block-query-embed-iconbtn {
+  /* Fixed flex-centered square: arrow/×/dot glyphs have wildly
+     different baselines, so baseline layout leaves them looking
+     off-center in the bordered box. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.4rem;
   background: transparent;
   border: 1px solid var(--border-primary);
   border-radius: 0;
@@ -8411,7 +8420,7 @@ a.hashtag-mention:hover,
   font: inherit;
   font-size: 0.85rem;
   line-height: 1;
-  padding: 0.1rem 0.4rem;
+  padding: 0;
 }
 .block-query-embed-iconbtn:hover {
   background: var(--hover-bg);
