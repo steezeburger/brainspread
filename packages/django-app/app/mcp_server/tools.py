@@ -156,6 +156,7 @@ def _create_block(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
         "page": str(page.uuid),
         "content": content,
         "block_type": block_type,
+        "created_via": Block.CREATED_VIA_MCP,
     }
     if parent is not None:
         data["parent"] = str(parent.uuid)

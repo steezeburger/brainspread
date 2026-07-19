@@ -94,6 +94,26 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
         default=False, help_text="Whether block is collapsed"
     )
 
+    # Provenance: which surface wrote this block. Web is the default so
+    # pre-existing rows (and test fixtures) read as human-authored;
+    # the AI-chat and MCP tool handlers stamp their own value through
+    # CreateBlockForm. Clone flows (duplicate page / templates) stamp
+    # the surface that performed the clone, not the source block's value.
+    CREATED_VIA_WEB = "web"
+    CREATED_VIA_AI_CHAT = "ai_chat"
+    CREATED_VIA_MCP = "mcp"
+    CREATED_VIA_CHOICES = [
+        (CREATED_VIA_WEB, "Web"),
+        (CREATED_VIA_AI_CHAT, "AI Chat"),
+        (CREATED_VIA_MCP, "MCP"),
+    ]
+    created_via = models.CharField(
+        max_length=20,
+        choices=CREATED_VIA_CHOICES,
+        default=CREATED_VIA_WEB,
+        help_text="Which surface created this block (web UI, AI chat, MCP)",
+    )
+
     # Due date/time. Surfaces the block on the matching daily page (see
     # issue #59). All-day by default; due_at_has_time flips on when the
     # user picks a specific time of day. For all-day items the time
@@ -126,6 +146,7 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             models.Index(fields=["content_type"]),
             models.Index(fields=["block_type"]),
             models.Index(fields=["user", "due_at"]),
+            models.Index(fields=["created_via"]),
         ]
 
     def __str__(self):
@@ -285,6 +306,7 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             "block_type": self.block_type,
             "order": self.order,
             "collapsed": self.collapsed,
+            "created_via": self.created_via,
             "parent_block_uuid": str(self.parent.uuid) if self.parent else None,
             "page_uuid": str(self.page.uuid),
             "user_uuid": str(self.user.uuid),
@@ -461,6 +483,7 @@ class BlockData(TypedDict):
     block_type: str
     order: int
     collapsed: bool
+    created_via: str
     parent_block_uuid: Optional[str]
     page_uuid: str
     user_uuid: str

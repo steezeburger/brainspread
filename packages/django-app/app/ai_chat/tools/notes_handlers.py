@@ -123,6 +123,7 @@ from knowledge.forms.snooze_block_form import SnoozeBlockForm
 from knowledge.forms.tag_blocks_form import TagBlocksForm, UntagBlocksForm
 from knowledge.forms.update_block_form import UpdateBlockForm
 from knowledge.forms.update_saved_view_form import UpdateSavedViewForm
+from knowledge.models import Block
 from knowledge.repositories.block_repository import BlockRepository
 from knowledge.repositories.page_embedded_view_repository import (
     PageEmbeddedViewRepository,
@@ -568,6 +569,7 @@ def _create_block(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
         "content": content,
         "block_type": args.get("block_type") or "bullet",
         "order": order,
+        "created_via": Block.CREATED_VIA_AI_CHAT,
     }
     if parent is not None:
         form_data["parent"] = parent.uuid
@@ -1042,6 +1044,7 @@ def _create_blocks_bulk(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any
     form_data: Dict[str, Any] = {
         "user": ctx.user.id,
         "blocks": args.get("blocks") or [],
+        "created_via": Block.CREATED_VIA_AI_CHAT,
     }
     page_uuid = (args.get("page_uuid") or "").strip()
     parent_uuid = (args.get("parent_uuid") or "").strip()
