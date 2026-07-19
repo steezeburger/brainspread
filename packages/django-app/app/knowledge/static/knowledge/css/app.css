@@ -6398,6 +6398,63 @@ kbd {
   background: var(--hover-bg);
 }
 
+.graph-filter-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.graph-filter-input {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 0.25rem 1.4rem 0.25rem 0.5rem;
+  width: 180px;
+}
+
+.graph-filter-input:focus {
+  outline: 1px solid var(--border-primary);
+  outline-offset: 0;
+}
+
+.graph-filter-clear {
+  position: absolute;
+  right: 0.25rem;
+  background: none;
+  border: none;
+  border-radius: 0;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+  cursor: pointer;
+}
+
+.graph-filter-clear:hover {
+  color: var(--text-primary);
+}
+
+.graph-select {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.25rem;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .graph-filter-input {
+    width: 130px;
+  }
+}
+
 .graph-canvas-container {
   position: relative;
   flex: 1;

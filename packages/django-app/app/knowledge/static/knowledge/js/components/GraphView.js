@@ -9,6 +9,17 @@ const GraphView = {
       adjacency: new Map(),
       includeDaily: false,
       includeOrphans: true,
+      // Client-side filtering. filterQuery matches page titles/slugs
+      // (comma-separated terms are OR'd). neighborDepth pulls in nodes
+      // within N hops of a match so a tag filter still shows what the
+      // tag connects to; matched nodes render solid, neighbors dimmed.
+      filterQuery: "",
+      neighborDepth: 1,
+      minLinks: 0,
+      visibleNodes: [],
+      visibleEdges: [],
+      matchedUuids: null,
+      contextUuids: new Set(),
       hoveredNode: null,
       draggingNode: null,
       dragOffset: { x: 0, y: 0 },
@@ -41,11 +52,28 @@ const GraphView = {
     edgeCount() {
       return this.edges.length;
     },
+    filterTerms() {
+      return this.filterQuery
+        .toLowerCase()
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+    },
+    isFiltering() {
+      return this.filterTerms.length > 0;
+    },
     statusMessage() {
       if (this.loading) return "loading graph...";
       if (this.error) return `error: ${this.error}`;
       if (!this.nodes.length) {
         return "no pages to display - create some pages and link them with [[wikilinks]] or #hashtags";
+      }
+      if (this.isFiltering) {
+        const matched = this.matchedUuids ? this.matchedUuids.size : 0;
+        return `${matched} matched · ${this.contextUuids.size} related · ${this.visibleEdges.length} connections · ${this.nodeCount} pages total`;
+      }
+      if (this.visibleNodes.length !== this.nodes.length) {
+        return `${this.visibleNodes.length} of ${this.nodeCount} pages · ${this.visibleEdges.length} connections`;
       }
       return `${this.nodeCount} pages · ${this.edgeCount} connections`;
     },
@@ -80,16 +108,14 @@ const GraphView = {
         if (!result.success) {
           this.error =
             result.errors?.non_field_errors?.[0] || "failed to load graph";
-          this.nodes = [];
-          this.edges = [];
+          this.clearGraph();
           return;
         }
         this.initializeSimulation(result.data.nodes, result.data.edges);
       } catch (err) {
         console.error("Failed to load graph:", err);
         this.error = err.message || "failed to load graph";
-        this.nodes = [];
-        this.edges = [];
+        this.clearGraph();
       } finally {
         this.loading = false;
       }
@@ -134,7 +160,95 @@ const GraphView = {
       }
       this.adjacency = adj;
 
+      this.applyFilters();
       this.simulationAlpha = 1;
+    },
+
+    clearGraph() {
+      this.nodes = [];
+      this.edges = [];
+      this.adjacency = new Map();
+      this.visibleNodes = [];
+      this.visibleEdges = [];
+      this.matchedUuids = null;
+      this.contextUuids = new Set();
+    },
+
+    // Recompute which nodes/edges are visible from the current filter
+    // state. Runs entirely client-side against the already-loaded graph.
+    applyFilters() {
+      const terms = this.filterTerms;
+      const minLinks = Number(this.minLinks) || 0;
+      const depth = Number(this.neighborDepth) || 0;
+      const linkCount = (node) =>
+        (this.adjacency.get(node.uuid) || new Set()).size;
+
+      let matched = null;
+      const context = new Set();
+
+      if (terms.length) {
+        matched = new Set();
+        for (const node of this.nodes) {
+          const title = node.title.toLowerCase();
+          const slug = (node.slug || "").toLowerCase();
+          if (terms.some((t) => title.includes(t) || slug.includes(t))) {
+            matched.add(node.uuid);
+          }
+        }
+
+        // Breadth-first expansion: pull in neighbors up to `depth` hops
+        // out so a tag filter still shows what the tag connects to.
+        let frontier = matched;
+        for (let hop = 0; hop < depth; hop++) {
+          const next = new Set();
+          for (const uuid of frontier) {
+            for (const neighbor of this.adjacency.get(uuid) || []) {
+              if (!matched.has(neighbor) && !context.has(neighbor)) {
+                next.add(neighbor);
+              }
+            }
+          }
+          for (const uuid of next) context.add(uuid);
+          frontier = next;
+        }
+      }
+
+      const visible = [];
+      for (const node of this.nodes) {
+        let show;
+        if (matched) {
+          if (matched.has(node.uuid)) {
+            // Direct matches always show, even below the min-links bar.
+            show = true;
+          } else if (context.has(node.uuid)) {
+            show = linkCount(node) >= minLinks;
+          } else {
+            show = false;
+          }
+        } else {
+          show = linkCount(node) >= minLinks;
+        }
+        if (show) visible.push(node);
+      }
+
+      const visibleUuids = new Set(visible.map((n) => n.uuid));
+      const markRaw = (Vue && Vue.markRaw) || ((v) => v);
+      this.visibleNodes = markRaw(visible);
+      this.visibleEdges = markRaw(
+        this.edges.filter(
+          (e) =>
+            visibleUuids.has(e.source.uuid) && visibleUuids.has(e.target.uuid)
+        )
+      );
+      this.matchedUuids = matched;
+      this.contextUuids = context;
+      this.hoveredNode = null;
+      this.simulationAlpha = Math.max(this.simulationAlpha, 0.5);
+    },
+
+    clearFilter() {
+      this.filterQuery = "";
+      this.applyFilters();
     },
 
     setupCanvas() {
@@ -190,16 +304,16 @@ const GraphView = {
     },
 
     tick() {
-      if (!this.nodes.length) return;
+      if (!this.visibleNodes.length) return;
 
       const alpha = Math.max(this.simulationAlpha, 0.02);
 
       // Repulsion between all node pairs (O(n^2) - fine for the sizes we expect)
-      for (let i = 0; i < this.nodes.length; i++) {
-        const a = this.nodes[i];
+      for (let i = 0; i < this.visibleNodes.length; i++) {
+        const a = this.visibleNodes[i];
         if (a === this.draggingNode) continue;
-        for (let j = i + 1; j < this.nodes.length; j++) {
-          const b = this.nodes[j];
+        for (let j = i + 1; j < this.visibleNodes.length; j++) {
+          const b = this.visibleNodes[j];
           let dx = a.x - b.x;
           let dy = a.y - b.y;
           let distSq = dx * dx + dy * dy;
@@ -222,7 +336,7 @@ const GraphView = {
       }
 
       // Spring attraction along edges
-      for (const edge of this.edges) {
+      for (const edge of this.visibleEdges) {
         const { source, target } = edge;
         const dx = target.x - source.x;
         const dy = target.y - source.y;
@@ -244,14 +358,14 @@ const GraphView = {
       // Weak centering force
       const cx = this.width / 2;
       const cy = this.height / 2;
-      for (const node of this.nodes) {
+      for (const node of this.visibleNodes) {
         if (node === this.draggingNode) continue;
         node.vx += (cx - node.x) * this.centerStrength * alpha;
         node.vy += (cy - node.y) * this.centerStrength * alpha;
       }
 
       // Apply velocities with friction
-      for (const node of this.nodes) {
+      for (const node of this.visibleNodes) {
         if (node === this.draggingNode) {
           node.vx = 0;
           node.vy = 0;
@@ -314,16 +428,22 @@ const GraphView = {
       const neighborUuids = hoveredUuid
         ? this.adjacency.get(hoveredUuid) || new Set()
         : new Set();
+      const filtering = this.isFiltering;
 
       // Edges
       ctx.lineWidth = 1;
-      for (const edge of this.edges) {
+      for (const edge of this.visibleEdges) {
         const touchesHovered =
           hoveredUuid &&
           (edge.source.uuid === hoveredUuid ||
             edge.target.uuid === hoveredUuid);
+        const touchesContext =
+          filtering &&
+          (this.contextUuids.has(edge.source.uuid) ||
+            this.contextUuids.has(edge.target.uuid));
         ctx.strokeStyle = touchesHovered ? edgeHighlight : edgeColor;
-        ctx.globalAlpha = hoveredUuid && !touchesHovered ? 0.2 : 0.7;
+        ctx.globalAlpha =
+          hoveredUuid && !touchesHovered ? 0.2 : touchesContext ? 0.35 : 0.7;
         ctx.lineWidth = touchesHovered ? 1.5 : 1;
         ctx.beginPath();
         ctx.moveTo(edge.source.x, edge.source.y);
@@ -333,14 +453,16 @@ const GraphView = {
 
       // Nodes
       ctx.globalAlpha = 1;
-      for (const node of this.nodes) {
+      for (const node of this.visibleNodes) {
         const radius = this.nodeRadius(node);
         const color = this.nodeColor(node);
         const isHovered = hoveredUuid === node.uuid;
         const isNeighbor = neighborUuids.has(node.uuid);
+        const isContext = filtering && this.contextUuids.has(node.uuid);
         const dimmed = hoveredUuid && !isHovered && !isNeighbor;
+        const baseAlpha = isContext ? 0.45 : 1;
 
-        ctx.globalAlpha = dimmed ? 0.3 : 1;
+        ctx.globalAlpha = dimmed ? 0.3 : baseAlpha;
         ctx.fillStyle = color;
         ctx.strokeStyle = bgColor;
         ctx.lineWidth = 1.5;
@@ -349,8 +471,23 @@ const GraphView = {
         ctx.fill();
         ctx.stroke();
 
-        if (isHovered || (!hoveredUuid && radius >= 8) || isNeighbor) {
-          ctx.globalAlpha = dimmed ? 0.3 : 1;
+        // Accent ring on direct matches so they stand out from the
+        // dimmed neighborhood while a filter is active.
+        if (filtering && !isContext) {
+          ctx.strokeStyle = edgeHighlight;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, radius + 3, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        if (
+          isHovered ||
+          (!hoveredUuid && radius >= 8) ||
+          isNeighbor ||
+          (filtering && !isContext)
+        ) {
+          ctx.globalAlpha = dimmed ? 0.3 : baseAlpha;
           ctx.fillStyle = textColor;
           ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, monospace";
           ctx.textAlign = "left";
@@ -376,8 +513,8 @@ const GraphView = {
 
     pickNode(graphX, graphY) {
       // Iterate in reverse so top-rendered nodes are picked first
-      for (let i = this.nodes.length - 1; i >= 0; i--) {
-        const node = this.nodes[i];
+      for (let i = this.visibleNodes.length - 1; i >= 0; i--) {
+        const node = this.visibleNodes[i];
         const dx = graphX - node.x;
         const dy = graphY - node.y;
         const r = this.nodeRadius(node) + 3;
@@ -433,9 +570,16 @@ const GraphView = {
       }
     },
 
-    onMouseUp() {
+    onMouseUp(event) {
       if (this.draggingNode && !this.dragMoved) {
-        this.navigateToNode(this.draggingNode);
+        if (event && event.shiftKey) {
+          // Shift-click filters the graph down to this node's neighborhood
+          // instead of navigating away.
+          this.filterQuery = this.draggingNode.title;
+          this.applyFilters();
+        } else {
+          this.navigateToNode(this.draggingNode);
+        }
       }
       this.draggingNode = null;
       this.dragMoved = false;
@@ -493,17 +637,33 @@ const GraphView = {
     },
 
     handleKeydown(event) {
+      const target = event.target;
+      const inTextField =
+        target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA");
+
       if (event.key === "Escape") {
-        window.location.href = "/knowledge/";
-      } else if (event.key === "r" && !event.metaKey && !event.ctrlKey) {
-        const target = event.target;
-        if (
-          target &&
-          (target.tagName === "INPUT" || target.tagName === "TEXTAREA")
-        ) {
+        // Escape narrows scope one step at a time: leave the text field,
+        // then clear the filter, then exit the graph page.
+        if (inTextField) {
+          if (this.filterQuery) {
+            this.clearFilter();
+          } else {
+            target.blur();
+          }
           return;
         }
+        if (this.filterQuery) {
+          this.clearFilter();
+          return;
+        }
+        window.location.href = "/knowledge/";
+      } else if (event.key === "r" && !event.metaKey && !event.ctrlKey) {
+        if (inTextField) return;
         this.resetView();
+      } else if (event.key === "/" && !event.metaKey && !event.ctrlKey) {
+        if (inTextField) return;
+        event.preventDefault();
+        this.$refs.filterInput?.focus();
       }
     },
   },
@@ -515,6 +675,41 @@ const GraphView = {
           <span class="graph-status">{{ statusMessage }}</span>
         </div>
         <div class="graph-toolbar-right">
+          <span class="graph-filter-wrap">
+            <input
+              ref="filterInput"
+              v-model="filterQuery"
+              @input="applyFilters"
+              class="graph-filter-input"
+              type="text"
+              placeholder="filter pages / tags (/)"
+              spellcheck="false"
+            />
+            <button
+              v-if="filterQuery"
+              class="graph-filter-clear"
+              @click="clearFilter"
+              title="clear filter (esc)"
+            >&times;</button>
+          </span>
+          <label class="graph-toggle" title="how many hops of connected pages to show around matches">
+            related
+            <select v-model="neighborDepth" @change="applyFilters" class="graph-select">
+              <option :value="0">none</option>
+              <option :value="1">1 hop</option>
+              <option :value="2">2 hops</option>
+            </select>
+          </label>
+          <label class="graph-toggle" title="hide pages with fewer connections">
+            min links
+            <select v-model="minLinks" @change="applyFilters" class="graph-select">
+              <option :value="0">any</option>
+              <option :value="2">2+</option>
+              <option :value="3">3+</option>
+              <option :value="5">5+</option>
+              <option :value="10">10+</option>
+            </select>
+          </label>
           <label class="graph-toggle">
             <input type="checkbox" :checked="includeDaily" @change="onToggleDaily" />
             daily notes
@@ -542,9 +737,12 @@ const GraphView = {
         <div v-else-if="!nodeCount" class="graph-overlay">
           no pages to display yet - create pages and link them with [[wikilinks]] or #hashtags
         </div>
+        <div v-else-if="!visibleNodes.length" class="graph-overlay">
+          no pages match the current filters
+        </div>
       </div>
       <div class="graph-help">
-        drag nodes to reposition · scroll to zoom · click a node to open · press r to reset · esc to exit
+        drag to move · scroll to zoom · click to open · shift-click to filter · / search · r reset · esc clear/exit
       </div>
     </div>
   `,
