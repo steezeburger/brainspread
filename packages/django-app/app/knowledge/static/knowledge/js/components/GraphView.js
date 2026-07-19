@@ -179,7 +179,12 @@ const GraphView = {
     applyFilters() {
       const terms = this.filterTerms;
       const minLinks = Number(this.minLinks) || 0;
-      const depth = Number(this.neighborDepth) || 0;
+      // "all" walks the whole connected component around the matches;
+      // the BFS below stops when the frontier empties.
+      const depth =
+        this.neighborDepth === "all"
+          ? Infinity
+          : Number(this.neighborDepth) || 0;
       const linkCount = (node) =>
         (this.adjacency.get(node.uuid) || new Set()).size;
 
@@ -199,7 +204,8 @@ const GraphView = {
         // Breadth-first expansion: pull in neighbors up to `depth` hops
         // out so a tag filter still shows what the tag connects to.
         let frontier = matched;
-        for (let hop = 0; hop < depth; hop++) {
+        let hop = 0;
+        while (frontier.size && hop < depth) {
           const next = new Set();
           for (const uuid of frontier) {
             for (const neighbor of this.adjacency.get(uuid) || []) {
@@ -210,6 +216,7 @@ const GraphView = {
           }
           for (const uuid of next) context.add(uuid);
           frontier = next;
+          hop++;
         }
       }
 
@@ -698,6 +705,7 @@ const GraphView = {
               <option :value="0">none</option>
               <option :value="1">1 hop</option>
               <option :value="2">2 hops</option>
+              <option value="all">all</option>
             </select>
           </label>
           <label class="graph-toggle" title="hide pages with fewer connections">
