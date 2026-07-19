@@ -116,10 +116,19 @@ class UpdateBlockCommand(AbstractBaseCommand):
         self, content: str, current_block_type: str
     ) -> str:
         """Auto-detect block type from content patterns"""
-        # Only auto-detect for bullet, todo, doing, and done types
-        # Don't override other explicit types like heading, code, etc.
-        # Don't auto-detect for later and wontdo - these are explicit states
-        if current_block_type not in ["bullet", "todo", "doing", "done"]:
+        # Only auto-detect for bullet and the todo-family states. All five
+        # states carry their keyword as a content prefix (see
+        # SetBlockTypeCommand.STATE_PREFIXES), so editing "LATER x" to
+        # "TODO x" must move the type too. Don't override other explicit
+        # types like heading, code, etc.
+        if current_block_type not in [
+            "bullet",
+            "todo",
+            "doing",
+            "done",
+            "later",
+            "wontdo",
+        ]:
             return current_block_type
 
         # Only auto-detect if we have content
@@ -150,7 +159,7 @@ class UpdateBlockCommand(AbstractBaseCommand):
             return "wontdo"
 
         # If none of the patterns match, return bullet for todo-family types
-        if current_block_type in ["todo", "doing", "done"]:
+        if current_block_type in ["todo", "doing", "done", "later", "wontdo"]:
             return "bullet"
         return current_block_type
 

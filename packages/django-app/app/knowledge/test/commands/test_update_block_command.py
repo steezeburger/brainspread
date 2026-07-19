@@ -157,6 +157,76 @@ class TestUpdateBlockCommand(TestCase):
         self.assertEqual(updated.block_type, "todo")
         self.assertIsNone(updated.completed_at)
 
+    def test_should_change_from_later_to_todo_via_content_update(self):
+        """Editing "LATER x" to "TODO x" must move the type to todo. The
+        later state is itself enterable by typing "LATER", so content
+        edits have to be able to detect their way back out of it too."""
+        later_block = BlockFactory(
+            page=self.page,
+            user=self.user,
+            content="LATER write the report",
+            block_type="later",
+        )
+
+        form_data = {
+            "user": self.user.id,
+            "block": str(later_block.uuid),
+            "content": "TODO write the report",
+        }
+        form = UpdateBlockForm(form_data)
+        form.is_valid()
+        updated_block = UpdateBlockCommand(form).execute()
+
+        self.assertEqual(updated_block.block_type, "todo")
+        self.assertEqual(updated_block.content, "TODO write the report")
+
+    def test_should_change_from_later_to_bullet_when_keyword_removed(self):
+        """Removing the LATER keyword entirely demotes the block to a
+        bullet, matching the todo/doing/done behavior."""
+        later_block = BlockFactory(
+            page=self.page,
+            user=self.user,
+            content="LATER write the report",
+            block_type="later",
+        )
+
+        form_data = {
+            "user": self.user.id,
+            "block": str(later_block.uuid),
+            "content": "write the report",
+        }
+        form = UpdateBlockForm(form_data)
+        form.is_valid()
+        updated_block = UpdateBlockCommand(form).execute()
+
+        self.assertEqual(updated_block.block_type, "bullet")
+
+    def test_should_clear_completed_at_when_content_leaves_wontdo(self):
+        """wontdo is a terminal state — editing it back to "TODO x" must
+        clear completed_at along with the type change."""
+        form_data = {
+            "user": self.user.id,
+            "page": self.page.uuid,
+            "content": "WONTDO chase that lead",
+        }
+        form = CreateBlockForm(form_data)
+        form.is_valid()
+        wontdo_block = CreateBlockCommand(form).execute()
+        self.assertEqual(wontdo_block.block_type, "wontdo")
+        self.assertIsNotNone(wontdo_block.completed_at)
+
+        form_data = {
+            "user": self.user.id,
+            "block": str(wontdo_block.uuid),
+            "content": "TODO chase that lead",
+        }
+        form = UpdateBlockForm(form_data)
+        form.is_valid()
+        updated_block = UpdateBlockCommand(form).execute()
+
+        self.assertEqual(updated_block.block_type, "todo")
+        self.assertIsNone(updated_block.completed_at)
+
     def test_should_not_override_heading_block_type(self):
         """Test that auto-detection doesn't override heading type"""
         # Create a heading block
