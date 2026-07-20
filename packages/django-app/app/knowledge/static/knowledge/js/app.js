@@ -47,6 +47,11 @@ const KnowledgeApp = createApp({
       user: cachedUser, // Load user immediately from cache
       isAuthenticated: isAuth, // Check immediately
       currentView: initialView, // Set view immediately
+      // Monitor mode (?monitor=1): the Page component handles read-only
+      // + polling; the shell's job is to strip the sidebar and chat
+      // chrome so a wall display shows only the note itself.
+      monitorMode:
+        new URLSearchParams(window.location.search).get("monitor") === "1",
       loading: isAuth && !cachedUser, // Only show loading if we have token but no cached user
       showSettings: false, // Settings modal state
       settingsActiveTab: "general", // Default tab for settings modal
@@ -112,6 +117,7 @@ const KnowledgeApp = createApp({
       // Whiteboards, graph view, and the saved-views / all-pages /
       // templates surfaces use the full column width; chat is noise
       // there.
+      if (this.monitorMode) return false;
       if (this.currentView === "graph") return false;
       if (this.currentView === "views") return false;
       if (this.currentView === "pages") return false;
@@ -316,8 +322,10 @@ const KnowledgeApp = createApp({
       const day = String(today.getDate()).padStart(2, "0");
       const todayString = `${year}-${month}-${day}`;
 
-      // Redirect to today's page
-      window.location.href = `/knowledge/page/${todayString}/`;
+      // Redirect to today's page, preserving the query string so
+      // /knowledge/?monitor=1 lands on today's daily still in monitor
+      // mode.
+      window.location.href = `/knowledge/page/${todayString}/${window.location.search}`;
     },
 
     // Theme and settings methods
@@ -1200,6 +1208,7 @@ const KnowledgeApp = createApp({
                     </div>
                     <div v-else class="content-layout">
                         <LeftNav
+                            v-if="!monitorMode"
                             ref="leftNav"
                             :user="user"
                             @navigate-to-slug="onNavigateToSlug"

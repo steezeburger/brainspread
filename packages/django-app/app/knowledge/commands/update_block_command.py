@@ -11,6 +11,17 @@ from .sync_block_tags_command import SyncBlockTagsCommand
 from .touch_page_command import TouchPageCommand
 
 
+class BlockUpdateConflictError(Exception):
+    """Raised when a save carries `expected_content` that no longer matches
+    the block's stored content — another session saved in between. Carries
+    the current server-side block so the API can return it with the 409,
+    letting the client show both versions instead of clobbering one."""
+
+    def __init__(self, block: Block) -> None:
+        self.block = block
+        super().__init__("Block was modified by another session")
+
+
 class UpdateBlockCommand(AbstractBaseCommand):
     """Command to update an existing block"""
 
@@ -23,6 +34,14 @@ class UpdateBlockCommand(AbstractBaseCommand):
 
         user = self.form.cleaned_data["user"]
         block = self.form.cleaned_data["block"]
+
+        # Optimistic-concurrency check. BaseForm.clean prunes unsubmitted
+        # keys, so presence here means the caller opted in (an empty-string
+        # baseline is a valid expectation for a block that was empty).
+        if "expected_content" in self.form.cleaned_data:
+            expected = self.form.cleaned_data["expected_content"]
+            if expected != block.content:
+                raise BlockUpdateConflictError(block)
 
         # Update fields. Parent only changes when the caller submitted
         # the key: an explicit null re-roots the block (outdent), while

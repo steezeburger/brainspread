@@ -12,10 +12,14 @@
 //   const name = await window.appModals.prompt("page title:");
 //   await window.appModals.alert("upload failed");
 //   const page = await window.appModals.pickPage({title: "embed on a page"});
+//   const choice = await window.appModals.choose({options: [...]});
 //
 // Each method returns a promise that resolves on user action. pickPage
 // resolves with the selected page object (uuid, slug, title, ...) or
-// null when the user dismisses.
+// null when the user dismisses. choose renders a stacked list of
+// options (plus optional read-only text sections, e.g. two versions of
+// a conflicting block) and resolves with the chosen option's value, or
+// null on dismiss.
 
 window.AppModals = {
   name: "AppModals",
@@ -70,6 +74,13 @@ window.AppModals = {
           const ok = this.$refs.alertOk;
           if (ok) ok.focus();
         });
+      } else if (next && next.kind === "choose") {
+        this.$nextTick(() => {
+          // The component root is a <teleport>, so $el isn't an element —
+          // the dialog itself lives under document.body.
+          const first = document.querySelector(".app-modal-choose-option");
+          if (first) first.focus();
+        });
       } else if (
         next &&
         (next.kind === "pickPage" || next.kind === "pickBlock")
@@ -99,6 +110,7 @@ window.AppModals = {
       alert: this.alert.bind(this),
       pickPage: this.pickPage.bind(this),
       pickBlock: this.pickBlock.bind(this),
+      choose: this.choose.bind(this),
     };
   },
 
@@ -159,6 +171,31 @@ window.AppModals = {
             title: normalized.title || "",
             message: normalized.message || "",
             confirmLabel: normalized.confirmLabel || "ok",
+          },
+          resolve,
+        });
+      });
+    },
+
+    choose(opts) {
+      // Multi-option decision dialog. `options` is a list of
+      // {value, label, description?, kind?} rendered as stacked buttons
+      // (kind: "primary" | "danger" | default outline). `sections` is an
+      // optional list of {label, text} rendered read-only above the
+      // options — used by the block-conflict dialog to show both
+      // versions. Resolves with the chosen value, or null on
+      // dismiss/cancel.
+      const normalized = opts || {};
+      return new Promise((resolve) => {
+        this.queue.push({
+          id: ++this._idCounter,
+          kind: "choose",
+          opts: {
+            title: normalized.title || "",
+            message: normalized.message || "",
+            sections: normalized.sections || [],
+            options: normalized.options || [],
+            cancelLabel: normalized.cancelLabel || "cancel",
           },
           resolve,
         });
@@ -444,6 +481,7 @@ window.AppModals = {
       if (top.kind === "confirm") this.onCancel();
       else if (top.kind === "prompt") this.onPromptCancel();
       else if (top.kind === "alert") this.onAlertOk();
+      else if (top.kind === "choose") this.finish(null);
       else if (top.kind === "pickPage" || top.kind === "pickBlock")
         this.onPickerCancel();
     },
@@ -460,6 +498,7 @@ window.AppModals = {
         if (top.kind === "confirm") this.onCancel();
         else if (top.kind === "prompt") this.onPromptCancel();
         else if (top.kind === "alert") this.onAlertOk();
+        else if (top.kind === "choose") this.finish(null);
         return;
       }
       if (event.key === "Enter") {
@@ -565,6 +604,46 @@ window.AppModals = {
               @keydown="onKeydown"
             >
               {{ active.opts.confirmLabel }}
+            </button>
+          </div>
+        </div>
+
+        <div
+          v-else-if="active.kind === 'choose'"
+          class="app-modal app-modal-choose"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div v-if="active.opts.title" class="app-modal-header">
+            {{ active.opts.title }}
+          </div>
+          <div v-if="active.opts.message" class="app-modal-body">
+            {{ active.opts.message }}
+          </div>
+          <div
+            v-for="section in active.opts.sections"
+            :key="section.label"
+            class="app-modal-choose-section"
+          >
+            <div class="app-modal-choose-section-label">{{ section.label }}</div>
+            <pre class="app-modal-choose-section-text">{{ section.text }}</pre>
+          </div>
+          <div class="app-modal-choose-options">
+            <button
+              v-for="option in active.opts.options"
+              :key="option.value"
+              type="button"
+              class="btn app-modal-choose-option"
+              :class="option.kind === 'primary' ? 'btn-primary' : option.kind === 'danger' ? 'btn-danger' : 'btn-outline'"
+              @click="finish(option.value)"
+            >
+              <span class="app-modal-choose-option-label">{{ option.label }}</span>
+              <span v-if="option.description" class="app-modal-choose-option-desc">{{ option.description }}</span>
+            </button>
+          </div>
+          <div class="app-modal-actions">
+            <button type="button" class="btn btn-secondary" @click="finish(null)">
+              {{ active.opts.cancelLabel }}
             </button>
           </div>
         </div>

@@ -971,6 +971,65 @@ body {
   max-width: 14rem;
 }
 
+/* choose dialog — stacked decision options, used by the block-save
+ * conflict resolver. Wider than the default modal so the two content
+ * versions can be read side by side without wrapping badly. */
+.app-modal-choose {
+  max-width: 560px;
+}
+
+.app-modal-choose-section-label {
+  font-size: 0.75rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.app-modal-choose-section-text {
+  margin: 0;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 9rem;
+  overflow-y: auto;
+}
+
+.app-modal-choose-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.app-modal-choose-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  text-align: left;
+  padding: 0.55rem 0.8rem;
+  border-radius: 0;
+}
+
+.app-modal-choose-option-label {
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.app-modal-choose-option-desc {
+  font-size: 0.78rem;
+  font-weight: normal;
+  opacity: 0.85;
+}
+
 .confirm-modal-content {
   background: var(--bg-primary);
   border: 1px solid var(--border-primary);
@@ -8809,4 +8868,54 @@ a.hashtag-mention:hover,
     .later
   ):not(.wontdo) {
   cursor: grab;
+}
+
+/* ---- Monitor mode (?monitor=1) ------------------------------------
+ * Read-only wall-display mode for pinning a page (typically the daily
+ * note) on a big screen. The Page component polls for fresh data and
+ * blocks all writes; these rules strip interactive chrome and disable
+ * pointer interaction so the display can't be edited by a stray click.
+ * The app shell already skips rendering the left nav and chat panel. */
+body.monitor-mode .header-controls,
+body.monitor-mode .page-actions,
+body.monitor-mode .add-block-btn {
+  display: none;
+}
+
+body.monitor-mode .page-header,
+body.monitor-mode .embedded-views-section,
+body.monitor-mode .blocks-container,
+body.monitor-mode .linked-references-section {
+  pointer-events: none;
+}
+
+/* Give the content the full column width the sidebar/chat freed up. */
+body.monitor-mode .main-content-area {
+  max-width: 72rem;
+  margin: 0 auto;
+}
+
+.monitor-badge {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 1000;
+  padding: 0.35rem 0.7rem;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 3px solid var(--border-primary);
+  border-radius: 0;
+  box-shadow: 4px 4px 0 var(--border-primary);
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.monitor-badge:hover {
+  opacity: 1;
+  background: var(--hover-bg);
 }

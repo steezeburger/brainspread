@@ -48,9 +48,15 @@ class ApiService {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
+        const error = new Error(
           data.detail || data.errors?.non_field_errors?.[0] || "Request failed"
         );
+        // Attach the status and parsed body so callers can react to
+        // specific failures (e.g. 409 block-save conflicts carry the
+        // current server-side block in payload.data).
+        error.status = response.status;
+        error.payload = data;
+        throw error;
       }
 
       return data;
