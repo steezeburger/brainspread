@@ -5,6 +5,15 @@ on:
     branches: [main]
     types: [opened, synchronize, reopened, closed]
 
+# Serialize staging runs per PR. Without this, a runner backlog can
+# dequeue two deploys at once; both `git fetch` the same checkout on
+# the VPS and one dies with "cannot lock ref". cancel-in-progress is
+# off so an in-flight deploy finishes cleanly — GitHub still replaces
+# older *pending* runs in the group with the newest one.
+concurrency:
+  group: staging-pr-${{ github.event.number }}
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: Deploy to Staging
