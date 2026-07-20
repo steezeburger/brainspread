@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from assets.models import Asset
 from knowledge.commands import (
     AddTemplateBlocksToPageCommand,
+    BlockUpdateConflictError,
     BulkDeleteBlocksCommand,
     BulkMoveBlocksCommand,
     BulkMoveBlocksToPageCommand,
@@ -1028,6 +1029,18 @@ def update_block(request):
                 "errors": form.errors,
             }
             return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+    except BlockUpdateConflictError as e:
+        # Another session changed this block since the caller loaded it.
+        # Ship the current server-side block back with the 409 so the
+        # client can offer a merge (keep mine / new block / take theirs)
+        # instead of losing either version.
+        response: BlockResponse = {
+            "success": False,
+            "data": e.block.to_dict(),
+            "errors": {"non_field_errors": ["block was modified in another session"]},
+        }
+        return Response(response, status=status.HTTP_409_CONFLICT)
 
     except ValidationError as e:
         return Response(

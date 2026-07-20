@@ -65,7 +65,7 @@ from .sync_block_tags_command import SyncBlockTagsCommand
 from .tag_blocks_command import TagBlocksCommand, UntagBlocksCommand
 from .toggle_block_todo_command import ToggleBlockTodoCommand
 from .touch_page_command import TouchPageCommand
-from .update_block_command import UpdateBlockCommand
+from .update_block_command import BlockUpdateConflictError, UpdateBlockCommand
 from .update_page_command import UpdatePageCommand
 from .update_page_embedded_view_command import UpdatePageEmbeddedViewCommand
 from .update_saved_view_command import UpdateSavedViewCommand

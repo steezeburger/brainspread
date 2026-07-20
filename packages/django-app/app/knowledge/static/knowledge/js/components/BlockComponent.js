@@ -1426,6 +1426,12 @@ const BlockComponent = {
         if (!result || !result.success) {
           throw new Error("updateBlock did not succeed");
         }
+        // Keep the optimistic-concurrency baseline in sync — this save
+        // bumped the server content, so a later edit in this tab must
+        // compare against the new value, not the pre-chip one.
+        if (result.data && result.data.content !== undefined) {
+          this.block._baseContent = result.data.content;
+        }
         if (result.data && Array.isArray(result.data.tags)) {
           this.block.tags = result.data.tags;
         }

@@ -61,6 +61,10 @@ const Page = {
       // Page data
       pageSlug: this.getSlugFromURL(),
       currentDate: this.getDateFromURL(),
+      // Monitor mode (?monitor=1): read-only wall-display mode. Editing
+      // is disabled, the page silently re-fetches every few seconds, and
+      // the app shell hides the sidebar / chat chrome.
+      monitorMode: this.getMonitorFromURL(),
       page: null,
       directBlocks: [], // Blocks that belong directly to this page
       referencedBlocks: [], // Blocks from other pages that reference this page
@@ -325,6 +329,24 @@ const Page = {
     // the current page), the URL hash changes without a reload. Listen
     // so we still scroll the matching block into view.
     window.addEventListener("hashchange", this.scrollToHashBlock);
+    // Monitor mode: poll for fresh data. The interval is configurable
+    // via ?refresh=<seconds> (min 2, default 5). The body class lets
+    // app-level CSS strip interactive chrome without threading a prop
+    // through every component.
+    if (this.monitorMode) {
+      document.body.classList.add("monitor-mode");
+      // Follow "today" across midnight only when the display was opened
+      // on today's daily note — a deliberately pinned past date stays.
+      this._monitorFollowsToday =
+        !!this.currentDate && this.currentDate === this.localDateString();
+      const params = new URLSearchParams(window.location.search);
+      const refresh = parseInt(params.get("refresh"), 10);
+      const seconds = Number.isFinite(refresh) && refresh >= 2 ? refresh : 5;
+      this._monitorTimer = setInterval(
+        () => this.monitorTick(),
+        seconds * 1000
+      );
+    }
     // Load page data
     await this.loadPage();
   },
@@ -370,6 +392,11 @@ const Page = {
       clearTimeout(this._blockChangedTimer);
       this._blockChangedTimer = null;
     }
+    if (this._monitorTimer) {
+      clearInterval(this._monitorTimer);
+      this._monitorTimer = null;
+    }
+    document.body.classList.remove("monitor-mode");
   },
 
   methods: {
@@ -388,6 +415,53 @@ const Page = {
         return slug;
       }
       return null;
+    },
+
+    getMonitorFromURL() {
+      return new URLSearchParams(window.location.search).get("monitor") === "1";
+    },
+
+    localDateString() {
+      const now = new Date();
+      return (
+        now.getFullYear() +
+        "-" +
+        String(now.getMonth() + 1).padStart(2, "0") +
+        "-" +
+        String(now.getDate()).padStart(2, "0")
+      );
+    },
+
+    monitorTick() {
+      // Don't burn requests while nobody can see the screen.
+      if (document.hidden) return;
+      if (this._monitorFollowsToday) {
+        const today = this.localDateString();
+        if (this.currentDate && today !== this.currentDate) {
+          // Midnight rolled over — jump the display to the new daily
+          // note, keeping ?monitor=1 (and any refresh override).
+          window.location.href = `/knowledge/page/${today}/${window.location.search}`;
+          return;
+        }
+      }
+      this.loadPage({ silent: true });
+      // Saved-view embeds own their query results — poking them here is
+      // what keeps a todo toggled elsewhere live inside an embed on the
+      // display (see QueryEmbedBlock's refresh-embeds listener).
+      document.dispatchEvent(new CustomEvent("brainspread:refresh-embeds"));
+    },
+
+    enterMonitorMode() {
+      const url = new URL(window.location.href);
+      url.searchParams.set("monitor", "1");
+      window.location.href = url.toString();
+    },
+
+    exitMonitorMode() {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("monitor");
+      url.searchParams.delete("refresh");
+      window.location.href = url.toString();
     },
 
     // Build a real anchor href for jumping to another page (and
@@ -614,6 +688,11 @@ const Page = {
           ...blockData,
           parent: parent,
           children: [],
+          // Server-confirmed content baseline for the optimistic-
+          // concurrency check — updated on every successful content
+          // save, sent as expected_content so a stale tab gets a 409
+          // instead of clobbering another session's edit.
+          _baseContent: blockData.content,
         };
 
         if (blockData.children && blockData.children.length > 0) {
@@ -651,7 +730,7 @@ const Page = {
       order = null,
       autoFocus = true
     ) {
-      if (!this.page) return;
+      if (!this.page || this.monitorMode) return;
 
       try {
         const blockOrder = order !== null ? order : this.getNextOrder(parent);
@@ -668,6 +747,7 @@ const Page = {
           const newBlock = {
             uuid: result.data.uuid || `temp-${Date.now()}`,
             content: result.data.content || content,
+            _baseContent: result.data.content ?? content ?? "",
             content_type: result.data.content_type || "text",
             block_type: result.data.block_type || "bullet",
             order: result.data.order || blockOrder,
@@ -717,6 +797,7 @@ const Page = {
     },
 
     async setBlockProperties(block, partial) {
+      if (this.monitorMode) return;
       // Shallow-merge `partial` into the block's existing properties
       // (so toggling one flag doesn't drop the others) and persist.
       // Pass a key with `null` to clear it — useful for "reset size"
@@ -742,14 +823,40 @@ const Page = {
     },
 
     async updateBlock(block, newContent, skipReload = false) {
+      // Monitor mode is strictly read-only — never write from a display.
+      if (this.monitorMode) return;
+      // Unchanged content → nothing to save. Besides skipping a useless
+      // PUT on every blur, this guarantees a block the user didn't touch
+      // in this tab can never raise a conflict dialog.
+      if (
+        block._baseContent !== undefined &&
+        newContent === block._baseContent
+      ) {
+        block.content = newContent;
+        if (!skipReload) {
+          await this.loadPage();
+        }
+        return;
+      }
       try {
-        const result = await window.apiService.updateBlock(block.uuid, {
+        const payload = {
           content: newContent,
           parent: block.parent ? block.parent.uuid : null,
-        });
+        };
+        // Opt in to the server-side conflict check with the content this
+        // tab last saw from the server. JSON.stringify drops undefined,
+        // so blocks without a baseline degrade to last-write-wins.
+        if (block._baseContent !== undefined) {
+          payload.expected_content = block._baseContent;
+        }
+        const result = await window.apiService.updateBlock(block.uuid, payload);
 
         if (result.success) {
           block.content = newContent;
+          block._baseContent =
+            result.data && result.data.content !== undefined
+              ? result.data.content
+              : newContent;
           if (result.data && result.data.block_type) {
             block.block_type = result.data.block_type;
             // A content prefix (e.g. typing "DONE ") can flip the type
@@ -780,8 +887,133 @@ const Page = {
           }
         }
       } catch (error) {
+        if (error && error.status === 409) {
+          // Another session saved this block after we loaded it. Nothing
+          // was written — hand both versions to the user.
+          await this.resolveBlockConflict(
+            block,
+            newContent,
+            error.payload && error.payload.data ? error.payload.data : null
+          );
+          return;
+        }
         console.error("failed to update block:", error);
         this.error = "failed to update block";
+      }
+    },
+
+    async resolveBlockConflict(block, localContent, serverData) {
+      const serverContent = serverData ? serverData.content : null;
+      const choice = await window.appModals.choose({
+        title: "this block changed elsewhere",
+        message:
+          "another tab, device, or the AI saved a different version of this block after you loaded it. nothing has been overwritten yet — pick what happens to your text.",
+        sections: [
+          { label: "your unsaved version", text: localContent || "(empty)" },
+          {
+            label: "currently saved version",
+            text: serverContent != null ? serverContent : "(unavailable)",
+          },
+        ],
+        options: [
+          {
+            value: "new-block",
+            label: "keep both",
+            description:
+              "save your text as a new block below; the saved version stays here",
+            kind: "primary",
+          },
+          {
+            value: "mine",
+            label: "use mine",
+            description: "overwrite the saved version with your text",
+          },
+          {
+            value: "theirs",
+            label: "use theirs",
+            description: "discard your text and keep the saved version",
+            kind: "danger",
+          },
+        ],
+        cancelLabel: "decide later",
+      });
+
+      const takeServerVersion = () => {
+        if (serverContent == null) return;
+        block.content = serverContent;
+        block._baseContent = serverContent;
+        if (serverData.block_type) block.block_type = serverData.block_type;
+      };
+
+      if (choice === "mine") {
+        try {
+          const payload = {
+            content: localContent,
+            parent: block.parent ? block.parent.uuid : null,
+          };
+          // Re-arm the check against the version we just showed, so a
+          // save landing while the dialog was open re-prompts instead of
+          // clobbering silently.
+          if (serverContent != null) {
+            payload.expected_content = serverContent;
+          }
+          const result = await window.apiService.updateBlock(
+            block.uuid,
+            payload
+          );
+          if (result.success) {
+            block.content = localContent;
+            block._baseContent =
+              result.data && result.data.content !== undefined
+                ? result.data.content
+                : localContent;
+            await this.loadPage({ silent: true });
+          }
+        } catch (error) {
+          if (error && error.status === 409) {
+            await this.resolveBlockConflict(
+              block,
+              localContent,
+              error.payload && error.payload.data ? error.payload.data : null
+            );
+            return;
+          }
+          console.error("failed to overwrite conflicted block:", error);
+          this.emitToast("failed to save block", "error");
+        }
+      } else if (choice === "new-block") {
+        try {
+          // The saved version keeps this block; the local text becomes a
+          // sibling right below it, on the block's own page (which for a
+          // linked reference isn't the page being viewed).
+          takeServerVersion();
+          const result = await window.apiService.createBlock({
+            page:
+              (serverData && serverData.page_uuid) ||
+              block.page_uuid ||
+              this.page.uuid,
+            content: localContent,
+            parent: block.parent ? block.parent.uuid : null,
+            block_type: "bullet",
+            content_type: "text",
+            order: (block.order ?? 0) + 1,
+          });
+          if (!result.success) throw new Error("create block failed");
+          await this.loadPage({ silent: true });
+        } catch (error) {
+          console.error("failed to save conflict copy as new block:", error);
+          this.emitToast("failed to save your text as a new block", "error");
+        }
+      } else if (choice === "theirs") {
+        takeServerVersion();
+        await this.loadPage({ silent: true });
+      } else {
+        // Dismissed — leave the local text in the block, unsaved. The
+        // next blur re-raises the conflict.
+        this.emitToast(
+          "not saved — this block still holds your unsaved text",
+          "info"
+        );
       }
     },
 
@@ -889,6 +1121,7 @@ const Page = {
     },
 
     async deleteBlock(block) {
+      if (this.monitorMode) return;
       // Mark the block as being deleted BEFORE we open the confirm
       // dialog. The same guard mattered for the native confirm() — it
       // dismissed the soft keyboard on mobile and blurred the active
@@ -976,11 +1209,15 @@ const Page = {
     },
 
     async toggleBlockTodo(block) {
+      if (this.monitorMode) return;
       try {
         const result = await window.apiService.toggleBlockTodo(block.uuid);
         if (result.success) {
           block.block_type = result.data.block_type;
           block.content = result.data.content;
+          // The toggle rewrote the content server-side — move the
+          // concurrency baseline along with it.
+          block._baseContent = result.data.content;
           // Keep completed_at in sync so the block-info modal shows the
           // right time without a reload: entering done/wontdo stamps it,
           // cycling back out clears it to null.
@@ -2117,6 +2354,7 @@ const Page = {
     },
 
     startEditing(block) {
+      if (this.monitorMode) return;
       this.lastEditingBlockUuid = block.uuid;
       // Clear any block selection when entering edit mode
       if (this.selectionAnchorUuid) {
@@ -3375,6 +3613,10 @@ const Page = {
         });
         if (!result.success) throw new Error("update block failed");
         block.content = url;
+        block._baseContent =
+          result.data && result.data.content !== undefined
+            ? result.data.content
+            : url;
         block.content_type = "embed";
         block.media_url = url;
         // Keep the user in the block, focused in the embed's label field.
@@ -4364,6 +4606,10 @@ const Page = {
                       <span class="context-menu-icon">★</span>
                       <span>{{ isFavorited ? 'unfavorite' : 'favorite' }}</span>
                     </button>
+                    <button @click="enterMonitorMode" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">⛶</span>
+                      <span>monitor mode</span>
+                    </button>
                     <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">
                        <span class="context-menu-icon">×</span>
                        <span>delete</span>
@@ -4456,6 +4702,10 @@ const Page = {
                     <button v-if="!isTemplate" @click="addFromTemplate" class="context-menu-item" role="menuitem">
                       <span class="context-menu-icon">+</span>
                       <span>add from template…</span>
+                    </button>
+                    <button @click="enterMonitorMode" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">⛶</span>
+                      <span>monitor mode</span>
                     </button>
                     <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">
                       <span v-if="isTemplate">delete template</span>
@@ -4645,6 +4895,16 @@ const Page = {
         </div>
 
       </div>
+
+      <!-- Monitor mode badge: the one interactive element on a wall
+           display. Click exits back to the normal editable page. -->
+      <button
+        v-if="monitorMode"
+        type="button"
+        class="monitor-badge"
+        @click="exitMonitorMode"
+        title="monitor mode: read-only, auto-refreshing. click to exit."
+      >◉ live</button>
 
       <!-- Schedule popover (issue #59 phase 4) -->
       <ScheduleBlockPopover
