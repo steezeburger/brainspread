@@ -445,6 +445,10 @@ const Page = {
         }
       }
       this.loadPage({ silent: true });
+      // Saved-view embeds own their query results — poking them here is
+      // what keeps a todo toggled elsewhere live inside an embed on the
+      // display (see QueryEmbedBlock's refresh-embeds listener).
+      document.dispatchEvent(new CustomEvent("brainspread:refresh-embeds"));
     },
 
     enterMonitorMode() {

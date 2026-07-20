@@ -163,6 +163,24 @@ window.QueryEmbedBlock = {
       "brainspread:block-changed",
       this._onBlocksChanged
     );
+    // Monitor mode's poll (Page.monitorTick) fires this after each
+    // silent reload. The block tree re-fetches itself, but embeds own
+    // their query results — without this hook a DOING toggled from
+    // another session never updates inside an embed on the wall
+    // display. Unlike block-changed, collapsed embeds also refresh so
+    // their count badge stays live; fetch() picks count-vs-rows mode
+    // from `collapsed` on its own.
+    this._onRefreshEmbeds = () => {
+      if (this._refetchTimer) clearTimeout(this._refetchTimer);
+      this._refetchTimer = setTimeout(() => {
+        this._refetchTimer = null;
+        this.fetch();
+      }, 150);
+    };
+    document.addEventListener(
+      "brainspread:refresh-embeds",
+      this._onRefreshEmbeds
+    );
   },
 
   beforeUnmount() {
@@ -170,6 +188,12 @@ window.QueryEmbedBlock = {
       document.removeEventListener(
         "brainspread:block-changed",
         this._onBlocksChanged
+      );
+    }
+    if (this._onRefreshEmbeds) {
+      document.removeEventListener(
+        "brainspread:refresh-embeds",
+        this._onRefreshEmbeds
       );
     }
     if (this._refetchTimer) {
