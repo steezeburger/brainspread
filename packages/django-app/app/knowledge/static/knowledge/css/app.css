@@ -6398,6 +6398,108 @@ kbd {
   background: var(--hover-bg);
 }
 
+.graph-filter-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.graph-filter-input {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 0.25rem 1.4rem 0.25rem 0.5rem;
+  width: 180px;
+}
+
+.graph-filter-input:focus {
+  outline: 1px solid var(--border-primary);
+  outline-offset: 0;
+}
+
+.graph-filter-clear {
+  position: absolute;
+  right: 0.25rem;
+  background: none;
+  border: none;
+  border-radius: 0;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+  cursor: pointer;
+}
+
+.graph-filter-clear:hover {
+  color: var(--text-primary);
+}
+
+.graph-select {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.25rem;
+  cursor: pointer;
+}
+
+.graph-btn-active {
+  background: var(--hover-bg);
+}
+
+.graph-physics-panel {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-secondary);
+  z-index: 5;
+}
+
+.graph-physics-row {
+  display: grid;
+  grid-template-columns: 5.5rem 8rem 2.5rem;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.graph-physics-row input[type="range"] {
+  width: 100%;
+  accent-color: var(--text-primary);
+  cursor: pointer;
+}
+
+.graph-physics-row span {
+  text-align: right;
+  color: var(--text-primary);
+}
+
+.graph-physics-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.2rem;
+}
+
+@media (max-width: 768px) {
+  .graph-filter-input {
+    width: 130px;
+  }
+}
+
 .graph-canvas-container {
   position: relative;
   flex: 1;
