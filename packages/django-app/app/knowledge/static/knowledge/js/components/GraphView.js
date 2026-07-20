@@ -1,4 +1,16 @@
 // GraphView - force-directed canvas visualization of pages and their links.
+
+// Defaults tuned for an over-damped, "settles and stays put" feel.
+// Users can override these live via the physics panel; overrides are
+// persisted in localStorage under PHYSICS_STORAGE_KEY.
+const DEFAULT_PHYSICS = {
+  repulsionStrength: 1800,
+  linkDistance: 90,
+  linkStrength: 0.08,
+  friction: 0.5,
+};
+const PHYSICS_STORAGE_KEY = "graphPhysics";
+
 const GraphView = {
   data() {
     return {
@@ -36,14 +48,11 @@ const GraphView = {
       simulationAlpha: 1,
       resizeObserver: null,
       devicePixelRatio: window.devicePixelRatio || 1,
-      // Physics params. Tuned for an over-damped, "settles and stays put"
-      // feel — heavy friction and stiffer springs kill the rubber-band
-      // oscillation an under-damped spring system produces.
-      repulsionStrength: 1800,
-      linkDistance: 90,
-      linkStrength: 0.08,
+      // Physics params (see DEFAULT_PHYSICS; friction is the fraction of
+      // velocity kept per frame, so lower = heavier damping).
+      ...DEFAULT_PHYSICS,
       centerStrength: 0.02,
-      friction: 0.6,
+      showPhysicsPanel: false,
     };
   },
 
@@ -82,6 +91,7 @@ const GraphView = {
   },
 
   async mounted() {
+    this.loadPhysicsSettings();
     await this.loadGraph();
     this.setupCanvas();
     this.setupResizeObserver();
@@ -401,7 +411,42 @@ const GraphView = {
         node.y += node.vy;
       }
 
-      this.simulationAlpha *= 0.99;
+      this.simulationAlpha *= 0.98;
+    },
+
+    loadPhysicsSettings() {
+      try {
+        const raw = localStorage.getItem(PHYSICS_STORAGE_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        for (const key of Object.keys(DEFAULT_PHYSICS)) {
+          const value = Number(saved[key]);
+          if (Number.isFinite(value)) this[key] = value;
+        }
+      } catch (err) {
+        console.warn("Ignoring invalid saved graph physics:", err);
+      }
+    },
+
+    onPhysicsChange() {
+      const settings = {};
+      for (const key of Object.keys(DEFAULT_PHYSICS)) {
+        settings[key] = this[key];
+      }
+      localStorage.setItem(PHYSICS_STORAGE_KEY, JSON.stringify(settings));
+      this.simulationAlpha = Math.max(this.simulationAlpha, 0.5);
+    },
+
+    resetPhysics() {
+      for (const [key, value] of Object.entries(DEFAULT_PHYSICS)) {
+        this[key] = value;
+      }
+      localStorage.removeItem(PHYSICS_STORAGE_KEY);
+      this.simulationAlpha = 1;
+    },
+
+    togglePhysicsPanel() {
+      this.showPhysicsPanel = !this.showPhysicsPanel;
     },
 
     nodeRadius(node) {
@@ -744,6 +789,7 @@ const GraphView = {
           </label>
           <button class="graph-btn" @click="resetView" title="reset zoom/pan (r)">reset</button>
           <button class="graph-btn" @click="refresh" title="reload graph">reload</button>
+          <button class="graph-btn" :class="{ 'graph-btn-active': showPhysicsPanel }" @click="togglePhysicsPanel" title="tune layout physics">physics</button>
         </div>
       </div>
       <div class="graph-canvas-container" ref="container">
@@ -763,6 +809,31 @@ const GraphView = {
         </div>
         <div v-else-if="!visibleNodes.length" class="graph-overlay">
           no pages match the current filters
+        </div>
+        <div v-if="showPhysicsPanel" class="graph-physics-panel">
+          <div class="graph-physics-row">
+            <label>repulsion</label>
+            <input type="range" min="200" max="5000" step="100" v-model.number="repulsionStrength" @input="onPhysicsChange" />
+            <span>{{ repulsionStrength }}</span>
+          </div>
+          <div class="graph-physics-row">
+            <label>link length</label>
+            <input type="range" min="30" max="250" step="10" v-model.number="linkDistance" @input="onPhysicsChange" />
+            <span>{{ linkDistance }}</span>
+          </div>
+          <div class="graph-physics-row">
+            <label>stiffness</label>
+            <input type="range" min="0.02" max="0.30" step="0.01" v-model.number="linkStrength" @input="onPhysicsChange" />
+            <span>{{ linkStrength.toFixed(2) }}</span>
+          </div>
+          <div class="graph-physics-row">
+            <label>bounce</label>
+            <input type="range" min="0.10" max="0.90" step="0.05" v-model.number="friction" @input="onPhysicsChange" />
+            <span>{{ friction.toFixed(2) }}</span>
+          </div>
+          <div class="graph-physics-actions">
+            <button class="graph-btn" @click="resetPhysics">defaults</button>
+          </div>
         </div>
       </div>
       <div class="graph-help">

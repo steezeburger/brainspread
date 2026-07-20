@@ -6449,6 +6449,51 @@ kbd {
   cursor: pointer;
 }
 
+.graph-btn-active {
+  background: var(--hover-bg);
+}
+
+.graph-physics-panel {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-secondary);
+  z-index: 5;
+}
+
+.graph-physics-row {
+  display: grid;
+  grid-template-columns: 5.5rem 8rem 2.5rem;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.graph-physics-row input[type="range"] {
+  width: 100%;
+  accent-color: var(--text-primary);
+  cursor: pointer;
+}
+
+.graph-physics-row span {
+  text-align: right;
+  color: var(--text-primary);
+}
+
+.graph-physics-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.2rem;
+}
+
 @media (max-width: 768px) {
   .graph-filter-input {
     width: 130px;
