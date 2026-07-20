@@ -6,8 +6,8 @@
 const DEFAULT_PHYSICS = {
   repulsionStrength: 1800,
   linkDistance: 90,
-  linkStrength: 0.08,
-  friction: 0.5,
+  linkStrength: 0.12,
+  friction: 0.35,
 };
 const PHYSICS_STORAGE_KEY = "graphPhysics";
 
@@ -326,15 +326,12 @@ const GraphView = {
       if (!this.visibleNodes.length) return;
 
       // Once cooled, freeze the layout completely instead of idling at a
-      // low simmer — the old 0.02 alpha floor kept every node jiggling
-      // forever. Interactions (drag, filter, reset) re-heat the sim.
-      if (this.simulationAlpha < 0.005 && !this.draggingNode) return;
+      // low simmer. Dragging a node in a settled graph moves ONLY that
+      // node — the sim stays frozen, so there's no elastic spring-chase.
+      // Filter changes and reset re-heat the sim for a re-layout.
+      if (this.simulationAlpha < 0.005) return;
 
-      // Keep springs alive while dragging so neighbors follow the node
-      // even after a long drag has decayed the alpha.
-      const alpha = this.draggingNode
-        ? Math.max(this.simulationAlpha, 0.3)
-        : this.simulationAlpha;
+      const alpha = this.simulationAlpha;
 
       // Repulsion between all node pairs (O(n^2) - fine for the sizes we expect)
       for (let i = 0; i < this.visibleNodes.length; i++) {
@@ -387,14 +384,16 @@ const GraphView = {
       const cx = this.width / 2;
       const cy = this.height / 2;
       for (const node of this.visibleNodes) {
-        if (node === this.draggingNode) continue;
+        if (node === this.draggingNode || node.pinned) continue;
         node.vx += (cx - node.x) * this.centerStrength * alpha;
         node.vy += (cy - node.y) * this.centerStrength * alpha;
       }
 
-      // Apply velocities with friction
+      // Apply velocities with friction. Pinned nodes (hand-placed via
+      // drag) hold their position through re-layouts but still exert
+      // forces on the rest of the graph.
       for (const node of this.visibleNodes) {
-        if (node === this.draggingNode) {
+        if (node === this.draggingNode || node.pinned) {
           node.vx = 0;
           node.vy = 0;
           continue;
@@ -411,7 +410,7 @@ const GraphView = {
         node.y += node.vy;
       }
 
-      this.simulationAlpha *= 0.98;
+      this.simulationAlpha *= 0.97;
     },
 
     loadPhysicsSettings() {
@@ -594,7 +593,6 @@ const GraphView = {
         this.dragOffset = { x: x - node.x, y: y - node.y };
         this.dragStartClient = { x: event.clientX, y: event.clientY };
         this.dragMoved = false;
-        this.simulationAlpha = Math.max(this.simulationAlpha, 0.5);
       } else {
         this.isPanning = true;
         this.panStart = { x: event.clientX, y: event.clientY };
@@ -645,9 +643,9 @@ const GraphView = {
         }
       }
       if (this.draggingNode && this.dragMoved) {
-        // Re-heat so the neighborhood relaxes around the dropped node
-        // instead of freezing mid-stretch.
-        this.simulationAlpha = Math.max(this.simulationAlpha, 0.3);
+        // Pin the node exactly where it was dropped — no spring-back,
+        // and later re-layouts won't move it. Reset (r) clears pins.
+        this.draggingNode.pinned = true;
       }
       this.draggingNode = null;
       this.dragMoved = false;
@@ -686,6 +684,7 @@ const GraphView = {
     resetView() {
       this.zoom = 1;
       this.panOffset = { x: 0, y: 0 };
+      for (const node of this.nodes) node.pinned = false;
       this.simulationAlpha = 1;
     },
 
@@ -837,7 +836,7 @@ const GraphView = {
         </div>
       </div>
       <div class="graph-help">
-        drag to move · scroll to zoom · click to open · shift-click to filter · / search · r reset · esc clear/exit
+        drag to place (pins) · scroll to zoom · click to open · shift-click to filter · / search · r reset+unpin · esc clear/exit
       </div>
     </div>
   `,
