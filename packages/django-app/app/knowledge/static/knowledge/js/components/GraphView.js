@@ -36,12 +36,14 @@ const GraphView = {
       simulationAlpha: 1,
       resizeObserver: null,
       devicePixelRatio: window.devicePixelRatio || 1,
-      // Physics params
+      // Physics params. Tuned for an over-damped, "settles and stays put"
+      // feel — heavy friction and stiffer springs kill the rubber-band
+      // oscillation an under-damped spring system produces.
       repulsionStrength: 1800,
       linkDistance: 90,
-      linkStrength: 0.05,
+      linkStrength: 0.08,
       centerStrength: 0.02,
-      friction: 0.85,
+      friction: 0.6,
     };
   },
 
@@ -313,7 +315,16 @@ const GraphView = {
     tick() {
       if (!this.visibleNodes.length) return;
 
-      const alpha = Math.max(this.simulationAlpha, 0.02);
+      // Once cooled, freeze the layout completely instead of idling at a
+      // low simmer — the old 0.02 alpha floor kept every node jiggling
+      // forever. Interactions (drag, filter, reset) re-heat the sim.
+      if (this.simulationAlpha < 0.005 && !this.draggingNode) return;
+
+      // Keep springs alive while dragging so neighbors follow the node
+      // even after a long drag has decayed the alpha.
+      const alpha = this.draggingNode
+        ? Math.max(this.simulationAlpha, 0.3)
+        : this.simulationAlpha;
 
       // Repulsion between all node pairs (O(n^2) - fine for the sizes we expect)
       for (let i = 0; i < this.visibleNodes.length; i++) {
@@ -390,7 +401,7 @@ const GraphView = {
         node.y += node.vy;
       }
 
-      this.simulationAlpha *= 0.995;
+      this.simulationAlpha *= 0.99;
     },
 
     nodeRadius(node) {
@@ -587,6 +598,11 @@ const GraphView = {
         } else {
           this.navigateToNode(this.draggingNode);
         }
+      }
+      if (this.draggingNode && this.dragMoved) {
+        // Re-heat so the neighborhood relaxes around the dropped node
+        // instead of freezing mid-stretch.
+        this.simulationAlpha = Math.max(this.simulationAlpha, 0.3);
       }
       this.draggingNode = null;
       this.dragMoved = false;
