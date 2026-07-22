@@ -72,6 +72,14 @@ const KnowledgeApp = createApp({
       spotlightSearchTimeout: null, // Debounce timeout for search
       currentPagePageType: null, // page_type of the currently-loaded page
       currentPageUuid: null, // uuid of the currently-loaded page (for chat context)
+      currentPageTitle: "", // title of the currently-loaded page (split view labels)
+      currentPageSlug: null, // slug of the currently-loaded page (split swap)
+      // Split view (?side=<slug>): show a second page in a right-hand
+      // pane with drag-drop / arrow moves between the two.
+      sideSlug:
+        new URLSearchParams(window.location.search).get("side") || null,
+      sidePageUuid: null, // uuid of the side pane's page, once it loads
+      sidePageTitle: "", // title of the side pane's page
       // Saved-views route state. `viewsSlug` is the slug from the URL or
       // null on the index. Lifted to the app shell so back/forward and
       // sidebar navigation can update it without remounting the page.
@@ -116,13 +124,23 @@ const KnowledgeApp = createApp({
     showChatPanel() {
       // Whiteboards, graph view, and the saved-views / all-pages /
       // templates surfaces use the full column width; chat is noise
-      // there.
+      // there. Split view needs the full width for its two panes.
       if (this.monitorMode) return false;
+      if (this.splitActive) return false;
       if (this.currentView === "graph") return false;
       if (this.currentView === "views") return false;
       if (this.currentView === "pages") return false;
       if (this.currentView === "templates") return false;
       return this.currentPagePageType !== "whiteboard";
+    },
+
+    // Split view renders only on regular page routes (the "journal"
+    // view) — never in monitor mode, and never on graph/list surfaces
+    // (their routes don't carry ?side= anyway).
+    splitActive() {
+      return (
+        !!this.sideSlug && this.currentView === "journal" && !this.monitorMode
+      );
     },
   },
 
@@ -467,6 +485,61 @@ const KnowledgeApp = createApp({
     onPageLoaded(page) {
       this.currentPagePageType = page?.page_type || null;
       this.currentPageUuid = page?.uuid || null;
+      this.currentPageTitle = page?.title || "";
+      this.currentPageSlug = page?.slug || page?.date || null;
+    },
+
+    onSidePageLoaded(page) {
+      // The side pane's Page instance reports its load here (instead of
+      // onPageLoaded) so it never clobbers the main page's identity —
+      // chat context, page-type CSS, etc. all follow the main pane.
+      this.sidePageUuid = page?.uuid || null;
+      this.sidePageTitle = page?.title || "";
+    },
+
+    // ── Split view (?side=<slug>) ─────────────────────────────────
+
+    async openSplitView() {
+      if (this.currentView !== "journal") return;
+      if (!window.appModals?.pickPage) {
+        console.error("appModals.pickPage is not available");
+        return;
+      }
+      const target = await window.appModals.pickPage({
+        title: "split view with…",
+        placeholder: "search pages…",
+        confirmLabel: "open",
+      });
+      if (!target?.slug) return;
+      const url = new URL(window.location.href);
+      url.searchParams.set("side", target.slug);
+      url.hash = "";
+      window.location.href = url.pathname + url.search;
+    },
+
+    closeSplitView() {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("side");
+      url.hash = "";
+      window.location.href = url.pathname + url.search;
+    },
+
+    swapSplitView() {
+      // The side page becomes the URL path; the main page becomes the
+      // ?side= param. Falls back to the raw slugs from the URL when a
+      // pane hasn't reported its load yet.
+      const mainSlug = this.currentPageSlug || this.getMainSlugFromPath();
+      if (!mainSlug || !this.sideSlug) return;
+      window.location.href = `/knowledge/page/${encodeURIComponent(this.sideSlug)}/?side=${encodeURIComponent(mainSlug)}`;
+    },
+
+    getMainSlugFromPath() {
+      const pathParts = window.location.pathname.split("/");
+      const pageIndex = pathParts.indexOf("page");
+      if (pageIndex !== -1 && pathParts[pageIndex + 1]) {
+        return decodeURIComponent(pathParts[pageIndex + 1]);
+      }
+      return null;
     },
 
     async createNewPage(prefilledTitle = null, pageType = "page") {
@@ -786,6 +859,14 @@ const KnowledgeApp = createApp({
           icon: "☰",
         },
         {
+          id: "split-view",
+          label: this.splitActive ? "close split view" : "split view",
+          description: this.splitActive
+            ? "return to a single page"
+            : "open a second page side by side",
+          icon: "◫",
+        },
+        {
           id: "toggle-sidebar",
           label: this.isLeftNavOpen() ? "close sidebar" : "open sidebar",
           description: "toggle the left sidebar (⌘\\)",
@@ -1036,6 +1117,13 @@ const KnowledgeApp = createApp({
         case "all-pages":
           this.navigateToPages();
           break;
+        case "split-view":
+          if (this.splitActive) {
+            this.closeSplitView();
+          } else {
+            this.openSplitView();
+          }
+          break;
         case "toggle-sidebar":
           this.toggleLeftNav();
           break;
@@ -1224,15 +1312,40 @@ const KnowledgeApp = createApp({
                             @open-settings="openSettings"
                             @open-help="openHelp"
                             @logout="requestLogout" />
-                        <div class="main-content-area">
-                            <Page
-                                :chat-context-blocks="chatContextBlocks"
-                                :is-block-in-context="isBlockInContext"
-                                @block-add-to-context="onBlockAddToContext"
-                                @block-remove-from-context="onBlockRemoveFromContext"
-                                @visible-blocks-changed="updateVisibleBlocks"
-                                @page-loaded="onPageLoaded"
-                            />
+                        <div class="main-content-area" :class="{ 'split-view-area': splitActive }">
+                            <div class="split-pane split-pane-main">
+                                <Page
+                                    :chat-context-blocks="chatContextBlocks"
+                                    :is-block-in-context="isBlockInContext"
+                                    pane-id="main"
+                                    :split-active="splitActive"
+                                    :other-page-uuid="sidePageUuid"
+                                    :other-page-title="sidePageTitle"
+                                    @block-add-to-context="onBlockAddToContext"
+                                    @block-remove-from-context="onBlockRemoveFromContext"
+                                    @visible-blocks-changed="updateVisibleBlocks"
+                                    @page-loaded="onPageLoaded"
+                                    @open-split="openSplitView"
+                                    @close-split="closeSplitView"
+                                />
+                            </div>
+                            <div v-if="splitActive" class="split-pane split-pane-side">
+                                <Page
+                                    :key="'side-' + sideSlug"
+                                    :slug-override="sideSlug"
+                                    pane-id="side"
+                                    :split-active="true"
+                                    :other-page-uuid="currentPageUuid"
+                                    :other-page-title="currentPageTitle"
+                                    :chat-context-blocks="chatContextBlocks"
+                                    :is-block-in-context="isBlockInContext"
+                                    @block-add-to-context="onBlockAddToContext"
+                                    @block-remove-from-context="onBlockRemoveFromContext"
+                                    @page-loaded="onSidePageLoaded"
+                                    @close-split="closeSplitView"
+                                    @swap-split="swapSplitView"
+                                />
+                            </div>
                         </div>
                         <ChatPanel
                             v-if="showChatPanel"

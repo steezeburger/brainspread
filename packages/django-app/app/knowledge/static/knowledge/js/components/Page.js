@@ -49,12 +49,40 @@ const Page = {
       type: Function,
       default: () => () => false,
     },
+    // Split view (two pages side by side). slugOverride makes this
+    // instance load an explicit page instead of parsing the URL — the
+    // side pane passes the ?side= slug here. paneId distinguishes the
+    // two instances so document-level listeners and drag state can
+    // tell "mine" from "the other pane's".
+    slugOverride: {
+      type: String,
+      default: null,
+    },
+    paneId: {
+      type: String,
+      default: "main",
+    },
+    splitActive: {
+      type: Boolean,
+      default: false,
+    },
+    otherPageUuid: {
+      type: String,
+      default: null,
+    },
+    otherPageTitle: {
+      type: String,
+      default: "",
+    },
   },
   emits: [
     "block-add-to-context",
     "block-remove-from-context",
     "visible-blocks-changed",
     "page-loaded",
+    "open-split",
+    "close-split",
+    "swap-split",
   ],
   data() {
     return {
@@ -129,6 +157,12 @@ const Page = {
       // 'before' | 'after' (sibling insert) or 'child' (nest under).
       blockDrag: null,
       blockDropTarget: null,
+      // Split view: true while a block drag that STARTED in the other
+      // pane is live. Drives the "drop here" zone at the bottom of the
+      // block list. Kept in sync via the brainspread:pane-drag event
+      // because window.brainspreadPaneDrag itself isn't reactive.
+      foreignDragActive: false,
+      foreignDropHover: false,
     };
   },
 
@@ -137,19 +171,52 @@ const Page = {
       return this.page?.page_type === "daily";
     },
 
+    isSidePane() {
+      return this.paneId === "side";
+    },
+
+    // Cross-pane block moves are meaningful only when the split shows
+    // two DIFFERENT pages — sending a block to the page it's already
+    // on would just no-op on the backend.
+    canSendToOtherPane() {
+      return (
+        this.splitActive &&
+        !!this.otherPageUuid &&
+        !!this.page &&
+        this.page.uuid !== this.otherPageUuid &&
+        !this.monitorMode
+      );
+    },
+
+    // Old-school two-pane arrows: the main (left) pane sends right,
+    // the side (right) pane sends left.
+    sendToOtherPaneIcon() {
+      return this.isSidePane ? "←" : "→";
+    },
+
+    sendToOtherPaneTitle() {
+      return this.otherPageTitle
+        ? `move to "${this.otherPageTitle}"`
+        : "move to other pane";
+    },
+
     // Prev/next daily navigation (issue #133). Real <a> hrefs so
     // middle/cmd-click opens the adjacent day in a new tab; plain
     // clicks ride the default navigation since the app routes with
     // hard page loads anyway. The backend materializes missing
-    // dailies on load, so any target date is valid.
+    // dailies on load, so any target date is valid. In the side pane
+    // the links rewrite the ?side= param instead, so day-paging the
+    // right pane never navigates the left one away.
     prevDayUrl() {
       if (!this.isDaily || !this.page?.date) return null;
-      return `/knowledge/page/${this.shiftDateString(this.page.date, -1)}/`;
+      const date = this.shiftDateString(this.page.date, -1);
+      return this.isSidePane ? this.sideHref(date) : `/knowledge/page/${date}/`;
     },
 
     nextDayUrl() {
       if (!this.isDaily || !this.page?.date) return null;
-      return `/knowledge/page/${this.shiftDateString(this.page.date, 1)}/`;
+      const date = this.shiftDateString(this.page.date, 1);
+      return this.isSidePane ? this.sideHref(date) : `/knowledge/page/${date}/`;
     },
 
     isWhiteboard() {
@@ -285,19 +352,30 @@ const Page = {
     // Selection escalation and copy
     document.addEventListener("keydown", this.handleSelectionKeydown);
     document.addEventListener("copy", this.handleSelectionCopy);
-    // Spotlight command: new block
+    // Spotlight commands target "the page" — with a split open that
+    // must mean the main pane only, otherwise a single "new block"
+    // command would add a block to BOTH panes.
+    if (!this.isSidePane) {
+      // Spotlight command: new block
+      document.addEventListener(
+        "spotlight:new-block",
+        this.handleSpotlightNewBlock
+      );
+      // Spotlight commands: bulk actions on the current selection
+      document.addEventListener(
+        "spotlight:bulk-delete",
+        this.handleBulkDeleteSelected
+      );
+      document.addEventListener(
+        "spotlight:bulk-move-to-today",
+        this.handleBulkMoveSelectedToToday
+      );
+    }
+    // Split view: the other pane announces block drags starting/ending
+    // so this pane can show its "drop here" zone reactively.
     document.addEventListener(
-      "spotlight:new-block",
-      this.handleSpotlightNewBlock
-    );
-    // Spotlight commands: bulk actions on the current selection
-    document.addEventListener(
-      "spotlight:bulk-delete",
-      this.handleBulkDeleteSelected
-    );
-    document.addEventListener(
-      "spotlight:bulk-move-to-today",
-      this.handleBulkMoveSelectedToToday
+      "brainspread:pane-drag",
+      this.handlePaneDragSignal
     );
     // Re-enter editing after the AI chat panel closes (restores block focus).
     document.addEventListener(
@@ -372,6 +450,10 @@ const Page = {
       this.handleBulkMoveSelectedToToday
     );
     document.removeEventListener(
+      "brainspread:pane-drag",
+      this.handlePaneDragSignal
+    );
+    document.removeEventListener(
       "resume-block-editing",
       this.handleResumeBlockEditing
     );
@@ -401,12 +483,24 @@ const Page = {
 
   methods: {
     getSlugFromURL() {
+      // The side pane loads an explicit page rather than the URL path.
+      if (this.slugOverride) return this.slugOverride;
       const pathParts = window.location.pathname.split("/");
       const pageIndex = pathParts.indexOf("page");
       if (pageIndex !== -1 && pathParts[pageIndex + 1]) {
         return decodeURIComponent(pathParts[pageIndex + 1]);
       }
       return null;
+    },
+
+    // Href that keeps the current main page but points the side pane
+    // at `slug`. Used by the side pane's own navigation (daily prev/
+    // next, date picker) so it never steals the whole window.
+    sideHref(slug) {
+      const url = new URL(window.location.href);
+      url.searchParams.set("side", slug);
+      url.hash = "";
+      return url.pathname + url.search;
     },
 
     getDateFromURL() {
@@ -418,6 +512,10 @@ const Page = {
     },
 
     getMonitorFromURL() {
+      // Monitor mode is a whole-window concern; the side pane never
+      // enters it (the app shell doesn't render a split in monitor
+      // mode anyway).
+      if (this.slugOverride) return false;
       return new URLSearchParams(window.location.search).get("monitor") === "1";
     },
 
@@ -1559,10 +1657,132 @@ const Page = {
       return t.length > max ? `${t.slice(0, max)}…` : t || "(empty block)";
     },
 
+    // ── Split view (two pages side by side) ─────────────────────────
+
+    // Arrow-button move: send one block (and its subtree) to the end
+    // of the other pane's page. The old-school two-pane commander flow.
+    async sendBlockToOtherPane(block) {
+      if (!this.otherPageUuid || !block) return;
+
+      try {
+        if (block.isEditing) {
+          await this.updateBlock(block, block.content, true);
+        }
+
+        const result = await window.apiService.moveBlockToPage(
+          block.uuid,
+          this.otherPageUuid
+        );
+        if (!result.success) {
+          throw new Error(
+            result.errors?.non_field_errors?.[0] || "move failed"
+          );
+        }
+
+        const targetTitle =
+          result.data?.target_page?.title || this.otherPageTitle || "page";
+        this.$parent?.addToast?.(
+          result.data?.moved
+            ? `moved block to ${targetTitle}`
+            : result.data?.message || `block already on ${targetTitle}`,
+          result.data?.moved ? "success" : "info"
+        );
+
+        this.broadcastBlockChanged(block.uuid);
+        await this.loadPage({ silent: true });
+        // The other pane reloads via its notes-modified listener.
+        window.dispatchEvent(
+          new CustomEvent("brainspread:notes-modified", {
+            detail: { page_uuids: [this.otherPageUuid] },
+          })
+        );
+      } catch (error) {
+        console.error("failed to move block to other pane:", error);
+        this.$parent?.addToast?.(
+          `failed to move block: ${error.message || error}`,
+          "error"
+        );
+      }
+    },
+
+    async bulkMoveSelectedToOtherPane() {
+      const uuids = [...this.selectedBlockUuids];
+      if (uuids.length === 0) {
+        this.$parent?.addToast?.("no blocks selected", "info");
+        return;
+      }
+      if (!this.otherPageUuid) return;
+
+      try {
+        const result = await window.apiService.bulkMoveBlocksToPage(
+          uuids,
+          this.otherPageUuid
+        );
+        if (!result || !result.success) {
+          throw new Error(
+            result?.errors?.non_field_errors?.[0] || "bulk move failed"
+          );
+        }
+        const moved = result.data?.moved_count ?? 0;
+        const targetTitle =
+          result.data?.target_page?.title || this.otherPageTitle || "page";
+        this.$parent?.addToast?.(
+          moved > 0
+            ? `moved ${moved} block${moved === 1 ? "" : "s"} to ${targetTitle}`
+            : "selected blocks already on the target page",
+          moved > 0 ? "success" : "info"
+        );
+        this.clearBlockSelection();
+        uuids.forEach((uuid) => this.broadcastBlockChanged(uuid));
+        await this.loadPage({ silent: true });
+        window.dispatchEvent(
+          new CustomEvent("brainspread:notes-modified", {
+            detail: { page_uuids: [this.otherPageUuid] },
+          })
+        );
+      } catch (error) {
+        console.error("failed to bulk-move blocks to other pane:", error);
+        this.$parent?.addToast?.(
+          `failed to move selected blocks: ${error.message || error}`,
+          "error"
+        );
+      }
+    },
+
+    // Page-menu / pane-bar controls. The app shell owns the ?side=
+    // param, so these just relay intent upward.
+    requestOpenSplit() {
+      this.showPageMenu = false;
+      this.$emit("open-split");
+    },
+
+    requestCloseSplit() {
+      this.showPageMenu = false;
+      this.$emit("close-split");
+    },
+
+    requestSwapSplit() {
+      this.$emit("swap-split");
+    },
+
+    handleSplitMenuClick() {
+      if (this.splitActive) {
+        this.requestCloseSplit();
+      } else {
+        this.requestOpenSplit();
+      }
+    },
+
     // ── Block drag-and-drop ─────────────────────────────────────────
     // Desktop-only (HTML5 drag events don't fire on touch; mobile has
     // the "move under…" picker instead). Dragging a block that's part
     // of the current selection moves the whole selection.
+    //
+    // Split view: a drag can also land in the OTHER pane. The source
+    // pane registers the drag on window.brainspreadPaneDrag (component
+    // state isn't visible across instances); the target pane picks it
+    // up in its own dragover/drop handlers and performs the cross-page
+    // move server-side.
 
     onMoveDragStart(block, event) {
       const uuids =
@@ -1571,6 +1791,20 @@ const Page = {
           : [block.uuid];
       this.blockDrag = { uuids: new Set(uuids) };
       this.blockDropTarget = null;
+      // Publish the drag for the other pane. topUuids is the dragged
+      // forest's roots in document order, precomputed here because the
+      // target pane can't walk this pane's tree at drop time.
+      window.brainspreadPaneDrag = {
+        source: this,
+        pageUuid: this.page?.uuid || null,
+        uuids: this.blockDrag.uuids,
+        topUuids: this._draggedTopBlocks().map((b) => b.uuid),
+      };
+      document.dispatchEvent(
+        new CustomEvent("brainspread:pane-drag", {
+          detail: { active: true, source: this },
+        })
+      );
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = "move";
         // Firefox refuses to start a drag with no data attached.
@@ -1579,8 +1813,9 @@ const Page = {
     },
 
     onMoveDragOver(block, event) {
-      if (!this.blockDrag) return; // not a block drag (e.g. an OS file)
-      if (this._dropForbidden(block)) {
+      const drag = this._activePaneDrag();
+      if (!drag) return; // not a block drag (e.g. an OS file)
+      if (this._dropForbidden(block, drag.uuids)) {
         this.blockDropTarget = null;
         return;
       }
@@ -1597,18 +1832,28 @@ const Page = {
     },
 
     async onMoveDrop(block, event) {
-      if (!this.blockDrag) return;
+      const drag = this._activePaneDrag();
+      if (!drag) return;
       event.preventDefault();
       event.stopPropagation();
       const target = this.blockDropTarget;
-      const forbidden = this._dropForbidden(block);
-      const movers = this._draggedTopBlocks();
+      const forbidden = this._dropForbidden(block, drag.uuids);
+      const movers = drag.foreign
+        ? drag.topUuids.map((uuid) => ({ uuid }))
+        : this._draggedTopBlocks();
       this.blockDrag = null;
       this.blockDropTarget = null;
+      window.brainspreadPaneDrag = null;
       if (forbidden || !target || target.uuid !== block.uuid || !movers.length)
         return;
 
       try {
+        // Cross-pane movers must land on this pane's page before any
+        // parent/order surgery — updateBlock repositions within a page,
+        // it doesn't change pages. Nesting ('child') skips this because
+        // move-to-page with a target_parent already moves cross-page.
+        const needsPageMove =
+          drag.foreign && drag.sourcePageUuid !== this.page?.uuid;
         if (target.zone === "child") {
           // Nest under the target row as its last children, in order.
           for (const mover of movers) {
@@ -1624,6 +1869,19 @@ const Page = {
             }
           }
         } else {
+          if (needsPageMove) {
+            for (const mover of movers) {
+              const result = await window.apiService.moveBlockToPage(
+                mover.uuid,
+                this.page.uuid
+              );
+              if (!result.success) {
+                throw new Error(
+                  result.errors?.non_field_errors?.[0] || "move failed"
+                );
+              }
+            }
+          }
           // Insert as siblings before/after the target within its
           // parent: shift the later siblings out of the way, then
           // point each mover at the freed slots.
@@ -1650,8 +1908,10 @@ const Page = {
           }
         }
         this.clearBlockSelection();
+        if (drag.foreign) drag.source?.clearBlockSelection?.();
         movers.forEach((m) => this.broadcastBlockChanged(m.uuid));
         await this.loadPage({ silent: true });
+        this._notifySourcePane(drag);
       } catch (error) {
         console.error("block drop failed:", error);
         this.$parent?.addToast?.(
@@ -1660,21 +1920,61 @@ const Page = {
         );
         // Reload regardless — some of the writes may have landed.
         await this.loadPage({ silent: true });
+        this._notifySourcePane(drag);
       }
     },
 
     onMoveDragEnd() {
       this.blockDrag = null;
       this.blockDropTarget = null;
+      window.brainspreadPaneDrag = null;
+      document.dispatchEvent(
+        new CustomEvent("brainspread:pane-drag", {
+          detail: { active: false, source: this },
+        })
+      );
     },
 
-    _dropForbidden(block) {
+    // The drag this pane should honor: its own, or a live one from the
+    // other pane (split view). Returns null when neither exists — e.g.
+    // an OS file or URL drag.
+    _activePaneDrag() {
+      if (this.blockDrag) {
+        return { uuids: this.blockDrag.uuids, foreign: false };
+      }
+      const shared = window.brainspreadPaneDrag;
+      if (shared && shared.source !== this && this.splitActive) {
+        return {
+          uuids: shared.uuids,
+          topUuids: shared.topUuids,
+          sourcePageUuid: shared.pageUuid,
+          source: shared.source,
+          foreign: true,
+        };
+      }
+      return null;
+    },
+
+    // After a cross-pane drop, the SOURCE pane still shows the moved
+    // blocks. Its own notes-modified listener reloads it.
+    _notifySourcePane(drag) {
+      if (!drag.foreign || !drag.sourcePageUuid) return;
+      window.dispatchEvent(
+        new CustomEvent("brainspread:notes-modified", {
+          detail: { page_uuids: [drag.sourcePageUuid] },
+        })
+      );
+    },
+
+    _dropForbidden(block, uuids) {
       // A dragged block can't drop onto itself or anything inside its
       // own subtree — that would detach the subtree from the tree.
-      if (!this.blockDrag) return true;
+      // (Cross-pane, this only bites when both panes show the same
+      // page; different pages can't contain the dragged uuids.)
+      if (!uuids) return true;
       let current = block;
       while (current) {
-        if (this.blockDrag.uuids.has(current.uuid)) return true;
+        if (uuids.has(current.uuid)) return true;
         current = current.parent || null;
       }
       return false;
@@ -1689,6 +1989,72 @@ const Page = {
       return this.flattenBlockTree(this.directBlocks).filter(
         (b) => uuids.has(b.uuid) && !(b.parent && uuids.has(b.parent.uuid))
       );
+    },
+
+    // Reactive bridge for the non-reactive window.brainspreadPaneDrag:
+    // toggles this pane's "drop here" zone when the OTHER pane starts
+    // or ends a block drag.
+    handlePaneDragSignal(event) {
+      const detail = event?.detail || {};
+      this.foreignDragActive =
+        !!detail.active &&
+        detail.source !== this &&
+        this.splitActive &&
+        !this.monitorMode;
+      if (!this.foreignDragActive) this.foreignDropHover = false;
+    },
+
+    onForeignRootDragOver(event) {
+      const drag = this._activePaneDrag();
+      if (!drag || !drag.foreign) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+      this.foreignDropHover = true;
+    },
+
+    onForeignRootDragLeave() {
+      this.foreignDropHover = false;
+    },
+
+    // "Drop here" zone at the bottom of the block list: append the
+    // dragged forest to the end of this page's root level.
+    async onForeignRootDrop(event) {
+      const drag = this._activePaneDrag();
+      if (!drag || !drag.foreign) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.foreignDropHover = false;
+      this.foreignDragActive = false;
+      window.brainspreadPaneDrag = null;
+      const moverUuids = drag.topUuids || [];
+      if (!moverUuids.length || !this.page) return;
+
+      try {
+        for (const uuid of moverUuids) {
+          const result = await window.apiService.moveBlockToPage(
+            uuid,
+            this.page.uuid
+          );
+          if (!result.success) {
+            throw new Error(
+              result.errors?.non_field_errors?.[0] || "move failed"
+            );
+          }
+        }
+        drag.source?.clearBlockSelection?.();
+        moverUuids.forEach((uuid) => this.broadcastBlockChanged(uuid));
+        await this.loadPage({ silent: true });
+        this._notifySourcePane(drag);
+      } catch (error) {
+        console.error("cross-pane drop failed:", error);
+        this.$parent?.addToast?.(
+          `failed to move: ${error.message || error}`,
+          "error"
+        );
+        await this.loadPage({ silent: true });
+        this._notifySourcePane(drag);
+      }
     },
 
     onBlockContentChange(block, newContent) {
@@ -3233,9 +3599,13 @@ const Page = {
 
     // Date navigation methods
     onDateChange() {
-      if (this.selectedDate) {
-        window.location.href = `/knowledge/page/${this.selectedDate}/`;
+      if (!this.selectedDate) return;
+      if (this.isSidePane) {
+        // Repoint the side pane only; the main page stays put.
+        window.location.href = this.sideHref(this.selectedDate);
+        return;
       }
+      window.location.href = `/knowledge/page/${this.selectedDate}/`;
     },
 
     // Shift a YYYY-MM-DD string by whole days in local time. Going
@@ -4472,7 +4842,30 @@ const Page = {
   },
 
   template: `
-    <div class="page-page">
+    <div class="page-page" :class="{ 'page-page-side-pane': isSidePane }">
+      <!-- Split view: slim control bar on the side pane. Rendered
+           unconditionally (even mid-load) so the split can always be
+           closed, whatever state the page is in. -->
+      <div v-if="isSidePane" class="split-pane-bar">
+        <span class="split-pane-bar-label">side pane</span>
+        <div class="split-pane-bar-actions">
+          <button
+            type="button"
+            class="split-pane-bar-btn"
+            @click="requestSwapSplit"
+            title="Swap panes"
+            aria-label="Swap panes"
+          >⇄</button>
+          <button
+            type="button"
+            class="split-pane-bar-btn"
+            @click="requestCloseSplit"
+            title="Close split view"
+            aria-label="Close split view"
+          >×</button>
+        </div>
+      </div>
+
       <!-- Loading State -->
       <div v-if="loading" class="loading">
         Loading page...
@@ -4606,6 +4999,10 @@ const Page = {
                       <span class="context-menu-icon">★</span>
                       <span>{{ isFavorited ? 'unfavorite' : 'favorite' }}</span>
                     </button>
+                    <button v-if="!isSidePane" @click="handleSplitMenuClick" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">◫</span>
+                      <span>{{ splitActive ? 'close split view' : 'split view…' }}</span>
+                    </button>
                     <button @click="enterMonitorMode" class="context-menu-item" role="menuitem">
                       <span class="context-menu-icon">⛶</span>
                       <span>monitor mode</span>
@@ -4703,6 +5100,10 @@ const Page = {
                       <span class="context-menu-icon">+</span>
                       <span>add from template…</span>
                     </button>
+                    <button v-if="!isSidePane" @click="handleSplitMenuClick" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">◫</span>
+                      <span>{{ splitActive ? 'close split view' : 'split view…' }}</span>
+                    </button>
                     <button @click="enterMonitorMode" class="context-menu-item" role="menuitem">
                       <span class="context-menu-icon">⛶</span>
                       <span>monitor mode</span>
@@ -4739,6 +5140,14 @@ const Page = {
               @click="bulkMoveSelectedToPage"
               title="Move selected blocks to any page…"
             >move to page…</button>
+            <button
+              v-if="canSendToOtherPane"
+              type="button"
+              class="btn btn-outline selection-toolbar-action"
+              :disabled="selectedBlockCount === 0"
+              @click="bulkMoveSelectedToOtherPane"
+              :title="'Move selected blocks to ' + (otherPageTitle || 'the other pane')"
+            >{{ sendToOtherPaneIcon }} other pane</button>
             <button
               type="button"
               class="btn btn-outline selection-toolbar-action"
@@ -4825,6 +5234,9 @@ const Page = {
                 :onMoveDragOver="onMoveDragOver"
                 :onMoveDrop="onMoveDrop"
                 :onMoveDragEnd="onMoveDragEnd"
+                :sendToOtherPane="canSendToOtherPane ? sendBlockToOtherPane : null"
+                :sendToOtherPaneIcon="sendToOtherPaneIcon"
+                :sendToOtherPaneTitle="sendToOtherPaneTitle"
                 :openBlockInfoModal="openBlockInfoModal"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"
@@ -4840,6 +5252,14 @@ const Page = {
                 :selectionMode="selectionMode"
               />
             </template>
+            <div
+              v-if="foreignDragActive"
+              class="split-drop-zone"
+              :class="{ 'is-over': foreignDropHover }"
+              @dragover="onForeignRootDragOver"
+              @dragleave="onForeignRootDragLeave"
+              @drop="onForeignRootDrop"
+            >drop here to move to this page</div>
             <button @click="addNewBlock" class="add-block-btn">
               + add new block
             </button>

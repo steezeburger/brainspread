@@ -118,6 +118,20 @@ const BlockComponent = {
       type: Function,
       default: () => () => {},
     },
+    // Split view: when non-null, each row shows an arrow button that
+    // moves the block (and its subtree) to the other pane's page.
+    sendToOtherPane: {
+      type: Function,
+      default: null,
+    },
+    sendToOtherPaneIcon: {
+      type: String,
+      default: "→",
+    },
+    sendToOtherPaneTitle: {
+      type: String,
+      default: "move to other pane",
+    },
     openBlockInfoModal: {
       type: Function,
       default: () => () => {},
@@ -2044,6 +2058,14 @@ const BlockComponent = {
           aria-label="Schedule this block"
         ><svg class="block-due-icon" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"><rect x="2" y="3" width="12" height="11" rx="0"/><line x1="2" y1="6.5" x2="14" y2="6.5"/><line x1="5.5" y1="1.5" x2="5.5" y2="4.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="4.5"/></g></svg></button>
         <button
+          v-if="sendToOtherPane"
+          type="button"
+          class="block-send-pane"
+          :title="sendToOtherPaneTitle"
+          :aria-label="sendToOtherPaneTitle"
+          @click.stop="sendToOtherPane(block)"
+        >{{ sendToOtherPaneIcon }}</button>
+        <button
           @click="showContextMenuAt($event)"
           @contextmenu="showContextMenuAt($event)"
           class="block-menu"
@@ -2201,6 +2223,9 @@ const BlockComponent = {
           :onMoveDragOver="onMoveDragOver"
           :onMoveDrop="onMoveDrop"
           :onMoveDragEnd="onMoveDragEnd"
+          :sendToOtherPane="sendToOtherPane"
+          :sendToOtherPaneIcon="sendToOtherPaneIcon"
+          :sendToOtherPaneTitle="sendToOtherPaneTitle"
           :openBlockInfoModal="openBlockInfoModal"
           :onBlockPaste="onBlockPaste"
           :onBlockDrop="onBlockDrop"
