@@ -242,6 +242,13 @@ const Page = {
       return this.selectedBlockUuids.size;
     },
 
+    // Surfaces the bulk-action toolbar either when the user has explicitly
+    // entered selection mode (page menu -> "select multiple"), or as soon
+    // as an ad-hoc shift/cmd-click selection has 2+ blocks in it.
+    showSelectionToolbar() {
+      return this.selectionMode || this.selectedBlockCount >= 2;
+    },
+
     // Sharing is meaningful for regular pages only. Daily notes and
     // whiteboards are intentionally excluded — sharing a moving date or a
     // tldraw snapshot has different UX considerations we can revisit later.
@@ -4719,7 +4726,7 @@ const Page = {
         </div>
 
         <!-- Selection Mode Toolbar -->
-        <div v-if="selectionMode" class="selection-toolbar" role="toolbar" aria-label="Selection actions">
+        <div v-if="showSelectionToolbar" class="selection-toolbar" role="toolbar" aria-label="Selection actions">
           <div class="selection-toolbar-status">
             <span class="selection-toolbar-count">{{ selectedBlockCount }}</span>
             <span class="selection-toolbar-label">selected</span>
