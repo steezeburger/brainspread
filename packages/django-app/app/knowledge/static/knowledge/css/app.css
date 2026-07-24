@@ -4668,7 +4668,8 @@ a.sidebar-item:visited {
 
 /* --- Multi-select mode (page menu → "select multiple") --- */
 
-/* Sticky toolbar shown above the block list while selection mode is on. */
+/* Sticky toolbar shown above the block list while selection mode is on,
+   or as soon as 2+ blocks are selected via shift/cmd-click. */
 .selection-toolbar {
   position: sticky;
   top: 0;
