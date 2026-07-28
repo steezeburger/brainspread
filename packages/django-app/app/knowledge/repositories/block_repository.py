@@ -681,6 +681,51 @@ class BlockRepository(BaseRepository):
             return created
 
     @classmethod
+    def clone_block(
+        cls,
+        source: Block,
+        *,
+        parent: Optional[Block],
+        order: int,
+        target_user,
+    ) -> Block:
+        """Deep-copy ``source`` and its descendant subtree as a sibling
+        placed at ``parent``/``order`` (Cmd+D "duplicate block").
+
+        Each cloned block gets a fresh UUID and the same content/type/
+        properties/tags as its source; ``completed_at`` is cleared so a
+        duplicated todo starts uncompleted. Descendants are re-parented
+        under their new clone but keep their original relative order.
+        """
+        clone = Block.objects.create(
+            user=target_user,
+            page=source.page,
+            parent=parent,
+            content=source.content,
+            content_type=source.content_type,
+            block_type=source.block_type,
+            order=order,
+            media_url=source.media_url,
+            media_metadata=source.media_metadata,
+            properties=dict(source.properties or {}),
+            asset=source.asset,
+            due_at=source.due_at,
+            due_at_has_time=source.due_at_has_time,
+            collapsed=source.collapsed,
+            created_via=Block.CREATED_VIA_WEB,
+        )
+        tag_pages = list(source.pages.all())
+        if tag_pages:
+            clone.pages.set(tag_pages)
+
+        for child in cls.get_child_blocks(source):
+            cls.clone_block(
+                child, parent=clone, order=child.order, target_user=target_user
+            )
+
+        return clone
+
+    @classmethod
     def move_blocks_to_page(cls, blocks: List[Block], target_page: Page) -> bool:
         """Move blocks to target page and update their order.
 

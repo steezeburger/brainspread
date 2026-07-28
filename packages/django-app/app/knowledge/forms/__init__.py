@@ -18,6 +18,7 @@ from .delete_block_form import DeleteBlockForm
 from .delete_page_embedded_view_form import DeletePageEmbeddedViewForm
 from .delete_page_form import DeletePageForm
 from .delete_saved_view_form import DeleteSavedViewForm
+from .duplicate_block_form import DuplicateBlockForm
 from .duplicate_page_form import DuplicatePageForm
 from .duplicate_saved_view_form import DuplicateSavedViewForm
 from .find_stale_todos_form import FindStaleTodosForm
