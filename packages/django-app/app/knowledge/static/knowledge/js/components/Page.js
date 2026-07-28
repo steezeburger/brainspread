@@ -1312,7 +1312,9 @@ const Page = {
         const result = await window.apiService.duplicateBlock(block.uuid);
         if (!result.success) throw new Error("failed to duplicate block");
 
-        const siblings = block.parent ? block.parent.children : this.directBlocks;
+        const siblings = block.parent
+          ? block.parent.children
+          : this.directBlocks;
         const newOrder = block.order + 1;
         siblings.forEach((sibling) => {
           if (sibling.uuid !== block.uuid && sibling.order >= newOrder) {
@@ -1320,7 +1322,10 @@ const Page = {
           }
         });
 
-        const clone = this.setupParentReferences([result.data], block.parent)[0];
+        const clone = this.setupParentReferences(
+          [result.data],
+          block.parent
+        )[0];
         clone.isEditing = true;
         siblings.push(clone);
         siblings.sort((a, b) => a.order - b.order);
