@@ -1305,6 +1305,51 @@ const Page = {
       }
     },
 
+    async duplicateBlock(block) {
+      if (!block || this.monitorMode) return;
+
+      try {
+        const result = await window.apiService.duplicateBlock(block.uuid);
+        if (!result.success) throw new Error("failed to duplicate block");
+
+        const siblings = block.parent
+          ? block.parent.children
+          : this.directBlocks;
+        const newOrder = block.order + 1;
+        siblings.forEach((sibling) => {
+          if (sibling.uuid !== block.uuid && sibling.order >= newOrder) {
+            sibling.order += 1;
+          }
+        });
+
+        const clone = this.setupParentReferences(
+          [result.data],
+          block.parent
+        )[0];
+        clone.isEditing = true;
+        siblings.push(clone);
+        siblings.sort((a, b) => a.order - b.order);
+
+        this.$nextTick(() => {
+          this.$nextTick(() => {
+            const textarea = document.querySelector(
+              `[data-block-uuid="${clone.uuid}"] textarea`
+            );
+            if (textarea) {
+              textarea.focus();
+              textarea.setSelectionRange(
+                textarea.value.length,
+                textarea.value.length
+              );
+            }
+          });
+        });
+      } catch (error) {
+        console.error("failed to duplicate block:", error);
+        this.error = "failed to duplicate block";
+      }
+    },
+
     async moveBlockUp(block) {
       const siblings = block.parent ? block.parent.children : this.directBlocks;
       const currentIndex = siblings.findIndex((b) => b.uuid === block.uuid);
@@ -2683,6 +2728,19 @@ const Page = {
         if (!block) return;
         event.preventDefault();
         this.openBlockChatPopover(block);
+      }
+      // Cmd/Ctrl+D duplicates the focused block as a new sibling directly
+      // below it. This overrides Chrome's "bookmark this page" shortcut,
+      // which is far less useful inside the block editor.
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === "d"
+      ) {
+        const block = this.findFocusedOrLastEditingBlock();
+        if (!block) return;
+        event.preventDefault();
+        this.duplicateBlock(block);
       }
     },
 

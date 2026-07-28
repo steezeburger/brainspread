@@ -27,6 +27,7 @@ from knowledge.commands import (
     DeletePageCommand,
     DeletePageEmbeddedViewCommand,
     DeleteSavedViewCommand,
+    DuplicateBlockCommand,
     DuplicatePageCommand,
     DuplicateSavedViewCommand,
     GetFavoritedPagesCommand,
@@ -89,6 +90,7 @@ from knowledge.forms import (
     DeletePageEmbeddedViewForm,
     DeletePageForm,
     DeleteSavedViewForm,
+    DuplicateBlockForm,
     DuplicatePageForm,
     DuplicateSavedViewForm,
     GetFavoritedPagesForm,
@@ -1096,6 +1098,53 @@ def delete_block(request):
 
     except Exception as e:
         response: DeleteResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def duplicate_block(request):
+    """Duplicate a block (and its descendant subtree) as a new sibling
+    directly below it — Cmd+D."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+
+        form = DuplicateBlockForm(data)
+
+        if form.is_valid():
+            command = DuplicateBlockCommand(form)
+            clone = command.execute()
+
+            response: BlockResponse = {
+                "success": True,
+                "data": clone.to_dict_with_children(),
+                "errors": None,
+            }
+
+            return Response(response, status=status.HTTP_201_CREATED)
+        else:
+            response: BlockResponse = {
+                "success": False,
+                "data": None,
+                "errors": form.errors,
+            }
+            return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+    except ValidationError as e:
+        response: BlockResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        response: BlockResponse = {
             "success": False,
             "data": None,
             "errors": {"non_field_errors": [str(e)]},

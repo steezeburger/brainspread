@@ -18,6 +18,7 @@ from .delete_block_command import DeleteBlockCommand
 from .delete_page_command import DeletePageCommand
 from .delete_page_embedded_view_command import DeletePageEmbeddedViewCommand
 from .delete_saved_view_command import DeleteSavedViewCommand
+from .duplicate_block_command import DuplicateBlockCommand
 from .duplicate_page_command import DuplicatePageCommand
 from .duplicate_saved_view_command import DuplicateSavedViewCommand
 from .find_stale_todos_command import FindStaleTodosCommand

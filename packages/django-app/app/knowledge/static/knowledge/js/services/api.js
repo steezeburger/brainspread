@@ -267,6 +267,13 @@ class ApiService {
     });
   }
 
+  async duplicateBlock(blockUuid) {
+    return await this.request("/knowledge/api/blocks/duplicate/", {
+      method: "POST",
+      body: JSON.stringify({ block: blockUuid }),
+    });
+  }
+
   async toggleBlockTodo(blockUuid) {
     return await this.request("/knowledge/api/blocks/toggle-todo/", {
       method: "POST",
