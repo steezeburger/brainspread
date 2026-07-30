@@ -2289,6 +2289,17 @@ kbd {
     opacity: 1 !important;
   }
 
+  /* Cap the editing textarea's growth on mobile instead of letting it
+     grow unbounded (field-sizing: content, above). With the on-screen
+     keyboard eating half the viewport, an unbounded block pushes its
+     own earlier lines out of reach — iOS keeps re-scrolling to the
+     caret, but there's no page room left to scroll back up into. A
+     bounded, internally-scrollable box keeps the whole block reachable. */
+  textarea.block-content {
+    max-height: 45vh;
+    overflow-y: auto;
+  }
+
   /* Simple fix - use margin-bottom only when chat is open and visible */
   .chat-panel.open .message-input {
     margin-bottom: 60px;
