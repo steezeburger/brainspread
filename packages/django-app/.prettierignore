@@ -5,6 +5,9 @@ yarn.lock
 
 # Django templates
 **/*.html
+# sw.js is a Django template (needs {% static %}/STATIC_VERSION), not a
+# plain static asset - see knowledge/templates/knowledge/sw.js.
+**/templates/**/sw.js
 
 # Python files (handled by black)
 **/*.py

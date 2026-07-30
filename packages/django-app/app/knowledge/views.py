@@ -2,7 +2,6 @@ import re
 from typing import Dict, List, Optional, TypedDict
 from urllib.parse import urlparse
 
-from django.contrib.staticfiles import finders
 from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse
 from django.shortcuts import render
@@ -236,12 +235,10 @@ def service_worker(request):
     # A service worker's default scope is the directory of the URL it's
     # served from, so this must be served at /knowledge/sw.js (not
     # /static/...) for its scope to cover the whole SPA rather than just
-    # /static/. The file itself still lives under static/ like any other
-    # JS asset; this view just serves it from the SPA root.
-    path = finders.find("knowledge/js/sw.js")
-    with open(path, "rb") as f:
-        content = f.read()
-    response = HttpResponse(content, content_type="application/javascript")
+    # /static/. It's rendered as a template (not a plain static file)
+    # because the cache name and precache list need STATIC_VERSION and
+    # {% static %} - see knowledge/templates/knowledge/sw.js.
+    response = render(request, "knowledge/sw.js", content_type="application/javascript")
     response["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
     return response
 
