@@ -52,6 +52,18 @@ class Reminder(UUIDModelMixin, CRUDTimestampsMixin):
     last_error = models.TextField(
         blank=True, default="", help_text="Last delivery error, if any"
     )
+    push_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "When browser push delivery was attempted for this reminder. "
+            "Set once, on the first tick, regardless of per-subscription "
+            "success — push fans out to N devices, so unlike `sent_at` "
+            "(which gates the Discord retry loop) this never triggers a "
+            "resend; a stale or unreachable device just doesn't get this "
+            "one notification."
+        ),
+    )
 
     class Meta:
         db_table = "reminders"

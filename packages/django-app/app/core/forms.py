@@ -107,6 +107,19 @@ class UpdateDiscordUserIdForm(BaseForm):
         return value
 
 
+class SubscribePushForm(BaseForm):
+    user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
+    endpoint = forms.URLField(max_length=500)
+    p256dh = forms.CharField(max_length=255)
+    auth = forms.CharField(max_length=255)
+    user_agent = forms.CharField(required=False, max_length=255, empty_value="")
+
+
+class UnsubscribePushForm(BaseForm):
+    user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
+    endpoint = forms.URLField(max_length=500)
+
+
 class GetCurrentTimeForm(BaseForm):
     """Inputs for the assistant's get_current_time tool."""
 

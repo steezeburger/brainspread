@@ -26,4 +26,11 @@ urlpatterns = [
         views.update_discord_user_id,
         name="update_discord_user_id",
     ),
+    path(
+        "auth/push/vapid-public-key/",
+        views.get_vapid_public_key,
+        name="get_vapid_public_key",
+    ),
+    path("auth/push/subscribe/", views.subscribe_push, name="subscribe_push"),
+    path("auth/push/unsubscribe/", views.unsubscribe_push, name="unsubscribe_push"),
 ]

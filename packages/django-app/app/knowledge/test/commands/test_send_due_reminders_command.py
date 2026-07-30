@@ -5,10 +5,12 @@ from unittest.mock import patch
 from django.test import TestCase
 from django.utils import timezone
 
+from core.models.push_subscription import PushSubscription
 from knowledge.commands import SendDueRemindersCommand
 from knowledge.forms import SendDueRemindersForm
 from knowledge.models import Reminder, ReminderAction
 from knowledge.services.discord_webhook import DiscordDeliveryResult
+from knowledge.services.web_push import WebPushDeliveryResult
 
 from ..helpers import BlockFactory, PageFactory, UserFactory, due_dt
 
@@ -557,3 +559,194 @@ class TestSendDueRemindersCommand(TestCase):
 
                 embed = captured["embeds"][0]
                 self.assertEqual(embed["color"], expected_color)
+
+
+def _push_ok(*_args, **_kwargs):
+    return WebPushDeliveryResult(True, "")
+
+
+def _push_fail(*_args, **_kwargs):
+    return WebPushDeliveryResult(False, "push boom")
+
+
+def _push_dead(*_args, **_kwargs):
+    return WebPushDeliveryResult(False, "gone", dead=True)
+
+
+@patch.dict(os.environ, {"ENVIRONMENT": "prod"})
+class TestSendDueRemindersPushNotifications(TestCase):
+    """Browser push is a supplementary channel on top of Discord — see
+    `_send_push_for_reminder` / `push_sent_at` on the Reminder model."""
+
+    @classmethod
+    def setUpTestData(cls):
+        # No discord_webhook_url — these tests only care about the push
+        # channel, and push must fire (or not) independent of Discord.
+        cls.user = UserFactory()
+        cls.page = PageFactory(user=cls.user)
+
+    def _run(self):
+        form = SendDueRemindersForm({})
+        assert form.is_valid(), form.errors
+        return SendDueRemindersCommand(form).execute()
+
+    def test_no_push_when_user_has_no_subscription(self):
+        block = BlockFactory(user=self.user, page=self.page, content="TODO ship")
+        reminder = Reminder.objects.create(
+            block=block, fire_at=timezone.now() - timedelta(minutes=1)
+        )
+
+        with patch("knowledge.commands.send_due_reminders_command.post_webhook", _fail):
+            result = self._run()
+
+        reminder.refresh_from_db()
+        self.assertEqual(result["push_sent"], 0)
+        self.assertIsNotNone(reminder.push_sent_at)
+
+    def test_sends_push_to_each_subscription(self):
+        block = BlockFactory(user=self.user, page=self.page, content="TODO ship")
+        reminder = Reminder.objects.create(
+            block=block, fire_at=timezone.now() - timedelta(minutes=1)
+        )
+        PushSubscription.objects.create(
+            user=self.user, endpoint="https://push.example.com/a", p256dh="k", auth="k"
+        )
+        PushSubscription.objects.create(
+            user=self.user, endpoint="https://push.example.com/b", p256dh="k", auth="k"
+        )
+
+        calls = []
+
+        def _capture(subscription, payload, **_kwargs):
+            calls.append(subscription.endpoint)
+            return WebPushDeliveryResult(True, "")
+
+        with (
+            patch("knowledge.commands.send_due_reminders_command.post_webhook", _fail),
+            patch(
+                "knowledge.commands.send_due_reminders_command.post_web_push", _capture
+            ),
+        ):
+            result = self._run()
+
+        reminder.refresh_from_db()
+        self.assertEqual(result["push_sent"], 1)
+        self.assertIsNotNone(reminder.push_sent_at)
+        self.assertEqual(
+            sorted(calls),
+            ["https://push.example.com/a", "https://push.example.com/b"],
+        )
+
+    def test_push_not_resent_on_next_tick_even_if_discord_keeps_failing(self):
+        """The whole point of push_sent_at: a user with no Discord webhook
+        would otherwise get this reminder retried (and re-pushed) forever."""
+        block = BlockFactory(user=self.user, page=self.page, content="TODO ship")
+        reminder = Reminder.objects.create(
+            block=block, fire_at=timezone.now() - timedelta(minutes=1)
+        )
+        PushSubscription.objects.create(
+            user=self.user, endpoint="https://push.example.com/a", p256dh="k", auth="k"
+        )
+
+        with (
+            patch("knowledge.commands.send_due_reminders_command.post_webhook", _fail),
+            patch(
+                "knowledge.commands.send_due_reminders_command.post_web_push", _push_ok
+            ),
+        ):
+            first = self._run()
+            # Discord keeps retrying every tick (sent_at stays NULL on
+            # failure) - simulate a second scheduler tick.
+            second = self._run()
+
+        self.assertEqual(first["push_sent"], 1)
+        self.assertEqual(second["push_sent"], 0)
+        self.assertEqual(second["failed"], 1)  # Discord did retry...
+        reminder.refresh_from_db()
+        self.assertEqual(reminder.status, Reminder.STATUS_FAILED)
+
+    def test_dead_subscription_is_deleted(self):
+        block = BlockFactory(user=self.user, page=self.page, content="TODO ship")
+        Reminder.objects.create(
+            block=block, fire_at=timezone.now() - timedelta(minutes=1)
+        )
+        subscription = PushSubscription.objects.create(
+            user=self.user,
+            endpoint="https://push.example.com/gone",
+            p256dh="k",
+            auth="k",
+        )
+
+        with (
+            patch("knowledge.commands.send_due_reminders_command.post_webhook", _fail),
+            patch(
+                "knowledge.commands.send_due_reminders_command.post_web_push",
+                _push_dead,
+            ),
+        ):
+            self._run()
+
+        self.assertFalse(PushSubscription.objects.filter(pk=subscription.pk).exists())
+
+    def test_failed_push_is_not_deleted_and_does_not_block_other_subscriptions(self):
+        block = BlockFactory(user=self.user, page=self.page, content="TODO ship")
+        Reminder.objects.create(
+            block=block, fire_at=timezone.now() - timedelta(minutes=1)
+        )
+        flaky = PushSubscription.objects.create(
+            user=self.user,
+            endpoint="https://push.example.com/flaky",
+            p256dh="k",
+            auth="k",
+        )
+        healthy = PushSubscription.objects.create(
+            user=self.user,
+            endpoint="https://push.example.com/healthy",
+            p256dh="k",
+            auth="k",
+        )
+
+        def _mixed(subscription, payload, **_kwargs):
+            if subscription.endpoint == flaky.endpoint:
+                return WebPushDeliveryResult(False, "temporary network error")
+            return WebPushDeliveryResult(True, "")
+
+        with (
+            patch("knowledge.commands.send_due_reminders_command.post_webhook", _fail),
+            patch(
+                "knowledge.commands.send_due_reminders_command.post_web_push", _mixed
+            ),
+        ):
+            result = self._run()
+
+        self.assertEqual(result["push_sent"], 1)
+        self.assertTrue(PushSubscription.objects.filter(pk=flaky.pk).exists())
+        self.assertTrue(PushSubscription.objects.filter(pk=healthy.pk).exists())
+
+    def test_push_payload_uses_block_content_and_page_link(self):
+        block = BlockFactory(user=self.user, page=self.page, content="TODO ship it")
+        Reminder.objects.create(
+            block=block, fire_at=timezone.now() - timedelta(minutes=1)
+        )
+        PushSubscription.objects.create(
+            user=self.user, endpoint="https://push.example.com/a", p256dh="k", auth="k"
+        )
+
+        captured = {}
+
+        def _capture(subscription, payload, **_kwargs):
+            captured.update(payload)
+            return WebPushDeliveryResult(True, "")
+
+        with (
+            patch("knowledge.commands.send_due_reminders_command.post_webhook", _fail),
+            patch(
+                "knowledge.commands.send_due_reminders_command.post_web_push", _capture
+            ),
+            self.settings(SITE_URL="https://app.example.com"),
+        ):
+            self._run()
+
+        self.assertEqual(captured["title"], "TODO ship it")
+        self.assertIn(f"/knowledge/page/{self.page.slug}/", captured["url"])
+        self.assertIn(f"on {self.page.title}", captured["body"])

@@ -4,6 +4,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
 from core.models import User
+from core.models.push_subscription import PushSubscription
 from core.test.helpers import UserFactory
 
 
@@ -272,3 +273,98 @@ class UserAPITestCase(TestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_get_vapid_public_key(self):
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
+        with self.settings(VAPID_PUBLIC_KEY="test-public-key"):
+            response = self.client.get("/api/auth/push/vapid-public-key/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["data"]["vapid_public_key"], "test-public-key")
+
+    def test_subscribe_push_success(self):
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
+        data = {
+            "endpoint": "https://push.example.com/subscription/abc",
+            "p256dh": "test-p256dh-key",
+            "auth": "test-auth-key",
+            "user_agent": "test-agent",
+        }
+        response = self.client.post("/api/auth/push/subscribe/", data, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["success"])
+
+        subscription = PushSubscription.objects.get(
+            endpoint="https://push.example.com/subscription/abc"
+        )
+        self.assertEqual(subscription.user, self.user)
+        self.assertEqual(subscription.p256dh, "test-p256dh-key")
+
+    def test_subscribe_push_missing_fields(self):
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
+        response = self.client.post(
+            "/api/auth/push/subscribe/",
+            {"endpoint": "https://push.example.com/subscription/abc"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data["success"])
+
+    def test_subscribe_push_unauthenticated(self):
+        response = self.client.post(
+            "/api/auth/push/subscribe/",
+            {
+                "endpoint": "https://push.example.com/subscription/abc",
+                "p256dh": "key",
+                "auth": "key",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_unsubscribe_push_success(self):
+        PushSubscription.objects.create(
+            user=self.user,
+            endpoint="https://push.example.com/subscription/abc",
+            p256dh="key",
+            auth="key",
+        )
+
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
+        response = self.client.post(
+            "/api/auth/push/unsubscribe/",
+            {"endpoint": "https://push.example.com/subscription/abc"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(
+            PushSubscription.objects.filter(
+                endpoint="https://push.example.com/subscription/abc"
+            ).exists()
+        )
+
+    def test_unsubscribe_push_does_not_remove_other_users_subscription(self):
+        other_user = UserFactory(email="other@example.com")
+        PushSubscription.objects.create(
+            user=other_user,
+            endpoint="https://push.example.com/subscription/other",
+            p256dh="key",
+            auth="key",
+        )
+
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
+        response = self.client.post(
+            "/api/auth/push/unsubscribe/",
+            {"endpoint": "https://push.example.com/subscription/other"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(
+            PushSubscription.objects.filter(
+                endpoint="https://push.example.com/subscription/other"
+            ).exists()
+        )

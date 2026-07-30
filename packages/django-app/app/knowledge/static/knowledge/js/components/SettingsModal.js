@@ -24,6 +24,9 @@ window.SettingsModal = {
       selectedTimeFormat: this.user?.time_format || "12h",
       discordWebhookUrl: this.user?.discord_webhook_url || "",
       discordUserId: this.user?.discord_user_id || "",
+      pushNotificationsSupported: false,
+      pushNotificationsEnabled: false,
+      pushNotificationsBusy: false,
       isUpdating: false,
       aiSettings: null,
       loadingAISettings: false,
@@ -101,6 +104,7 @@ window.SettingsModal = {
         if (newValue) {
           this.currentTab = this.activeTab || "general";
           await this.loadAISettings();
+          await this.refreshPushNotificationState();
           this.$nextTick(() => {
             const firstFocusable = this.$el?.querySelector(
               ".settings-modal-content button, .settings-modal-content input, .settings-modal-content select"
@@ -115,6 +119,7 @@ window.SettingsModal = {
   async mounted() {
     if (this.isOpen) {
       await this.loadAISettings();
+      await this.refreshPushNotificationState();
     }
   },
 
@@ -136,6 +141,45 @@ window.SettingsModal = {
           detail: { message, type, duration },
         })
       );
+    },
+
+    async refreshPushNotificationState() {
+      this.pushNotificationsSupported = window.pushNotificationsService
+        ? window.pushNotificationsService.isSupported()
+        : false;
+      if (!this.pushNotificationsSupported) return;
+
+      try {
+        const subscription =
+          await window.pushNotificationsService.getSubscription();
+        this.pushNotificationsEnabled = !!subscription;
+      } catch (error) {
+        console.error("Failed to read push subscription state:", error);
+        this.pushNotificationsEnabled = false;
+      }
+    },
+
+    async togglePushNotifications() {
+      if (this.pushNotificationsBusy) return;
+      this.pushNotificationsBusy = true;
+
+      try {
+        if (this.pushNotificationsEnabled) {
+          await window.pushNotificationsService.unsubscribe();
+          this.pushNotificationsEnabled = false;
+        } else {
+          await window.pushNotificationsService.subscribe();
+          this.pushNotificationsEnabled = true;
+        }
+      } catch (error) {
+        console.error(
+          "Failed to update push notification subscription:",
+          error
+        );
+        this.emitToast(error.message || "failed to update push notifications");
+      } finally {
+        this.pushNotificationsBusy = false;
+      }
     },
 
     selectTheme(theme) {
@@ -570,6 +614,29 @@ window.SettingsModal = {
                 inputmode="numeric"
               />
             </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>browser push notifications</h3>
+            <p v-if="!pushNotificationsSupported" class="settings-hint">
+              your browser doesn't support push notifications.
+            </p>
+            <template v-else>
+              <p class="settings-hint">
+                get a reminder notification on this device, on top of
+                (or instead of) discord. you'll be asked to allow
+                notifications for this site.
+              </p>
+              <button
+                type="button"
+                class="btn"
+                :class="pushNotificationsEnabled ? 'btn-outline' : 'btn-primary'"
+                :disabled="pushNotificationsBusy"
+                @click="togglePushNotifications"
+              >
+                {{ pushNotificationsBusy ? 'working...' : (pushNotificationsEnabled ? 'disable push notifications' : 'enable push notifications') }}
+              </button>
+            </template>
           </div>
         </div>
 

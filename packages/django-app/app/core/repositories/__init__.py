@@ -1,1 +1,2 @@
+from core.repositories.push_subscription_repository import PushSubscriptionRepository
 from core.repositories.user_repository import UserRepository

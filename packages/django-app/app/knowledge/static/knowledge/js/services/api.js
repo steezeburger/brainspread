@@ -550,6 +550,29 @@ class ApiService {
     return result;
   }
 
+  async getVapidPublicKey() {
+    return this.request("/api/auth/push/vapid-public-key/", { method: "GET" });
+  }
+
+  async subscribePush({ endpoint, p256dh, auth }) {
+    return this.request("/api/auth/push/subscribe/", {
+      method: "POST",
+      body: JSON.stringify({
+        endpoint,
+        p256dh,
+        auth,
+        user_agent: navigator.userAgent,
+      }),
+    });
+  }
+
+  async unsubscribePush(endpoint) {
+    return this.request("/api/auth/push/unsubscribe/", {
+      method: "POST",
+      body: JSON.stringify({ endpoint }),
+    });
+  }
+
   async updateUserTimeFormat(newFormat) {
     try {
       const result = await this.request("/api/auth/update-time-format/", {

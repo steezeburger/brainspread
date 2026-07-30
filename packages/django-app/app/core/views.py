@@ -1,5 +1,6 @@
 from typing import TypedDict
 
+from django.conf import settings
 from django.contrib.auth import login as django_login
 from django.core.exceptions import ValidationError
 from rest_framework import status
@@ -12,6 +13,8 @@ from core.commands import (
     LoginCommand,
     LogoutCommand,
     RegisterCommand,
+    SubscribePushCommand,
+    UnsubscribePushCommand,
     UpdateDiscordUserIdCommand,
     UpdateDiscordWebhookCommand,
     UpdateThemeCommand,
@@ -21,6 +24,8 @@ from core.commands import (
 from core.forms import (
     LoginForm,
     RegisterForm,
+    SubscribePushForm,
+    UnsubscribePushForm,
     UpdateDiscordUserIdForm,
     UpdateDiscordWebhookForm,
     UpdateThemeForm,
@@ -270,6 +275,69 @@ def update_discord_user_id(request):
                     "message": "Discord user ID updated",
                 }
             )
+        return Response(
+            {"success": False, "errors": form.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["GET"])
+def get_vapid_public_key(request):
+    """Expose the VAPID public key so the frontend can pass it as
+    `applicationServerKey` to `pushManager.subscribe()`."""
+    return Response(
+        {"success": True, "data": {"vapid_public_key": settings.VAPID_PUBLIC_KEY}}
+    )
+
+
+@api_view(["POST"])
+def subscribe_push(request):
+    """Register the browser's Web Push subscription for reminder pings."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = SubscribePushForm(data)
+        if form.is_valid():
+            SubscribePushCommand(form).execute()
+            return Response(
+                {"success": True, "message": "Push subscription registered"}
+            )
+        return Response(
+            {"success": False, "errors": form.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+def unsubscribe_push(request):
+    """Remove the browser's Web Push subscription."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = UnsubscribePushForm(data)
+        if form.is_valid():
+            UnsubscribePushCommand(form).execute()
+            return Response({"success": True, "message": "Push subscription removed"})
         return Response(
             {"success": False, "errors": form.errors},
             status=status.HTTP_400_BAD_REQUEST,

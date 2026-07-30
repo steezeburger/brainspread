@@ -37,6 +37,7 @@ const PRECACHE_URLS = [
   "{% static 'knowledge/js/services/api.js' %}?v={{ STATIC_VERSION }}",
   "{% static 'knowledge/js/services/mermaid.js' %}?v={{ STATIC_VERSION }}",
   "{% static 'knowledge/js/services/csv.js' %}?v={{ STATIC_VERSION }}",
+  "{% static 'knowledge/js/services/push_notifications.js' %}?v={{ STATIC_VERSION }}",
   "{% static 'knowledge/js/components/BlockComponent.js' %}?v={{ STATIC_VERSION }}",
   "{% static 'knowledge/js/components/LoginForm.js' %}?v={{ STATIC_VERSION }}",
   "{% static 'knowledge/js/components/Whiteboard.js' %}?v={{ STATIC_VERSION }}",
@@ -122,6 +123,45 @@ self.addEventListener("activate", (event) => {
         )
       )
       .then(() => self.clients.claim())
+  );
+});
+
+// Reminder push notifications (see
+// knowledge.commands.send_due_reminders_command._build_push_payload for
+// the payload shape: {title, body, url, tag}).
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (err) {
+    data = { title: "brainspread", body: event.data ? event.data.text() : "" };
+  }
+
+  const title = data.title || "brainspread";
+  const options = {
+    body: data.body || "",
+    icon: "{% static 'knowledge/icons/icon-192.png' %}",
+    badge: "{% static 'knowledge/icons/icon-192.png' %}",
+    tag: data.tag || "brainspread-reminder",
+    data: { url: data.url || "/knowledge/" },
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/knowledge/";
+
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clients) => {
+        for (const client of clients) {
+          if (client.url === url && "focus" in client) return client.focus();
+        }
+        if (self.clients.openWindow) return self.clients.openWindow(url);
+      })
   );
 });
 

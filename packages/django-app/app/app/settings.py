@@ -199,6 +199,20 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 SITE_URL = os.environ.get("SITE_URL", "0.0.0.0")
 
+# Web Push (browser notifications) VAPID keypair. Reminders piggyback push
+# delivery on top of the existing Discord webhook channel when the user has
+# an active browser subscription — see
+# knowledge.commands.send_due_reminders_command and
+# knowledge.services.web_push. Leave blank to disable browser push (Discord
+# delivery is unaffected); generate a pair with:
+#   uv run vapid --gen && uv run vapid --applicationServerKey
+# (from packages/django-app — the `vapid` CLI ships with pywebpush) then
+# derive the raw private key string from the generated private_key.pem, see
+# .env.template for the one-liner.
+VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
+VAPID_SUBJECT = os.environ.get("VAPID_SUBJECT", "mailto:admin@example.com")
+
 # Django REST Framework
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

@@ -7,6 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from common.commands.abstract_base_command import AbstractBaseCommand
+from core.repositories.push_subscription_repository import PushSubscriptionRepository
 from knowledge.forms.send_due_reminders_form import SendDueRemindersForm
 from knowledge.models import Reminder, ReminderAction
 from knowledge.services.discord_webhook import post_webhook
@@ -14,6 +15,7 @@ from knowledge.services.reminder_actions import (
     build_action_url,
     create_action_tokens,
 )
+from knowledge.services.web_push import post_web_push
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,7 @@ class SendDueRemindersData(TypedDict):
     sent: int
     skipped: int
     failed: int
+    push_sent: int
 
 
 class SendDueRemindersCommand(AbstractBaseCommand):
@@ -55,6 +58,7 @@ class SendDueRemindersCommand(AbstractBaseCommand):
         sent = 0
         skipped = 0
         failed = 0
+        push_sent = 0
 
         with transaction.atomic():
             # Matches the predicate in issue #59: anything whose fire_at has
@@ -134,10 +138,23 @@ class SendDueRemindersCommand(AbstractBaseCommand):
                         result.error,
                     )
 
+                # Browser push is a supplementary channel, independent of
+                # the Discord status/sent_at state machine above (which
+                # retries indefinitely on failure). `push_sent_at` is set
+                # exactly once so a user without Discord configured (whose
+                # reminder stays FAILED/retryable forever) doesn't get the
+                # same push notification resent on every scheduler tick.
+                if reminder.push_sent_at is None:
+                    if _send_push_for_reminder(reminder, block, settings.SITE_URL):
+                        push_sent += 1
+                    reminder.push_sent_at = now
+                    reminder.save(update_fields=["push_sent_at", "modified_at"])
+
         return {
             "considered": considered,
             "sent": sent,
             "skipped": skipped,
+            "push_sent": push_sent,
             "failed": failed,
         }
 
@@ -373,6 +390,56 @@ def _action_links_line(action_urls: Dict[str, str]) -> str:
         if url:
             parts.append(f"[{label}]({url})")
     return " · ".join(parts)
+
+
+def _send_push_for_reminder(reminder: Reminder, block, site_url: str) -> bool:
+    """Best-effort browser push fan-out to every subscription the block's
+    user has registered. Returns True if at least one delivery succeeded.
+
+    Dead subscriptions (the push service returns 404/410) are pruned
+    immediately so future reminders don't keep hitting them.
+    """
+    subscriptions = PushSubscriptionRepository.get_for_user(block.user)
+    if not subscriptions:
+        return False
+
+    payload = _build_push_payload(reminder, block, site_url)
+    delivered = False
+    for subscription in subscriptions:
+        result = post_web_push(subscription, payload)
+        if result.ok:
+            delivered = True
+        elif result.dead:
+            PushSubscriptionRepository.delete_by_endpoint(subscription.endpoint)
+        else:
+            logger.warning(
+                "push delivery to %s failed for reminder %s: %s",
+                subscription.endpoint,
+                reminder.uuid,
+                result.error,
+            )
+    return delivered
+
+
+def _build_push_payload(reminder: Reminder, block, site_url: str) -> dict:
+    """Build the Notification-API payload the service worker's `push`
+    handler shows via `registration.showNotification(title, {body, ...})`.
+    """
+    content = (block.content or "").strip()
+    title = content.splitlines()[0] if content else "Reminder"
+    if len(title) > 120:
+        title = title[:117] + "..."
+
+    body = ""
+    if block.page_id and block.page.title:
+        body = f"on {block.page.title}"
+
+    return {
+        "title": title,
+        "body": body,
+        "url": _page_link(block, site_url) or "/knowledge/",
+        "tag": f"reminder-{reminder.uuid}",
+    }
 
 
 def _page_link(block, site_url: str) -> str:
