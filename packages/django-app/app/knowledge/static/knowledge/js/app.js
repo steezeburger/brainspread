@@ -1317,3 +1317,14 @@ const KnowledgeApp = createApp({
 document.addEventListener("DOMContentLoaded", function () {
   KnowledgeApp.mount("#app");
 });
+
+// Register the PWA service worker so Chrome/Android offer "Add to Home
+// screen" / "Install app". Scoped to /knowledge/ (the SPA root) so it
+// never intercepts /admin/ or other non-SPA routes.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("/knowledge/sw.js").catch(function (err) {
+      console.error("Service worker registration failed:", err);
+    });
+  });
+}

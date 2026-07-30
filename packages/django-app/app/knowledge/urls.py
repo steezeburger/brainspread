@@ -5,6 +5,9 @@ from . import views
 app_name = "knowledge"
 
 urlpatterns = [
+    # PWA service worker - must be served at the SPA root (/knowledge/sw.js)
+    # so its default scope covers the whole app; see views.service_worker.
+    path("sw.js", views.service_worker, name="service_worker"),
     # Static pages
     path("", views.index, name="index"),
     path("graph/", views.index, name="graph"),
