@@ -8,6 +8,33 @@
     />
     <title>{% block title %}brainspread{% endblock %}</title>
     {% load static %} {% csrf_token %}
+
+    <!-- PWA: installable app manifest + icons (Android/Chrome) -->
+    <link rel="manifest" href="{% static 'knowledge/manifest.json' %}" />
+    <meta name="theme-color" content="#000000" />
+
+    <!-- PWA: iOS home-screen app behavior (iOS ignores the manifest for
+         most of this, so these need their own meta tags/link rels). -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="brainspread" />
+    <link
+      rel="apple-touch-icon"
+      href="{% static 'knowledge/icons/apple-touch-icon.png' %}"
+    />
+
+    <link
+      rel="icon"
+      type="image/x-icon"
+      href="{% static 'knowledge/icons/favicon.ico' %}"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="192x192"
+      href="{% static 'knowledge/icons/icon-192.png' %}"
+    />
+
     <script>
       // Apply the user's last-known theme synchronously so the page
       // doesn't flash the default theme for a frame while the auth /
