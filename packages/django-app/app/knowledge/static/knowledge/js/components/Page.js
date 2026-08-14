@@ -61,10 +61,13 @@ const Page = {
       // Page data
       pageSlug: this.getSlugFromURL(),
       currentDate: this.getDateFromURL(),
+      // Monitor mode (?monitor=1): read-only wall-display mode. Editing
+      // is disabled, the page silently re-fetches every few seconds, and
+      // the app shell hides the sidebar / chat chrome.
+      monitorMode: this.getMonitorFromURL(),
       page: null,
       directBlocks: [], // Blocks that belong directly to this page
       referencedBlocks: [], // Blocks from other pages that reference this page
-      overdueBlocks: [], // Dated blocks past their due date (today's daily only)
       embeddedViews: [], // SavedView widgets pinned to this page (PageEmbeddedView)
       schedulePopoverOpen: false,
       schedulePopoverBlock: null,
@@ -120,12 +123,33 @@ const Page = {
       shareModalOpen: false,
       shareSavingMode: null,
       shareLinkCopied: false,
+      // Block drag-and-drop (issue #133 follow-up). blockDrag holds the
+      // dragged uuid set while a drag is live; blockDropTarget is
+      // {uuid, zone} for the row under the pointer, where zone is
+      // 'before' | 'after' (sibling insert) or 'child' (nest under).
+      blockDrag: null,
+      blockDropTarget: null,
     };
   },
 
   computed: {
     isDaily() {
       return this.page?.page_type === "daily";
+    },
+
+    // Prev/next daily navigation (issue #133). Real <a> hrefs so
+    // middle/cmd-click opens the adjacent day in a new tab; plain
+    // clicks ride the default navigation since the app routes with
+    // hard page loads anyway. The backend materializes missing
+    // dailies on load, so any target date is valid.
+    prevDayUrl() {
+      if (!this.isDaily || !this.page?.date) return null;
+      return `/knowledge/page/${this.shiftDateString(this.page.date, -1)}/`;
+    },
+
+    nextDayUrl() {
+      if (!this.isDaily || !this.page?.date) return null;
+      return `/knowledge/page/${this.shiftDateString(this.page.date, 1)}/`;
     },
 
     isWhiteboard() {
@@ -218,12 +242,11 @@ const Page = {
       return this.selectedBlockUuids.size;
     },
 
-    totalOverdueBlocks() {
-      return this.overdueBlocks.length;
-    },
-
-    hasOverdueBlocks() {
-      return this.overdueBlocks.length > 0;
+    // Surfaces the bulk-action toolbar either when the user has explicitly
+    // entered selection mode (page menu -> "select multiple"), or as soon
+    // as an ad-hoc shift/cmd-click selection has 2+ blocks in it.
+    showSelectionToolbar() {
+      return this.selectionMode || this.selectedBlockCount >= 2;
     },
 
     // Sharing is meaningful for regular pages only. Daily notes and
@@ -313,6 +336,24 @@ const Page = {
     // the current page), the URL hash changes without a reload. Listen
     // so we still scroll the matching block into view.
     window.addEventListener("hashchange", this.scrollToHashBlock);
+    // Monitor mode: poll for fresh data. The interval is configurable
+    // via ?refresh=<seconds> (min 2, default 5). The body class lets
+    // app-level CSS strip interactive chrome without threading a prop
+    // through every component.
+    if (this.monitorMode) {
+      document.body.classList.add("monitor-mode");
+      // Follow "today" across midnight only when the display was opened
+      // on today's daily note — a deliberately pinned past date stays.
+      this._monitorFollowsToday =
+        !!this.currentDate && this.currentDate === this.localDateString();
+      const params = new URLSearchParams(window.location.search);
+      const refresh = parseInt(params.get("refresh"), 10);
+      const seconds = Number.isFinite(refresh) && refresh >= 2 ? refresh : 5;
+      this._monitorTimer = setInterval(
+        () => this.monitorTick(),
+        seconds * 1000
+      );
+    }
     // Load page data
     await this.loadPage();
   },
@@ -358,6 +399,11 @@ const Page = {
       clearTimeout(this._blockChangedTimer);
       this._blockChangedTimer = null;
     }
+    if (this._monitorTimer) {
+      clearInterval(this._monitorTimer);
+      this._monitorTimer = null;
+    }
+    document.body.classList.remove("monitor-mode");
   },
 
   methods: {
@@ -378,6 +424,53 @@ const Page = {
       return null;
     },
 
+    getMonitorFromURL() {
+      return new URLSearchParams(window.location.search).get("monitor") === "1";
+    },
+
+    localDateString() {
+      const now = new Date();
+      return (
+        now.getFullYear() +
+        "-" +
+        String(now.getMonth() + 1).padStart(2, "0") +
+        "-" +
+        String(now.getDate()).padStart(2, "0")
+      );
+    },
+
+    monitorTick() {
+      // Don't burn requests while nobody can see the screen.
+      if (document.hidden) return;
+      if (this._monitorFollowsToday) {
+        const today = this.localDateString();
+        if (this.currentDate && today !== this.currentDate) {
+          // Midnight rolled over — jump the display to the new daily
+          // note, keeping ?monitor=1 (and any refresh override).
+          window.location.href = `/knowledge/page/${today}/${window.location.search}`;
+          return;
+        }
+      }
+      this.loadPage({ silent: true });
+      // Saved-view embeds own their query results — poking them here is
+      // what keeps a todo toggled elsewhere live inside an embed on the
+      // display (see QueryEmbedBlock's refresh-embeds listener).
+      document.dispatchEvent(new CustomEvent("brainspread:refresh-embeds"));
+    },
+
+    enterMonitorMode() {
+      const url = new URL(window.location.href);
+      url.searchParams.set("monitor", "1");
+      window.location.href = url.toString();
+    },
+
+    exitMonitorMode() {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("monitor");
+      url.searchParams.delete("refresh");
+      window.location.href = url.toString();
+    },
+
     // Build a real anchor href for jumping to another page (and
     // optionally a specific block on that page). Block-level deep
     // links use a `#block-<uuid>` fragment which the target page
@@ -389,9 +482,9 @@ const Page = {
     },
 
     // Copy an absolute deep link to the block to the user's
-    // clipboard. Uses `block.page_slug` when present (referenced /
-    // overdue blocks set it via `include_page_context=True`) and
-    // falls back to the current page's slug for direct blocks.
+    // clipboard. Uses `block.page_slug` when present (referenced
+    // blocks set it via `include_page_context=True`) and falls back
+    // to the current page's slug for direct blocks.
     // Mirrors the share-link clipboard fallback so non-secure
     // contexts (private network IPs, http://) still work.
     async copyBlockLink(block) {
@@ -435,8 +528,8 @@ const Page = {
     // Read `#block-<uuid>` from the current URL and scroll the
     // matching block into view, if any. Looks up the block via the
     // existing `data-block-uuid` attribute the BlockComponent already
-    // renders, so this works for direct, referenced, AND overdue
-    // blocks without extra plumbing. Skips silently when the
+    // renders, so this works for direct and referenced blocks
+    // without extra plumbing. Skips silently when the
     // fragment is missing or the block didn't render (e.g. the link
     // is stale because the block was deleted or moved). Tracks the
     // last fragment we scrolled to so silent reloads (AI chat,
@@ -497,15 +590,11 @@ const Page = {
 
     pageHasBlock(uuid) {
       // True when `uuid` is rendered anywhere on this page — the direct
-      // tree, the referenced-block tree, or the overdue list. Used to
-      // skip reloads for changes to blocks we aren't showing.
+      // tree or the referenced-block tree. Used to skip reloads for
+      // changes to blocks we aren't showing.
       const inTree = (blocks) =>
         this.flattenBlockTree(blocks).some((b) => b.uuid === uuid);
-      return (
-        inTree(this.directBlocks) ||
-        inTree(this.referencedBlocks) ||
-        inTree(this.overdueBlocks)
-      );
+      return inTree(this.directBlocks) || inTree(this.referencedBlocks);
     },
 
     handleBlockChanged(event) {
@@ -567,7 +656,6 @@ const Page = {
           this.referencedBlocks = this.setupParentReferences(
             result.data.referenced_blocks || []
           );
-          this.overdueBlocks = result.data.overdue_blocks || [];
           this.embeddedViews = result.data.embedded_views || [];
           this.$emit("page-loaded", this.page);
           // Flatten the block tree for consumers (e.g. ChatPanel's
@@ -587,7 +675,7 @@ const Page = {
         }
 
         // If the URL carries a `#block-<uuid>` fragment (e.g. the
-        // user followed a Discord reminder or an overdue link), wait
+        // user followed a Discord reminder or a deep link), wait
         // for the freshly-loaded blocks to render and then scroll
         // that block into view. Done after every loadPage, not just
         // mount, so silent reloads from the AI chat don't clobber
@@ -607,6 +695,11 @@ const Page = {
           ...blockData,
           parent: parent,
           children: [],
+          // Server-confirmed content baseline for the optimistic-
+          // concurrency check — updated on every successful content
+          // save, sent as expected_content so a stale tab gets a 409
+          // instead of clobbering another session's edit.
+          _baseContent: blockData.content,
         };
 
         if (blockData.children && blockData.children.length > 0) {
@@ -644,7 +737,7 @@ const Page = {
       order = null,
       autoFocus = true
     ) {
-      if (!this.page) return;
+      if (!this.page || this.monitorMode) return;
 
       try {
         const blockOrder = order !== null ? order : this.getNextOrder(parent);
@@ -661,6 +754,7 @@ const Page = {
           const newBlock = {
             uuid: result.data.uuid || `temp-${Date.now()}`,
             content: result.data.content || content,
+            _baseContent: result.data.content ?? content ?? "",
             content_type: result.data.content_type || "text",
             block_type: result.data.block_type || "bullet",
             order: result.data.order || blockOrder,
@@ -710,6 +804,7 @@ const Page = {
     },
 
     async setBlockProperties(block, partial) {
+      if (this.monitorMode) return;
       // Shallow-merge `partial` into the block's existing properties
       // (so toggling one flag doesn't drop the others) and persist.
       // Pass a key with `null` to clear it — useful for "reset size"
@@ -735,14 +830,40 @@ const Page = {
     },
 
     async updateBlock(block, newContent, skipReload = false) {
+      // Monitor mode is strictly read-only — never write from a display.
+      if (this.monitorMode) return;
+      // Unchanged content → nothing to save. Besides skipping a useless
+      // PUT on every blur, this guarantees a block the user didn't touch
+      // in this tab can never raise a conflict dialog.
+      if (
+        block._baseContent !== undefined &&
+        newContent === block._baseContent
+      ) {
+        block.content = newContent;
+        if (!skipReload) {
+          await this.loadPage();
+        }
+        return;
+      }
       try {
-        const result = await window.apiService.updateBlock(block.uuid, {
+        const payload = {
           content: newContent,
           parent: block.parent ? block.parent.uuid : null,
-        });
+        };
+        // Opt in to the server-side conflict check with the content this
+        // tab last saw from the server. JSON.stringify drops undefined,
+        // so blocks without a baseline degrade to last-write-wins.
+        if (block._baseContent !== undefined) {
+          payload.expected_content = block._baseContent;
+        }
+        const result = await window.apiService.updateBlock(block.uuid, payload);
 
         if (result.success) {
           block.content = newContent;
+          block._baseContent =
+            result.data && result.data.content !== undefined
+              ? result.data.content
+              : newContent;
           if (result.data && result.data.block_type) {
             block.block_type = result.data.block_type;
             // A content prefix (e.g. typing "DONE ") can flip the type
@@ -773,8 +894,133 @@ const Page = {
           }
         }
       } catch (error) {
+        if (error && error.status === 409) {
+          // Another session saved this block after we loaded it. Nothing
+          // was written — hand both versions to the user.
+          await this.resolveBlockConflict(
+            block,
+            newContent,
+            error.payload && error.payload.data ? error.payload.data : null
+          );
+          return;
+        }
         console.error("failed to update block:", error);
         this.error = "failed to update block";
+      }
+    },
+
+    async resolveBlockConflict(block, localContent, serverData) {
+      const serverContent = serverData ? serverData.content : null;
+      const choice = await window.appModals.choose({
+        title: "this block changed elsewhere",
+        message:
+          "another tab, device, or the AI saved a different version of this block after you loaded it. nothing has been overwritten yet — pick what happens to your text.",
+        sections: [
+          { label: "your unsaved version", text: localContent || "(empty)" },
+          {
+            label: "currently saved version",
+            text: serverContent != null ? serverContent : "(unavailable)",
+          },
+        ],
+        options: [
+          {
+            value: "new-block",
+            label: "keep both",
+            description:
+              "save your text as a new block below; the saved version stays here",
+            kind: "primary",
+          },
+          {
+            value: "mine",
+            label: "use mine",
+            description: "overwrite the saved version with your text",
+          },
+          {
+            value: "theirs",
+            label: "use theirs",
+            description: "discard your text and keep the saved version",
+            kind: "danger",
+          },
+        ],
+        cancelLabel: "decide later",
+      });
+
+      const takeServerVersion = () => {
+        if (serverContent == null) return;
+        block.content = serverContent;
+        block._baseContent = serverContent;
+        if (serverData.block_type) block.block_type = serverData.block_type;
+      };
+
+      if (choice === "mine") {
+        try {
+          const payload = {
+            content: localContent,
+            parent: block.parent ? block.parent.uuid : null,
+          };
+          // Re-arm the check against the version we just showed, so a
+          // save landing while the dialog was open re-prompts instead of
+          // clobbering silently.
+          if (serverContent != null) {
+            payload.expected_content = serverContent;
+          }
+          const result = await window.apiService.updateBlock(
+            block.uuid,
+            payload
+          );
+          if (result.success) {
+            block.content = localContent;
+            block._baseContent =
+              result.data && result.data.content !== undefined
+                ? result.data.content
+                : localContent;
+            await this.loadPage({ silent: true });
+          }
+        } catch (error) {
+          if (error && error.status === 409) {
+            await this.resolveBlockConflict(
+              block,
+              localContent,
+              error.payload && error.payload.data ? error.payload.data : null
+            );
+            return;
+          }
+          console.error("failed to overwrite conflicted block:", error);
+          this.emitToast("failed to save block", "error");
+        }
+      } else if (choice === "new-block") {
+        try {
+          // The saved version keeps this block; the local text becomes a
+          // sibling right below it, on the block's own page (which for a
+          // linked reference isn't the page being viewed).
+          takeServerVersion();
+          const result = await window.apiService.createBlock({
+            page:
+              (serverData && serverData.page_uuid) ||
+              block.page_uuid ||
+              this.page.uuid,
+            content: localContent,
+            parent: block.parent ? block.parent.uuid : null,
+            block_type: "bullet",
+            content_type: "text",
+            order: (block.order ?? 0) + 1,
+          });
+          if (!result.success) throw new Error("create block failed");
+          await this.loadPage({ silent: true });
+        } catch (error) {
+          console.error("failed to save conflict copy as new block:", error);
+          this.emitToast("failed to save your text as a new block", "error");
+        }
+      } else if (choice === "theirs") {
+        takeServerVersion();
+        await this.loadPage({ silent: true });
+      } else {
+        // Dismissed — leave the local text in the block, unsaved. The
+        // next blur re-raises the conflict.
+        this.emitToast(
+          "not saved — this block still holds your unsaved text",
+          "info"
+        );
       }
     },
 
@@ -826,6 +1072,24 @@ const Page = {
       }
     },
 
+    async setEmbedColor(embed, color) {
+      // Same optimistic-update shape as toggleEmbedCollapsed.
+      const idx = this.embeddedViews.findIndex((e) => e.uuid === embed.uuid);
+      if (idx === -1) return;
+      this.embeddedViews[idx] = { ...embed, color };
+      try {
+        const r = await window.apiService.updatePageEmbeddedView(embed.uuid, {
+          color,
+        });
+        if (!r || !r.success) {
+          this.embeddedViews[idx] = embed; // rollback
+        }
+      } catch (err) {
+        console.error("set embed color failed:", err);
+        this.embeddedViews[idx] = embed; // rollback
+      }
+    },
+
     async moveEmbedUp(embed) {
       const idx = this.embeddedViews.findIndex((e) => e.uuid === embed.uuid);
       if (idx <= 0) return;
@@ -864,6 +1128,7 @@ const Page = {
     },
 
     async deleteBlock(block) {
+      if (this.monitorMode) return;
       // Mark the block as being deleted BEFORE we open the confirm
       // dialog. The same guard mattered for the native confirm() — it
       // dismissed the soft keyboard on mobile and blurred the active
@@ -895,7 +1160,9 @@ const Page = {
           // Notify embeds that may still be displaying this block —
           // their saved view re-run will drop the now-gone row.
           this.broadcastBlockChanged(block.uuid);
-          await this.loadPage();
+          // Silent: swap in the fresh tree without flashing the whole
+          // page through the "Loading..." state.
+          await this.loadPage({ silent: true });
         }
       } catch (error) {
         console.error("failed to delete block:", error);
@@ -949,11 +1216,15 @@ const Page = {
     },
 
     async toggleBlockTodo(block) {
+      if (this.monitorMode) return;
       try {
         const result = await window.apiService.toggleBlockTodo(block.uuid);
         if (result.success) {
           block.block_type = result.data.block_type;
           block.content = result.data.content;
+          // The toggle rewrote the content server-side — move the
+          // concurrency baseline along with it.
+          block._baseContent = result.data.content;
           // Keep completed_at in sync so the block-info modal shows the
           // right time without a reload: entering done/wontdo stamps it,
           // cycling back out clears it to null.
@@ -1031,6 +1302,51 @@ const Page = {
       } catch (error) {
         console.error("failed to create block before:", error);
         this.error = "failed to create block";
+      }
+    },
+
+    async duplicateBlock(block) {
+      if (!block || this.monitorMode) return;
+
+      try {
+        const result = await window.apiService.duplicateBlock(block.uuid);
+        if (!result.success) throw new Error("failed to duplicate block");
+
+        const siblings = block.parent
+          ? block.parent.children
+          : this.directBlocks;
+        const newOrder = block.order + 1;
+        siblings.forEach((sibling) => {
+          if (sibling.uuid !== block.uuid && sibling.order >= newOrder) {
+            sibling.order += 1;
+          }
+        });
+
+        const clone = this.setupParentReferences(
+          [result.data],
+          block.parent
+        )[0];
+        clone.isEditing = true;
+        siblings.push(clone);
+        siblings.sort((a, b) => a.order - b.order);
+
+        this.$nextTick(() => {
+          this.$nextTick(() => {
+            const textarea = document.querySelector(
+              `[data-block-uuid="${clone.uuid}"] textarea`
+            );
+            if (textarea) {
+              textarea.focus();
+              textarea.setSelectionRange(
+                textarea.value.length,
+                textarea.value.length
+              );
+            }
+          });
+        });
+      } catch (error) {
+        console.error("failed to duplicate block:", error);
+        this.error = "failed to duplicate block";
       }
     },
 
@@ -1235,6 +1551,196 @@ const Page = {
           "error"
         );
       }
+    },
+
+    async openMoveUnderPicker(block) {
+      // "Move under…": pick any block (on any page) and nest this
+      // block + its subtree as that block's last child. Complements
+      // openMovePagePicker, which can only drop at a page's root.
+      if (!window.appModals?.pickBlock) {
+        console.error("appModals.pickBlock is not available");
+        return;
+      }
+      const target = await window.appModals.pickBlock({
+        title: "move under block",
+        message: "the block (and its children) will nest under the pick:",
+        placeholder: "search block content…",
+        confirmLabel: "move",
+        excludeUuids: [block.uuid],
+      });
+      if (!target || !block) return;
+
+      try {
+        if (block.isEditing) {
+          await this.updateBlock(block, block.content, true);
+        }
+
+        const result = await window.apiService.moveBlockToPage(
+          block.uuid,
+          null,
+          target.uuid
+        );
+
+        if (!result.success) {
+          throw new Error(
+            result.errors?.non_field_errors?.[0] || "move failed"
+          );
+        }
+
+        const targetTitle = result.data?.target_page?.title || "page";
+        this.$parent?.addToast?.(
+          result.data?.moved
+            ? `moved block under "${this.truncateForToast(target.content)}" on ${targetTitle}`
+            : result.data?.message || "block already there",
+          result.data?.moved ? "success" : "info"
+        );
+
+        this.broadcastBlockChanged(block.uuid);
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("failed to move block under target:", error);
+        this.$parent?.addToast?.(
+          `failed to move block: ${error.message || error}`,
+          "error"
+        );
+      }
+    },
+
+    truncateForToast(text, max = 40) {
+      const t = (text || "").trim();
+      return t.length > max ? `${t.slice(0, max)}…` : t || "(empty block)";
+    },
+
+    // ── Block drag-and-drop ─────────────────────────────────────────
+    // Desktop-only (HTML5 drag events don't fire on touch; mobile has
+    // the "move under…" picker instead). Dragging a block that's part
+    // of the current selection moves the whole selection.
+
+    onMoveDragStart(block, event) {
+      const uuids =
+        this.selectionMode && this.selectedBlockUuids.has(block.uuid)
+          ? [...this.selectedBlockUuids]
+          : [block.uuid];
+      this.blockDrag = { uuids: new Set(uuids) };
+      this.blockDropTarget = null;
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+        // Firefox refuses to start a drag with no data attached.
+        event.dataTransfer.setData("text/plain", block.uuid);
+      }
+    },
+
+    onMoveDragOver(block, event) {
+      if (!this.blockDrag) return; // not a block drag (e.g. an OS file)
+      if (this._dropForbidden(block)) {
+        this.blockDropTarget = null;
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+      const rect = event.currentTarget.getBoundingClientRect();
+      const ratio = (event.clientY - rect.top) / Math.max(rect.height, 1);
+      const zone = ratio < 0.3 ? "before" : ratio > 0.7 ? "after" : "child";
+      const current = this.blockDropTarget;
+      if (!current || current.uuid !== block.uuid || current.zone !== zone) {
+        this.blockDropTarget = { uuid: block.uuid, zone };
+      }
+    },
+
+    async onMoveDrop(block, event) {
+      if (!this.blockDrag) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const target = this.blockDropTarget;
+      const forbidden = this._dropForbidden(block);
+      const movers = this._draggedTopBlocks();
+      this.blockDrag = null;
+      this.blockDropTarget = null;
+      if (forbidden || !target || target.uuid !== block.uuid || !movers.length)
+        return;
+
+      try {
+        if (target.zone === "child") {
+          // Nest under the target row as its last children, in order.
+          for (const mover of movers) {
+            const result = await window.apiService.moveBlockToPage(
+              mover.uuid,
+              null,
+              block.uuid
+            );
+            if (!result.success) {
+              throw new Error(
+                result.errors?.non_field_errors?.[0] || "move failed"
+              );
+            }
+          }
+        } else {
+          // Insert as siblings before/after the target within its
+          // parent: shift the later siblings out of the way, then
+          // point each mover at the freed slots.
+          const parentUuid = block.parent ? block.parent.uuid : null;
+          const siblings = block.parent
+            ? block.parent.children
+            : this.directBlocks;
+          const moverUuids = new Set(movers.map((m) => m.uuid));
+          const insertOrder =
+            target.zone === "before" ? block.order : block.order + 1;
+          const shifts = siblings
+            .filter((b) => !moverUuids.has(b.uuid) && b.order >= insertOrder)
+            .map((b) => ({ uuid: b.uuid, order: b.order + movers.length }));
+          if (shifts.length) {
+            const reorder = await window.apiService.reorderBlocks(shifts);
+            if (!reorder.success) throw new Error("failed to reorder siblings");
+          }
+          for (let i = 0; i < movers.length; i++) {
+            const result = await window.apiService.updateBlock(movers[i].uuid, {
+              parent: parentUuid,
+              order: insertOrder + i,
+            });
+            if (!result.success) throw new Error("failed to move block");
+          }
+        }
+        this.clearBlockSelection();
+        movers.forEach((m) => this.broadcastBlockChanged(m.uuid));
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("block drop failed:", error);
+        this.$parent?.addToast?.(
+          `failed to move: ${error.message || error}`,
+          "error"
+        );
+        // Reload regardless — some of the writes may have landed.
+        await this.loadPage({ silent: true });
+      }
+    },
+
+    onMoveDragEnd() {
+      this.blockDrag = null;
+      this.blockDropTarget = null;
+    },
+
+    _dropForbidden(block) {
+      // A dragged block can't drop onto itself or anything inside its
+      // own subtree — that would detach the subtree from the tree.
+      if (!this.blockDrag) return true;
+      let current = block;
+      while (current) {
+        if (this.blockDrag.uuids.has(current.uuid)) return true;
+        current = current.parent || null;
+      }
+      return false;
+    },
+
+    _draggedTopBlocks() {
+      // Dragged blocks whose parent isn't also dragged — the top of
+      // the dragged forest, in document order. Mirrors the backend's
+      // bulk-move logic; descendants ride along with their ancestor.
+      const uuids = this.blockDrag?.uuids;
+      if (!uuids) return [];
+      return this.flattenBlockTree(this.directBlocks).filter(
+        (b) => uuids.has(b.uuid) && !(b.parent && uuids.has(b.parent.uuid))
+      );
     },
 
     onBlockContentChange(block, newContent) {
@@ -1900,6 +2406,7 @@ const Page = {
     },
 
     startEditing(block) {
+      if (this.monitorMode) return;
       this.lastEditingBlockUuid = block.uuid;
       // Clear any block selection when entering edit mode
       if (this.selectionAnchorUuid) {
@@ -2221,6 +2728,19 @@ const Page = {
         if (!block) return;
         event.preventDefault();
         this.openBlockChatPopover(block);
+      }
+      // Cmd/Ctrl+D duplicates the focused block as a new sibling directly
+      // below it. This overrides Chrome's "bookmark this page" shortcut,
+      // which is far less useful inside the block editor.
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === "d"
+      ) {
+        const block = this.findFocusedOrLastEditingBlock();
+        if (!block) return;
+        event.preventDefault();
+        this.duplicateBlock(block);
       }
     },
 
@@ -2783,6 +3303,17 @@ const Page = {
       }
     },
 
+    // Shift a YYYY-MM-DD string by whole days in local time. Going
+    // through a local Date (not Date.parse of the bare string, which
+    // is UTC) keeps the result aligned with the user's calendar day.
+    shiftDateString(dateStr, days) {
+      const [year, month, day] = dateStr.split("-").map(Number);
+      const date = new Date(year, month - 1, day + days);
+      const m = String(date.getMonth() + 1).padStart(2, "0");
+      const d = String(date.getDate()).padStart(2, "0");
+      return `${date.getFullYear()}-${m}-${d}`;
+    },
+
     openDatePicker(event) {
       // Wired on .title-left so the click is captured whether the user
       // hits the date text, the input padding, or the calendar glyph
@@ -3147,6 +3678,10 @@ const Page = {
         });
         if (!result.success) throw new Error("update block failed");
         block.content = url;
+        block._baseContent =
+          result.data && result.data.content !== undefined
+            ? result.data.content
+            : url;
         block.content_type = "embed";
         block.media_url = url;
         // Keep the user in the block, focused in the embed's label field.
@@ -3881,6 +4416,59 @@ const Page = {
       }
     },
 
+    async bulkMoveSelectedUnder() {
+      // Bulk "move under…": nest every selected top block (and its
+      // subtree) under a picked block. The backend skips any selected
+      // block that contains the target inside its own subtree.
+      const uuids = [...this.selectedBlockUuids];
+      if (uuids.length === 0) {
+        this.$parent?.addToast?.("no blocks selected", "info");
+        return;
+      }
+      if (!window.appModals?.pickBlock) {
+        console.error("appModals.pickBlock is not available");
+        return;
+      }
+
+      const target = await window.appModals.pickBlock({
+        title: "move selected under block",
+        message: "selected blocks will nest under the pick:",
+        placeholder: "search block content…",
+        confirmLabel: "move",
+        excludeUuids: uuids,
+      });
+      if (!target) return;
+
+      try {
+        const result = await window.apiService.bulkMoveBlocksToPage(
+          uuids,
+          null,
+          target.uuid
+        );
+        if (!result || !result.success) {
+          throw new Error(
+            result?.errors?.non_field_errors?.[0] || "bulk move failed"
+          );
+        }
+        const moved = result.data?.moved_count ?? 0;
+        const targetTitle = result.data?.target_page?.title || "page";
+        this.$parent?.addToast?.(
+          moved > 0
+            ? `moved ${moved} block${moved === 1 ? "" : "s"} under "${this.truncateForToast(target.content)}" on ${targetTitle}`
+            : "selected blocks already there",
+          moved > 0 ? "success" : "info"
+        );
+        this.clearBlockSelection();
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("failed to bulk-move blocks under target:", error);
+        this.$parent?.addToast?.(
+          `failed to move selected blocks: ${error.message || error}`,
+          "error"
+        );
+      }
+    },
+
     bulkScheduleSelected() {
       // Reuse the single-block schedule popover for the whole selection.
       // We snapshot the selected uuids now; the popover's save handler
@@ -4015,7 +4603,7 @@ const Page = {
           <div class="page-title-container">
             <!-- Daily Note Header -->
             <div v-if="isDaily" class="daily-note-title current-note page-header-flex">
-              <div class="title-left" @click="openDatePicker">
+              <div class="daily-nav">
                 <button
                   type="button"
                   class="page-favorite-toggle"
@@ -4024,14 +4612,28 @@ const Page = {
                   :title="isFavorited ? 'Remove from favorites' : 'Add to favorites'"
                   :aria-pressed="isFavorited"
                 >{{ isFavorited ? '★' : '☆' }}</button>
-                <input
-                  ref="dateInput"
-                  type="date"
-                  v-model="selectedDate"
-                  @change="onDateChange"
-                  class="date-picker"
-                  title="Navigate to date"
-                />
+                <a
+                  :href="prevDayUrl"
+                  class="daily-nav-btn"
+                  title="Previous day"
+                  aria-label="Go to previous day"
+                >‹</a>
+                <div class="title-left" @click="openDatePicker">
+                  <input
+                    ref="dateInput"
+                    type="date"
+                    v-model="selectedDate"
+                    @change="onDateChange"
+                    class="date-picker"
+                    title="Navigate to date"
+                  />
+                </div>
+                <a
+                  :href="nextDayUrl"
+                  class="daily-nav-btn"
+                  title="Next day"
+                  aria-label="Go to next day"
+                >›</a>
               </div>
               <div class="header-controls">
                 <div class="context-menu-container page-sort-container">
@@ -4057,6 +4659,10 @@ const Page = {
                     <button @click="moveUndoneTodos" class="context-menu-item" :disabled="loading" role="menuitem">
                       move undone TODOs here
                     </button>
+                    <button @click="addFromTemplate" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">+</span>
+                      <span>add from template…</span>
+                    </button>
                     <button @click="enterSelectionMode" class="context-menu-item" role="menuitem">
                       <span class="context-menu-icon">◉</span>
                       <span>select multiple</span>
@@ -4064,6 +4670,10 @@ const Page = {
                     <button @click="toggleFavorited" class="context-menu-item" role="menuitem">
                       <span class="context-menu-icon">★</span>
                       <span>{{ isFavorited ? 'unfavorite' : 'favorite' }}</span>
+                    </button>
+                    <button @click="enterMonitorMode" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">⛶</span>
+                      <span>monitor mode</span>
                     </button>
                     <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">
                        <span class="context-menu-icon">×</span>
@@ -4158,6 +4768,10 @@ const Page = {
                       <span class="context-menu-icon">+</span>
                       <span>add from template…</span>
                     </button>
+                    <button @click="enterMonitorMode" class="context-menu-item" role="menuitem">
+                      <span class="context-menu-icon">⛶</span>
+                      <span>monitor mode</span>
+                    </button>
                     <button @click="deletePage" class="context-menu-item context-menu-danger" role="menuitem">
                       <span v-if="isTemplate">delete template</span>
                       <span v-else>delete page</span>
@@ -4170,7 +4784,7 @@ const Page = {
         </div>
 
         <!-- Selection Mode Toolbar -->
-        <div v-if="selectionMode" class="selection-toolbar" role="toolbar" aria-label="Selection actions">
+        <div v-if="showSelectionToolbar" class="selection-toolbar" role="toolbar" aria-label="Selection actions">
           <div class="selection-toolbar-status">
             <span class="selection-toolbar-count">{{ selectedBlockCount }}</span>
             <span class="selection-toolbar-label">selected</span>
@@ -4194,6 +4808,13 @@ const Page = {
               type="button"
               class="btn btn-outline selection-toolbar-action"
               :disabled="selectedBlockCount === 0"
+              @click="bulkMoveSelectedUnder"
+              title="Nest selected blocks under any block…"
+            >move under…</button>
+            <button
+              type="button"
+              class="btn btn-outline selection-toolbar-action"
+              :disabled="selectedBlockCount === 0"
               @click="bulkScheduleSelected"
               title="Schedule selected blocks (set a due date / reminder)"
             >schedule…</button>
@@ -4213,51 +4834,6 @@ const Page = {
           </div>
         </div>
 
-        <!-- Overdue Section (today's daily page only) -->
-        <div v-if="hasOverdueBlocks" class="overdue-section">
-          <h3 class="overdue-title">
-            {{ totalOverdueBlocks }} overdue
-          </h3>
-          <div class="overdue-blocks-container">
-            <div v-for="block in overdueBlocks" :key="block.uuid" class="referenced-block-wrapper overdue-block-wrapper" :class="{ 'in-context': isBlockInContext(block.uuid) }" :data-block-uuid="block.uuid">
-              <div class="block-meta">
-                <a class="page-title clickable" :href="pageBlockHref(block.page_slug, block.uuid)">{{ block.page_type === 'daily' ? formatDate(block.page_title) : block.page_title }}</a>
-                <span v-if="block.due_date" class="overdue-due-date">due {{ formatDate(block.due_date) }}<template v-if="block.due_time"> {{ block.due_time }}</template></span>
-              </div>
-              <BlockComponent
-                :block="block"
-                :onBlockContentChange="onBlockContentChange"
-                :onBlockKeyDown="onBlockKeyDown"
-                :startEditing="startEditing"
-                :stopEditing="stopEditing"
-                :deleteBlock="deleteBlock"
-                :toggleBlockTodo="toggleBlockTodo"
-                :setBlockProperties="setBlockProperties"
-                :formatContentWithTags="formatContentWithTags"
-                :isBlockInContext="isBlockInContext"
-                :isBlockSelected="isBlockSelected"
-                :onBlockAddToContext="onBlockAddToContext"
-                :onBlockRemoveFromContext="onBlockRemoveFromContext"
-                :indentBlock="indentBlock"
-                :outdentBlock="outdentBlock"
-                :createBlockAfter="createBlockAfter"
-                :createBlockBefore="createBlockBefore"
-                :moveBlockUp="moveBlockUp"
-                :moveBlockDown="moveBlockDown"
-                :moveBlockToToday="moveBlockToToday"
-                :openMovePagePicker="openMovePagePicker"
-                :openBlockInfoModal="openBlockInfoModal"
-                :onBlockPaste="onBlockPaste"
-                :onBlockDrop="onBlockDrop"
-                :onBlockAttachPick="onBlockAttachPick"
-                :scheduleBlock="scheduleBlock"
-                :copyBlockLink="copyBlockLink"
-                :openBlockChatPopover="openBlockChatPopover"
-              />
-            </div>
-          </div>
-        </div>
-
         <!-- Embedded Views Section (pinned above bullets) -->
         <div v-if="embeddedViews.length" class="embedded-views-section">
           <QueryEmbedBlock
@@ -4267,6 +4843,7 @@ const Page = {
             :context-date="currentDate"
             :on-delete="deleteEmbed"
             :on-toggle-collapsed="toggleEmbedCollapsed"
+            :on-set-color="setEmbedColor"
             :on-move-up="idx > 0 ? moveEmbedUp : null"
             :on-move-down="idx < embeddedViews.length - 1 ? moveEmbedDown : null"
             :on-schedule-block="scheduleBlock"
@@ -4306,6 +4883,13 @@ const Page = {
                 :moveBlockDown="moveBlockDown"
                 :moveBlockToToday="moveBlockToToday"
                 :openMovePagePicker="openMovePagePicker"
+                :openMoveUnderPicker="openMoveUnderPicker"
+                :moveDraggable="true"
+                :moveDropTarget="blockDropTarget"
+                :onMoveDragStart="onMoveDragStart"
+                :onMoveDragOver="onMoveDragOver"
+                :onMoveDrop="onMoveDrop"
+                :onMoveDragEnd="onMoveDragEnd"
                 :openBlockInfoModal="openBlockInfoModal"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"
@@ -4317,6 +4901,7 @@ const Page = {
                 :selectedBlockCount="selectedBlockCount"
                 :bulkDeleteSelected="bulkDeleteSelected"
                 :bulkMoveSelectedToToday="bulkMoveSelectedToToday"
+                :bulkMoveSelectedUnder="bulkMoveSelectedUnder"
                 :selectionMode="selectionMode"
               />
             </template>
@@ -4361,6 +4946,7 @@ const Page = {
                 :moveBlockDown="moveBlockDown"
                 :moveBlockToToday="moveBlockToToday"
                 :openMovePagePicker="openMovePagePicker"
+                :openMoveUnderPicker="openMoveUnderPicker"
                 :openBlockInfoModal="openBlockInfoModal"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"
@@ -4374,6 +4960,16 @@ const Page = {
         </div>
 
       </div>
+
+      <!-- Monitor mode badge: the one interactive element on a wall
+           display. Click exits back to the normal editable page. -->
+      <button
+        v-if="monitorMode"
+        type="button"
+        class="monitor-badge"
+        @click="exitMonitorMode"
+        title="monitor mode: read-only, auto-refreshing. click to exit."
+      >◉ live</button>
 
       <!-- Schedule popover (issue #59 phase 4) -->
       <ScheduleBlockPopover

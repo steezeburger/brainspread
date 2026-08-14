@@ -18,6 +18,7 @@ from .delete_block_command import DeleteBlockCommand
 from .delete_page_command import DeletePageCommand
 from .delete_page_embedded_view_command import DeletePageEmbeddedViewCommand
 from .delete_saved_view_command import DeleteSavedViewCommand
+from .duplicate_block_command import DuplicateBlockCommand
 from .duplicate_page_command import DuplicatePageCommand
 from .duplicate_saved_view_command import DuplicateSavedViewCommand
 from .find_stale_todos_command import FindStaleTodosCommand
@@ -60,6 +61,7 @@ from .send_due_reminders_command import SendDueRemindersCommand
 from .set_block_completed_at_command import SetBlockCompletedAtCommand
 from .set_block_type_command import SetBlockTypeCommand
 from .set_page_favorited_command import SetPageFavoritedCommand
+from .set_saved_view_archived_command import SetSavedViewArchivedCommand
 from .set_saved_view_pinned_command import SetSavedViewPinnedCommand
 from .share_page_command import SharePageCommand
 from .snooze_block_command import SnoozeBlockCommand
@@ -67,7 +69,7 @@ from .sync_block_tags_command import SyncBlockTagsCommand
 from .tag_blocks_command import TagBlocksCommand, UntagBlocksCommand
 from .toggle_block_todo_command import ToggleBlockTodoCommand
 from .touch_page_command import TouchPageCommand
-from .update_block_command import UpdateBlockCommand
+from .update_block_command import BlockUpdateConflictError, UpdateBlockCommand
 from .update_page_command import UpdatePageCommand
 from .update_page_embedded_view_command import UpdatePageEmbeddedViewCommand
 from .update_saved_view_command import UpdateSavedViewCommand

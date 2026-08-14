@@ -6,6 +6,7 @@ from django.utils import timezone
 from knowledge.commands import ConsumeReminderActionCommand
 from knowledge.forms import ConsumeReminderActionForm
 from knowledge.models import Reminder, ReminderAction
+from knowledge.repositories.page_repository import PageRepository
 
 from ..helpers import BlockFactory, PageFactory, UserFactory
 
@@ -110,7 +111,52 @@ class ConsumeReminderActionCommandTests(TestCase):
         action.refresh_from_db()
         self.assertIsNotNone(action.used_at)
 
-    def test_snooze_1d_resets_pending_with_new_fire_at(self) -> None:
+    def test_snooze_5m_resets_pending_with_new_fire_at(self) -> None:
+        action = self._make_action(ReminderAction.ACTION_SNOOZE_5M)
+        pinned = timezone.now()
+
+        result = self._run(action.token, now=pinned)
+
+        self.assertEqual(result["status"], "executed")
+        self.assertEqual(result["detail"], "Snoozed for 5 minutes.")
+
+        self.reminder.refresh_from_db()
+        self.assertEqual(self.reminder.status, Reminder.STATUS_PENDING)
+        self.assertIsNone(self.reminder.sent_at)
+        self.assertEqual(
+            self.reminder.fire_at.replace(microsecond=0),
+            (pinned + timedelta(minutes=5)).replace(microsecond=0),
+        )
+
+    def test_snooze_1d_fires_same_time_tomorrow(self) -> None:
+        # Day-level snooze is a calendar statement, not an alarm-clock
+        # offset: it re-fires at the reminder's own time-of-day tomorrow,
+        # not at click-time + 24h.
+        fire_at = timezone.now().replace(microsecond=0) - timedelta(minutes=5)
+        self.reminder.fire_at = fire_at
+        self.reminder.save(update_fields=["fire_at"])
+        action = self._make_action(ReminderAction.ACTION_SNOOZE_1D)
+        pinned = timezone.now()
+
+        result = self._run(action.token, now=pinned)
+
+        self.assertEqual(result["status"], "executed")
+        self.assertEqual(result["detail"], "Snoozed until the same time tomorrow.")
+
+        self.reminder.refresh_from_db()
+        self.assertEqual(self.reminder.status, Reminder.STATUS_PENDING)
+        self.assertIsNone(self.reminder.sent_at)
+        # Default test user tz is UTC, so "same local time tomorrow" is
+        # exactly original fire_at + 1 day.
+        self.assertEqual(self.reminder.fire_at, fire_at + timedelta(days=1))
+
+    def test_snooze_1d_clicked_days_late_lands_tomorrow(self) -> None:
+        # A link clicked long after the reminder fired still snoozes to
+        # the future — tomorrow at the original time-of-day — instead of
+        # a moment that already passed.
+        fire_at = timezone.now().replace(microsecond=0) - timedelta(days=3)
+        self.reminder.fire_at = fire_at
+        self.reminder.save(update_fields=["fire_at"])
         action = self._make_action(ReminderAction.ACTION_SNOOZE_1D)
         pinned = timezone.now()
 
@@ -119,11 +165,8 @@ class ConsumeReminderActionCommandTests(TestCase):
         self.assertEqual(result["status"], "executed")
 
         self.reminder.refresh_from_db()
-        self.assertEqual(self.reminder.status, Reminder.STATUS_PENDING)
-        self.assertEqual(
-            self.reminder.fire_at.replace(microsecond=0),
-            (pinned + timedelta(days=1)).replace(microsecond=0),
-        )
+        self.assertGreater(self.reminder.fire_at, pinned)
+        self.assertEqual(self.reminder.fire_at, fire_at + timedelta(days=4))
 
     def test_mark_doing_flips_block_to_doing_and_consumes_token(self) -> None:
         # The block starts as "todo"; clicking Mark doing should land
@@ -170,6 +213,68 @@ class ConsumeReminderActionCommandTests(TestCase):
         self.assertEqual(result["status"], "executed")
         self.block.refresh_from_db()
         self.assertEqual(self.block.block_type, "doing")
+        action.refresh_from_db()
+        self.assertIsNotNone(action.used_at)
+
+    def test_move_to_today_moves_block_to_daily_and_consumes_token(self) -> None:
+        # Clicking "Move to today" relocates the block (and any
+        # descendants) onto today's daily note, creating it if needed.
+        # The block's task state is untouched — moving is neither
+        # completing nor deferring — and the reminder keeps its sent
+        # state.
+        child = BlockFactory(
+            user=self.user,
+            page=self.page,
+            parent=self.block,
+            content="subtask",
+        )
+        action = self._make_action(ReminderAction.ACTION_MOVE_TO_TODAY)
+
+        result = self._run(action.token)
+
+        today_slug = self.user.today().strftime("%Y-%m-%d")
+        self.assertEqual(result["status"], "executed")
+        self.assertEqual(result["action"], ReminderAction.ACTION_MOVE_TO_TODAY)
+        self.assertEqual(result["detail"], "Moved the block to today's daily note.")
+        self.assertEqual(result["block_uuid"], str(self.block.uuid))
+        # The confirmation page's "Open block" link should point at the
+        # daily note the block just landed on, not the old page.
+        self.assertEqual(result["page_slug"], today_slug)
+
+        self.block.refresh_from_db()
+        self.assertEqual(self.block.page.slug, today_slug)
+        self.assertEqual(self.block.page.page_type, "daily")
+        self.assertIsNone(self.block.parent)
+        self.assertEqual(self.block.block_type, "todo")
+
+        child.refresh_from_db()
+        self.assertEqual(child.page.slug, today_slug)
+        self.assertEqual(child.parent_id, self.block.pk)
+
+        action.refresh_from_db()
+        self.assertIsNotNone(action.used_at)
+
+        self.reminder.refresh_from_db()
+        self.assertEqual(self.reminder.status, Reminder.STATUS_SENT)
+
+    def test_move_to_today_when_already_on_todays_daily_is_idempotent(self) -> None:
+        # The send-side check skips minting this action for blocks
+        # already on today's daily, but the user can also click a link
+        # minted yesterday after midnight rolls the daily over — the
+        # move command treats already-there as a graceful no-op and the
+        # token still burns.
+        today = self.user.today()
+        daily, _ = PageRepository.get_or_create_daily_note(self.user, today)
+        self.block.page = daily
+        self.block.save(update_fields=["page", "modified_at"])
+
+        action = self._make_action(ReminderAction.ACTION_MOVE_TO_TODAY)
+
+        result = self._run(action.token)
+
+        self.assertEqual(result["status"], "executed")
+        self.block.refresh_from_db()
+        self.assertEqual(self.block.page_id, daily.pk)
         action.refresh_from_db()
         self.assertIsNotNone(action.used_at)
 

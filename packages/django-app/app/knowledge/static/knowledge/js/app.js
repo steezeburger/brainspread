@@ -21,6 +21,9 @@ const KnowledgeApp = createApp({
     const cachedUser = window.apiService.getCurrentUser();
 
     const isGraphRoute = window.location.pathname === "/knowledge/graph/";
+    const isPagesRoute = window.location.pathname === "/knowledge/pages/";
+    const isTemplatesRoute =
+      window.location.pathname === "/knowledge/templates/";
     const viewsMatch = window.location.pathname.match(
       /^\/knowledge\/views(?:\/([^\/]+))?\/?$/
     );
@@ -31,15 +34,24 @@ const KnowledgeApp = createApp({
     const initialView = isAuth
       ? isGraphRoute
         ? "graph"
-        : isViewsRoute
-          ? "views"
-          : "journal"
+        : isPagesRoute
+          ? "pages"
+          : isTemplatesRoute
+            ? "templates"
+            : isViewsRoute
+              ? "views"
+              : "journal"
       : "login";
 
     return {
       user: cachedUser, // Load user immediately from cache
       isAuthenticated: isAuth, // Check immediately
       currentView: initialView, // Set view immediately
+      // Monitor mode (?monitor=1): the Page component handles read-only
+      // + polling; the shell's job is to strip the sidebar and chat
+      // chrome so a wall display shows only the note itself.
+      monitorMode:
+        new URLSearchParams(window.location.search).get("monitor") === "1",
       loading: isAuth && !cachedUser, // Only show loading if we have token but no cached user
       showSettings: false, // Settings modal state
       settingsActiveTab: "general", // Default tab for settings modal
@@ -79,6 +91,8 @@ const KnowledgeApp = createApp({
     SpotlightSearch: window.SpotlightSearch,
     GraphView: window.GraphView,
     SavedViewsPage: window.SavedViewsPage,
+    PagesListPage: window.PagesListPage,
+    TemplatesPage: window.TemplatesPage,
   },
 
   computed: {
@@ -100,10 +114,14 @@ const KnowledgeApp = createApp({
     },
 
     showChatPanel() {
-      // Whiteboards, graph view, and saved-views surface use the full
-      // column width; chat is noise there.
+      // Whiteboards, graph view, and the saved-views / all-pages /
+      // templates surfaces use the full column width; chat is noise
+      // there.
+      if (this.monitorMode) return false;
       if (this.currentView === "graph") return false;
       if (this.currentView === "views") return false;
+      if (this.currentView === "pages") return false;
+      if (this.currentView === "templates") return false;
       return this.currentPagePageType !== "whiteboard";
     },
   },
@@ -152,6 +170,20 @@ const KnowledgeApp = createApp({
       /^\/knowledge\/views(?:\/[^\/]+)?\/?$/.test(window.location.pathname)
     ) {
       this.currentView = "views";
+    }
+
+    if (
+      this.isAuthenticated &&
+      window.location.pathname === "/knowledge/pages/"
+    ) {
+      this.currentView = "pages";
+    }
+
+    if (
+      this.isAuthenticated &&
+      window.location.pathname === "/knowledge/templates/"
+    ) {
+      this.currentView = "templates";
     }
 
     // Reapply theme after auth check in case user data was updated
@@ -290,8 +322,10 @@ const KnowledgeApp = createApp({
       const day = String(today.getDate()).padStart(2, "0");
       const todayString = `${year}-${month}-${day}`;
 
-      // Redirect to today's page
-      window.location.href = `/knowledge/page/${todayString}/`;
+      // Redirect to today's page, preserving the query string so
+      // /knowledge/?monitor=1 lands on today's daily still in monitor
+      // mode.
+      window.location.href = `/knowledge/page/${todayString}/${window.location.search}`;
     },
 
     // Theme and settings methods
@@ -531,6 +565,14 @@ const KnowledgeApp = createApp({
       window.location.href = "/knowledge/views/";
     },
 
+    navigateToPages() {
+      window.location.href = "/knowledge/pages/";
+    },
+
+    navigateToTemplates() {
+      window.location.href = "/knowledge/templates/";
+    },
+
     // Fired by child components (CustomEvent 'brainspread:toast', detail = {message, type, duration}).
     // Bridges DOM events into the toast state without coupling the children to this component.
     handleToastEvent(event) {
@@ -736,6 +778,12 @@ const KnowledgeApp = createApp({
           label: "graph",
           description: "view the knowledge graph",
           icon: "◉",
+        },
+        {
+          id: "all-pages",
+          label: "all pages",
+          description: "browse the full list of pages",
+          icon: "☰",
         },
         {
           id: "toggle-sidebar",
@@ -985,6 +1033,9 @@ const KnowledgeApp = createApp({
         case "graph":
           this.navigateToGraph();
           break;
+        case "all-pages":
+          this.navigateToPages();
+          break;
         case "toggle-sidebar":
           this.toggleLeftNav();
           break;
@@ -1081,6 +1132,8 @@ const KnowledgeApp = createApp({
                             @navigate-today="redirectToToday"
                             @navigate-graph="navigateToGraph"
                             @navigate-views="navigateToViews"
+                            @navigate-pages="navigateToPages"
+                            @navigate-templates="navigateToTemplates"
                             @open-search="openSpotlight"
                             @create-page="createNewPage"
                             @create-whiteboard="createNewWhiteboard"
@@ -1098,6 +1151,8 @@ const KnowledgeApp = createApp({
                             @navigate-today="redirectToToday"
                             @navigate-graph="navigateToGraph"
                             @navigate-views="navigateToViews"
+                            @navigate-pages="navigateToPages"
+                            @navigate-templates="navigateToTemplates"
                             @open-search="openSpotlight"
                             @create-page="createNewPage"
                             @create-whiteboard="createNewWhiteboard"
@@ -1109,7 +1164,7 @@ const KnowledgeApp = createApp({
                             <SavedViewsPage :initial-slug="viewsSlug" />
                         </div>
                     </div>
-                    <div v-else class="content-layout">
+                    <div v-else-if="currentView === 'pages'" class="views-layout">
                         <LeftNav
                             ref="leftNav"
                             :user="user"
@@ -1117,6 +1172,51 @@ const KnowledgeApp = createApp({
                             @navigate-today="redirectToToday"
                             @navigate-graph="navigateToGraph"
                             @navigate-views="navigateToViews"
+                            @navigate-pages="navigateToPages"
+                            @navigate-templates="navigateToTemplates"
+                            @open-search="openSpotlight"
+                            @create-page="createNewPage"
+                            @create-whiteboard="createNewWhiteboard"
+                            @use-template="useTemplate"
+                            @open-settings="openSettings"
+                            @open-help="openHelp"
+                            @logout="requestLogout" />
+                        <div class="main-content-area">
+                            <PagesListPage />
+                        </div>
+                    </div>
+                    <div v-else-if="currentView === 'templates'" class="views-layout">
+                        <LeftNav
+                            ref="leftNav"
+                            :user="user"
+                            @navigate-to-slug="onNavigateToSlug"
+                            @navigate-today="redirectToToday"
+                            @navigate-graph="navigateToGraph"
+                            @navigate-views="navigateToViews"
+                            @navigate-pages="navigateToPages"
+                            @navigate-templates="navigateToTemplates"
+                            @open-search="openSpotlight"
+                            @create-page="createNewPage"
+                            @create-whiteboard="createNewWhiteboard"
+                            @use-template="useTemplate"
+                            @open-settings="openSettings"
+                            @open-help="openHelp"
+                            @logout="requestLogout" />
+                        <div class="main-content-area">
+                            <TemplatesPage />
+                        </div>
+                    </div>
+                    <div v-else class="content-layout">
+                        <LeftNav
+                            v-if="!monitorMode"
+                            ref="leftNav"
+                            :user="user"
+                            @navigate-to-slug="onNavigateToSlug"
+                            @navigate-today="redirectToToday"
+                            @navigate-graph="navigateToGraph"
+                            @navigate-views="navigateToViews"
+                            @navigate-pages="navigateToPages"
+                            @navigate-templates="navigateToTemplates"
                             @open-search="openSpotlight"
                             @create-page="createNewPage"
                             @create-whiteboard="createNewWhiteboard"
@@ -1217,3 +1317,14 @@ const KnowledgeApp = createApp({
 document.addEventListener("DOMContentLoaded", function () {
   KnowledgeApp.mount("#app");
 });
+
+// Register the PWA service worker so Chrome/Android offer "Add to Home
+// screen" / "Install app". Scoped to /knowledge/ (the SPA root) so it
+// never intercepts /admin/ or other non-SPA routes.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("/knowledge/sw.js").catch(function (err) {
+      console.error("Service worker registration failed:", err);
+    });
+  });
+}

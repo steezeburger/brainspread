@@ -2,6 +2,7 @@ import re
 from typing import Dict, List, Optional, TypedDict
 from urllib.parse import urlparse
 
+from django.contrib.staticfiles import finders
 from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse
 from django.shortcuts import render
@@ -13,6 +14,7 @@ from rest_framework.response import Response
 from assets.models import Asset
 from knowledge.commands import (
     AddTemplateBlocksToPageCommand,
+    BlockUpdateConflictError,
     BulkDeleteBlocksCommand,
     BulkMoveBlocksCommand,
     BulkMoveBlocksToPageCommand,
@@ -26,6 +28,7 @@ from knowledge.commands import (
     DeletePageCommand,
     DeletePageEmbeddedViewCommand,
     DeleteSavedViewCommand,
+    DuplicateBlockCommand,
     DuplicatePageCommand,
     DuplicateSavedViewCommand,
     GetFavoritedPagesCommand,
@@ -50,6 +53,7 @@ from knowledge.commands import (
     SearchPagesCommand,
     SetBlockCompletedAtCommand,
     SetPageFavoritedCommand,
+    SetSavedViewArchivedCommand,
     SetSavedViewPinnedCommand,
     SharePageCommand,
     ToggleBlockTodoCommand,
@@ -87,6 +91,7 @@ from knowledge.forms import (
     DeletePageEmbeddedViewForm,
     DeletePageForm,
     DeleteSavedViewForm,
+    DuplicateBlockForm,
     DuplicatePageForm,
     DuplicateSavedViewForm,
     GetFavoritedPagesForm,
@@ -111,6 +116,7 @@ from knowledge.forms import (
     SearchPagesForm,
     SetBlockCompletedAtForm,
     SetPageFavoritedForm,
+    SetSavedViewArchivedForm,
     SetSavedViewPinnedForm,
     SharePageForm,
     ToggleBlockTodoForm,
@@ -223,6 +229,20 @@ def index(request, date=None, tag_name=None, slug=None):
     response["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
     response["Pragma"] = "no-cache"
     response["Expires"] = "0"
+    return response
+
+
+def service_worker(request):
+    # A service worker's default scope is the directory of the URL it's
+    # served from, so this must be served at /knowledge/sw.js (not
+    # /static/...) for its scope to cover the whole SPA rather than just
+    # /static/. The file itself still lives under static/ like any other
+    # JS asset; this view just serves it from the SPA root.
+    path = finders.find("knowledge/js/sw.js")
+    with open(path, "rb") as f:
+        content = f.read()
+    response = HttpResponse(content, content_type="application/javascript")
+    response["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
     return response
 
 
@@ -915,7 +935,6 @@ def get_page_with_blocks(request):
                 page,
                 direct_blocks,
                 referenced_blocks,
-                overdue_blocks,
                 embedded_views,
             ) = command.execute()
 
@@ -927,9 +946,6 @@ def get_page_with_blocks(request):
                 referenced_blocks=[
                     block.to_dict_with_children(include_page_context=True)
                     for block in referenced_blocks
-                ],
-                overdue_blocks=[
-                    block.to_dict(include_page_context=True) for block in overdue_blocks
                 ],
                 embedded_views=[embed.to_dict() for embed in embedded_views],
             )
@@ -1031,6 +1047,18 @@ def update_block(request):
             }
             return Response(response, status=status.HTTP_400_BAD_REQUEST)
 
+    except BlockUpdateConflictError as e:
+        # Another session changed this block since the caller loaded it.
+        # Ship the current server-side block back with the 409 so the
+        # client can offer a merge (keep mine / new block / take theirs)
+        # instead of losing either version.
+        response: BlockResponse = {
+            "success": False,
+            "data": e.block.to_dict(),
+            "errors": {"non_field_errors": ["block was modified in another session"]},
+        }
+        return Response(response, status=status.HTTP_409_CONFLICT)
+
     except ValidationError as e:
         return Response(
             {"success": False, "errors": {"non_field_errors": [str(e)]}},
@@ -1085,6 +1113,53 @@ def delete_block(request):
 
     except Exception as e:
         response: DeleteResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def duplicate_block(request):
+    """Duplicate a block (and its descendant subtree) as a new sibling
+    directly below it — Cmd+D."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+
+        form = DuplicateBlockForm(data)
+
+        if form.is_valid():
+            command = DuplicateBlockCommand(form)
+            clone = command.execute()
+
+            response: BlockResponse = {
+                "success": True,
+                "data": clone.to_dict_with_children(),
+                "errors": None,
+            }
+
+            return Response(response, status=status.HTTP_201_CREATED)
+        else:
+            response: BlockResponse = {
+                "success": False,
+                "data": None,
+                "errors": form.errors,
+            }
+            return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+    except ValidationError as e:
+        response: BlockResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        response: BlockResponse = {
             "success": False,
             "data": None,
             "errors": {"non_field_errors": [str(e)]},
@@ -1996,6 +2071,22 @@ def set_saved_view_pinned(request):
         return _saved_view_response(False, errors=form.errors)
     try:
         view = SetSavedViewPinnedCommand(form).execute()
+    except ValidationError as exc:
+        return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
+    return _saved_view_response(True, data=view.to_dict())
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def set_saved_view_archived(request):
+    """Archive or unarchive a saved view — hides it from the main list."""
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = SetSavedViewArchivedForm(data)
+    if not form.is_valid():
+        return _saved_view_response(False, errors=form.errors)
+    try:
+        view = SetSavedViewArchivedCommand(form).execute()
     except ValidationError as exc:
         return _saved_view_response(False, errors={"non_field_errors": [str(exc)]})
     return _saved_view_response(True, data=view.to_dict())

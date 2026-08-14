@@ -359,6 +359,24 @@ body {
   box-shadow: 2px 2px 0 var(--border-primary);
 }
 
+/* Compact variant for buttons living inside list rows — the full-size
+   .btn (0.75rem padding + 3px border + 4px shadow) is taller than a
+   row and overflows its container. Same brutalist look, row-scale. */
+.btn.btn-compact {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+  border-width: 2px;
+  box-shadow: 2px 2px 0 var(--border-primary);
+}
+.btn.btn-compact:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--border-primary);
+}
+.btn.btn-compact:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--border-primary);
+}
+
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -951,6 +969,65 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 14rem;
+}
+
+/* choose dialog — stacked decision options, used by the block-save
+ * conflict resolver. Wider than the default modal so the two content
+ * versions can be read side by side without wrapping badly. */
+.app-modal-choose {
+  max-width: 560px;
+}
+
+.app-modal-choose-section-label {
+  font-size: 0.75rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.app-modal-choose-section-text {
+  margin: 0;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 9rem;
+  overflow-y: auto;
+}
+
+.app-modal-choose-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.app-modal-choose-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  text-align: left;
+  padding: 0.55rem 0.8rem;
+  border-radius: 0;
+}
+
+.app-modal-choose-option-label {
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.app-modal-choose-option-desc {
+  font-size: 0.78rem;
+  font-weight: normal;
+  opacity: 0.85;
 }
 
 .confirm-modal-content {
@@ -2168,24 +2245,19 @@ kbd {
     align-items: center;
   }
 
-  /* On the daily page, sit the date picker and context menu side by
-     side, centered as a pair. Anchoring the menu to the far right
-     would put it under the AI chat-toggle in the top-right corner. */
+  /* On the daily page, sit the date navigation and context menu side
+     by side, centered as a pair, wrapping the menu to a second row on
+     narrow screens. Anchoring the menu to the far right would put it
+     under the AI chat-toggle in the top-right corner. */
   .daily-note-title.page-header-flex {
     justify-content: center;
     gap: 0.5rem;
+    flex-wrap: wrap;
   }
 
-  /* Pull the favorite star out of flow on mobile so it doesn't shift
-     the date input off-center inside the centered pair. The star sits
-     just to the left of the date input, .title-left's width equals the
-     date input alone, and the pair stays visually centered. */
-  .daily-note-title .title-left .page-favorite-toggle {
-    position: absolute;
-    right: 100%;
-    top: 50%;
-    transform: translateY(-50%);
-    margin-right: 0.25rem;
+  .daily-nav {
+    flex-wrap: wrap;
+    justify-content: center;
   }
 
   .child-block {
@@ -2215,6 +2287,17 @@ kbd {
   /* Always show delete button on mobile */
   .block-delete {
     opacity: 1 !important;
+  }
+
+  /* Cap the editing textarea's growth on mobile instead of letting it
+     grow unbounded (field-sizing: content, above). With the on-screen
+     keyboard eating half the viewport, an unbounded block pushes its
+     own earlier lines out of reach — iOS keeps re-scrolling to the
+     caret, but there's no page room left to scroll back up into. A
+     bounded, internally-scrollable box keeps the whole block reachable. */
+  textarea.block-content {
+    max-height: 45vh;
+    overflow-y: auto;
   }
 
   /* Simple fix - use margin-bottom only when chat is open and visible */
@@ -2688,6 +2771,18 @@ kbd {
   width: 1.1em;
   height: 1.1em;
   display: block;
+}
+
+/* Saved views get a funnel (filter/query) SVG so the nav icon no
+   longer reads as a resized twin of the "☰" all-pages glyph. Same
+   em-based sizing rationale as .leftnav-today-svg; inside the panel's
+   .leftnav-icon span it needs inline-block + vertical-align to sit on
+   the text baseline like the glyph it replaced. */
+.leftnav-views-svg {
+  width: 1.05em;
+  height: 1.05em;
+  display: inline-block;
+  vertical-align: -0.15em;
 }
 
 .leftnav-label {
@@ -4584,7 +4679,8 @@ a.sidebar-item:visited {
 
 /* --- Multi-select mode (page menu → "select multiple") --- */
 
-/* Sticky toolbar shown above the block list while selection mode is on. */
+/* Sticky toolbar shown above the block list while selection mode is on,
+   or as soon as 2+ blocks are selected via shift/cmd-click. */
 .selection-toolbar {
   position: sticky;
   top: 0;
@@ -5332,6 +5428,7 @@ a.sidebar-item:visited {
    visual vocabulary. */
 .page-header-flex-left:hover .page-favorite-toggle,
 .title-left:hover .page-favorite-toggle,
+.daily-nav:hover .page-favorite-toggle,
 .saved-view-title-row:hover .page-favorite-toggle,
 .page-favorite-toggle:focus-visible,
 .page-favorite-toggle.is-favorited {
@@ -5520,6 +5617,45 @@ a.sidebar-item:visited {
 .date-picker:focus {
   outline: none;
   border-color: var(--border-primary);
+}
+
+/* Prev/next daily navigation (issue #133). The arrows flank the date
+   picker inside .daily-nav; align-self: stretch keys them off the
+   date input's height so the row reads as one control group. */
+.daily-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.daily-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  /* Bare glyphs — no border/background so the arrows don't compete
+     with the date input. min-width keeps a finger-sized hit area. */
+  min-width: 1.9rem;
+  padding: 0 0.35rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 1.4rem;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.daily-nav-btn:hover {
+  color: var(--text-primary);
+}
+
+.daily-nav-btn:focus-visible {
+  outline: 2px solid var(--border-primary);
+  outline-offset: 2px;
 }
 
 /* Spotlight Search Styles */
@@ -6333,6 +6469,108 @@ kbd {
   background: var(--hover-bg);
 }
 
+.graph-filter-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.graph-filter-input {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 0.25rem 1.4rem 0.25rem 0.5rem;
+  width: 180px;
+}
+
+.graph-filter-input:focus {
+  outline: 1px solid var(--border-primary);
+  outline-offset: 0;
+}
+
+.graph-filter-clear {
+  position: absolute;
+  right: 0.25rem;
+  background: none;
+  border: none;
+  border-radius: 0;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+  cursor: pointer;
+}
+
+.graph-filter-clear:hover {
+  color: var(--text-primary);
+}
+
+.graph-select {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.25rem;
+  cursor: pointer;
+}
+
+.graph-btn-active {
+  background: var(--hover-bg);
+}
+
+.graph-physics-panel {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-secondary);
+  z-index: 5;
+}
+
+.graph-physics-row {
+  display: grid;
+  grid-template-columns: 5.5rem 8rem 2.5rem;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.graph-physics-row input[type="range"] {
+  width: 100%;
+  accent-color: var(--text-primary);
+  cursor: pointer;
+}
+
+.graph-physics-row span {
+  text-align: right;
+  color: var(--text-primary);
+}
+
+.graph-physics-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.2rem;
+}
+
+@media (max-width: 768px) {
+  .graph-filter-input {
+    width: 130px;
+  }
+}
+
 .graph-canvas-container {
   position: relative;
   flex: 1;
@@ -6589,38 +6827,6 @@ kbd {
   left: 0;
   z-index: 20;
   min-width: 12rem;
-}
-
-/* Overdue section on today's daily page (see issue #59) */
-.overdue-section {
-  margin-bottom: 1.5rem;
-  padding: 0.75rem 1rem;
-  border-left: 3px solid var(--error-color, #c0392b);
-  background: color-mix(in srgb, var(--error-color, #c0392b) 6%, transparent);
-  border-radius: 0;
-}
-
-.overdue-title {
-  margin: 0 0 0.5rem;
-  font-size: 0.95rem;
-  text-transform: lowercase;
-  color: var(--error-color, #c0392b);
-}
-
-.overdue-due-date {
-  /* Pushed to the right of the meta row (page name sits on the left) so
-     the due date reads as its own field — matches the embed rows'
-     right-aligned due chip, keeping the overdue red emphasis. */
-  margin-left: auto;
-  flex: 0 0 auto;
-  font-size: 0.8rem;
-  color: var(--error-color, #c0392b);
-  font-family: var(--font-mono, monospace);
-  white-space: nowrap;
-  border: 1px solid var(--error-color, #c0392b);
-  border-radius: 3px;
-  padding: 0 5px;
-  opacity: 0.85;
 }
 
 /* Inline due-date chip on blocks (issue #59) */
@@ -7886,6 +8092,48 @@ a.hashtag-mention:hover,
   color: var(--text-secondary);
 }
 
+/* Index rows carry an always-visible star so favoriting is
+   discoverable without opening the view — same reason the detail
+   star below stays visible instead of hover-only. */
+.saved-view-list-row {
+  display: flex;
+  align-items: center;
+}
+.saved-view-list-row > a {
+  flex: 1;
+  min-width: 0;
+}
+.saved-view-row-star {
+  font-size: 1.05rem;
+  padding: 0.15rem 0.2rem 0.15rem 0.6rem;
+}
+.saved-view-list .saved-view-row-star,
+.saved-view-title-row .page-favorite-toggle {
+  opacity: 1;
+}
+
+/* Archived views: collapsed section at the bottom of the index.
+   Reuses the left-nav section-toggle look, sized up slightly for the
+   main content column. */
+.saved-view-archived-section {
+  margin-top: 1.25rem;
+}
+.saved-view-archived-toggle {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.1rem;
+  margin-bottom: 0.4rem;
+}
+.saved-view-list-row.is-archived > a {
+  color: var(--text-secondary);
+}
+.saved-view-unarchive-btn {
+  margin: 0.35rem 0.6rem 0.35rem 0;
+  flex: 0 0 auto;
+}
+.saved-views-page .archived-pill {
+  color: var(--text-muted);
+}
+
 .saved-view-editor {
   border: 1px solid var(--border-primary);
   border-radius: 0;
@@ -8147,13 +8395,19 @@ a.hashtag-mention:hover,
 .result-due {
   flex: 0 0 auto;
   align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   font-size: 0.8rem;
   color: var(--text-secondary);
-  font-family: var(--font-mono, monospace);
+  font-family: inherit;
   white-space: nowrap;
   border: 1px solid var(--border-primary);
   border-radius: 3px;
   padding: 0 5px;
+}
+.result-due.overdue {
+  color: var(--error-color, #c0392b);
 }
 .result-block-type {
   display: inline-block;
@@ -8184,6 +8438,77 @@ a.hashtag-mention:hover,
 }
 .block-query-embed.is-collapsed {
   padding-bottom: 0.6rem;
+}
+
+/* Embed accent colors. Each accent class only sets --embed-accent;
+   the shared rules below consume it for the left-border + tinted
+   background + title color (same visual language as the retired
+   overdue section, which used --error-color this way). Muted hexes
+   chosen to read on both light and dark themes. */
+.embed-accent-red {
+  --embed-accent: #c0392b;
+}
+.embed-accent-orange {
+  --embed-accent: #d35400;
+}
+.embed-accent-yellow {
+  --embed-accent: #b7950b;
+}
+.embed-accent-green {
+  --embed-accent: #1e8449;
+}
+.embed-accent-blue {
+  --embed-accent: #2471a3;
+}
+.embed-accent-purple {
+  --embed-accent: #7d3c98;
+}
+.block-query-embed[class*="embed-accent-"] {
+  border-left: 3px solid var(--embed-accent);
+  background: color-mix(in srgb, var(--embed-accent) 6%, var(--bg-secondary));
+}
+.block-query-embed[class*="embed-accent-"] .block-query-embed-title {
+  color: var(--embed-accent);
+}
+
+/* Accent swatch picker in the embed header actions. The trigger dot
+   takes the current accent (muted gray when none); the menu is a
+   simple inline swatch row anchored under the button. */
+.embed-color-picker {
+  position: relative;
+  display: inline-flex;
+}
+.embed-color-btn {
+  color: var(--embed-accent, var(--text-muted));
+}
+.embed-color-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  gap: 2px;
+  padding: 3px 5px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+}
+.embed-color-swatch {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--embed-accent, var(--text-muted));
+}
+.embed-color-swatch:hover {
+  border-color: var(--border-primary);
+  background: var(--hover-bg);
+}
+.embed-color-swatch.is-current {
+  border-color: var(--text-primary);
 }
 .block-query-embed-header {
   display: flex;
@@ -8247,10 +8572,19 @@ a.hashtag-mention:hover,
 }
 .block-query-embed-actions {
   display: inline-flex;
+  align-items: center;
   gap: 0.25rem;
   margin-left: 0.25rem;
 }
 .block-query-embed-iconbtn {
+  /* Fixed flex-centered square: arrow/×/dot glyphs have wildly
+     different baselines, so baseline layout leaves them looking
+     off-center in the bordered box. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.4rem;
   background: transparent;
   border: 1px solid var(--border-primary);
   border-radius: 0;
@@ -8259,7 +8593,7 @@ a.hashtag-mention:hover,
   font: inherit;
   font-size: 0.85rem;
   line-height: 1;
-  padding: 0.1rem 0.4rem;
+  padding: 0;
 }
 .block-query-embed-iconbtn:hover {
   background: var(--hover-bg);
@@ -8269,4 +8603,433 @@ a.hashtag-mention:hover,
   color: var(--text-secondary);
   font-size: 0.9rem;
   padding: 0.5rem 0;
+}
+
+/* ── All Pages browser (issue #133) ─────────────────────────────── */
+
+.pages-list-page {
+  padding: 1.25rem 1.75rem 4rem;
+  max-width: 950px;
+  margin: 0 auto;
+  width: 100%;
+  color: var(--text-primary);
+}
+
+/* Templates browser (/knowledge/templates/) — same column framing as
+   the all-pages browser, list rows shaped like the saved-views index
+   with an inline action pair per row. */
+.templates-page {
+  padding: 1.25rem 1.75rem 4rem;
+  max-width: 950px;
+  margin: 0 auto;
+  width: 100%;
+  color: var(--text-primary);
+}
+.templates-page-hint {
+  margin: 0 0 1.25rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  max-width: 60ch;
+}
+.templates-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  background: var(--bg-secondary);
+}
+.templates-list-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--border-primary);
+}
+.templates-list-row:last-child {
+  border-bottom: none;
+}
+.templates-list-link {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.7rem 0.9rem;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+.templates-list-link:hover {
+  background: var(--hover-bg);
+}
+.templates-list-name {
+  font-weight: 600;
+}
+.templates-list-modified {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.templates-list-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.9rem 0.35rem 0;
+}
+.templates-list-actions .btn {
+  text-decoration: none;
+}
+
+.pages-list-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.pages-list-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pages-list-count {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.pages-list-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.pages-list-search {
+  position: relative;
+  flex: 1 1 220px;
+  min-width: 180px;
+  max-width: 340px;
+}
+
+.pages-list-search-input {
+  width: 100%;
+  padding: 0.4rem 1.75rem 0.4rem 0.6rem;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 2px solid var(--border-secondary);
+  border-radius: 0;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.pages-list-search-input:focus {
+  outline: none;
+  border-color: var(--border-primary);
+}
+
+.pages-list-search-clear {
+  position: absolute;
+  right: 0.35rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.1rem 0.25rem;
+  cursor: pointer;
+}
+
+.pages-list-search-clear:hover {
+  color: var(--text-primary);
+}
+
+.pages-list-type-filters {
+  display: inline-flex;
+  flex-wrap: wrap;
+}
+
+.pages-list-type-btn {
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border: 2px solid var(--border-secondary);
+  border-radius: 0;
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+  /* Collapse shared edges so the group reads as one segmented control. */
+  margin-right: -2px;
+}
+
+.pages-list-type-btn:last-child {
+  margin-right: 0;
+}
+
+.pages-list-type-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.pages-list-type-btn.is-active {
+  background: var(--tag-bg, var(--bg-secondary));
+  /* Pair --tag-bg with --tag-text: in several themes --tag-bg matches
+     --text-primary's hue, which would render the active label
+     invisible against its own background. */
+  color: var(--tag-text, var(--text-primary));
+  border-color: var(--border-primary);
+  /* Keep the active segment's border on top of its neighbors'. */
+  position: relative;
+  z-index: 1;
+}
+
+.pages-list-order {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.pages-list-order select {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 2px solid var(--border-secondary);
+  border-radius: 0;
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 0.3rem 0.4rem;
+  cursor: pointer;
+}
+
+.pages-list-order select:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pages-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  background: var(--bg-secondary);
+}
+
+.pages-list li {
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.pages-list li:last-child {
+  border-bottom: none;
+}
+
+.pages-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.9rem;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.pages-list-row:hover {
+  background: var(--hover-bg);
+}
+
+.pages-list-title {
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pages-list-star {
+  color: var(--text-secondary);
+  margin-right: 0.15rem;
+}
+
+.pages-list-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: none;
+}
+
+.pages-list-page .page-type-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  padding: 0.05em 0.5em;
+}
+
+.pages-list-modified {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pages-list-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+@media (max-width: 768px) {
+  .pages-list-page,
+  .templates-page {
+    padding: 1rem 1rem 3rem;
+    /* Clear the fixed 45×45 leftnav-rail-toggle pinned to the top-left
+       corner on mobile, same as the page-title-container rule above. */
+    padding-top: calc(45px + 0.75rem);
+  }
+
+  .pages-list-modified {
+    display: none;
+  }
+}
+
+/* ── Touch-device tap hardening (issue #133 follow-up) ──────────────
+   Two-tap fixes for phones/tablets:
+   - Controls that desktop reveals on :hover don't exist for a touch
+     user until a first tap applies the emulated hover — so the first
+     tap reads as dead. Keep them visible (dimmed) on touch instead.
+   - touch-action: manipulation removes the browser's double-tap-to-
+     zoom wait on the app's interactive controls, so single taps fire
+     immediately. */
+@media (hover: none) and (pointer: coarse) {
+  .block-collapse-toggle,
+  .block-code-copy,
+  .leftnav-template-edit {
+    opacity: 1;
+  }
+
+  .block-due-add {
+    opacity: 0.45;
+  }
+
+  .block-mermaid-open {
+    opacity: 0.7;
+  }
+
+  /* The copy button occupies the same top-right corner the language
+     badge does; desktop swaps them on hover. With copy pinned visible
+     on touch, hide the badge so they don't overlap. */
+  .block-code-wrapper .block-code-lang {
+    opacity: 0;
+  }
+
+  button,
+  select,
+  [role="button"],
+  .leftnav-item,
+  .leftnav-rail-btn,
+  .daily-nav-btn,
+  .block-content-display,
+  .date-picker {
+    touch-action: manipulation;
+  }
+}
+
+/* ── Block drag-and-drop indicators (issue #133 follow-up) ─────────
+   Dragging a block by its bullet: the hovered row shows an insertion
+   line (top 30% → before, bottom 30% → after as sibling) or a nest
+   highlight (middle → becomes the row's last child). Desktop-only —
+   HTML5 drag events don't fire on touch. */
+.block.block-drop-before,
+.block.block-drop-after {
+  position: relative;
+}
+
+.block.block-drop-before::before,
+.block.block-drop-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--border-primary);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.block.block-drop-before::before {
+  top: -1px;
+}
+
+.block.block-drop-after::after {
+  bottom: -1px;
+}
+
+.block.block-drop-child {
+  background: var(--hover-bg);
+  box-shadow: inset 0 0 0 2px var(--border-primary);
+}
+
+/* Grab affordance on non-todo bullets; todo bullets keep their
+   pointer cursor since click-to-toggle is their primary action. */
+.block-bullet[draggable="true"]:not(.todo):not(.doing):not(.done):not(
+    .later
+  ):not(.wontdo) {
+  cursor: grab;
+}
+
+/* ---- Monitor mode (?monitor=1) ------------------------------------
+ * Read-only wall-display mode for pinning a page (typically the daily
+ * note) on a big screen. The Page component polls for fresh data and
+ * blocks all writes; these rules strip interactive chrome and disable
+ * pointer interaction so the display can't be edited by a stray click.
+ * The app shell already skips rendering the left nav and chat panel. */
+body.monitor-mode .header-controls,
+body.monitor-mode .page-actions,
+body.monitor-mode .add-block-btn {
+  display: none;
+}
+
+body.monitor-mode .page-header,
+body.monitor-mode .embedded-views-section,
+body.monitor-mode .blocks-container,
+body.monitor-mode .linked-references-section {
+  pointer-events: none;
+}
+
+/* Give the content the full column width the sidebar/chat freed up. */
+body.monitor-mode .main-content-area {
+  max-width: 72rem;
+  margin: 0 auto;
+}
+
+.monitor-badge {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 1000;
+  padding: 0.35rem 0.7rem;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 3px solid var(--border-primary);
+  border-radius: 0;
+  box-shadow: 4px 4px 0 var(--border-primary);
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.monitor-badge:hover {
+  opacity: 1;
+  background: var(--hover-bg);
 }

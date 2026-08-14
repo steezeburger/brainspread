@@ -12,10 +12,14 @@
 //   const name = await window.appModals.prompt("page title:");
 //   await window.appModals.alert("upload failed");
 //   const page = await window.appModals.pickPage({title: "embed on a page"});
+//   const choice = await window.appModals.choose({options: [...]});
 //
 // Each method returns a promise that resolves on user action. pickPage
 // resolves with the selected page object (uuid, slug, title, ...) or
-// null when the user dismisses.
+// null when the user dismisses. choose renders a stacked list of
+// options (plus optional read-only text sections, e.g. two versions of
+// a conflicting block) and resolves with the chosen option's value, or
+// null on dismiss.
 
 window.AppModals = {
   name: "AppModals",
@@ -70,14 +74,26 @@ window.AppModals = {
           const ok = this.$refs.alertOk;
           if (ok) ok.focus();
         });
-      } else if (next && next.kind === "pickPage") {
+      } else if (next && next.kind === "choose") {
+        this.$nextTick(() => {
+          // The component root is a <teleport>, so $el isn't an element —
+          // the dialog itself lives under document.body.
+          const first = document.querySelector(".app-modal-choose-option");
+          if (first) first.focus();
+        });
+      } else if (
+        next &&
+        (next.kind === "pickPage" || next.kind === "pickBlock")
+      ) {
         this._resetPicker();
         this.$nextTick(() => {
           const input = this.$refs.pickerInput;
           if (input) input.focus();
         });
         // Kick off an initial search so the user sees their most-
-        // recently-edited pages without typing. Empty query → recent.
+        // recently-edited pages without typing. Empty query → recent
+        // for pages; block search needs a query, so pickBlock just
+        // shows its type-to-search hint.
         this._runPickerSearch("");
       }
       if (!next && prev) {
@@ -93,6 +109,8 @@ window.AppModals = {
       prompt: this.prompt.bind(this),
       alert: this.alert.bind(this),
       pickPage: this.pickPage.bind(this),
+      pickBlock: this.pickBlock.bind(this),
+      choose: this.choose.bind(this),
     };
   },
 
@@ -159,6 +177,31 @@ window.AppModals = {
       });
     },
 
+    choose(opts) {
+      // Multi-option decision dialog. `options` is a list of
+      // {value, label, description?, kind?} rendered as stacked buttons
+      // (kind: "primary" | "danger" | default outline). `sections` is an
+      // optional list of {label, text} rendered read-only above the
+      // options — used by the block-conflict dialog to show both
+      // versions. Resolves with the chosen value, or null on
+      // dismiss/cancel.
+      const normalized = opts || {};
+      return new Promise((resolve) => {
+        this.queue.push({
+          id: ++this._idCounter,
+          kind: "choose",
+          opts: {
+            title: normalized.title || "",
+            message: normalized.message || "",
+            sections: normalized.sections || [],
+            options: normalized.options || [],
+            cancelLabel: normalized.cancelLabel || "cancel",
+          },
+          resolve,
+        });
+      });
+    },
+
     pickPage(opts) {
       // Typeahead page picker. Resolves with the chosen page object
       // (uuid, slug, title, page_type) or null on dismiss. The caller
@@ -181,6 +224,30 @@ window.AppModals = {
             confirmLabel: normalized.confirmLabel || "select",
             cancelLabel: normalized.cancelLabel || "cancel",
             pageType: normalized.pageType || null,
+          },
+          resolve,
+        });
+      });
+    },
+
+    pickBlock(opts) {
+      // Typeahead block picker — same scaffolding as pickPage but
+      // searching block content via /api/blocks/search/. Resolves with
+      // {uuid, content, page_title, page_slug, block_type} or null on
+      // dismiss. Callers pass ``excludeUuids`` to hide blocks that
+      // can't be valid targets (e.g. the block being moved).
+      const normalized = opts || {};
+      return new Promise((resolve) => {
+        this.queue.push({
+          id: ++this._idCounter,
+          kind: "pickBlock",
+          opts: {
+            title: normalized.title || "pick a block",
+            message: normalized.message || "",
+            placeholder: normalized.placeholder || "search blocks…",
+            confirmLabel: normalized.confirmLabel || "select",
+            cancelLabel: normalized.cancelLabel || "cancel",
+            excludeUuids: normalized.excludeUuids || [],
           },
           resolve,
         });
@@ -211,6 +278,9 @@ window.AppModals = {
     },
 
     async _runPickerSearch(query) {
+      if (this.active?.kind === "pickBlock") {
+        return this._runBlockPickerSearch(query);
+      }
       const requestId = ++this._pickerRequestId;
       this.pickerLoading = true;
       const pageType = this.active?.opts?.pageType || null;
@@ -266,6 +336,49 @@ window.AppModals = {
       }
     },
 
+    async _runBlockPickerSearch(query) {
+      // Block search has no "recent" fallback — the endpoint requires a
+      // query — so the empty state is a type-to-search hint (see the
+      // template's pickBlock empty branch).
+      const requestId = ++this._pickerRequestId;
+      const trimmed = query.trim();
+      if (trimmed === "") {
+        this.pickerResults = [];
+        this.pickerSelectedIndex = -1;
+        this.pickerLoading = false;
+        return;
+      }
+      this.pickerLoading = true;
+      const exclude = new Set(this.active?.opts?.excludeUuids || []);
+      try {
+        const result = await window.apiService.searchBlocks(trimmed, 15);
+        if (requestId !== this._pickerRequestId) return; // stale
+        const rows = (result && result.data && result.data.results) || [];
+        // Normalize to the picker's row shape — the search endpoint
+        // calls the id ``block_uuid`` but every consumer (and the
+        // v-for :key) expects ``uuid``.
+        this.pickerResults = rows
+          .filter((b) => !exclude.has(b.block_uuid))
+          .map((b) => ({
+            uuid: b.block_uuid,
+            content: b.content,
+            block_type: b.block_type,
+            page_title: b.page_title,
+            page_slug: b.page_slug,
+          }));
+        this.pickerSelectedIndex = this.pickerResults.length ? 0 : -1;
+      } catch (err) {
+        if (requestId !== this._pickerRequestId) return;
+        console.error("pickBlock search failed:", err);
+        this.pickerResults = [];
+        this.pickerSelectedIndex = -1;
+      } finally {
+        if (requestId === this._pickerRequestId) {
+          this.pickerLoading = false;
+        }
+      }
+    },
+
     async _fetchTodayDailyPage() {
       // Locate the user's daily note for today's date so the picker can
       // pin it to the top of the empty-query list. Goes through the
@@ -291,7 +404,7 @@ window.AppModals = {
 
     onPickerKeydown(event) {
       const top = this.active;
-      if (!top || top.kind !== "pickPage") return;
+      if (!top || (top.kind !== "pickPage" && top.kind !== "pickBlock")) return;
       if (event.key === "ArrowDown") {
         event.preventDefault();
         if (this.pickerResults.length === 0) return;
@@ -368,21 +481,24 @@ window.AppModals = {
       if (top.kind === "confirm") this.onCancel();
       else if (top.kind === "prompt") this.onPromptCancel();
       else if (top.kind === "alert") this.onAlertOk();
-      else if (top.kind === "pickPage") this.onPickerCancel();
+      else if (top.kind === "choose") this.finish(null);
+      else if (top.kind === "pickPage" || top.kind === "pickBlock")
+        this.onPickerCancel();
     },
 
     onKeydown(event) {
       const top = this.active;
       if (!top) return;
-      // pickPage drives its own keyboard surface (arrows + Enter +
+      // The pickers drive their own keyboard surface (arrows + Enter +
       // Esc) via @keydown on the input — the global Enter-on-button
       // handlers below would otherwise fight Enter-to-pick.
-      if (top.kind === "pickPage") return;
+      if (top.kind === "pickPage" || top.kind === "pickBlock") return;
       if (event.key === "Escape") {
         event.preventDefault();
         if (top.kind === "confirm") this.onCancel();
         else if (top.kind === "prompt") this.onPromptCancel();
         else if (top.kind === "alert") this.onAlertOk();
+        else if (top.kind === "choose") this.finish(null);
         return;
       }
       if (event.key === "Enter") {
@@ -493,7 +609,47 @@ window.AppModals = {
         </div>
 
         <div
-          v-else-if="active.kind === 'pickPage'"
+          v-else-if="active.kind === 'choose'"
+          class="app-modal app-modal-choose"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div v-if="active.opts.title" class="app-modal-header">
+            {{ active.opts.title }}
+          </div>
+          <div v-if="active.opts.message" class="app-modal-body">
+            {{ active.opts.message }}
+          </div>
+          <div
+            v-for="section in active.opts.sections"
+            :key="section.label"
+            class="app-modal-choose-section"
+          >
+            <div class="app-modal-choose-section-label">{{ section.label }}</div>
+            <pre class="app-modal-choose-section-text">{{ section.text }}</pre>
+          </div>
+          <div class="app-modal-choose-options">
+            <button
+              v-for="option in active.opts.options"
+              :key="option.value"
+              type="button"
+              class="btn app-modal-choose-option"
+              :class="option.kind === 'primary' ? 'btn-primary' : option.kind === 'danger' ? 'btn-danger' : 'btn-outline'"
+              @click="finish(option.value)"
+            >
+              <span class="app-modal-choose-option-label">{{ option.label }}</span>
+              <span v-if="option.description" class="app-modal-choose-option-desc">{{ option.description }}</span>
+            </button>
+          </div>
+          <div class="app-modal-actions">
+            <button type="button" class="btn btn-secondary" @click="finish(null)">
+              {{ active.opts.cancelLabel }}
+            </button>
+          </div>
+        </div>
+
+        <div
+          v-else-if="active.kind === 'pickPage' || active.kind === 'pickBlock'"
           class="app-modal app-modal-picker"
           role="dialog"
           aria-modal="true"
@@ -520,30 +676,53 @@ window.AppModals = {
               searching…
             </div>
             <div
+              v-else-if="active.kind === 'pickBlock' && !pickerQuery.trim()"
+              class="app-modal-picker-empty"
+            >
+              type to search block content
+            </div>
+            <div
               v-else-if="!pickerResults.length"
               class="app-modal-picker-empty"
             >
-              no pages match
+              {{ active.kind === 'pickBlock' ? 'no blocks match' : 'no pages match' }}
             </div>
-            <button
-              v-else
-              v-for="(page, index) in pickerResults"
-              :key="page.uuid"
-              type="button"
-              class="app-modal-picker-result"
-              :class="{ 'is-selected': index === pickerSelectedIndex }"
-              @click="onPickerResultClick(index)"
-              @mouseenter="pickerSelectedIndex = index"
-              role="option"
-              :aria-selected="index === pickerSelectedIndex"
-            >
-              <span class="app-modal-picker-result-title">{{ page.title }}</span>
-              <span
-                v-if="page.page_type && page.page_type !== 'page'"
-                class="app-modal-picker-result-type"
-              >{{ page.page_type }}</span>
-              <span class="app-modal-picker-result-slug">{{ page.slug }}</span>
-            </button>
+            <template v-else-if="active.kind === 'pickBlock'">
+              <button
+                v-for="(blockRow, index) in pickerResults"
+                :key="blockRow.uuid"
+                type="button"
+                class="app-modal-picker-result"
+                :class="{ 'is-selected': index === pickerSelectedIndex }"
+                @click="onPickerResultClick(index)"
+                @mouseenter="pickerSelectedIndex = index"
+                role="option"
+                :aria-selected="index === pickerSelectedIndex"
+              >
+                <span class="app-modal-picker-result-title">{{ blockRow.content }}</span>
+                <span class="app-modal-picker-result-slug">{{ blockRow.page_title || blockRow.page_slug }}</span>
+              </button>
+            </template>
+            <template v-else>
+              <button
+                v-for="(page, index) in pickerResults"
+                :key="page.uuid"
+                type="button"
+                class="app-modal-picker-result"
+                :class="{ 'is-selected': index === pickerSelectedIndex }"
+                @click="onPickerResultClick(index)"
+                @mouseenter="pickerSelectedIndex = index"
+                role="option"
+                :aria-selected="index === pickerSelectedIndex"
+              >
+                <span class="app-modal-picker-result-title">{{ page.title }}</span>
+                <span
+                  v-if="page.page_type && page.page_type !== 'page'"
+                  class="app-modal-picker-result-type"
+                >{{ page.page_type }}</span>
+                <span class="app-modal-picker-result-slug">{{ page.slug }}</span>
+              </button>
+            </template>
           </div>
           <div class="app-modal-actions">
             <button

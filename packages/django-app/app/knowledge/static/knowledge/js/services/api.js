@@ -48,9 +48,15 @@ class ApiService {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
+        const error = new Error(
           data.detail || data.errors?.non_field_errors?.[0] || "Request failed"
         );
+        // Attach the status and parsed body so callers can react to
+        // specific failures (e.g. 409 block-save conflicts carry the
+        // current server-side block in payload.data).
+        error.status = response.status;
+        error.payload = data;
+        throw error;
       }
 
       return data;
@@ -166,10 +172,12 @@ class ApiService {
     publishedOnly = true,
     limit = 10,
     offset = 0,
-    pageType = null
+    pageType = null,
+    orderBy = null
   ) {
     let url = `/knowledge/api/pages/list/?published_only=${publishedOnly}&limit=${limit}&offset=${offset}`;
     if (pageType) url += `&page_type=${encodeURIComponent(pageType)}`;
+    if (orderBy) url += `&order_by=${encodeURIComponent(orderBy)}`;
     return await this.request(url);
   }
 
@@ -259,6 +267,13 @@ class ApiService {
     });
   }
 
+  async duplicateBlock(blockUuid) {
+    return await this.request("/knowledge/api/blocks/duplicate/", {
+      method: "POST",
+      body: JSON.stringify({ block: blockUuid }),
+    });
+  }
+
   async toggleBlockTodo(blockUuid) {
     return await this.request("/knowledge/api/blocks/toggle-todo/", {
       method: "POST",
@@ -329,10 +344,16 @@ class ApiService {
     });
   }
 
-  async moveBlockToPage(blockUuid, targetPageUuid) {
+  async moveBlockToPage(blockUuid, targetPageUuid, targetParentUuid = null) {
+    // targetParentUuid nests the block under an existing block (the
+    // "move under…" flow); the backend derives the page from it, so
+    // targetPageUuid may be null in that case.
+    const body = { block: blockUuid };
+    if (targetPageUuid) body.target_page = targetPageUuid;
+    if (targetParentUuid) body.target_parent = targetParentUuid;
     return await this.request("/knowledge/api/blocks/move-to-page/", {
       method: "POST",
-      body: JSON.stringify({ block: blockUuid, target_page: targetPageUuid }),
+      body: JSON.stringify(body),
       headers: {
         "Content-Type": "application/json",
       },
@@ -363,13 +384,17 @@ class ApiService {
     });
   }
 
-  async bulkMoveBlocksToPage(blockUuids, targetPageUuid) {
+  async bulkMoveBlocksToPage(
+    blockUuids,
+    targetPageUuid,
+    targetParentUuid = null
+  ) {
+    const body = { blocks: blockUuids };
+    if (targetPageUuid) body.target_page = targetPageUuid;
+    if (targetParentUuid) body.target_parent = targetParentUuid;
     return await this.request("/knowledge/api/blocks/bulk-move-to-page/", {
       method: "POST",
-      body: JSON.stringify({
-        blocks: blockUuids,
-        target_page: targetPageUuid,
-      }),
+      body: JSON.stringify(body),
       headers: {
         "Content-Type": "application/json",
       },
@@ -957,6 +982,13 @@ class ApiService {
 
   async listPinnedSavedViews() {
     return await this.request("/knowledge/api/views/pinned/");
+  }
+
+  async setSavedViewArchived(viewUuid, archived) {
+    return await this.request("/knowledge/api/views/archive/", {
+      method: "POST",
+      body: JSON.stringify({ view: viewUuid, archived: !!archived }),
+    });
   }
 
   // ---- Page embedded views (issue #60 follow-up) ---------------------

@@ -37,6 +37,7 @@ window.QueryEmbedBlock = {
     onToggleCollapsed: { type: Function, default: null },
     onMoveUp: { type: Function, default: null },
     onMoveDown: { type: Function, default: null },
+    onSetColor: { type: Function, default: null },
     // Host-page delegates forwarded straight to each EmbedResultRow.
     // Schedule + Block info need a modal that lives on the host;
     // Move-to-today / Move-to-page need to trigger the host's own
@@ -57,6 +58,18 @@ window.QueryEmbedBlock = {
       // embeds fetch count-only, so this stays false until they expand —
       // it's how the expand watcher knows it still needs the rows.
       detailLoaded: false,
+      // Accent swatch row visibility. Keys mirror the backend's
+      // EMBED_COLOR_CHOICES; "" = clear the accent.
+      showColorMenu: false,
+      colorOptions: [
+        { key: "", label: "none" },
+        { key: "red", label: "red" },
+        { key: "orange", label: "orange" },
+        { key: "yellow", label: "yellow" },
+        { key: "green", label: "green" },
+        { key: "blue", label: "blue" },
+        { key: "purple", label: "purple" },
+      ],
     };
   },
 
@@ -74,6 +87,10 @@ window.QueryEmbedBlock = {
     },
     collapsed() {
       return !!(this.embed && this.embed.collapsed);
+    },
+    accentClass() {
+      const c = this.embed && this.embed.color;
+      return c ? `embed-accent-${c}` : "";
     },
     // The date-anchor badge: tells the reader whether this embed's date
     // tokens resolved against the daily it's on, or against live today.
@@ -146,6 +163,24 @@ window.QueryEmbedBlock = {
       "brainspread:block-changed",
       this._onBlocksChanged
     );
+    // Monitor mode's poll (Page.monitorTick) fires this after each
+    // silent reload. The block tree re-fetches itself, but embeds own
+    // their query results — without this hook a DOING toggled from
+    // another session never updates inside an embed on the wall
+    // display. Unlike block-changed, collapsed embeds also refresh so
+    // their count badge stays live; fetch() picks count-vs-rows mode
+    // from `collapsed` on its own.
+    this._onRefreshEmbeds = () => {
+      if (this._refetchTimer) clearTimeout(this._refetchTimer);
+      this._refetchTimer = setTimeout(() => {
+        this._refetchTimer = null;
+        this.fetch();
+      }, 150);
+    };
+    document.addEventListener(
+      "brainspread:refresh-embeds",
+      this._onRefreshEmbeds
+    );
   },
 
   beforeUnmount() {
@@ -153,6 +188,12 @@ window.QueryEmbedBlock = {
       document.removeEventListener(
         "brainspread:block-changed",
         this._onBlocksChanged
+      );
+    }
+    if (this._onRefreshEmbeds) {
+      document.removeEventListener(
+        "brainspread:refresh-embeds",
+        this._onRefreshEmbeds
       );
     }
     if (this._refetchTimer) {
@@ -205,7 +246,12 @@ window.QueryEmbedBlock = {
       // the matched rows. Expanding later triggers a full fetch (see the
       // collapsed watcher).
       const countOnly = this.collapsed;
-      this.loading = true;
+      // Stale-while-refresh: when rows are already on screen, keep them
+      // during the refetch instead of flipping to "Loading…". Blanking
+      // collapses the embed's height for the round-trip, which made the
+      // whole page jump every time a block was toggled anywhere.
+      const isRefresh = !countOnly && this.detailLoaded && !!this.result;
+      if (!isRefresh) this.loading = true;
       try {
         const r = await window.apiService.runSavedView({
           uuid: this.savedView.uuid,
@@ -265,10 +311,15 @@ window.QueryEmbedBlock = {
       if (!this.onMoveDown) return;
       this.onMoveDown(this.embed);
     },
+    onColorPick(colorKey) {
+      this.showColorMenu = false;
+      if (!this.onSetColor) return;
+      this.onSetColor(this.embed, colorKey);
+    },
   },
 
   template: `
-    <div class="block-query-embed" :class="{ 'is-collapsed': collapsed }" :data-embed-uuid="embed.uuid">
+    <div class="block-query-embed" :class="[{ 'is-collapsed': collapsed }, accentClass]" :data-embed-uuid="embed.uuid">
       <div class="block-query-embed-header">
         <button
           v-if="onToggleCollapsed"
@@ -300,6 +351,29 @@ window.QueryEmbedBlock = {
           {{ result.count }}<span v-if="result.truncated">+ truncated</span>
         </span>
         <span class="block-query-embed-actions">
+          <span v-if="onSetColor" class="embed-color-picker">
+            <button
+              type="button"
+              class="block-query-embed-iconbtn embed-color-btn"
+              @click="showColorMenu = !showColorMenu"
+              title="Set accent color"
+              aria-label="Set accent color"
+              :aria-expanded="showColorMenu"
+            >●</button>
+            <span v-if="showColorMenu" class="embed-color-menu" role="menu">
+              <button
+                v-for="c in colorOptions"
+                :key="c.key || 'none'"
+                type="button"
+                class="embed-color-swatch"
+                :class="[c.key ? 'embed-accent-' + c.key : '', { 'is-current': (embed.color || '') === c.key }]"
+                @click="onColorPick(c.key)"
+                :title="c.label"
+                :aria-label="'Accent color: ' + c.label"
+                role="menuitem"
+              >{{ c.key ? '●' : '×' }}</button>
+            </span>
+          </span>
           <button
             v-if="onMoveUp"
             type="button"

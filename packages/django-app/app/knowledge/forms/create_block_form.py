@@ -30,6 +30,9 @@ class CreateBlockForm(BaseForm):
     asset = UUIDModelChoiceField(
         queryset=AssetRepository.get_queryset(), required=False
     )
+    # Provenance stamp. The web endpoint omits it (defaults to "web");
+    # the AI-chat and MCP tool handlers pass their own value.
+    created_via = forms.ChoiceField(choices=Block.CREATED_VIA_CHOICES, required=False)
 
     def clean_page(self) -> Optional[Page]:
         page = self.cleaned_data.get("page")

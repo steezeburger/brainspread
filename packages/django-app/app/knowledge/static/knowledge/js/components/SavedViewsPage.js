@@ -44,6 +44,10 @@ const SavedViewsPage = {
       // Inline "new view" toggle on the index.
       creating: false,
 
+      // Archived views live in a collapsed section at the bottom of the
+      // index — out of the way, but recoverable without a support ticket.
+      archivedExpanded: false,
+
       // Set when ``_maybePrefillFromQuery`` found an existing view whose
       // filter matches the clicked property — drives the dismissible
       // "you already have a view for this" banner above the editor.
@@ -67,6 +71,12 @@ const SavedViewsPage = {
   computed: {
     isOnIndex() {
       return !this.activeSlug;
+    },
+    activeViews() {
+      return this.views.filter((v) => !v.archived);
+    },
+    archivedViews() {
+      return this.views.filter((v) => v.archived);
     },
     canEdit() {
       return this.activeView && !this.activeView.is_system;
@@ -618,40 +628,82 @@ const SavedViewsPage = {
       }
     },
 
-    async togglePinned() {
-      // Toggle the pinned flag and dispatch pinned-views:changed so the
-      // left-nav's pinned-views section refreshes without a reload.
-      if (!this.activeView) return;
-      const nextPinned = !this.activeView.pinned;
+    async togglePinned(view) {
+      // Toggle the favorited (pinned) flag and dispatch
+      // pinned-views:changed so the left-nav's favorite-views section
+      // refreshes without a reload. Callable from the detail star or
+      // any index-row star — pass the row's view dict for the latter.
+      const target = view || this.activeView;
+      if (!target) return;
+      const nextPinned = !target.pinned;
       try {
         const result = await window.apiService.setSavedViewPinned(
-          this.activeView.uuid,
+          target.uuid,
           nextPinned
         );
         if (result && result.success) {
-          this.activeView = result.data;
+          if (this.activeView && this.activeView.uuid === target.uuid) {
+            this.activeView = result.data;
+          }
           // Keep the local list in sync so a back-trip to the index
-          // shows the new pin state without an extra refetch.
-          const idx = this.views.findIndex(
-            (v) => v.uuid === this.activeView.uuid
-          );
-          if (idx >= 0) this.views.splice(idx, 1, this.activeView);
+          // shows the new state without an extra refetch.
+          const idx = this.views.findIndex((v) => v.uuid === target.uuid);
+          if (idx >= 0) this.views.splice(idx, 1, result.data);
           document.dispatchEvent(new CustomEvent("pinned-views:changed"));
           this._toast(
             nextPinned
-              ? `pinned "${this.activeView.name}" to left nav`
-              : `unpinned "${this.activeView.name}"`,
+              ? `added "${result.data.name}" to favorites`
+              : `removed "${result.data.name}" from favorites`,
             "success"
           );
         } else {
           this._toast(
-            this._formatErrors(result && result.errors) || "pin toggle failed",
+            this._formatErrors(result && result.errors) ||
+              "favorite toggle failed",
             "error"
           );
         }
       } catch (err) {
         console.error("togglePinned failed:", err);
-        this._toast(`pin toggle failed: ${err}`, "error");
+        this._toast(`favorite toggle failed: ${err}`, "error");
+      }
+    },
+
+    async toggleArchived(view) {
+      // Archive tucks the view into the collapsed archived section on
+      // the index (and drops it from the left-nav favorites) without
+      // touching the favorited flag — unarchiving restores everything.
+      const target = view || this.activeView;
+      if (!target) return;
+      const nextArchived = !target.archived;
+      try {
+        const result = await window.apiService.setSavedViewArchived(
+          target.uuid,
+          nextArchived
+        );
+        if (result && result.success) {
+          if (this.activeView && this.activeView.uuid === target.uuid) {
+            this.activeView = result.data;
+          }
+          const idx = this.views.findIndex((v) => v.uuid === target.uuid);
+          if (idx >= 0) this.views.splice(idx, 1, result.data);
+          document.dispatchEvent(new CustomEvent("pinned-views:changed"));
+          this._toast(
+            nextArchived
+              ? `archived "${result.data.name}"`
+              : `unarchived "${result.data.name}"`,
+            "success"
+          );
+        } else {
+          this._toast(
+            this._formatErrors(result && result.errors) ||
+              "archive toggle failed",
+            "error"
+          );
+        }
+      } catch (err) {
+        console.error("toggleArchived failed:", err);
+        this._toast(`archive toggle failed: ${err}`, "error");
       }
     },
 
@@ -969,9 +1021,17 @@ const SavedViewsPage = {
         </div>
 
         <div v-else class="saved-view-list">
-          <div v-if="!views.length" class="empty-state">No saved views yet.</div>
+          <div v-if="!activeViews.length" class="empty-state">No saved views yet.</div>
           <ul v-else>
-            <li v-for="v in views" :key="v.uuid">
+            <li v-for="v in activeViews" :key="v.uuid" class="saved-view-list-row">
+              <button
+                type="button"
+                class="page-favorite-toggle saved-view-row-star"
+                :class="{ 'is-favorited': v.pinned }"
+                @click.stop="togglePinned(v)"
+                :title="v.pinned ? 'Remove from favorites' : 'Add to favorites'"
+                :aria-pressed="v.pinned"
+              >{{ v.pinned ? '★' : '☆' }}</button>
               <a href="#" @click.prevent="selectSlug(v.slug)">
                 <span class="view-name">{{ v.name }}</span>
                 <span v-if="v.is_system" class="system-pill">system</span>
@@ -979,6 +1039,33 @@ const SavedViewsPage = {
               </a>
             </li>
           </ul>
+
+          <section v-if="archivedViews.length" class="saved-view-archived-section">
+            <button
+              type="button"
+              class="leftnav-section-toggle saved-view-archived-toggle"
+              @click="archivedExpanded = !archivedExpanded"
+              :aria-expanded="archivedExpanded"
+            >
+              <span class="leftnav-chevron" :class="{ open: archivedExpanded }" aria-hidden="true">▸</span>
+              <span>archived</span>
+              <span class="leftnav-section-count">{{ archivedViews.length }}</span>
+            </button>
+            <ul v-if="archivedExpanded">
+              <li v-for="v in archivedViews" :key="v.uuid" class="saved-view-list-row is-archived">
+                <a href="#" @click.prevent="selectSlug(v.slug)">
+                  <span class="view-name">{{ v.name }}</span>
+                  <span v-if="v.is_system" class="system-pill">system</span>
+                  <span v-if="v.description" class="view-description">{{ v.description }}</span>
+                </a>
+                <button
+                  type="button"
+                  class="btn btn-compact saved-view-unarchive-btn"
+                  @click.stop="toggleArchived(v)"
+                >Unarchive</button>
+              </li>
+            </ul>
+          </section>
         </div>
       </div>
 
@@ -998,12 +1085,13 @@ const SavedViewsPage = {
                 type="button"
                 class="page-favorite-toggle"
                 :class="{ 'is-favorited': activeView.pinned }"
-                @click="togglePinned"
-                :title="activeView.pinned ? 'Unpin from left nav' : 'Pin to left nav'"
+                @click="togglePinned()"
+                :title="activeView.pinned ? 'Remove from favorites' : 'Add to favorites'"
                 :aria-pressed="activeView.pinned"
               >{{ activeView.pinned ? '★' : '☆' }}</button>
               <span class="saved-view-title-text">{{ activeView.name }}</span>
               <span v-if="activeView.is_system" class="system-pill">system</span>
+              <span v-if="activeView.archived" class="system-pill archived-pill">archived</span>
             </h1>
             <div class="header-actions">
               <button class="btn" @click="runActive" :disabled="running" :title="editing ? 'Preview the current editor draft (does not save)' : 'Run the saved view'">
@@ -1012,6 +1100,9 @@ const SavedViewsPage = {
               <button class="btn" @click="duplicateActive">Duplicate</button>
               <button class="btn" @click="embedOnPage" title="Embed this view on a page (defaults to today's daily note)">Embed…</button>
               <button class="btn" v-if="canEdit && !editing" @click="startEditing">Edit</button>
+              <button class="btn" @click="toggleArchived()" :title="activeView.archived ? 'Restore this view to the main list' : 'Tuck this view away from the main list'">
+                {{ activeView.archived ? "Unarchive" : "Archive" }}
+              </button>
               <button class="btn btn-danger" v-if="canDelete" @click="deleteActive">Delete</button>
             </div>
           </div>

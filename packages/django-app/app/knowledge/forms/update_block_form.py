@@ -17,6 +17,13 @@ class UpdateBlockForm(BaseForm):
     user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
     block = UUIDModelChoiceField(queryset=BlockRepository.get_queryset(), required=True)
     content = forms.CharField(required=False)
+    # Optimistic-concurrency guard: the content this client last loaded
+    # from the server. When present, UpdateBlockCommand refuses the save
+    # (raises BlockUpdateConflictError → HTTP 409) if the block's stored
+    # content no longer matches — i.e. another tab/device/AI edit landed
+    # in between — instead of silently clobbering it. strip=False so the
+    # comparison is byte-exact against what the server previously sent.
+    expected_content = forms.CharField(required=False, strip=False)
     content_type = forms.CharField(max_length=50, required=False)
     block_type = forms.CharField(max_length=50, required=False)
     order = forms.IntegerField(min_value=0, required=False)

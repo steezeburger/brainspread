@@ -11,6 +11,17 @@ from .sync_block_tags_command import SyncBlockTagsCommand
 from .touch_page_command import TouchPageCommand
 
 
+class BlockUpdateConflictError(Exception):
+    """Raised when a save carries `expected_content` that no longer matches
+    the block's stored content — another session saved in between. Carries
+    the current server-side block so the API can return it with the 409,
+    letting the client show both versions instead of clobbering one."""
+
+    def __init__(self, block: Block) -> None:
+        self.block = block
+        super().__init__("Block was modified by another session")
+
+
 class UpdateBlockCommand(AbstractBaseCommand):
     """Command to update an existing block"""
 
@@ -24,7 +35,19 @@ class UpdateBlockCommand(AbstractBaseCommand):
         user = self.form.cleaned_data["user"]
         block = self.form.cleaned_data["block"]
 
-        # Update fields
+        # Optimistic-concurrency check. BaseForm.clean prunes unsubmitted
+        # keys, so presence here means the caller opted in (an empty-string
+        # baseline is a valid expectation for a block that was empty).
+        if "expected_content" in self.form.cleaned_data:
+            expected = self.form.cleaned_data["expected_content"]
+            if expected != block.content:
+                raise BlockUpdateConflictError(block)
+
+        # Update fields. Parent only changes when the caller submitted
+        # the key: an explicit null re-roots the block (outdent), while
+        # omitting it leaves nesting alone. The old "omitted → clear"
+        # behavior silently re-rooted nested blocks on partial updates
+        # like the resize handle's properties-only save.
         content_updated = False
         if "parent" in self.form.cleaned_data:
             parent = self.form.cleaned_data["parent"]
@@ -35,9 +58,6 @@ class UpdateBlockCommand(AbstractBaseCommand):
                 )
 
             block.parent = parent
-        else:
-            # If no parent is provided, ensure parent is set to None
-            block.parent = None
 
         # Update other fields
         for field in [
@@ -115,10 +135,19 @@ class UpdateBlockCommand(AbstractBaseCommand):
         self, content: str, current_block_type: str
     ) -> str:
         """Auto-detect block type from content patterns"""
-        # Only auto-detect for bullet, todo, doing, and done types
-        # Don't override other explicit types like heading, code, etc.
-        # Don't auto-detect for later and wontdo - these are explicit states
-        if current_block_type not in ["bullet", "todo", "doing", "done"]:
+        # Only auto-detect for bullet and the todo-family states. All five
+        # states carry their keyword as a content prefix (see
+        # SetBlockTypeCommand.STATE_PREFIXES), so editing "LATER x" to
+        # "TODO x" must move the type too. Don't override other explicit
+        # types like heading, code, etc.
+        if current_block_type not in [
+            "bullet",
+            "todo",
+            "doing",
+            "done",
+            "later",
+            "wontdo",
+        ]:
             return current_block_type
 
         # Only auto-detect if we have content
@@ -149,7 +178,7 @@ class UpdateBlockCommand(AbstractBaseCommand):
             return "wontdo"
 
         # If none of the patterns match, return bullet for todo-family types
-        if current_block_type in ["todo", "doing", "done"]:
+        if current_block_type in ["todo", "doing", "done", "later", "wontdo"]:
             return "bullet"
         return current_block_type
 

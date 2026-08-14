@@ -7,8 +7,11 @@ from django.utils import timezone
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.consume_reminder_action_form import ConsumeReminderActionForm
+from ..forms.move_block_to_daily_form import MoveBlockToDailyForm
 from ..forms.set_block_type_form import SetBlockTypeForm
 from ..models import Block, Reminder, ReminderAction
+from ..services.due_dates import combine_local_to_utc
+from .move_block_to_daily_command import MoveBlockToDailyCommand
 from .set_block_type_command import SetBlockTypeCommand
 
 
@@ -120,6 +123,14 @@ class ConsumeReminderActionCommand(AbstractBaseCommand):
             self._set_block_type(block, "doing")
             return
 
+        if action == ReminderAction.ACTION_MOVE_TO_TODAY:
+            self._move_block_to_today(block)
+            return
+
+        if action == ReminderAction.ACTION_SNOOZE_1D:
+            self._snooze_reminder_next_day(reminder, block, now)
+            return
+
         delta = _SNOOZE_DELTAS.get(action)
         if delta is None:
             # Choices are constrained at the model layer, so we'd only
@@ -146,6 +157,31 @@ class ConsumeReminderActionCommand(AbstractBaseCommand):
         SetBlockTypeCommand(set_form).execute()
 
     @staticmethod
+    def _move_block_to_today(block: Block) -> None:
+        # Routing through MoveBlockToDailyCommand keeps the move
+        # consistent with the in-app "move to daily" flow — descendants
+        # come along, the block lands at the bottom of the target page,
+        # and both pages get their modified_at bumped. `target_date` is
+        # omitted so the command resolves "today" in the user's
+        # timezone at click time. Already on today's daily → graceful
+        # no-op inside the command. The reminder is left alone: moving
+        # a block is neither completing nor deferring it.
+        move_form = MoveBlockToDailyForm(
+            {
+                "user": block.user_id,
+                "block": str(block.uuid),
+            }
+        )
+        if not move_form.is_valid():
+            raise AssertionError(f"MoveBlockToDailyForm invalid: {move_form.errors}")
+        MoveBlockToDailyCommand(move_form).execute()
+        # The move command works on its own instance of the block, so
+        # refresh ours — the caller reads `block.page.slug` to build the
+        # confirmation page's "Open block" link, which should now point
+        # at the daily note the block landed on.
+        block.refresh_from_db()
+
+    @staticmethod
     def _snooze_reminder(reminder: Reminder, delta: timedelta, now) -> None:
         # Reuse this Reminder row instead of spawning a new one. Resetting
         # status + sent_at brings it back into the pending-reminder world,
@@ -165,12 +201,45 @@ class ConsumeReminderActionCommand(AbstractBaseCommand):
             ]
         )
 
+    @staticmethod
+    def _snooze_reminder_next_day(reminder: Reminder, block: Block, now) -> None:
+        # Day-level snooze keeps the reminder's own time-of-day: a 9:00
+        # reminder clicked at 9:47 re-fires tomorrow at 9:00, not at
+        # 9:47. Minute-level snoozes are alarm-clock style (now + delta);
+        # a day is a calendar statement — "same time, tomorrow". Computed
+        # in the user's timezone (DST-safe, same approach as the in-app
+        # SnoozeBlockCommand), rolling forward from the original fire
+        # time day-by-day so a link clicked >24h late still lands in the
+        # future rather than instantly re-firing.
+        tz = block.user.tz()
+        local = reminder.fire_at.astimezone(tz)
+        fire_time = local.time()
+        candidate = max(local.date(), now.astimezone(tz).date()) + timedelta(days=1)
+        new_fire = combine_local_to_utc(candidate, fire_time, tz)
+        if new_fire <= now:
+            new_fire = combine_local_to_utc(
+                candidate + timedelta(days=1), fire_time, tz
+            )
+        reminder.fire_at = new_fire
+        reminder.sent_at = None
+        reminder.status = Reminder.STATUS_PENDING
+        reminder.last_error = ""
+        reminder.save(
+            update_fields=[
+                "fire_at",
+                "sent_at",
+                "status",
+                "last_error",
+                "modified_at",
+            ]
+        )
+
 
 _SNOOZE_DELTAS = {
+    ReminderAction.ACTION_SNOOZE_5M: timedelta(minutes=5),
     ReminderAction.ACTION_SNOOZE_15M: timedelta(minutes=15),
     ReminderAction.ACTION_SNOOZE_30M: timedelta(minutes=30),
     ReminderAction.ACTION_SNOOZE_1H: timedelta(hours=1),
-    ReminderAction.ACTION_SNOOZE_1D: timedelta(days=1),
 }
 
 
@@ -179,6 +248,10 @@ def _executed_detail(action: str) -> str:
         return "Marked the block as done."
     if action == ReminderAction.ACTION_MARK_DOING:
         return "Marked the block as doing."
+    if action == ReminderAction.ACTION_MOVE_TO_TODAY:
+        return "Moved the block to today's daily note."
+    if action == ReminderAction.ACTION_SNOOZE_5M:
+        return "Snoozed for 5 minutes."
     if action == ReminderAction.ACTION_SNOOZE_15M:
         return "Snoozed for 15 minutes."
     if action == ReminderAction.ACTION_SNOOZE_30M:
@@ -186,7 +259,7 @@ def _executed_detail(action: str) -> str:
     if action == ReminderAction.ACTION_SNOOZE_1H:
         return "Snoozed for 1 hour."
     if action == ReminderAction.ACTION_SNOOZE_1D:
-        return "Snoozed for 1 day."
+        return "Snoozed until the same time tomorrow."
     return "Action applied."
 
 

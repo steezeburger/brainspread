@@ -28,6 +28,7 @@ class CreateBlocksBulkCommand(AbstractBaseCommand):
         page: Page = self.form.cleaned_data["page"]
         parent: Optional[Block] = self.form.cleaned_data.get("parent")
         blocks_in: List[Dict[str, Any]] = self.form.cleaned_data["blocks"]
+        created_via = self.form.cleaned_data.get("created_via")
 
         next_order = BlockRepository.get_max_order(page, parent) + 1
         created: List[Dict[str, Any]] = []
@@ -47,6 +48,8 @@ class CreateBlocksBulkCommand(AbstractBaseCommand):
                 }
                 if parent is not None:
                     form_data["parent"] = str(parent.uuid)
+                if created_via:
+                    form_data["created_via"] = created_via
 
                 inner = CreateBlockForm(form_data)
                 if not inner.is_valid():

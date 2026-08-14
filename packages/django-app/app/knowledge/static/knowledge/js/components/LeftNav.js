@@ -14,6 +14,8 @@ window.LeftNav = {
     "use-template",
     "navigate-graph",
     "navigate-views",
+    "navigate-pages",
+    "navigate-templates",
     "navigate-today",
     "open-settings",
     "open-help",
@@ -648,6 +650,20 @@ window.LeftNav = {
       this.closeOnMobile();
     },
 
+    onPagesClick(event) {
+      if (this.shouldDeferToBrowser(event)) return;
+      event.preventDefault();
+      this.$emit("navigate-pages");
+      this.closeOnMobile();
+    },
+
+    onTemplatesClick(event) {
+      if (this.shouldDeferToBrowser(event)) return;
+      event.preventDefault();
+      this.$emit("navigate-templates");
+      this.closeOnMobile();
+    },
+
     onSearchClick() {
       this.$emit("open-search");
       this.closeOnMobile();
@@ -936,7 +952,36 @@ window.LeftNav = {
           @auxclick="onViewsClick"
           title="Saved views"
           aria-label="Saved views"
-        >≡</a>
+        >
+          <svg
+            class="leftnav-views-svg"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M2 3h12L9.75 8.25v4.75l-3.5 1.75V8.25L2 3z"/>
+          </svg>
+        </a>
+        <a
+          href="/knowledge/pages/"
+          class="leftnav-rail-btn leftnav-rail-action"
+          @click="onPagesClick"
+          @auxclick="onPagesClick"
+          title="All pages"
+          aria-label="All pages"
+        >☰</a>
+        <a
+          href="/knowledge/templates/"
+          class="leftnav-rail-btn leftnav-rail-action"
+          @click="onTemplatesClick"
+          @auxclick="onTemplatesClick"
+          title="Templates"
+          aria-label="Templates"
+        >⧉</a>
         <div class="leftnav-rail-spacer leftnav-rail-action"></div>
         <button
           type="button"
@@ -1069,8 +1114,28 @@ window.LeftNav = {
               @auxclick="onViewsClick"
               title="Saved views (queries)"
             >
-              <span class="leftnav-icon" aria-hidden="true">≡</span>
+              <span class="leftnav-icon" aria-hidden="true"><svg class="leftnav-views-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h12L9.75 8.25v4.75l-3.5 1.75V8.25L2 3z"/></svg></span>
               <span class="leftnav-label">saved views</span>
+            </a>
+            <a
+              href="/knowledge/pages/"
+              class="leftnav-item"
+              @click="onPagesClick"
+              @auxclick="onPagesClick"
+              title="Browse all pages"
+            >
+              <span class="leftnav-icon" aria-hidden="true">☰</span>
+              <span class="leftnav-label">all pages</span>
+            </a>
+            <a
+              href="/knowledge/templates/"
+              class="leftnav-item"
+              @click="onTemplatesClick"
+              @auxclick="onTemplatesClick"
+              title="Browse and manage templates"
+            >
+              <span class="leftnav-icon" aria-hidden="true">⧉</span>
+              <span class="leftnav-label">templates</span>
             </a>
           </nav>
 
@@ -1135,8 +1200,8 @@ window.LeftNav = {
             </div>
           </section>
 
-          <!-- Pinned saved views (collapsible) -->
-          <section class="leftnav-section leftnav-pinned-views" aria-label="Pinned views">
+          <!-- Favorite (pinned) saved views (collapsible) -->
+          <section class="leftnav-section leftnav-pinned-views" aria-label="Favorite views">
             <button
               type="button"
               class="leftnav-section-toggle"
@@ -1144,7 +1209,7 @@ window.LeftNav = {
               :aria-expanded="pinnedViewsExpanded"
             >
               <span class="leftnav-chevron" :class="{ open: pinnedViewsExpanded }" aria-hidden="true">▸</span>
-              <span>pinned views</span>
+              <span>favorite views</span>
               <span v-if="pinnedViews.length" class="leftnav-section-count">{{ pinnedViews.length }}</span>
             </button>
 
@@ -1156,7 +1221,7 @@ window.LeftNav = {
                 {{ pinnedViewsError }}
               </div>
               <div v-else-if="!pinnedViews.length" class="leftnav-empty">
-                No pinned views. Pin a view from its detail page.
+                No favorite views. Star a view from the saved views list.
               </div>
               <div v-else class="leftnav-pinned-views-list">
                 <a
@@ -1168,7 +1233,7 @@ window.LeftNav = {
                   @auxclick="onPinnedViewClick($event, view.slug)"
                   :title="view.description || view.name"
                 >
-                  <span class="leftnav-icon" aria-hidden="true">≡</span>
+                  <span class="leftnav-icon" aria-hidden="true"><svg class="leftnav-views-svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h12L9.75 8.25v4.75l-3.5 1.75V8.25L2 3z"/></svg></span>
                   <span class="leftnav-label">{{ view.name }}</span>
                 </a>
               </div>
@@ -1198,7 +1263,8 @@ window.LeftNav = {
                 {{ templatesError }}
               </div>
               <div v-else-if="!templates.length" class="leftnav-empty">
-                No templates yet. Use "save as template" from a page menu.
+                No templates yet. Create one on the templates page, or
+                use "save as template" from a page menu.
               </div>
               <div v-else class="leftnav-templates-list">
                 <div

@@ -1,5 +1,6 @@
 from typing import TypedDict
 
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Max
 
@@ -19,6 +20,11 @@ class MoveBlockToPageCommand(AbstractBaseCommand):
     target, land at the bottom of the existing order, carry descendants
     along, touch both pages so they bubble to the top of Recent — but
     accepts an arbitrary target page rather than resolving by date.
+
+    With ``target_parent`` set the block nests under that block instead
+    of landing at the page root — the "move under…" flow. The order is
+    then scoped to the parent's children (last child) rather than the
+    page-wide max.
     """
 
     def __init__(self, form: MoveBlockToPageForm) -> None:
@@ -30,17 +36,26 @@ class MoveBlockToPageCommand(AbstractBaseCommand):
         user = self.form.cleaned_data["user"]
         block = self.form.cleaned_data["block"]
         target_page = self.form.cleaned_data["target_page"]
+        target_parent = self.form.cleaned_data.get("target_parent")
 
-        already_root_on_target = (
-            block.page_id == target_page.pk and block.parent_id is None
+        target_parent_id = target_parent.pk if target_parent else None
+        already_in_place = (
+            block.page_id == target_page.pk and block.parent_id == target_parent_id
         )
-        if already_root_on_target:
+        if already_in_place:
             return {
                 "moved": False,
                 "block": block.to_dict(),
                 "target_page": target_page.to_dict(),
-                "message": "Block is already on the target page",
+                "message": "Block is already in the target position",
             }
+
+        if target_parent and self._would_create_circular_reference(
+            block, target_parent
+        ):
+            raise ValidationError(
+                "Cannot move a block under itself or one of its descendants"
+            )
 
         descendants = BlockRepository.get_block_descendants(block)
         # Capture before reassignment so we can touch the source page after
@@ -48,15 +63,14 @@ class MoveBlockToPageCommand(AbstractBaseCommand):
         source_page = block.page
 
         with transaction.atomic():
-            max_order = (
-                BlockRepository.get_queryset()
-                .filter(page=target_page)
-                .aggregate(max_order=Max("order"))["max_order"]
-            )
+            order_scope = BlockRepository.get_queryset().filter(page=target_page)
+            if target_parent:
+                order_scope = order_scope.filter(parent=target_parent)
+            max_order = order_scope.aggregate(max_order=Max("order"))["max_order"]
             max_order = max_order if max_order is not None else 0
 
             block.page = target_page
-            block.parent = None
+            block.parent = target_parent
             block.order = max_order + 1
             block.save(update_fields=["page", "parent", "order"])
 
@@ -75,6 +89,17 @@ class MoveBlockToPageCommand(AbstractBaseCommand):
             "target_page": target_page.to_dict(),
             "message": f"Moved block to {target_page.title}",
         }
+
+    def _would_create_circular_reference(self, block, proposed_parent) -> bool:
+        """True when proposed_parent is the block itself or lives inside
+        the block's subtree — nesting there would detach the subtree
+        from the page tree entirely."""
+        current = proposed_parent
+        while current is not None:
+            if current.pk == block.pk:
+                return True
+            current = current.parent
+        return False
 
 
 class MoveBlockToPageData(TypedDict):

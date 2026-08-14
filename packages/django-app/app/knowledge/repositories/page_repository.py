@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Any, Dict, Optional
 
-from django.db.models import Count, Q, QuerySet
+from django.db.models import Count, F, Q, QuerySet
 
 from common.repositories.base_repository import BaseRepository
 
@@ -37,13 +37,38 @@ class PageRepository(BaseRepository):
 
     @classmethod
     def get_user_pages(
-        cls, user, published_only: bool = True, limit: int = 10, offset: int = 0
+        cls,
+        user,
+        published_only: bool = True,
+        limit: int = 10,
+        offset: int = 0,
+        page_type: Optional[str] = None,
+        order_by: str = "modified",
     ) -> Dict[str, Any]:
-        """Get paginated user pages with filtering"""
+        """Get paginated user pages with filtering and ordering.
+
+        ``order_by`` vocabulary:
+        - "modified" — most-recently-modified first (title tiebreak);
+          surfaces the user's working set. The default.
+        - "title" — alphabetical.
+        - "date" — newest daily date first; undated pages sort last so
+          the option stays usable on mixed-type lists.
+        """
         queryset = cls.get_queryset().filter(user=user)
 
         if published_only:
             queryset = queryset.filter(is_published=True)
+        if page_type:
+            queryset = queryset.filter(page_type=page_type)
+
+        if order_by == "title":
+            queryset = queryset.order_by("title")
+        elif order_by == "date":
+            queryset = queryset.order_by(
+                F("date").desc(nulls_last=True), "-modified_at"
+            )
+        else:
+            queryset = queryset.order_by("-modified_at", "title")
 
         total_count = queryset.count()
         pages = list(queryset[offset : offset + limit])

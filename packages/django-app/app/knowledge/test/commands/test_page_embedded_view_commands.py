@@ -153,6 +153,51 @@ class UpdateEmbedTests(_EmbedTestBase):
         updated = UpdatePageEmbeddedViewCommand(form).execute()
         self.assertEqual(updated.order, 5)
 
+    def test_set_color(self):
+        embed = PageEmbeddedView.objects.create(
+            user=self.user, page=self.page, saved_view=self.view
+        )
+        form = UpdatePageEmbeddedViewForm(
+            {"user": self.user.id, "embed_uuid": str(embed.uuid), "color": "red"}
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        updated = UpdatePageEmbeddedViewCommand(form).execute()
+        self.assertEqual(updated.color, "red")
+        self.assertEqual(updated.to_dict()["color"], "red")
+
+    def test_clear_color(self):
+        embed = PageEmbeddedView.objects.create(
+            user=self.user, page=self.page, saved_view=self.view, color="red"
+        )
+        form = UpdatePageEmbeddedViewForm(
+            {"user": self.user.id, "embed_uuid": str(embed.uuid), "color": ""}
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        updated = UpdatePageEmbeddedViewCommand(form).execute()
+        self.assertEqual(updated.color, "")
+
+    def test_update_without_color_leaves_it_unchanged(self):
+        embed = PageEmbeddedView.objects.create(
+            user=self.user, page=self.page, saved_view=self.view, color="blue"
+        )
+        form = UpdatePageEmbeddedViewForm(
+            {"user": self.user.id, "embed_uuid": str(embed.uuid), "collapsed": True}
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        updated = UpdatePageEmbeddedViewCommand(form).execute()
+        self.assertEqual(updated.color, "blue")
+        self.assertTrue(updated.collapsed)
+
+    def test_rejects_unknown_color(self):
+        embed = PageEmbeddedView.objects.create(
+            user=self.user, page=self.page, saved_view=self.view
+        )
+        form = UpdatePageEmbeddedViewForm(
+            {"user": self.user.id, "embed_uuid": str(embed.uuid), "color": "magenta"}
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("color", form.errors)
+
 
 class ReorderEmbedTests(_EmbedTestBase):
     def _make_embed(self, slug: str, order: int) -> PageEmbeddedView:

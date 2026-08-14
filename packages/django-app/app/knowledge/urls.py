@@ -5,6 +5,9 @@ from . import views
 app_name = "knowledge"
 
 urlpatterns = [
+    # PWA service worker - must be served at the SPA root (/knowledge/sw.js)
+    # so its default scope covers the whole app; see views.service_worker.
+    path("sw.js", views.service_worker, name="service_worker"),
     # Static pages
     path("", views.index, name="index"),
     path("graph/", views.index, name="graph"),
@@ -32,6 +35,7 @@ urlpatterns = [
     path("api/blocks/", views.create_block, name="create_block"),
     path("api/blocks/update/", views.update_block, name="update_block"),
     path("api/blocks/delete/", views.delete_block, name="delete_block"),
+    path("api/blocks/duplicate/", views.duplicate_block, name="duplicate_block"),
     path("api/blocks/reorder/", views.reorder_blocks, name="reorder_blocks"),
     path("api/blocks/toggle-todo/", views.toggle_block_todo, name="toggle_block_todo"),
     path("api/blocks/schedule/", views.schedule_block, name="schedule_block"),
@@ -131,6 +135,11 @@ urlpatterns = [
         views.list_pinned_saved_views,
         name="list_pinned_saved_views",
     ),
+    path(
+        "api/views/archive/",
+        views.set_saved_view_archived,
+        name="set_saved_view_archived",
+    ),
     # Page embedded views (issue #60 follow-up) — embeds live in their
     # own table and have their own CRUD endpoints.
     path("api/embeds/", views.create_page_embedded_view, name="create_embed"),
@@ -145,4 +154,10 @@ urlpatterns = [
     # the SavedViewPage component based on the slug).
     path("views/", views.index, name="views_index"),
     path("views/<str:slug>/", views.index, name="views_detail"),
+    # All-pages browser (issue #133) — SPA shell again; app.js mounts
+    # PagesListPage for this path.
+    path("pages/", views.index, name="pages_index"),
+    # Templates browser — SPA shell again; app.js mounts TemplatesPage
+    # for this path.
+    path("templates/", views.index, name="templates_index"),
 ]

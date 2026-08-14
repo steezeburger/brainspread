@@ -4,7 +4,11 @@ from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from assets.models import Asset
-from knowledge.commands import CreateBlockCommand, UpdateBlockCommand
+from knowledge.commands import (
+    BlockUpdateConflictError,
+    CreateBlockCommand,
+    UpdateBlockCommand,
+)
 from knowledge.forms import CreateBlockForm, UpdateBlockForm
 
 from ..helpers import BlockFactory, PageFactory, UserFactory
@@ -156,6 +160,76 @@ class TestUpdateBlockCommand(TestCase):
 
         self.assertEqual(updated.block_type, "todo")
         self.assertIsNone(updated.completed_at)
+
+    def test_should_change_from_later_to_todo_via_content_update(self):
+        """Editing "LATER x" to "TODO x" must move the type to todo. The
+        later state is itself enterable by typing "LATER", so content
+        edits have to be able to detect their way back out of it too."""
+        later_block = BlockFactory(
+            page=self.page,
+            user=self.user,
+            content="LATER write the report",
+            block_type="later",
+        )
+
+        form_data = {
+            "user": self.user.id,
+            "block": str(later_block.uuid),
+            "content": "TODO write the report",
+        }
+        form = UpdateBlockForm(form_data)
+        form.is_valid()
+        updated_block = UpdateBlockCommand(form).execute()
+
+        self.assertEqual(updated_block.block_type, "todo")
+        self.assertEqual(updated_block.content, "TODO write the report")
+
+    def test_should_change_from_later_to_bullet_when_keyword_removed(self):
+        """Removing the LATER keyword entirely demotes the block to a
+        bullet, matching the todo/doing/done behavior."""
+        later_block = BlockFactory(
+            page=self.page,
+            user=self.user,
+            content="LATER write the report",
+            block_type="later",
+        )
+
+        form_data = {
+            "user": self.user.id,
+            "block": str(later_block.uuid),
+            "content": "write the report",
+        }
+        form = UpdateBlockForm(form_data)
+        form.is_valid()
+        updated_block = UpdateBlockCommand(form).execute()
+
+        self.assertEqual(updated_block.block_type, "bullet")
+
+    def test_should_clear_completed_at_when_content_leaves_wontdo(self):
+        """wontdo is a terminal state — editing it back to "TODO x" must
+        clear completed_at along with the type change."""
+        form_data = {
+            "user": self.user.id,
+            "page": self.page.uuid,
+            "content": "WONTDO chase that lead",
+        }
+        form = CreateBlockForm(form_data)
+        form.is_valid()
+        wontdo_block = CreateBlockCommand(form).execute()
+        self.assertEqual(wontdo_block.block_type, "wontdo")
+        self.assertIsNotNone(wontdo_block.completed_at)
+
+        form_data = {
+            "user": self.user.id,
+            "block": str(wontdo_block.uuid),
+            "content": "TODO chase that lead",
+        }
+        form = UpdateBlockForm(form_data)
+        form.is_valid()
+        updated_block = UpdateBlockCommand(form).execute()
+
+        self.assertEqual(updated_block.block_type, "todo")
+        self.assertIsNone(updated_block.completed_at)
 
     def test_should_not_override_heading_block_type(self):
         """Test that auto-detection doesn't override heading type"""
@@ -566,3 +640,124 @@ class TestUpdateBlockCommand(TestCase):
         self.block.refresh_from_db()
         self.assertEqual(self.block.properties.get("priority"), "high")
         self.assertEqual(self.block.properties.get("size"), {"width": 180})
+
+    def test_should_preserve_parent_on_properties_only_update(self):
+        """A partial update that omits `parent` (e.g. the image resize
+        handle persisting `properties.size`) must leave nesting alone.
+        The command used to re-root the block whenever the key was
+        missing, which silently flattened nested blocks on every
+        properties-only save."""
+        parent = BlockFactory(page=self.page, user=self.user)
+        child = BlockFactory(page=self.page, user=self.user, parent=parent)
+
+        form = UpdateBlockForm(
+            {
+                "user": self.user.id,
+                "block": str(child.uuid),
+                "properties": {"size": {"width": 320}},
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        UpdateBlockCommand(form).execute()
+
+        child.refresh_from_db()
+        self.assertEqual(child.parent_id, parent.id)
+        self.assertEqual(child.properties.get("size"), {"width": 320})
+
+    def test_should_raise_conflict_when_expected_content_is_stale(self):
+        """A save carrying an expected_content baseline that no longer
+        matches the stored content must 409 instead of clobbering the
+        other session's edit."""
+        block = BlockFactory(page=self.page, user=self.user, content="edited elsewhere")
+
+        form = UpdateBlockForm(
+            {
+                "user": self.user.id,
+                "block": str(block.uuid),
+                "content": "my stale tab's version",
+                "expected_content": "what my tab loaded this morning",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+        with self.assertRaises(BlockUpdateConflictError) as ctx:
+            UpdateBlockCommand(form).execute()
+
+        # The exception carries the current server block so the API can
+        # return it with the 409, and nothing was written.
+        self.assertEqual(str(ctx.exception.block.uuid), str(block.uuid))
+        block.refresh_from_db()
+        self.assertEqual(block.content, "edited elsewhere")
+
+    def test_should_save_when_expected_content_matches(self):
+        block = BlockFactory(page=self.page, user=self.user, content="original")
+
+        form = UpdateBlockForm(
+            {
+                "user": self.user.id,
+                "block": str(block.uuid),
+                "content": "updated from a fresh tab",
+                "expected_content": "original",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        updated = UpdateBlockCommand(form).execute()
+
+        self.assertEqual(updated.content, "updated from a fresh tab")
+
+    def test_should_treat_empty_expected_content_as_a_real_baseline(self):
+        """An empty-string baseline is meaningful — the tab loaded an
+        empty block. If someone else has since filled it in, that's a
+        conflict, not a free pass."""
+        block = BlockFactory(
+            page=self.page, user=self.user, content="filled in elsewhere"
+        )
+
+        form = UpdateBlockForm(
+            {
+                "user": self.user.id,
+                "block": str(block.uuid),
+                "content": "typed into what I thought was empty",
+                "expected_content": "",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+        with self.assertRaises(BlockUpdateConflictError):
+            UpdateBlockCommand(form).execute()
+
+    def test_should_skip_conflict_check_when_expected_content_omitted(self):
+        """Callers that don't opt in (property saves, indent/outdent,
+        forced overwrites) keep last-write-wins semantics."""
+        block = BlockFactory(page=self.page, user=self.user, content="edited elsewhere")
+
+        form = UpdateBlockForm(
+            {
+                "user": self.user.id,
+                "block": str(block.uuid),
+                "content": "forced overwrite",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        updated = UpdateBlockCommand(form).execute()
+
+        self.assertEqual(updated.content, "forced overwrite")
+
+    def test_should_clear_parent_on_explicit_null(self):
+        """Submitting `parent: null` is still the outdent path — the
+        omitted-key behavior above must not swallow explicit clears."""
+        parent = BlockFactory(page=self.page, user=self.user)
+        child = BlockFactory(page=self.page, user=self.user, parent=parent)
+
+        form = UpdateBlockForm(
+            {
+                "user": self.user.id,
+                "block": str(child.uuid),
+                "parent": None,
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        UpdateBlockCommand(form).execute()
+
+        child.refresh_from_db()
+        self.assertIsNone(child.parent_id)

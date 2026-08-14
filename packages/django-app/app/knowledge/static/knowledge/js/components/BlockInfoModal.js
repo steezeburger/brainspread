@@ -34,6 +34,13 @@ window.BlockInfoModal = {
     createdAtPretty() {
       return this.formatTimestamp(this.block?.created_at);
     },
+    createdViaPretty() {
+      // Human labels for the provenance stamp. Unknown/missing values
+      // (older rows predating the field) render as "web".
+      const labels = { web: "web app", ai_chat: "ai chat", mcp: "mcp" };
+      const v = this.block?.created_via;
+      return labels[v] || labels.web;
+    },
     modifiedAtPretty() {
       return this.formatTimestamp(this.block?.modified_at);
     },
@@ -201,6 +208,9 @@ window.BlockInfoModal = {
 
             <dt>created</dt>
             <dd>{{ createdAtPretty }}</dd>
+
+            <dt>created via</dt>
+            <dd>{{ createdViaPretty }}</dd>
 
             <dt>modified</dt>
             <dd>{{ modifiedAtPretty }}</dd>
