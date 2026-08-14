@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("knowledge", "0040_block_due_at_index"),
+        ("knowledge", "0045_pageembeddedview_color"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
