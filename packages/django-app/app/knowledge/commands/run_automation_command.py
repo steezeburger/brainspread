@@ -119,8 +119,15 @@ class RunAutomationCommand(AbstractBaseCommand):
                     run, AutomationRun.STATUS_FAILED, error=f"query error: {exc}"
                 )
 
+        # `allow::` omitted = the action line itself is the authorization:
+        # grant exactly the declared verb. An explicit list is honored as
+        # written (it narrows/extends, and stays mandatory for the future
+        # prompt action, where the LLM picks tools at runtime).
+        effective_allow = (
+            spec.allow if spec.allow is not None else frozenset({action_def.capability})
+        )
         ctx = automation_actions.ActionContext(
-            user=user, allow=spec.allow, has_query=spec.query is not None
+            user=user, allow=effective_allow, has_query=spec.query is not None
         )
 
         try:

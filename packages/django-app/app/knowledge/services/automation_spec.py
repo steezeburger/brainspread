@@ -25,7 +25,11 @@ Recognized props (slice 1 — schedule + manual triggers, command actions):
 - ``action::``  ``<verb> <args...>`` — verbs are validated by the action
   registry, not here
 - ``allow::``   comma/space separated capability list (tool/verb names the
-  run may execute without interactive approval)
+  run may execute without interactive approval). OPTIONAL for command
+  actions: omitted means "exactly the declared verb" — the action line
+  itself is the authorization. It stays load-bearing (and will be
+  required) for the ``prompt`` action, where it bounds which write tools
+  the LLM may use.
 - ``enabled::`` ``true`` (default) | ``false``
 """
 
@@ -131,7 +135,10 @@ class AutomationSpec:
     slug: str
     trigger: TriggerSpec
     action: ActionSpec
-    allow: frozenset
+    # None = the `allow::` prop was omitted entirely; the runner then grants
+    # exactly the declared verb. An explicit (even empty) list is honored
+    # as written.
+    allow: Optional[frozenset]
     enabled: bool
     query: Optional[QuerySpec] = None
 
@@ -150,7 +157,7 @@ def parse_automation_block(block: "Block") -> AutomationSpec:
     trigger = _parse_trigger(_prop_str(props, "trigger"), errors)
     query = _parse_query(_prop_str(props, "query"), errors)
     action = _parse_action(_prop_str(props, "action"), errors)
-    allow = _parse_allow(_prop_str(props, "allow"))
+    allow = _parse_allow(_prop_str(props, "allow")) if "allow" in props else None
     enabled = _parse_bool(_prop_str(props, "enabled", "true"))
 
     if errors:

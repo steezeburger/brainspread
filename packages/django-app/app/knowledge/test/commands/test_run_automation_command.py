@@ -113,6 +113,25 @@ class TestRunAutomationCommand(TestCase):
         target.refresh_from_db()
         self.assertEqual(target.page, source)
 
+    def test_omitted_allow_implies_declared_verb(self):
+        # No allow:: line at all — the action line is the authorization.
+        self._view()
+        source = PageFactory(user=self.user, title="Notes", slug="notes")
+        target = BlockFactory(
+            user=self.user, page=source, block_type="todo", content="TODO ship it"
+        )
+        automation = self._automation(
+            trigger="manual",
+            query="view:todos",
+            action="set_type done",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        target.refresh_from_db()
+        self.assertEqual(target.block_type, "done")
+
     def test_action_not_in_allow_list_fails(self):
         self._view()
         source = PageFactory(user=self.user, title="Notes", slug="notes")

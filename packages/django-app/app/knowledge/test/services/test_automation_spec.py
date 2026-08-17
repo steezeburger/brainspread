@@ -134,6 +134,14 @@ class TestParseAutomationBlock(SimpleTestCase):
             spec.allow, frozenset({"move_to_daily", "set_type", "create_block"})
         )
 
+    def test_omitted_allow_is_none_not_empty(self):
+        # None = "grant exactly the declared verb" downstream; an explicit
+        # empty list would mean deny-all. The parser must keep them distinct.
+        spec = parse_automation_block(
+            _block({"trigger": "manual", "action": "set_type done"})
+        )
+        self.assertIsNone(spec.allow)
+
     def test_missing_trigger_and_action_are_reported_together(self):
         with self.assertRaises(AutomationSpecError) as ctx:
             parse_automation_block(_block({}))
