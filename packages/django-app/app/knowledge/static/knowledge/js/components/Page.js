@@ -2234,10 +2234,13 @@ const Page = {
         '<span class="markdown-italic">$1</span>'
       );
 
-      // Replace italic markdown _text_ with styled spans (single underscores)
+      // Replace italic markdown _text_ with styled spans (single
+      // underscores). Word-boundary guarded, per CommonMark: intra-word
+      // underscores are literal, so snake_case tokens like move_to_daily
+      // don't sprout italics mid-word.
       formatted = formatted.replace(
-        /_([^_]+?)_/g,
-        '<span class="markdown-italic">$1</span>'
+        /(^|[^\w])_([^_\s][^_]*?)_(?!\w)/g,
+        '$1<span class="markdown-italic">$2</span>'
       );
 
       // Replace strikethrough markdown ~~text~~ with styled spans
