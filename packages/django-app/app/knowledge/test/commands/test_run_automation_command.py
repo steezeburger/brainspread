@@ -6,7 +6,7 @@ from django.test import TestCase
 from knowledge.commands import RunAutomationCommand
 from knowledge.forms.run_automation_form import RunAutomationForm
 from knowledge.models import AutomationRun
-from knowledge.repositories import SavedViewRepository
+from knowledge.repositories import AutomationRunRepository, SavedViewRepository
 
 from ..helpers import BlockFactory, PageFactory, UserFactory
 
@@ -121,8 +121,6 @@ class TestRunAutomationCommand(TestCase):
     def test_pre_claimed_run_is_finished_not_duplicated(self):
         # The scheduler's claim-then-execute path: a RUNNING run created at
         # claim time is completed by the command, not replaced.
-        from knowledge.repositories import AutomationRunRepository
-
         self._view()
         automation = self._automation(
             trigger="manual",
@@ -155,8 +153,6 @@ class TestRunAutomationCommand(TestCase):
         self.assertEqual(claim.status, AutomationRun.STATUS_SUCCEEDED)
 
     def test_run_for_wrong_automation_is_rejected(self):
-        from knowledge.repositories import AutomationRunRepository
-
         self._view()
         automation = self._automation(
             trigger="manual", query="view:todos", action="set_type done"
