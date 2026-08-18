@@ -121,6 +121,43 @@ class TestRunDueAutomationsCommand(TestCase):
         self.assertEqual(runs.count(), 1)
         self.assertEqual(runs.first().status, AutomationRun.STATUS_FAILED)
 
+    def test_claim_carries_pinned_now_as_started_at(self):
+        automation = self._automation(
+            trigger="schedule every 15m",
+            query="view:todos",
+            action="set_type done",
+        )
+        pinned = datetime(2026, 6, 27, 10, 7, tzinfo=UTC)
+
+        self._tick(now=pinned)
+
+        run = AutomationRun.objects.get(automation_block_uuid=automation.uuid)
+        self.assertEqual(run.started_at, pinned)
+
+    @patch(
+        "knowledge.commands.run_due_automations_command."
+        "RunDueAutomationsCommand._execute"
+    )
+    def test_stranded_claim_prevents_slot_refire(self, mock_execute):
+        # Claim-then-execute contract: if execution dies after the claim
+        # transaction commits, the RUNNING claim still marks the slot as
+        # taken — the next tick must not double-fire it.
+        automation = self._automation(
+            trigger="schedule every 15m",
+            query="view:todos",
+            action="set_type done",
+        )
+
+        first = self._tick(now=datetime(2026, 6, 27, 10, 7, tzinfo=UTC))
+        second = self._tick(now=datetime(2026, 6, 27, 10, 9, tzinfo=UTC))
+
+        self.assertEqual(first["fired"], 1)
+        self.assertEqual(second["fired"], 0)
+        runs = AutomationRun.objects.filter(automation_block_uuid=automation.uuid)
+        self.assertEqual(runs.count(), 1)
+        self.assertEqual(runs.first().status, AutomationRun.STATUS_RUNNING)
+        mock_execute.assert_called_once()
+
     def test_template_page_automation_never_fires(self):
         template = PageFactory(
             user=self.user,

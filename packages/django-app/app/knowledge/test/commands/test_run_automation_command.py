@@ -1,3 +1,4 @@
+import uuid as uuid_lib
 from unittest.mock import patch
 
 from django.test import TestCase
@@ -27,7 +28,11 @@ class TestRunAutomationCommand(TestCase):
         )
 
     def _automation(self, **props):
-        page = PageFactory(user=self.user, title="Automations", slug="automations-pg")
+        page = PageFactory(
+            user=self.user,
+            title="Automations",
+            slug=f"automations-{uuid_lib.uuid4().hex[:8]}",
+        )
         return BlockFactory(
             user=self.user,
             page=page,
@@ -112,6 +117,68 @@ class TestRunAutomationCommand(TestCase):
         self.assertEqual(result["status"], AutomationRun.STATUS_SKIPPED)
         target.refresh_from_db()
         self.assertEqual(target.page, source)
+
+    def test_pre_claimed_run_is_finished_not_duplicated(self):
+        # The scheduler's claim-then-execute path: a RUNNING run created at
+        # claim time is completed by the command, not replaced.
+        from knowledge.repositories import AutomationRunRepository
+
+        self._view()
+        automation = self._automation(
+            trigger="manual",
+            query="view:todos",
+            action="set_type done",
+        )
+        claim = AutomationRunRepository.create(
+            user=self.user,
+            automation_block_uuid=str(automation.uuid),
+            trigger=AutomationRun.TRIGGER_SCHEDULE,
+            status=AutomationRun.STATUS_RUNNING,
+        )
+
+        form = RunAutomationForm(
+            {
+                "user": self.user,
+                "automation_block": automation.uuid,
+                "run": str(claim.uuid),
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        result = RunAutomationCommand(form).execute()
+
+        self.assertEqual(result["uuid"], str(claim.uuid))
+        self.assertEqual(
+            AutomationRun.objects.filter(automation_block_uuid=automation.uuid).count(),
+            1,
+        )
+        claim.refresh_from_db()
+        self.assertEqual(claim.status, AutomationRun.STATUS_SUCCEEDED)
+
+    def test_run_for_wrong_automation_is_rejected(self):
+        from knowledge.repositories import AutomationRunRepository
+
+        self._view()
+        automation = self._automation(
+            trigger="manual", query="view:todos", action="set_type done"
+        )
+        other = self._automation(
+            trigger="manual", query="view:todos", action="set_type done"
+        )
+        claim = AutomationRunRepository.create(
+            user=self.user,
+            automation_block_uuid=str(other.uuid),
+            trigger=AutomationRun.TRIGGER_SCHEDULE,
+            status=AutomationRun.STATUS_RUNNING,
+        )
+
+        form = RunAutomationForm(
+            {
+                "user": self.user,
+                "automation_block": automation.uuid,
+                "run": str(claim.uuid),
+            }
+        )
+        self.assertFalse(form.is_valid())
 
     def test_omitted_allow_implies_declared_verb(self):
         # No allow:: line at all — the action line is the authorization.

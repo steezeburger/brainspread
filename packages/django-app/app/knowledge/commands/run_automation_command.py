@@ -51,13 +51,18 @@ class RunAutomationCommand(AbstractBaseCommand):
         # default never survives — resolve the fallback here.
         trigger = self.form.cleaned_data.get("trigger") or AutomationRun.TRIGGER_MANUAL
 
-        run = AutomationRunRepository.create(
-            user=user,
-            automation_block_uuid=str(block.uuid),
-            trigger=trigger,
-            status=AutomationRun.STATUS_RUNNING,
-            started_at=timezone.now(),
-        )
+        # The scheduler pre-claims the run (see RunDueAutomationsCommand's
+        # claim-then-execute) so no definition locks are held during
+        # execution; manual/tool paths create it here.
+        run = self.form.cleaned_data.get("run")
+        if run is None:
+            run = AutomationRunRepository.create(
+                user=user,
+                automation_block_uuid=str(block.uuid),
+                trigger=trigger,
+                status=AutomationRun.STATUS_RUNNING,
+                started_at=timezone.now(),
+            )
 
         try:
             return self._run_spec(run, user, block)

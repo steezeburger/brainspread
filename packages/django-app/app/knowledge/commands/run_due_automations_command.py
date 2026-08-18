@@ -1,5 +1,5 @@
 import logging
-from typing import TypedDict
+from typing import List, Tuple, TypedDict
 
 from django.db import transaction
 from django.utils import timezone
@@ -8,7 +8,7 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.run_automation_form import RunAutomationForm
 from ..forms.run_due_automations_form import RunDueAutomationsForm
-from ..models import AutomationRun
+from ..models import AutomationRun, Block
 from ..repositories import AutomationRunRepository, BlockRepository
 from ..services import automation_schedule
 from ..services.automation_spec import (
@@ -33,11 +33,25 @@ class RunDueAutomationsCommand(AbstractBaseCommand):
     automation whose slot has arrived (issue #143).
 
     Runs on the same cron-like loop as reminders (see the `scheduler`
-    docker service). Locks the definition blocks with SKIP LOCKED so
-    concurrent ticks never double-fire. Due-ness compares the cadence's
-    most recent slot (in the owner's timezone) against the automation's
-    last run — see services.automation_schedule for the catch-up-once
-    semantics.
+    docker service), in two phases — claim, then execute:
+
+    1. **Claim** (single short transaction): lock the definition blocks
+       with SKIP LOCKED, parse, compute due-ness, and insert a RUNNING
+       AutomationRun for each due automation. Pure DB work — the locks
+       are held for milliseconds, so editing a definition block never
+       stalls behind a slow action, and concurrent ticks partition the
+       rows instead of double-firing.
+    2. **Execute** (no batch locks): run each claimed automation via the
+       shared RunAutomationCommand, which finishes the pre-created run
+       row. Actions keep their own small transactions; webhook / (future)
+       LLM calls happen lock-free.
+
+    The claim row itself is the double-fire guard: due-ness compares the
+    cadence's most recent slot against the latest run's ``started_at``
+    (see services.automation_schedule), and a claim carries the tick's
+    timestamp — so once claimed, a slot can't re-fire even if execution
+    is still in flight (or died; a stranded RUNNING claim reads as "ran
+    at that slot" and the next slot proceeds normally).
 
     Malformed specs record ONE failed AutomationRun (deduped against the
     latest run's error) instead of spamming a failure per tick; fixing
@@ -55,6 +69,7 @@ class RunDueAutomationsCommand(AbstractBaseCommand):
         fired = 0
         skipped = 0
         failed_parse = 0
+        claims: List[Tuple[Block, AutomationRun]] = []
 
         with transaction.atomic():
             for block in BlockRepository.lock_automation_blocks():
@@ -64,7 +79,7 @@ class RunDueAutomationsCommand(AbstractBaseCommand):
                     spec = parse_automation_block(block)
                 except AutomationSpecError as exc:
                     if self._is_new_failure(str(block.uuid), str(exc)):
-                        self._fire(block)
+                        claims.append((block, self._claim(block, now)))
                         failed_parse += 1
                     else:
                         skipped += 1
@@ -89,8 +104,13 @@ class RunDueAutomationsCommand(AbstractBaseCommand):
                     skipped += 1
                     continue
 
-                self._fire(block)
+                claims.append((block, self._claim(block, now)))
                 fired += 1
+
+        # Claim transaction committed — definition locks are gone. Execute
+        # each claimed run lock-free.
+        for block, run in claims:
+            self._execute(block, run)
 
         return {
             "considered": considered,
@@ -112,20 +132,41 @@ class RunDueAutomationsCommand(AbstractBaseCommand):
         )
 
     @staticmethod
-    def _fire(block) -> None:
-        """Run one automation via the shared command; it records every
-        outcome (including parse failures) on an AutomationRun and never
-        raises."""
+    def _claim(block: Block, now) -> AutomationRun:
+        """Insert the RUNNING run row that marks this tick's slot as taken.
+        ``started_at`` carries the tick's pinned now so due-ness math stays
+        deterministic under test."""
+        return AutomationRunRepository.create(
+            user=block.user,
+            automation_block_uuid=str(block.uuid),
+            trigger=AutomationRun.TRIGGER_SCHEDULE,
+            status=AutomationRun.STATUS_RUNNING,
+            started_at=now,
+        )
+
+    @staticmethod
+    def _execute(block: Block, run: AutomationRun) -> None:
+        """Execute one claimed run via the shared command; it records every
+        outcome (including parse failures) on the claim row and never
+        raises. If the form itself won't validate, finish the claim as
+        FAILED rather than stranding it RUNNING."""
         form = RunAutomationForm(
             {
                 "user": block.user,
                 "automation_block": str(block.uuid),
+                "run": str(run.uuid),
                 "trigger": AutomationRun.TRIGGER_SCHEDULE,
             }
         )
         if not form.is_valid():
             logger.warning(
                 "automation %s dispatch form invalid: %s", block.uuid, form.errors
+            )
+            run.status = AutomationRun.STATUS_FAILED
+            run.finished_at = timezone.now()
+            run.last_error = f"dispatch form invalid: {form.errors.as_json()}"
+            run.save(
+                update_fields=["status", "finished_at", "last_error", "modified_at"]
             )
             return
         RunAutomationCommand(form).execute()
