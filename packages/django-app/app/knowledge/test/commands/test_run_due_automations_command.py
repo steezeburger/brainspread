@@ -264,6 +264,35 @@ class TestNotifyAction(TestCase):
         mock_post.assert_not_called()
 
     @patch("knowledge.services.automation_actions.post_webhook")
+    def test_notify_lines_deep_link_when_site_url_configured(self, mock_post):
+        from django.test import override_settings
+
+        from knowledge.services.discord_webhook import DiscordDeliveryResult
+
+        mock_post.return_value = DiscordDeliveryResult(True, "")
+        notes = PageFactory(user=self.user, title="Notes", slug="notes-link")
+        doing = BlockFactory(
+            user=self.user, page=notes, block_type="doing", content="DOING ship"
+        )
+        automation = self._automation(
+            trigger="manual",
+            query="view:doing",
+            action='notify "still on this?"',
+        )
+
+        with override_settings(SITE_URL="http://testserver"):
+            result = self._run_manual(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        _, kwargs = mock_post.call_args
+        description = kwargs["embeds"][0]["description"]
+        self.assertIn(
+            f"[DOING ship](http://testserver/knowledge/page/notes-link/"
+            f"#block-{doing.uuid})",
+            description,
+        )
+
+    @patch("knowledge.services.automation_actions.post_webhook")
     def test_notify_without_query_sends_bare_message(self, mock_post):
         from knowledge.services.discord_webhook import DiscordDeliveryResult
 

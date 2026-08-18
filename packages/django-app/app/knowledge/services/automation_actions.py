@@ -25,6 +25,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Tuple
 
+from django.conf import settings
+
 from core.llm_tools import parse_relative_date
 from core.models import User
 
@@ -39,6 +41,7 @@ from ..forms.bulk_set_block_type_form import BulkSetBlockTypeForm
 from ..models import Block
 from ..repositories.page_repository import PageRepository
 from .automation_spec import ActionSpec
+from .block_links import block_page_url
 from .discord_webhook import post_webhook
 
 
@@ -172,6 +175,24 @@ def _set_type(
 # well above this, but a nudge listing 500 items is noise, not a nudge.
 _NOTIFY_MAX_LINES = 10
 
+# Per-line text cap keeps a 10-line embed inside Discord's 4096-char
+# description limit even with the link markup included.
+_NOTIFY_LINE_CHARS = 90
+
+
+def _notify_line(block: Block, site_url: str) -> str:
+    """One embed line per matched block — a deep link into the app when
+    SITE_URL is a real http(s) URL, plain text otherwise."""
+    text = block.first_content_line() or "(untitled block)"
+    if len(text) > _NOTIFY_LINE_CHARS:
+        text = text[: _NOTIFY_LINE_CHARS - 1] + "…"
+    url = block_page_url(block, site_url)
+    if url:
+        # Square brackets in content would break the markdown link.
+        safe = text.replace("[", "(").replace("]", ")")
+        return f"• [{safe}]({url})"
+    return f"• {text}"
+
 
 def _notify(
     ctx: ActionContext, blocks: List[Block], args: Tuple[str, ...]
@@ -196,7 +217,7 @@ def _notify(
     embed: dict = {"title": message[:240], "footer": {"text": "Automation"}}
     if blocks:
         lines = [
-            f"• {block.first_content_line() or '(untitled block)'}"
+            _notify_line(block, settings.SITE_URL)
             for block in blocks[:_NOTIFY_MAX_LINES]
         ]
         if len(blocks) > _NOTIFY_MAX_LINES:
