@@ -22,6 +22,7 @@ run without a result set.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Tuple
 
@@ -34,9 +35,11 @@ from ..commands.add_template_blocks_to_page_command import (
     AddTemplateBlocksToPageCommand,
 )
 from ..commands.bulk_move_blocks_command import BulkMoveBlocksCommand
+from ..commands.bulk_move_blocks_to_page_command import BulkMoveBlocksToPageCommand
 from ..commands.bulk_set_block_type_command import BulkSetBlockTypeCommand
 from ..forms.add_template_blocks_to_page_form import AddTemplateBlocksToPageForm
 from ..forms.bulk_move_blocks_form import BulkMoveBlocksForm
+from ..forms.bulk_move_blocks_to_page_form import BulkMoveBlocksToPageForm
 from ..forms.bulk_set_block_type_form import BulkSetBlockTypeForm
 from ..models import Block
 from ..repositories.page_repository import PageRepository
@@ -171,6 +174,59 @@ def _set_type(
     )
 
 
+# Tolerated sugar on page-target args: `move_to_page [[Groceries]]` reads
+# naturally in the graph and stays forward-compatible with a wiki-link
+# autocomplete, but plain `"title"` / `slug` args work identically.
+_WIKI_REF_RE = re.compile(r"^\[\[(.+)\]\]$")
+
+
+def _resolve_target_page(ctx: ActionContext, args: Tuple[str, ...], verb: str):
+    if not args:
+        raise ActionError(f'`{verb}` needs a target page, e.g. {verb} "groceries"')
+    raw = " ".join(args).strip()
+    m = _WIKI_REF_RE.match(raw)
+    ref = (m.group(1) if m else raw).strip()
+    if not ref:
+        raise ActionError(f"`{verb}` needs a non-empty page reference")
+    page = PageRepository.get_by_title_or_slug(ctx.user, ref)
+    if page is None:
+        raise ActionError(f"page `{ref}` not found")
+    if page.page_type == "template":
+        raise ActionError(
+            f"`{ref}` is a template — moving blocks into a template would "
+            "hide them from views; use apply_template to copy the other way"
+        )
+    return page
+
+
+def _move_to_page(
+    ctx: ActionContext, blocks: List[Block], args: Tuple[str, ...]
+) -> ActionResult:
+    """Move matched blocks (with their subtrees) to an explicit page,
+    referenced by title, slug, or [[wiki-link]] sugar."""
+    page = _resolve_target_page(ctx, args, "move_to_page")
+    form = BulkMoveBlocksToPageForm(
+        data={
+            "user": ctx.user.id,
+            "blocks": [str(block.uuid) for block in blocks],
+            "target_page": str(page.uuid),
+        }
+    )
+    if not form.is_valid():
+        raise ActionError(form.errors.as_json())
+    outcome = BulkMoveBlocksToPageCommand(form).execute()
+    return ActionResult(
+        affected=outcome["moved_count"],
+        details=[
+            {
+                "moved_count": outcome["moved_count"],
+                "skipped_count": outcome["skipped_count"],
+                "target_page_uuid": str(page.uuid),
+            }
+        ],
+    )
+
+
 # Cap how many block lines ride in a notify embed; Discord embeds top out
 # well above this, but a nudge listing 500 items is noise, not a nudge.
 _NOTIFY_MAX_LINES = 10
@@ -290,6 +346,7 @@ def _apply_template(
 
 COMMAND_ACTIONS: Dict[str, ActionDef] = {
     "move_to_daily": ActionDef(handler=_move_to_daily, capability="move_to_daily"),
+    "move_to_page": ActionDef(handler=_move_to_page, capability="move_to_page"),
     "set_type": ActionDef(handler=_set_type, capability="set_type"),
     "notify": ActionDef(handler=_notify, capability="notify", requires_query=False),
     "apply_template": ActionDef(

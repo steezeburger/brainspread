@@ -314,6 +314,82 @@ class TestRunAutomationCommand(TestCase):
         self.assertEqual(run.status, AutomationRun.STATUS_FAILED)
         self.assertIsNotNone(run.finished_at)
 
+    def test_move_to_page_by_title_slug_and_wiki_ref(self):
+        target = PageFactory(user=self.user, title="Grocery List", slug="groceries")
+        source = PageFactory(user=self.user, title="Notes", slug="notes-mtp")
+
+        for ref, marker in (
+            ('"Grocery List"', "by title"),
+            ("groceries", "by slug"),
+            ('"[[Grocery List]]"', "wiki sugar"),
+        ):
+            block = BlockFactory(
+                user=self.user,
+                page=source,
+                block_type="todo",
+                content=f"TODO buy things {marker}",
+            )
+            automation = self._automation(
+                trigger="manual",
+                query=f'content:"{marker}"',
+                action=f"move_to_page {ref}",
+            )
+
+            result = self._run(automation)
+
+            self.assertEqual(
+                result["status"], AutomationRun.STATUS_SUCCEEDED, msg=marker
+            )
+            block.refresh_from_db()
+            self.assertEqual(block.page, target, msg=marker)
+
+    def test_move_to_page_preserves_hierarchy(self):
+        target = PageFactory(user=self.user, title="Archive", slug="archive")
+        source = PageFactory(user=self.user, title="Notes", slug="notes-mtp2")
+        parent = BlockFactory(
+            user=self.user, page=source, block_type="todo", content="TODO parent"
+        )
+        child = BlockFactory(
+            user=self.user,
+            page=source,
+            parent=parent,
+            block_type="todo",
+            content="TODO child",
+        )
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action='move_to_page "Archive"',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        parent.refresh_from_db()
+        child.refresh_from_db()
+        self.assertEqual(parent.page, target)
+        self.assertEqual(child.page, target)
+        self.assertEqual(child.parent, parent)
+
+    def test_move_to_page_rejects_missing_and_template_targets(self):
+        PageFactory(user=self.user, title="Pack", slug="pack-tpl", page_type="template")
+        source = PageFactory(user=self.user, title="Notes", slug="notes-mtp3")
+        BlockFactory(user=self.user, page=source, block_type="todo", content="TODO x")
+
+        missing = self._automation(
+            trigger="manual", query="type:todo", action='move_to_page "nope"'
+        )
+        result = self._run(missing)
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("not found", result["last_error"])
+
+        into_template = self._automation(
+            trigger="manual", query="type:todo", action='move_to_page "Pack"'
+        )
+        result = self._run(into_template)
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("template", result["last_error"])
+
     def test_inline_query_runs_end_to_end(self):
         source = PageFactory(user=self.user, title="Notes", slug="notes-inline")
         todo = BlockFactory(

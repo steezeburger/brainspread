@@ -395,6 +395,14 @@ class TestApplyTemplateAction(TestCase):
         self.assertIn("TODO meditate", contents)
         self.assertIn("TODO stretch", contents)
 
+    def test_template_resolves_by_slug_too(self):
+        automation = self._automation('apply_template "morning-routine" to today')
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        self.assertEqual(result["result"]["affected"], 2)
+
     def test_missing_template_fails_run(self):
         automation = self._automation('apply_template "nonexistent pack"')
 
