@@ -47,6 +47,7 @@ from knowledge.commands import (
     ReorderBlocksCommand,
     ReorderFavoritedPagesCommand,
     ReorderPageEmbeddedViewsCommand,
+    RunAutomationCommand,
     RunSavedViewCommand,
     ScheduleBlockCommand,
     SearchNotesCommand,
@@ -110,6 +111,7 @@ from knowledge.forms import (
     ReorderBlocksForm,
     ReorderFavoritedPagesForm,
     ReorderPageEmbeddedViewsForm,
+    RunAutomationForm,
     RunSavedViewForm,
     ScheduleBlockForm,
     SearchNotesForm,
@@ -1505,6 +1507,45 @@ def move_block_to_page(request):
             "errors": {"non_field_errors": [str(e)]},
         }
         return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def run_automation(request):
+    """Run one #automation block on demand (the context menu's Run action).
+
+    Accepts ``automation_block`` (uuid) or ``automation_slug``; the run's
+    outcome (including failures) is recorded on an AutomationRun and
+    returned — a failed automation is a successful API call whose payload
+    says status=failed, so the UI can toast the real error.
+    """
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        data.setdefault("trigger", "manual")
+
+        form = RunAutomationForm(data)
+
+        if not form.is_valid():
+            return Response(
+                {"success": False, "data": None, "errors": form.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        result = RunAutomationCommand(form).execute()
+        return Response({"success": True, "data": result, "errors": None})
+
+    except ValidationError as e:
+        return Response(
+            {"success": False, "data": None, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    except Exception as e:
+        return Response(
+            {"success": False, "data": None, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
 
 @api_view(["POST"])

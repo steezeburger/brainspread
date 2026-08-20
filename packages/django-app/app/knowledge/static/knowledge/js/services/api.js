@@ -330,6 +330,13 @@ class ApiService {
     });
   }
 
+  async runAutomation(blockUuid) {
+    return await this.request("/knowledge/api/automations/run/", {
+      method: "POST",
+      body: JSON.stringify({ automation_block: blockUuid }),
+    });
+  }
+
   async moveBlockToDaily(blockUuid, targetDate = null) {
     const body = { block: blockUuid };
     if (targetDate) {

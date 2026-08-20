@@ -1424,6 +1424,49 @@ const Page = {
       }
     },
 
+    async runAutomation(block) {
+      try {
+        // Save in-progress edits first so the run sees the latest spec.
+        if (block.isEditing) {
+          await this.updateBlock(block, block.content, true);
+        }
+
+        const result = await window.apiService.runAutomation(block.uuid);
+        if (!result.success) {
+          const errs = result.errors || {};
+          const first = Object.values(errs).flat()[0] || "run failed";
+          throw new Error(first);
+        }
+
+        const run = result.data || {};
+        if (run.status === "succeeded") {
+          const affected = run.result?.affected ?? 0;
+          this.$parent?.addToast?.(
+            `automation ran — ${affected} block${affected === 1 ? "" : "s"} affected`,
+            "success"
+          );
+        } else if (run.status === "skipped") {
+          this.$parent?.addToast?.("automation is disabled", "info");
+        } else {
+          this.$parent?.addToast?.(
+            `automation failed: ${run.last_error || "unknown error"}`,
+            "error"
+          );
+        }
+
+        // The action may have moved / retyped blocks anywhere on this
+        // page — refetch rather than guessing what changed.
+        this.broadcastBlockChanged(block.uuid);
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("run automation failed", error);
+        this.$parent?.addToast?.(
+          `run automation failed: ${error.message}`,
+          "error"
+        );
+      }
+    },
+
     async moveBlockToToday(block) {
       try {
         // Save in-progress edits before moving
@@ -4885,6 +4928,7 @@ const Page = {
                 :moveBlockUp="moveBlockUp"
                 :moveBlockDown="moveBlockDown"
                 :moveBlockToToday="moveBlockToToday"
+                :runAutomation="runAutomation"
                 :openMovePagePicker="openMovePagePicker"
                 :openMoveUnderPicker="openMoveUnderPicker"
                 :moveDraggable="true"
@@ -4948,6 +4992,7 @@ const Page = {
                 :moveBlockUp="moveBlockUp"
                 :moveBlockDown="moveBlockDown"
                 :moveBlockToToday="moveBlockToToday"
+                :runAutomation="runAutomation"
                 :openMovePagePicker="openMovePagePicker"
                 :openMoveUnderPicker="openMoveUnderPicker"
                 :openBlockInfoModal="openBlockInfoModal"
