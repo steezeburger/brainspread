@@ -110,7 +110,7 @@ const KnowledgeApp = createApp({
         }
       }
 
-      return "page"; // Default fallback for /knowledge/ - redirect to today's date
+      return "page"; // /knowledge/ renders today's daily note in place
     },
 
     showChatPanel() {
@@ -150,12 +150,6 @@ const KnowledgeApp = createApp({
     // Check for timezone changes after authentication
     if (this.isAuthenticated) {
       this.checkTimezoneChange();
-    }
-
-    // Redirect to today's page if we're on the root knowledge page
-    if (this.isAuthenticated && window.location.pathname === "/knowledge/") {
-      this.redirectToToday();
-      return;
     }
 
     if (
@@ -314,18 +308,14 @@ const KnowledgeApp = createApp({
       window.location.href = `/knowledge/page/${slug}/`;
     },
 
-    redirectToToday() {
-      // Get today's date in YYYY-MM-DD format
-      const today = new Date();
-      const year = today.getFullYear();
-      const month = String(today.getMonth() + 1).padStart(2, "0");
-      const day = String(today.getDate()).padStart(2, "0");
-      const todayString = `${year}-${month}-${day}`;
-
-      // Redirect to today's page, preserving the query string so
-      // /knowledge/?monitor=1 lands on today's daily still in monitor
-      // mode.
-      window.location.href = `/knowledge/page/${todayString}/${window.location.search}`;
+    navigateToToday() {
+      // The root URL *is* today's daily note — Page resolves the date
+      // client-side (see its currentDate), so "today" goes there rather
+      // than to a dated URL. Keeping the canonical entry point date-free
+      // is what lets the app be bookmarked or added to a home screen
+      // without pinning whatever day that happened on. The query string
+      // is preserved so /knowledge/?monitor=1 stays in monitor mode.
+      window.location.href = `/knowledge/${window.location.search}`;
     },
 
     // Theme and settings methods
@@ -1028,7 +1018,7 @@ const KnowledgeApp = createApp({
           );
           break;
         case "today":
-          this.redirectToToday();
+          this.navigateToToday();
           break;
         case "graph":
           this.navigateToGraph();
@@ -1129,7 +1119,7 @@ const KnowledgeApp = createApp({
                             ref="leftNav"
                             :user="user"
                             @navigate-to-slug="onNavigateToSlug"
-                            @navigate-today="redirectToToday"
+                            @navigate-today="navigateToToday"
                             @navigate-graph="navigateToGraph"
                             @navigate-views="navigateToViews"
                             @navigate-pages="navigateToPages"
@@ -1148,7 +1138,7 @@ const KnowledgeApp = createApp({
                             ref="leftNav"
                             :user="user"
                             @navigate-to-slug="onNavigateToSlug"
-                            @navigate-today="redirectToToday"
+                            @navigate-today="navigateToToday"
                             @navigate-graph="navigateToGraph"
                             @navigate-views="navigateToViews"
                             @navigate-pages="navigateToPages"
@@ -1169,7 +1159,7 @@ const KnowledgeApp = createApp({
                             ref="leftNav"
                             :user="user"
                             @navigate-to-slug="onNavigateToSlug"
-                            @navigate-today="redirectToToday"
+                            @navigate-today="navigateToToday"
                             @navigate-graph="navigateToGraph"
                             @navigate-views="navigateToViews"
                             @navigate-pages="navigateToPages"
@@ -1190,7 +1180,7 @@ const KnowledgeApp = createApp({
                             ref="leftNav"
                             :user="user"
                             @navigate-to-slug="onNavigateToSlug"
-                            @navigate-today="redirectToToday"
+                            @navigate-today="navigateToToday"
                             @navigate-graph="navigateToGraph"
                             @navigate-views="navigateToViews"
                             @navigate-pages="navigateToPages"
@@ -1212,7 +1202,7 @@ const KnowledgeApp = createApp({
                             ref="leftNav"
                             :user="user"
                             @navigate-to-slug="onNavigateToSlug"
-                            @navigate-today="redirectToToday"
+                            @navigate-today="navigateToToday"
                             @navigate-graph="navigateToGraph"
                             @navigate-views="navigateToViews"
                             @navigate-pages="navigateToPages"
