@@ -81,6 +81,9 @@ window.EmbedResultRow = {
       if (this.isTodoType(b)) {
         text = text.replace(/^(WONTDO|LATER|DOING|DONE|TODO)\s*:?\s*/i, "");
       }
+      if (window.brainspreadEmoji) {
+        text = window.brainspreadEmoji.render(text);
+      }
       const escaped = text
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")

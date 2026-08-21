@@ -1196,7 +1196,13 @@ const ChatPanel = {
       const html = marked.parse(content);
 
       // Sanitize HTML to prevent XSS
-      const cleanHtml = DOMPurify.sanitize(html);
+      let cleanHtml = DOMPurify.sanitize(html);
+
+      // Emoji shortcodes — post-sanitize DOM walk so `:joy:` inside
+      // fenced code the assistant emitted stays literal.
+      if (window.brainspreadEmoji) {
+        cleanHtml = window.brainspreadEmoji.renderInHtml(cleanHtml);
+      }
 
       // Style #slug mentions as clickable chips (after sanitize so we
       // don't fight DOMPurify, and via DOM walking so we never touch

@@ -89,6 +89,10 @@ const Page = {
       blockInfoModalBlock: null,
       loading: false,
       error: null,
+      // Bumped when the render-emoji setting changes. formatContentWithTags
+      // reads it purely to register a reactive dependency, so flipping the
+      // setting re-renders every block without a page reload.
+      emojiRenderKey: 0,
       // Page title editing
       isEditingTitle: false,
       newTitle: "",
@@ -350,6 +354,12 @@ const Page = {
       "brainspread:block-changed",
       this.handleBlockChanged
     );
+    // Settings toggled emoji rendering. formatContentWithTags isn't a
+    // computed, so nothing would re-run it without a reactive nudge.
+    document.addEventListener(
+      "brainspread:emoji-setting-changed",
+      this.handleEmojiSettingChanged
+    );
     // When a same-page deep link fires (e.g. spotlight block result on
     // the current page), the URL hash changes without a reload. Listen
     // so we still scroll the matching block into view.
@@ -427,6 +437,10 @@ const Page = {
     document.removeEventListener(
       "brainspread:block-changed",
       this.handleBlockChanged
+    );
+    document.removeEventListener(
+      "brainspread:emoji-setting-changed",
+      this.handleEmojiSettingChanged
     );
     if (this._blockChangedTimer) {
       clearTimeout(this._blockChangedTimer);
@@ -706,6 +720,12 @@ const Page = {
         if (this.isEditingBlockOnPage()) return;
         this.loadPage({ silent: true });
       }, 300);
+    },
+
+    handleEmojiSettingChanged() {
+      // Block content is unchanged — only its rendering is — so a
+      // reactive bump is enough; no refetch needed.
+      this.emojiRenderKey += 1;
     },
 
     async loadPage({ silent = false } = {}) {
@@ -2204,6 +2224,10 @@ const Page = {
     formatContentWithTags(content, blockType = null, properties = null) {
       if (!content) return "";
 
+      // Touch the key so Vue tracks it as a dependency of this render —
+      // see the emojiRenderKey comment in data().
+      void this.emojiRenderKey;
+
       const escapeHtml = (s) =>
         s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -2310,6 +2334,16 @@ const Page = {
         codeSegments.push(code);
         return `\x00CODE${idx}\x00`;
       });
+
+      // Substitute :shortcode: emoji. Runs after the code/fence
+      // extraction above so `:joy:` inside a code span stays literal,
+      // and before the emphasis transforms since the emoji it emits
+      // contain no markdown punctuation. No-op when the user has emoji
+      // rendering turned off — the block content itself always keeps
+      // the shortcode text.
+      if (window.brainspreadEmoji) {
+        formatted = window.brainspreadEmoji.render(formatted);
+      }
 
       // Extract backslash-escaped characters to protect them from formatting
       const escapedChars = [];

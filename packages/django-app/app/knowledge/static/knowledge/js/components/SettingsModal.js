@@ -15,13 +15,14 @@ window.SettingsModal = {
     },
   },
 
-  emits: ["close", "theme-updated"],
+  emits: ["close", "theme-updated", "user-updated"],
 
   data() {
     return {
       selectedTheme: this.user?.theme || "dark",
       selectedTimezone: this.user?.timezone || "UTC",
       selectedTimeFormat: this.user?.time_format || "12h",
+      renderEmoji: this.user?.render_emoji !== false,
       discordWebhookUrl: this.user?.discord_webhook_url || "",
       discordUserId: this.user?.discord_user_id || "",
       isUpdating: false,
@@ -80,6 +81,9 @@ window.SettingsModal = {
         }
         if (newUser?.time_format) {
           this.selectedTimeFormat = newUser.time_format;
+        }
+        if (typeof newUser?.render_emoji === "boolean") {
+          this.renderEmoji = newUser.render_emoji;
         }
         if (typeof newUser?.discord_webhook_url === "string") {
           this.discordWebhookUrl = newUser.discord_webhook_url;
@@ -203,6 +207,28 @@ window.SettingsModal = {
               hasUpdates = true;
             } else {
               this.emitToast("failed to update time format");
+              return;
+            }
+          }
+
+          const currentRenderEmoji = this.user.render_emoji !== false;
+          if (this.renderEmoji !== currentRenderEmoji) {
+            const result = await window.apiService.updateUserRenderEmoji(
+              this.renderEmoji
+            );
+            if (result.success) {
+              console.log("Emoji setting updated");
+              // Keep the parent's copy of the user in sync — the `user`
+              // prop is what the next open of this modal reads from.
+              this.$emit("user-updated", result.data.user);
+              // Nudge already-rendered blocks — flipping the toggle
+              // changes rendering only, so nothing else would re-run.
+              document.dispatchEvent(
+                new CustomEvent("brainspread:emoji-setting-changed")
+              );
+              hasUpdates = true;
+            } else {
+              this.emitToast("failed to update emoji setting");
               return;
             }
           }
@@ -535,6 +561,19 @@ window.SettingsModal = {
                 <option value="12h">12 hour (5:30 PM)</option>
               </select>
             </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>emoji</h3>
+            <label class="settings-checkbox">
+              <input type="checkbox" v-model="renderEmoji" />
+              render :shortcode: as emoji
+            </label>
+            <p class="settings-hint">
+              your notes always store the shortcode text (e.g.
+              <code>:grimacing:</code>) &mdash; this only changes how it
+              displays, so turning it off gives you the raw text back.
+            </p>
           </div>
 
           <div class="settings-section">

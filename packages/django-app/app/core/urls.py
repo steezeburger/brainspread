@@ -17,6 +17,11 @@ urlpatterns = [
         name="update_time_format",
     ),
     path(
+        "auth/update-render-emoji/",
+        views.update_render_emoji,
+        name="update_render_emoji",
+    ),
+    path(
         "auth/update-discord-webhook/",
         views.update_discord_webhook,
         name="update_discord_webhook",

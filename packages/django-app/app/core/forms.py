@@ -79,6 +79,13 @@ class UpdateTimeFormatForm(BaseForm):
     )
 
 
+class UpdateRenderEmojiForm(BaseForm):
+    user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
+    # required=False is what makes `false` a submittable value — a
+    # required BooleanField rejects it as "this field is required".
+    render_emoji = forms.BooleanField(required=False)
+
+
 class UpdateDiscordWebhookForm(BaseForm):
     user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
     discord_webhook_url = forms.URLField(required=False, empty_value="", max_length=500)

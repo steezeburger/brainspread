@@ -748,6 +748,12 @@ window.LeftNav = {
         return `\x00CODE${idx}\x00`;
       });
 
+      // Emoji shortcodes — after the code extraction so `:joy:` inside a
+      // code span stays literal. Mirrors Page.formatContentWithTags.
+      if (window.brainspreadEmoji) {
+        formatted = window.brainspreadEmoji.render(formatted);
+      }
+
       const escapedChars = [];
       formatted = formatted.replace(/\\([*_~`\\#>])/g, (_match, char) => {
         const idx = escapedChars.length;

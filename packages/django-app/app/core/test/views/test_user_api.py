@@ -219,6 +219,43 @@ class UserAPITestCase(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    def test_update_render_emoji_off(self):
+        """Turning emoji rendering off persists and returns False."""
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
+        response = self.client.post(
+            "/api/auth/update-render-emoji/", {"render_emoji": False}, format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["success"])
+        self.assertFalse(response.data["data"]["user"]["render_emoji"])
+
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.render_emoji)
+
+    def test_update_render_emoji_back_on(self):
+        """Turning it back on works — the toggle isn't one-way."""
+        self.user.render_emoji = False
+        self.user.save(update_fields=["render_emoji"])
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
+        response = self.client.post(
+            "/api/auth/update-render-emoji/", {"render_emoji": True}, format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["data"]["user"]["render_emoji"])
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.render_emoji)
+
+    def test_update_render_emoji_unauthenticated(self):
+        """Emoji setting update without authentication is rejected."""
+        response = self.client.post(
+            "/api/auth/update-render-emoji/", {"render_emoji": False}, format="json"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
     def test_update_discord_user_id_success(self):
         """Updating the Discord user ID persists and returns it."""
         self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
