@@ -974,3 +974,62 @@ class TestDueRemindClauses(TestCase):
 
         self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
         self.assertIn("set_due <date>", result["last_error"])
+
+    def test_create_block_multiple_reminders(self):
+        automation = self._automation(
+            trigger="manual",
+            action='create_block "move car" on today as todo '
+            "due 7:30 remind 7:30 remind 6:45",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        created = Block.objects.get(user=self.user, content="move car")
+        from knowledge.models import Reminder
+
+        pending = Reminder.objects.filter(block=created, sent_at__isnull=True)
+        self.assertEqual(pending.count(), 2)
+
+    def test_create_block_dated_reminder_entry(self):
+        automation = self._automation(
+            trigger="manual",
+            action='create_block "prep" on +7d as todo due +7d 14:00 '
+            "remind +6d 18:00",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        created = Block.objects.get(user=self.user, content="prep")
+        self.assertIsNotNone(created.get_pending_reminder())
+
+    def test_set_due_multiple_reminders(self):
+        page = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        target = BlockFactory(
+            user=self.user, page=page, block_type="todo", content="ship"
+        )
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action="set_due tomorrow 14:00 remind 13:30 remind tomorrow 9:00",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        from knowledge.models import Reminder
+
+        pending = Reminder.objects.filter(block=target, sent_at__isnull=True)
+        self.assertEqual(pending.count(), 2)
+
+    def test_bad_remind_spec_fails(self):
+        automation = self._automation(
+            trigger="manual",
+            action='create_block "x" on today due 7:30 remind banana',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("remind", result["last_error"])

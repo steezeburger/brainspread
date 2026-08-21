@@ -502,11 +502,11 @@ def _set_due(
 ) -> ActionResult:
     """Set (or clear) the due date on every matched block.
 
-    Grammar: `set_due <date> [HH:MM] [remind HH:MM]` | `set_due none`.
-    A bare date is all-day; a time sets due_at_has_time; `remind`
-    replaces each block's pending reminders with one at that user-local
-    time on the due date. `none`/`clear` drops due_at and pending
-    reminders."""
+    Grammar: `set_due <date> [HH:MM] [remind [<date>] <HH:MM>]…` |
+    `set_due none`. A bare date is all-day; a time sets due_at_has_time;
+    each repeatable `remind` clause adds one reminder (dateless = on the
+    due date), replacing the block's pending set. `none`/`clear` drops
+    due_at and pending reminders."""
     if not args:
         raise ActionError(
             "`set_due` needs a date token or `none`, e.g. `set_due tomorrow`"
@@ -537,21 +537,19 @@ def _set_due(
 
     rest = [a.strip() for a in args[1:]]
     due_time: Optional[str] = None
-    remind_time: Optional[str] = None
     if rest and _CLAUSE_TIME_RE.match(rest[0]):
         due_time = rest.pop(0)
-    if rest:
-        if (
-            len(rest) == 2
-            and rest[0].lower() == "remind"
-            and _CLAUSE_TIME_RE.match(rest[1])
-        ):
-            remind_time = rest[1]
-            rest = []
-        else:
+    reminders: List[dict] = []
+    while rest:
+        if rest.pop(0).lower() != "remind":
             raise ActionError(
-                "expected `set_due <date> [HH:MM] [remind HH:MM]` or `set_due none`"
+                "expected `set_due <date> [HH:MM] [remind [<date>] <HH:MM>]…` "
+                "or `set_due none`"
             )
+        spec: List[str] = []
+        while rest and rest[0].lower() != "remind" and len(spec) < 2:
+            spec.append(rest.pop(0))
+        reminders.append(_parse_remind_spec(ctx, spec))
 
     data = {
         "user": ctx.user.id,
@@ -560,8 +558,8 @@ def _set_due(
     }
     if due_time is not None:
         data["new_time"] = due_time
-    if remind_time is not None:
-        data["reminder_time"] = remind_time
+    if reminders:
+        data["reminders"] = reminders
     form = BulkScheduleForm(data=data)
     if not form.is_valid():
         raise ActionError(form.errors.as_json())
@@ -573,7 +571,7 @@ def _set_due(
                 "updated_count": outcome["updated_count"],
                 "new_date": outcome["new_date"],
                 "new_time": due_time,
-                "remind_time": remind_time,
+                "reminders": reminders,
             }
         ],
     )
@@ -634,6 +632,25 @@ def _set_property(
     )
 
 
+def _parse_remind_spec(ctx: ActionContext, tokens: List[str]) -> dict:
+    """One `remind [<date>] <HH:MM>` clause → a reminder entry for the
+    schedule forms. A dateless entry fires on the due date; date tokens
+    mean what they mean everywhere else in the grammar (relative to the
+    run date), so "the day before a +7d due" is `remind +6d 18:00`."""
+    if len(tokens) == 1 and _CLAUSE_TIME_RE.match(tokens[0]):
+        return {"time": tokens[0]}
+    if len(tokens) == 2 and _CLAUSE_TIME_RE.match(tokens[1]):
+        try:
+            date_value = parse_relative_date(tokens[0], ctx.user.today())
+        except ValueError as exc:
+            raise ActionError(str(exc)) from exc
+        return {"date": date_value.isoformat(), "time": tokens[1]}
+    raise ActionError(
+        "`remind` expects `[<date>] <HH:MM>`, e.g. `remind 7:30` or "
+        "`remind +6d 18:00`"
+    )
+
+
 # Clause keywords for the create_block grammar. Everything after the
 # content arg is sectioned by these; each collects tokens until the next.
 _CREATE_BLOCK_KEYWORDS = ("on", "as", "tagged", "with", "due", "remind")
@@ -641,7 +658,7 @@ _CREATE_BLOCK_KEYWORDS = ("on", "as", "tagged", "with", "due", "remind")
 _CREATE_BLOCK_USAGE = (
     'expected `create_block "<content>" on <date|page> [as <type>] '
     "[tagged <slug> …] [with key=value …] [due <date|HH:MM|date HH:MM>] "
-    "[remind HH:MM]`"
+    "[remind [<date>] <HH:MM>]…`"
 )
 
 # User-local wall-clock time for the due/remind clauses (24h, minutes
@@ -684,22 +701,28 @@ def _create_block(
         )
 
     sections: Dict[str, List[str]] = {}
-    current: Optional[str] = None
+    # `remind` is repeatable (one clause per reminder, like the app's
+    # reminder list); every other keyword appears at most once.
+    remind_specs: List[List[str]] = []
+    current: Optional[List[str]] = None
     for token in args[1:]:
         lowered = token.lower()
-        if lowered in _CREATE_BLOCK_KEYWORDS:
+        if lowered == "remind":
+            remind_specs.append([])
+            current = remind_specs[-1]
+        elif lowered in _CREATE_BLOCK_KEYWORDS:
             if lowered in sections:
                 raise ActionError(
                     f"duplicate `{lowered}` clause — {_CREATE_BLOCK_USAGE}"
                 )
             sections[lowered] = []
-            current = lowered
+            current = sections[lowered]
         else:
             if current is None:
                 raise ActionError(
                     f"{_CREATE_BLOCK_USAGE} — the target page is always explicit"
                 )
-            sections[current].append(token)
+            current.append(token)
 
     target_tokens = tuple(sections.get("on") or ())
     if not target_tokens:
@@ -770,17 +793,14 @@ def _create_block(
                     )
                 due_time = due_tokens[1]
 
-    remind_time: Optional[str] = None
-    if "remind" in sections:
-        remind_tokens = sections["remind"]
-        if len(remind_tokens) != 1 or not _CLAUSE_TIME_RE.match(remind_tokens[0]):
-            raise ActionError("`remind` expects one HH:MM time, e.g. `remind 7:30`")
+    reminders: List[dict] = []
+    if remind_specs:
         if due_date is None:
             raise ActionError(
-                "`remind` requires a `due` clause — the reminder anchors to "
-                "the due date"
+                "`remind` requires a `due` clause — reminders anchor to " "the due date"
             )
-        remind_time = remind_tokens[0]
+        for spec in remind_specs:
+            reminders.append(_parse_remind_spec(ctx, spec))
 
     if target_date is not None:
         page, _ = PageRepository.get_or_create_daily_note(ctx.user, target_date)
@@ -816,8 +836,8 @@ def _create_block(
         }
         if due_time is not None:
             schedule_data["due_time"] = due_time
-        if remind_time is not None:
-            schedule_data["reminder_time"] = remind_time
+        if reminders:
+            schedule_data["reminders"] = reminders
         schedule_form = ScheduleBlockForm(data=schedule_data)
         if not schedule_form.is_valid():
             raise ActionError(schedule_form.errors.as_json())
@@ -834,7 +854,7 @@ def _create_block(
                 "properties": dict(props),
                 "due_date": due_date.isoformat() if due_date else None,
                 "due_time": due_time,
-                "remind_time": remind_time,
+                "reminders": reminders,
             }
         ],
     )
