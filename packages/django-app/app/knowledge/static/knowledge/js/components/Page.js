@@ -881,7 +881,10 @@ const Page = {
         return result;
       } catch (error) {
         console.error("failed to create block:", error);
-        this.error = "failed to create block";
+        this.error =
+          error && error.status === 400 && error.message
+            ? error.message
+            : "failed to create block";
         return { success: false };
       }
     },
@@ -942,11 +945,16 @@ const Page = {
         const result = await window.apiService.updateBlock(block.uuid, payload);
 
         if (result.success) {
-          block.content = newContent;
-          block._baseContent =
+          // Adopt the server's content: token expansion ({{today}} and
+          // friends, issue #140) means what got saved can differ from
+          // what was typed, and the display should show the frozen
+          // values immediately.
+          const savedContent =
             result.data && result.data.content !== undefined
               ? result.data.content
               : newContent;
+          block.content = savedContent;
+          block._baseContent = savedContent;
           if (result.data && result.data.block_type) {
             block.block_type = result.data.block_type;
             // A content prefix (e.g. typing "DONE ") can flip the type
@@ -988,7 +996,12 @@ const Page = {
           return;
         }
         console.error("failed to update block:", error);
-        this.error = "failed to update block";
+        // A 400 carries a user-facing message (e.g. an unknown
+        // {{token}} naming the vocabulary) — show it verbatim.
+        this.error =
+          error && error.status === 400 && error.message
+            ? error.message
+            : "failed to update block";
       }
     },
 
@@ -3085,12 +3098,31 @@ const Page = {
       if (!template) return;
 
       try {
-        const result = await window.apiService.addTemplateBlocksToPage(
+        let result = await window.apiService.addTemplateBlocksToPage(
           template.uuid,
           this.page.uuid
         );
         if (!result.success) {
           throw new Error(result.errors?.non_field_errors?.[0] || "add failed");
+        }
+        // Interactive template: the backend reported {{input:<label>}}
+        // tokens it needs values for. Prompt per label, then re-submit
+        // with the answers (issue #140).
+        if (result.data?.needs_input?.length) {
+          const inputs = await this.promptForTemplateInputs(
+            result.data.needs_input
+          );
+          if (inputs === null) return; // user cancelled
+          result = await window.apiService.addTemplateBlocksToPage(
+            template.uuid,
+            this.page.uuid,
+            inputs
+          );
+          if (!result.success) {
+            throw new Error(
+              result.errors?.non_field_errors?.[0] || "add failed"
+            );
+          }
         }
         const added = result.data?.added ?? 0;
         this.$parent?.addToast?.(
@@ -3105,6 +3137,23 @@ const Page = {
           "error"
         );
       }
+    },
+
+    async promptForTemplateInputs(labels) {
+      // Minimal apply-time prompt flow for {{input:<label>}} tokens:
+      // one prompt dialog per label, in template order. Returns a
+      // label→value object, or null if the user cancels any prompt.
+      const inputs = {};
+      for (const label of labels) {
+        const value = await window.appModals.prompt({
+          title: "template input",
+          message: label,
+          placeholder: label,
+        });
+        if (value === null) return null;
+        inputs[label] = value;
+      }
+      return inputs;
     },
 
     async toggleFavorited() {

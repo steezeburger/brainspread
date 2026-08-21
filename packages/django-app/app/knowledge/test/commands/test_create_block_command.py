@@ -1,12 +1,13 @@
 from unittest.mock import Mock, patch
 
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from assets.models import Asset
 from knowledge.commands import CreateBlockCommand
 from knowledge.forms import CreateBlockForm
 
-from ..helpers import PageFactory, UserFactory
+from ..helpers import BlockFactory, PageFactory, UserFactory
 
 
 class TestCreateBlockCommand(TestCase):
@@ -390,3 +391,70 @@ class TestCreateBlockCommand(TestCase):
         )
         self.assertFalse(form.is_valid())
         self.assertIn("created_via", form.errors)
+
+
+class TestCreateBlockTokenExpansion(TestCase):
+    """Content {{tokens}} resolve at save and freeze (issue #140)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+        cls.page = PageFactory(user=cls.user, page_type="daily")
+
+    def _create(self, content, page=None, **extra):
+        form = CreateBlockForm(
+            {
+                "user": self.user.id,
+                "page": (page or self.page).uuid,
+                "content": content,
+                **extra,
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return CreateBlockCommand(form).execute()
+
+    def test_should_expand_date_tokens_at_save(self):
+        block = self._create("standup notes {{today}}")
+        self.assertEqual(
+            block.content, f"standup notes {self.user.today().isoformat()}"
+        )
+
+    def test_should_expand_page_tokens_against_source_page(self):
+        block = self._create("on {{page.slug}}")
+        self.assertEqual(block.content, f"on {self.page.slug}")
+
+    def test_should_keep_tokens_dormant_on_template_pages(self):
+        template = PageFactory(
+            user=self.user, page_type="template", slug="tpl", title="Tpl"
+        )
+        block = self._create("standup notes {{today}}", page=template)
+        self.assertEqual(block.content, "standup notes {{today}}")
+
+    def test_should_skip_expansion_for_code_blocks(self):
+        block = self._create("render({{today}})", block_type="code")
+        self.assertEqual(block.content, "render({{today}})")
+
+    def test_should_unescape_literal_braces(self):
+        block = self._create("write \\{{today}} to insert the date")
+        self.assertEqual(block.content, "write {{today}} to insert the date")
+
+    def test_unknown_token_fails_loudly(self):
+        with self.assertRaises(ValidationError) as caught:
+            self._create("hello {{blorp}}")
+        self.assertIn("{{blorp}}", str(caught.exception))
+        self.assertIn("available tokens", str(caught.exception))
+
+    def test_input_token_fails_at_block_save(self):
+        with self.assertRaises(ValidationError) as caught:
+            self._create("Project {{input:name}}")
+        self.assertIn("applying a template", str(caught.exception))
+
+    def test_count_token_freezes_a_number(self):
+        BlockFactory(user=self.user, page=self.page, block_type="todo")
+        BlockFactory(user=self.user, page=self.page, block_type="todo")
+        block = self._create("open todos: {{count:type:todo and completed is null}}")
+        self.assertEqual(block.content, "open todos: 2")
+
+    def test_expanded_properties_are_extracted(self):
+        block = self._create("carried:: {{today}}")
+        self.assertEqual(block.properties.get("carried"), self.user.today().isoformat())

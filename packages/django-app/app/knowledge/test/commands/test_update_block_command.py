@@ -818,3 +818,51 @@ class TestExplicitBlockTypeWins(TestCase):
 
         self.assertEqual(updated.block_type, "done")
         self.assertEqual(updated.completed_at, stamp)
+
+
+class TestUpdateBlockTokenExpansion(TestCase):
+    """Content {{tokens}} resolve when an edit saves (issue #140)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+        cls.page = PageFactory(user=cls.user, page_type="daily")
+
+    def _update(self, block, content):
+        form = UpdateBlockForm(
+            {
+                "user": self.user.id,
+                "block": str(block.uuid),
+                "content": content,
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return UpdateBlockCommand(form).execute()
+
+    def test_should_expand_tokens_on_content_update(self):
+        block = BlockFactory(page=self.page, user=self.user, content="plain")
+        updated = self._update(block, "reviewed on {{today}}")
+        self.assertEqual(
+            updated.content, f"reviewed on {self.user.today().isoformat()}"
+        )
+
+    def test_should_keep_tokens_dormant_on_template_pages(self):
+        template = PageFactory(user=self.user, page_type="template")
+        block = BlockFactory(page=template, user=self.user, content="plain")
+        updated = self._update(block, "reviewed on {{today}}")
+        self.assertEqual(updated.content, "reviewed on {{today}}")
+
+    def test_should_skip_expansion_for_code_blocks(self):
+        block = BlockFactory(
+            page=self.page, user=self.user, block_type="code", content="x"
+        )
+        updated = self._update(block, "render({{today}})")
+        self.assertEqual(updated.content, "render({{today}})")
+
+    def test_unknown_token_rejects_the_save(self):
+        block = BlockFactory(page=self.page, user=self.user, content="before")
+        with self.assertRaises(ValidationError) as caught:
+            self._update(block, "hello {{blorp}}")
+        self.assertIn("{{blorp}}", str(caught.exception))
+        block.refresh_from_db()
+        self.assertEqual(block.content, "before")

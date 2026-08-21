@@ -8,6 +8,8 @@ from ..forms.sync_block_tags_form import SyncBlockTagsForm
 from ..forms.touch_page_form import TouchPageForm
 from ..forms.update_block_form import UpdateBlockForm
 from ..models import Block
+from ..services.content_tokens import TokenError, resolve_content_tokens
+from ..services.token_context import build_token_context
 from .set_block_type_command import SetBlockTypeCommand
 from .sync_block_tags_command import SyncBlockTagsCommand
 from .touch_page_command import TouchPageCommand
@@ -73,6 +75,29 @@ class UpdateBlockCommand(AbstractBaseCommand):
             "block_type" in self.form.cleaned_data
             and self.form.cleaned_data["block_type"] is not None
         )
+
+        # Resolve {{tokens}} in the incoming content — snapshot
+        # semantics (issue #140). Skipped on template pages (tokens
+        # stay dormant until apply) and for code blocks; an explicitly
+        # submitted block_type decides code-ness for this save, the
+        # stored type otherwise.
+        effective_type = (
+            self.form.cleaned_data["block_type"]
+            if explicit_block_type
+            else block.block_type
+        )
+        if (
+            self.form.cleaned_data.get("content")
+            and effective_type != "code"
+            and block.page.page_type != "template"
+        ):
+            try:
+                self.form.cleaned_data["content"] = resolve_content_tokens(
+                    self.form.cleaned_data["content"],
+                    build_token_context(user, block.page),
+                )
+            except TokenError as e:
+                raise ValidationError(str(e))
 
         # Update other fields
         for field in [
