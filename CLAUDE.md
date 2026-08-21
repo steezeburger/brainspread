@@ -162,3 +162,20 @@ Navigate to `packages/django-app/` for most development tasks.
   is the source of truth — the description's job is to give a reviewer
   the framing they can't get from the code, not to restage it in prose.
   When in doubt, cut.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live as GitHub issues in `steezeburger/brainspread`,
+managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles, each label string equal to its name.
+See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` and `docs/adr/` at the repo root, created
+lazily by `/domain-modeling`. See `docs/agents/domain.md`.
