@@ -2,11 +2,11 @@ from django.utils import timezone
 
 from common.commands.abstract_base_command import AbstractBaseCommand
 
+from ..constants import COMPLETED_TODO_TYPES
 from ..forms.create_block_form import CreateBlockForm
 from ..forms.sync_block_tags_form import SyncBlockTagsForm
 from ..forms.touch_page_form import TouchPageForm
 from ..models import Block
-from .set_block_type_command import COMPLETED_TYPES
 from .sync_block_tags_command import SyncBlockTagsCommand
 from .touch_page_command import TouchPageCommand
 
@@ -43,7 +43,9 @@ class CreateBlockCommand(AbstractBaseCommand):
         # creation — SetBlockTypeCommand only fires on transitions, so a
         # block born done would otherwise have a null completed_at and
         # be invisible to "done this week" / completion queries.
-        completed_at = timezone.now() if final_block_type in COMPLETED_TYPES else None
+        completed_at = (
+            timezone.now() if final_block_type in COMPLETED_TODO_TYPES else None
+        )
 
         # Create the block
         block = Block.objects.create(

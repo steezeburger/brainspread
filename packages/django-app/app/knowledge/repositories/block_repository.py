@@ -7,6 +7,7 @@ from django.db.models.functions import TruncDate
 
 from common.repositories.base_repository import BaseRepository
 
+from ..constants import OPEN_TODO_TYPES
 from ..models import Block, Page
 from ..services.automation_spec import AUTOMATION_TAG_SLUG
 from ..services.due_dates import start_of_local_day
@@ -376,7 +377,7 @@ class BlockRepository(BaseRepository):
             .filter(
                 user=user,
                 due_at__lt=start_of_local_day(today, user.tz()),
-                block_type__in=("todo", "doing", "later"),
+                block_type__in=OPEN_TODO_TYPES,
                 completed_at__isnull=True,
             )
             .select_related("page", "user")

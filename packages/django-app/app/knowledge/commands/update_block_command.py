@@ -2,6 +2,7 @@ from django.core.exceptions import ValidationError
 
 from common.commands.abstract_base_command import AbstractBaseCommand
 
+from ..constants import TODO_TYPES
 from ..forms.set_block_type_form import SetBlockTypeForm
 from ..forms.sync_block_tags_form import SyncBlockTagsForm
 from ..forms.touch_page_form import TouchPageForm
@@ -204,8 +205,8 @@ class UpdateBlockCommand(AbstractBaseCommand):
         elif content_lower.startswith("wontdo"):
             return "wontdo"
 
-        # If none of the patterns match, return bullet for todo-family types
-        if current_block_type in ["todo", "doing", "done", "later", "wontdo"]:
+        # If none of the patterns match, return bullet for todo types
+        if current_block_type in TODO_TYPES:
             return "bullet"
         return current_block_type
 

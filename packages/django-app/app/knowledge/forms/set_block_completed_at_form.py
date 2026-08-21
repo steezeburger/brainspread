@@ -6,13 +6,9 @@ from common.forms import BaseForm, UUIDModelChoiceField
 from core.models import User
 from core.repositories import UserRepository
 
+from ..constants import COMPLETED_TODO_TYPES
 from ..models import Block
 from ..repositories import BlockRepository
-
-# Terminal states whose completion time is meaningful to edit. Mirrors
-# COMPLETED_TYPES in set_block_type_command; kept local to avoid a
-# forms -> commands import cycle.
-TERMINAL_BLOCK_TYPES = {"done", "wontdo"}
 
 
 class SetBlockCompletedAtForm(BaseForm):
@@ -42,7 +38,7 @@ class SetBlockCompletedAtForm(BaseForm):
 
         if block and user and block.user != user:
             raise ValidationError("Block not found")
-        if block and block.block_type not in TERMINAL_BLOCK_TYPES:
+        if block and block.block_type not in COMPLETED_TODO_TYPES:
             raise ValidationError(
                 "completed_at can only be set on a done or wontdo block"
             )

@@ -5,11 +5,11 @@ import pytz
 
 from common.commands.abstract_base_command import AbstractBaseCommand
 
+from ..constants import OPEN_TODO_TYPES
 from ..forms.get_completion_stats_form import GetCompletionStatsForm
 from ..repositories.block_repository import BlockRepository
 
 MAX_RANGE_DAYS = 366
-OPEN_TODO_TYPES = ("todo", "doing", "later")
 
 
 class GetCompletionStatsCommand(AbstractBaseCommand):
