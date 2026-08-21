@@ -122,15 +122,11 @@ window.LeftNav = {
         /Mac|iPhone|iPod|iPad/i.test(navigator.platform);
       return isMac ? "⌘K" : "Ctrl+K";
     },
-    todaySlug() {
-      const today = new Date();
-      const year = today.getFullYear();
-      const month = String(today.getMonth() + 1).padStart(2, "0");
-      const day = String(today.getDate()).padStart(2, "0");
-      return `${year}-${month}-${day}`;
-    },
     todayHref() {
-      return this.pageUrl(this.todaySlug);
+      // The root URL means "today" (Page resolves the date), so the nav
+      // link — and anything copied out of it via cmd-click / "copy link
+      // address" — stays date-free.
+      return "/knowledge/";
     },
     // Current day-of-month, drawn inside the today nav icon so the
     // glyph reads as "today" at a glance (instead of the generic

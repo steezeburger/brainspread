@@ -60,7 +60,12 @@ const Page = {
     return {
       // Page data
       pageSlug: this.getSlugFromURL(),
-      currentDate: this.getDateFromURL(),
+      // The root route (/knowledge/, no slug in the path) means "today":
+      // the date is resolved here instead of redirecting to a dated URL,
+      // so the app has a stable entry point that can be bookmarked or
+      // added to a phone's home screen without pinning the day it was
+      // installed on.
+      currentDate: this.getDateFromURL() || this.getRootRouteDate(),
       // Monitor mode (?monitor=1): read-only wall-display mode. Editing
       // is disabled, the page silently re-fetches every few seconds, and
       // the app shell hides the sidebar / chat chrome.
@@ -336,6 +341,10 @@ const Page = {
     // the current page), the URL hash changes without a reload. Listen
     // so we still scroll the matching block into view.
     window.addEventListener("hashchange", this.scrollToHashBlock);
+    // A home-screen / PWA session can sit backgrounded across midnight.
+    // The root route means "today", so re-resolve the date when the tab
+    // becomes visible again rather than showing yesterday's note.
+    document.addEventListener("visibilitychange", this.handleVisibilityChange);
     // Monitor mode: poll for fresh data. The interval is configurable
     // via ?refresh=<seconds> (min 2, default 5). The body class lets
     // app-level CSS strip interactive chrome without threading a prop
@@ -383,6 +392,10 @@ const Page = {
       this.handleResumeBlockEditing
     );
     window.removeEventListener("hashchange", this.scrollToHashBlock);
+    document.removeEventListener(
+      "visibilitychange",
+      this.handleVisibilityChange
+    );
     window.removeEventListener(
       "brainspread:notes-modified",
       this.handleNotesModified
@@ -424,6 +437,16 @@ const Page = {
       return null;
     },
 
+    isRootRoute() {
+      // /knowledge/ itself — no page slug in the path. This is the
+      // "today" route; see currentDate in data().
+      return window.location.pathname.replace(/\/+$/, "") === "/knowledge";
+    },
+
+    getRootRouteDate() {
+      return this.isRootRoute() ? this.localDateString() : null;
+    },
+
     getMonitorFromURL() {
       return new URLSearchParams(window.location.search).get("monitor") === "1";
     },
@@ -439,14 +462,34 @@ const Page = {
       );
     },
 
+    handleVisibilityChange() {
+      if (document.hidden) return;
+      this.rollOverToToday();
+    },
+
+    // Move the view to today's daily note when the calendar day has
+    // changed under a long-lived session. Only the root route follows
+    // the date this way — a URL naming a specific day stays put.
+    // Returns true when it did something.
+    rollOverToToday() {
+      if (!this.isRootRoute()) return false;
+      const today = this.localDateString();
+      if (this.currentDate === today) return false;
+      this.currentDate = today;
+      this.loadPage({ silent: true });
+      return true;
+    },
+
     monitorTick() {
       // Don't burn requests while nobody can see the screen.
       if (document.hidden) return;
       if (this._monitorFollowsToday) {
         const today = this.localDateString();
         if (this.currentDate && today !== this.currentDate) {
-          // Midnight rolled over — jump the display to the new daily
-          // note, keeping ?monitor=1 (and any refresh override).
+          // Midnight rolled over. On the root route the URL already
+          // means "today", so swap the date in place; a dated URL has
+          // to navigate, keeping ?monitor=1 (and any refresh override).
+          if (this.rollOverToToday()) return;
           window.location.href = `/knowledge/page/${today}/${window.location.search}`;
           return;
         }
