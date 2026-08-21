@@ -5,8 +5,9 @@ from django.core.exceptions import ValidationError
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.run_saved_view_form import RunSavedViewForm
-from ..repositories import BlockRepository, SavedViewRepository
+from ..repositories import SavedViewRepository
 from ..services import query_engine
+from ..services.view_execution import count_view, run_view
 
 
 class RunSavedViewCommand(AbstractBaseCommand):
@@ -48,36 +49,31 @@ class RunSavedViewCommand(AbstractBaseCommand):
         effective_context_date = context_date if view.dates_relative_to_daily else None
 
         try:
-            compiled = query_engine.compile(
-                view.filter,
-                user=user,
-                sort=view.sort,
+            # Collapsed embeds only need the header count — count without
+            # serializing rows so a daily page full of collapsed embeds
+            # stays cheap, with the same truncation badge as the full path.
+            if count_only:
+                count, truncated = count_view(
+                    user,
+                    view,
+                    limit=limit,
+                    context_date=effective_context_date,
+                )
+                return {
+                    "view": view.to_dict(),
+                    "count": count,
+                    "results": [],
+                    "truncated": truncated,
+                }
+
+            rows, truncated = run_view(
+                user,
+                view,
+                limit=limit,
                 context_date=effective_context_date,
             )
         except query_engine.QueryEngineError as exc:
             raise ValidationError(str(exc)) from exc
-
-        # Collapsed embeds only need the header count — count limit+1
-        # without serializing the rows so the count + truncation badge
-        # match the full path, but a daily page full of collapsed embeds
-        # stays cheap.
-        if count_only:
-            matched = BlockRepository.count_compiled_query(
-                user, compiled, limit=limit + 1
-            )
-            truncated = matched > limit
-            return {
-                "view": view.to_dict(),
-                "count": min(matched, limit),
-                "results": [],
-                "truncated": truncated,
-            }
-
-        # Fetch limit+1 so we can flag when there are more results than fit.
-        rows = list(BlockRepository.run_compiled_query(user, compiled, limit=limit + 1))
-        truncated = len(rows) > limit
-        if truncated:
-            rows = rows[:limit]
 
         return {
             "view": view.to_dict(),

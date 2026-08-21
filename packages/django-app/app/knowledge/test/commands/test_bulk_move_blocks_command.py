@@ -103,6 +103,48 @@ class TestBulkMoveBlocksCommand(TestCase):
         self.assertIsNone(parent.parent)
         self.assertEqual(child.parent, parent)
 
+    def test_should_preserve_hierarchy_when_middle_block_is_not_selected(self):
+        # Transitive ride-along: grandparent + grandchild selected, middle
+        # NOT selected. The grandchild is still a descendant of a selected
+        # block, so it must ride along — moving it explicitly would detach
+        # it from the middle block.
+        target_date = date(2026, 4, 29)
+        source = PageFactory(user=self.user, title="Notes", slug="notes-move-6")
+        grandparent = BlockFactory(
+            user=self.user, page=source, content="grandparent", order=1
+        )
+        middle = BlockFactory(
+            user=self.user, page=source, parent=grandparent, content="middle", order=2
+        )
+        grandchild = BlockFactory(
+            user=self.user, page=source, parent=middle, content="grandchild", order=3
+        )
+
+        form = BulkMoveBlocksForm(
+            {
+                "user": self.user.id,
+                "blocks": [str(grandparent.uuid), str(grandchild.uuid)],
+                "target_date": target_date,
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+        result = BulkMoveBlocksCommand(form).execute()
+
+        self.assertEqual(result["moved_count"], 1)
+        grandparent.refresh_from_db()
+        middle.refresh_from_db()
+        grandchild.refresh_from_db()
+        target_page = Page.objects.get(
+            user=self.user, page_type="daily", date=target_date
+        )
+        self.assertEqual(grandparent.page, target_page)
+        self.assertEqual(middle.page, target_page)
+        self.assertEqual(grandchild.page, target_page)
+        self.assertIsNone(grandparent.parent)
+        self.assertEqual(middle.parent, grandparent)
+        self.assertEqual(grandchild.parent, middle)
+
     def test_should_silently_skip_blocks_that_belong_to_another_user(self):
         target_date = date(2026, 4, 29)
         source = PageFactory(user=self.user, title="Notes", slug="notes-move-4")

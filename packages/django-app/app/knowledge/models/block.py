@@ -286,6 +286,14 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             }
         return None
 
+    def first_content_line(self) -> str:
+        """First non-empty-safe line of content, or "" for content-less
+        blocks. Shared by surfaces that need a title-ish string (reminder
+        embeds, automation names) so the empty/whitespace-only edge case
+        is handled once."""
+        lines = (self.content or "").strip().splitlines()
+        return lines[0] if lines else ""
+
     def get_tags(self):
         """Get all pages this block is tagged with (excludes the page it belongs to and daily notes)"""
         return self.pages.exclude(uuid=self.page.uuid).exclude(page_type="daily")

@@ -38,6 +38,7 @@ from .get_streaks_command import GetStreaksCommand
 from .get_tag_content_command import GetTagContentCommand
 from .get_tag_graph_command import GetTagGraphCommand
 from .get_user_pages_command import GetUserPagesCommand
+from .list_automations_command import ListAutomationsCommand
 from .list_overdue_blocks_command import ListOverdueBlocksCommand
 from .list_pending_reminders_command import ListPendingRemindersCommand
 from .list_saved_views_command import ListSavedViewsCommand
@@ -50,6 +51,8 @@ from .preview_saved_view_command import PreviewSavedViewCommand
 from .reorder_blocks_command import ReorderBlocksCommand
 from .reorder_favorited_pages_command import ReorderFavoritedPagesCommand
 from .reorder_page_embedded_views_command import ReorderPageEmbeddedViewsCommand
+from .run_automation_command import RunAutomationCommand
+from .run_due_automations_command import RunDueAutomationsCommand
 from .run_saved_view_command import RunSavedViewCommand
 from .schedule_block_command import ScheduleBlockCommand
 from .search_notes_command import SearchNotesCommand

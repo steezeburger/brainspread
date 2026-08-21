@@ -2125,6 +2125,14 @@ kbd {
    * at the same z-index would render behind it - bump to 1200. */
   z-index: 1200;
   min-width: 200px;
+  /* The menu has outgrown short viewports — the open handler clamps its
+   * top edge, but a menu taller than the window still ran off the
+   * bottom. Cap it and scroll internally; focused items scroll into
+   * view, so keyboard nav is unaffected. dvh line wins where supported
+   * (mobile browser chrome shrinks vh). */
+  max-height: calc(100vh - 16px);
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
 }
 
 .context-menu-item {

@@ -1,4 +1,4 @@
-from typing import List, TypedDict
+from typing import List, Set, TypedDict
 
 from django.db import transaction
 
@@ -15,11 +15,13 @@ from .move_block_to_daily_command import MoveBlockToDailyCommand
 class BulkMoveBlocksCommand(AbstractBaseCommand):
     """Move a list of blocks to a daily note as siblings.
 
-    Per-block hierarchy within the selection is preserved: blocks whose
-    parent is also in the selection are not promoted - they ride along with
-    the ancestor that ``MoveBlockToDailyCommand`` already drags through via
-    ``get_block_descendants``. Top-level blocks (whose parent is not in the
-    selection) are moved individually in document order so their relative
+    Per-block hierarchy within the selection is preserved: blocks that are
+    descendants of another selected block are not promoted - they ride
+    along with the ancestor that ``MoveBlockToDailyCommand`` already drags
+    through via ``get_block_descendants``. The check is transitive (a
+    selected grandchild rides along even when the middle block isn't
+    selected) — moving it again would detach it from its parent. Top
+    blocks are moved individually in document order so their relative
     order on the target page matches the source.
     """
 
@@ -39,16 +41,21 @@ class BulkMoveBlocksCommand(AbstractBaseCommand):
         blocks_by_uuid = {str(b.uuid): b for b in blocks_qs}
         selected_uuids = set(blocks_by_uuid.keys())
 
-        # Find blocks whose parent isn't in the selection — those are the
-        # "top" of the selected forest and the only ones we need to move
-        # explicitly (their descendants follow). Order them in document
-        # order: first by page, then by tree position, so siblings on the
-        # same page stay adjacent and in their original sequence on the
-        # target.
+        # Find the "top" of the selected forest — the only blocks we need
+        # to move explicitly (their descendants follow). A selected block
+        # that is a descendant of ANY other selected block rides along;
+        # the containment check must be transitive, not parent-only, or a
+        # selected grandchild under an unselected middle block gets moved
+        # twice and detached. Order tops in document order: first by page,
+        # then by tree position, so siblings on the same page stay
+        # adjacent and in their original sequence on the target.
+        descendant_pks: Set[int] = set()
+        for block in blocks_by_uuid.values():
+            descendant_pks.update(
+                d.pk for d in BlockRepository.get_block_descendants(block)
+            )
         top_blocks = [
-            block
-            for uuid_str, block in blocks_by_uuid.items()
-            if not (block.parent and str(block.parent.uuid) in selected_uuids)
+            block for block in blocks_by_uuid.values() if block.pk not in descendant_pks
         ]
         top_blocks.sort(key=lambda b: (b.page_id, b.order, str(b.uuid)))
 

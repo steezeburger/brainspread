@@ -31,7 +31,9 @@ from knowledge.commands import (
     CreateBlockCommand,
     CreatePageCommand,
     GetPageWithBlocksCommand,
+    ListAutomationsCommand,
     ReorderBlocksCommand,
+    RunAutomationCommand,
     ScheduleBlockCommand,
     SearchNotesCommand,
     ToggleBlockTodoCommand,
@@ -53,9 +55,11 @@ from knowledge.forms import (
     ScheduleBlockForm,
     ToggleBlockTodoForm,
 )
+from knowledge.forms.list_automations_form import ListAutomationsForm
 from knowledge.forms.list_overdue_blocks_form import ListOverdueBlocksForm
 from knowledge.forms.list_scheduled_blocks_form import ListScheduledBlocksForm
 from knowledge.forms.move_block_to_daily_form import MoveBlockToDailyForm
+from knowledge.forms.run_automation_form import RunAutomationForm
 from knowledge.forms.search_notes_form import SearchNotesForm
 from knowledge.forms.search_pages_form import SearchPagesForm
 from knowledge.forms.set_block_completed_at_form import SetBlockCompletedAtForm
@@ -477,6 +481,25 @@ def _untag_block(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _list_automations(ctx: ToolContext, _args: dict[str, Any]) -> dict[str, Any]:
+    form = ListAutomationsForm({"user": ctx.user.id})
+    if not form.is_valid():
+        raise ToolError(_form_errors_to_str(form))
+    return {"automations": ListAutomationsCommand(form).execute()}
+
+
+def _run_automation(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    data: dict[str, Any] = {"user": ctx.user.id, "trigger": "manual"}
+    if args.get("automation_uuid"):
+        data["automation_block"] = str(args["automation_uuid"]).strip()
+    if args.get("automation_slug"):
+        data["automation_slug"] = str(args["automation_slug"]).strip()
+    form = RunAutomationForm(data)
+    if not form.is_valid():
+        raise ToolError(_form_errors_to_str(form))
+    return RunAutomationCommand(form).execute()
+
+
 # --- registry ----------------------------------------------------------
 
 REGISTRY = ToolRegistry(
@@ -892,6 +915,37 @@ REGISTRY = ToolRegistry(
                 "required": ["block_uuid", "tags"],
             },
             handler=_untag_block,
+        ),
+        Tool(
+            name="list_automations",
+            description=(
+                "List the user's Automations (#automation definition"
+                " blocks): name, slug, trigger, action, enabled flag,"
+                " last-run outcome, and any parse error. Use before"
+                " run_automation to find the right slug."
+            ),
+            input_schema={"type": "object", "properties": {}, "required": []},
+            handler=_list_automations,
+        ),
+        Tool(
+            name="run_automation",
+            description=(
+                "Run one of the user's Automations now (manual trigger)."
+                " Pass automation_slug (from list_automations) or"
+                " automation_uuid. The automation's own allow:: list"
+                " gates what its action may do; the run outcome is"
+                " recorded and returned."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "automation_slug": {"type": "string"},
+                    "automation_uuid": {"type": "string"},
+                },
+                "required": [],
+            },
+            handler=_run_automation,
+            is_write=True,
         ),
     ]
 )

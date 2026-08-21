@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.test import TestCase
 from django.utils import timezone
@@ -132,11 +132,14 @@ class ConsumeReminderActionCommandTests(TestCase):
         # Day-level snooze is a calendar statement, not an alarm-clock
         # offset: it re-fires at the reminder's own time-of-day tomorrow,
         # not at click-time + 24h.
-        fire_at = timezone.now().replace(microsecond=0) - timedelta(minutes=5)
+        # Derive fire_at FROM the pinned now — two separate timezone.now()
+        # calls can straddle midnight (CI hit this at 23:59 UTC), and then
+        # "tomorrow relative to now" and "fire_at + 1 day" disagree by a day.
+        pinned = timezone.now()
+        fire_at = pinned.replace(microsecond=0) - timedelta(minutes=5)
         self.reminder.fire_at = fire_at
         self.reminder.save(update_fields=["fire_at"])
         action = self._make_action(ReminderAction.ACTION_SNOOZE_1D)
-        pinned = timezone.now()
 
         result = self._run(action.token, now=pinned)
 
@@ -146,9 +149,14 @@ class ConsumeReminderActionCommandTests(TestCase):
         self.reminder.refresh_from_db()
         self.assertEqual(self.reminder.status, Reminder.STATUS_PENDING)
         self.assertIsNone(self.reminder.sent_at)
-        # Default test user tz is UTC, so "same local time tomorrow" is
-        # exactly original fire_at + 1 day.
-        self.assertEqual(self.reminder.fire_at, fire_at + timedelta(days=1))
+        # The command's contract (default test user tz is UTC): fire at the
+        # reminder's own time-of-day on the day after max(fire_at's date,
+        # now's date). Asserting that shape — rather than fire_at + 1 day —
+        # keeps the test correct when the wall clock crosses midnight
+        # between setup and execution (CI hit this at 23:59 UTC).
+        expected_date = max(fire_at.date(), pinned.date()) + timedelta(days=1)
+        expected = datetime.combine(expected_date, fire_at.timetz())
+        self.assertEqual(self.reminder.fire_at, expected)
 
     def test_snooze_1d_clicked_days_late_lands_tomorrow(self) -> None:
         # A link clicked long after the reminder fired still snoozes to

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Block, Page, Reminder, ReminderAction
+from .models import AutomationRun, Block, Page, Reminder, ReminderAction
 
 
 @admin.register(Page)
@@ -177,3 +177,52 @@ class ReminderActionAdmin(admin.ModelAdmin):
     readonly_fields = ("id", "uuid", "token", "created_at", "modified_at")
     raw_id_fields = ("reminder",)
     ordering = ("-created_at",)
+
+
+@admin.register(AutomationRun)
+class AutomationRunAdmin(admin.ModelAdmin):
+    """Read-only ledger view — runs are written by the automation engine,
+    never by hand. The soft automation_block_uuid reference is searchable
+    so a definition block's full history is one paste away."""
+
+    list_display = (
+        "short_uuid",
+        "automation_block_uuid",
+        "user",
+        "trigger",
+        "status",
+        "started_at",
+        "finished_at",
+        "short_error",
+    )
+    list_filter = ("status", "trigger", "created_at")
+    search_fields = ("automation_block_uuid", "user__email", "last_error")
+    readonly_fields = (
+        "id",
+        "uuid",
+        "user",
+        "automation_block_uuid",
+        "trigger",
+        "status",
+        "started_at",
+        "finished_at",
+        "last_error",
+        "result",
+        "trigger_context",
+        "created_at",
+        "modified_at",
+    )
+    ordering = ("-created_at",)
+    date_hierarchy = "created_at"
+
+    @admin.display(description="error")
+    def short_error(self, obj: AutomationRun) -> str:
+        return (
+            (obj.last_error[:80] + "…") if len(obj.last_error) > 80 else obj.last_error
+        )
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False

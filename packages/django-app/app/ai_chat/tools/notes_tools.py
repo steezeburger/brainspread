@@ -555,6 +555,20 @@ _READ_SCHEMAS: List[Dict[str, Any]] = [
             "required": [],
         },
     },
+    {
+        "name": "list_automations",
+        "description": (
+            "List the user's Automations (#automation definition blocks):"
+            " name, slug, trigger, action, enabled flag, last-run outcome,"
+            " and any parse error. Use before run_automation to find the"
+            " right slug, or to help the user debug a broken definition."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
 ]
 
 
@@ -1357,6 +1371,25 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
             "type": "object",
             "properties": {"embed_uuid": {"type": "string"}},
             "required": ["embed_uuid"],
+        },
+    },
+    {
+        "name": "run_automation",
+        "description": (
+            "Run one of the user's Automations now (manual trigger)."
+            " Pass automation_slug (from list_automations) or"
+            " automation_uuid. The automation's own allow:: list still"
+            " gates what its action may do; the run's outcome is"
+            " recorded and returned. Every call pauses for explicit"
+            " user approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "automation_slug": {"type": "string"},
+                "automation_uuid": {"type": "string"},
+            },
+            "required": [],
         },
     },
 ]

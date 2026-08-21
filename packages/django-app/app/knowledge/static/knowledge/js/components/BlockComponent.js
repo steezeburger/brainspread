@@ -83,6 +83,10 @@ const BlockComponent = {
       type: Function,
       default: () => () => {},
     },
+    runAutomation: {
+      type: Function,
+      default: () => () => {},
+    },
     openMovePagePicker: {
       type: Function,
       default: () => () => {},
@@ -213,6 +217,9 @@ const BlockComponent = {
     };
   },
   computed: {
+    isAutomationBlock() {
+      return (this.block.tags || []).some((t) => t.name === "automation");
+    },
     blockInContext() {
       return this.isBlockInContext(this.block.uuid);
     },
@@ -1474,6 +1481,9 @@ const BlockComponent = {
         case "moveToToday":
           this.moveBlockToToday(this.block);
           break;
+        case "runAutomation":
+          this.runAutomation(this.block);
+          break;
         case "moveToPage":
           this.openMovePagePicker(this.block);
           break;
@@ -2053,6 +2063,10 @@ const BlockComponent = {
       
       <!-- Context Menu -->
       <div v-if="showContextMenu" class="block-context-menu" :style="{ left: contextMenuPosition.x + 'px', top: contextMenuPosition.y + 'px' }" @click.stop @keydown="handleContextMenuKeydown" role="menu">
+        <button class="context-menu-item" role="menuitem" tabindex="-1" v-if="isAutomationBlock" @click="handleContextMenuAction('runAutomation')">
+          <span class="context-menu-icon">▸</span>
+          <span>run automation</span>
+        </button>
         <button class="context-menu-item" role="menuitem" tabindex="-1" v-if="hasChildren && isCollapsed" @click="handleContextMenuAction('expand')">
           <span class="context-menu-icon">▶</span>
           <span>expand</span>
@@ -2193,6 +2207,7 @@ const BlockComponent = {
           :moveBlockUp="moveBlockUp"
           :moveBlockDown="moveBlockDown"
           :moveBlockToToday="moveBlockToToday"
+                :runAutomation="runAutomation"
           :openMovePagePicker="openMovePagePicker"
           :openMoveUnderPicker="openMoveUnderPicker"
           :moveDraggable="moveDraggable"

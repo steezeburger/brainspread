@@ -84,6 +84,7 @@ jobs:
             COMPOSE_PROJECT_NAME=${PROJECT}
             COMPOSE_FILE=docker-compose.yml:docker-compose.staging.yml
             REMINDERS_ENABLED=true
+            AUTOMATIONS_ENABLED=true
             ENVIRONMENT=staging
             SITE_URL=http://${DO_STAGING_HOST}:${PORT}
             STAGING_DISCORD_WEBHOOK_URL=${STAGING_DISCORD_WEBHOOK_URL}
@@ -97,6 +98,12 @@ jobs:
             # compose override (so resource caps actually apply on redeploy).
             if ! grep -q '^COMPOSE_FILE=' .env; then
               echo 'COMPOSE_FILE=docker-compose.yml:docker-compose.staging.yml' >> .env
+            fi
+
+            # Backfill AUTOMATIONS_ENABLED for staging envs whose .env was
+            # generated before the automations scheduler existed (issue #143).
+            if ! grep -q '^AUTOMATIONS_ENABLED=' .env; then
+              echo 'AUTOMATIONS_ENABLED=true' >> .env
             fi
 
             docker volume create --name="${VOLUME}" 2>/dev/null || true

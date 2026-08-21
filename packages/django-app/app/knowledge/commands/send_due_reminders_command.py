@@ -9,6 +9,7 @@ from django.utils import timezone
 from common.commands.abstract_base_command import AbstractBaseCommand
 from knowledge.forms.send_due_reminders_form import SendDueRemindersForm
 from knowledge.models import Reminder, ReminderAction
+from knowledge.services.block_links import block_page_url
 from knowledge.services.discord_webhook import post_webhook
 from knowledge.services.reminder_actions import (
     build_action_url,
@@ -257,7 +258,7 @@ def _build_payload(
         on <page title>               ← footer, page context
         <relative time>               ← timestamp, rendered by Discord
     """
-    title = (block.content or "").strip().splitlines()[0] if block.content else ""
+    title = block.first_content_line()
     if len(title) > 240:
         title = title[:237] + "..."
     if not title:
@@ -376,17 +377,7 @@ def _action_links_line(action_urls: Dict[str, str]) -> str:
 
 
 def _page_link(block, site_url: str) -> str:
-    """Build an absolute URL to the page that contains the block.
-
-    Includes a `#block-<uuid>` fragment so the editor can scroll
-    straight to the originating block on load — see
-    `scrollToHashBlock` in Page.js. Skips when SITE_URL isn't a
-    real http(s) URL (the default placeholder is just "0.0.0.0",
-    which would produce broken links).
-    """
-    if not site_url or not site_url.startswith(("http://", "https://")):
-        return ""
-    if not block.page_id or not block.page.slug:
-        return ""
-    base = site_url.rstrip("/")
-    return f"{base}/knowledge/page/{block.page.slug}/#block-{block.uuid}"
+    """Absolute URL to the block's page — shared logic lives in
+    services.block_links so the automations notify action builds
+    identical deep links."""
+    return block_page_url(block, site_url)

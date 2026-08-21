@@ -1424,6 +1424,67 @@ const Page = {
       }
     },
 
+    async runAutomation(block) {
+      // enabled:: false pauses the schedule, not the user — but a manual
+      // run of a paused automation deserves a beat of confirmation.
+      const enabledProp = block.properties?.enabled;
+      const isDisabled =
+        enabledProp === false ||
+        (typeof enabledProp === "string" &&
+          ["false", "no", "0", "off"].includes(
+            enabledProp.trim().toLowerCase()
+          ));
+      if (isDisabled) {
+        const confirmed = await window.appModals.confirm({
+          title: "run disabled automation?",
+          message:
+            "this automation is disabled (enabled:: false) and won't run on its own — run it once now?",
+          confirmLabel: "run",
+        });
+        if (!confirmed) return;
+      }
+      try {
+        // Save in-progress edits first so the run sees the latest spec.
+        if (block.isEditing) {
+          await this.updateBlock(block, block.content, true);
+        }
+
+        const result = await window.apiService.runAutomation(block.uuid);
+        if (!result.success) {
+          const errs = result.errors || {};
+          const first = Object.values(errs).flat()[0] || "run failed";
+          throw new Error(first);
+        }
+
+        const run = result.data || {};
+        if (run.status === "succeeded") {
+          const affected = run.result?.affected ?? 0;
+          this.$parent?.addToast?.(
+            `automation ran — ${affected} block${affected === 1 ? "" : "s"} affected`,
+            "success"
+          );
+        } else if (run.status === "skipped") {
+          this.$parent?.addToast?.("automation is disabled", "info");
+        } else {
+          this.$parent?.addToast?.(
+            `automation failed: ${run.last_error || "unknown error"}`,
+            "error"
+          );
+        }
+
+        // The action may have moved / retyped blocks anywhere on this
+        // page — refetch rather than guessing what changed.
+        this.broadcastBlockChanged(block.uuid);
+        await this.loadPage({ silent: true });
+      } catch (error) {
+        console.error("run automation failed", error);
+        this.$parent?.addToast?.(
+          `run automation failed: ${error.message}`,
+          "error"
+        );
+      }
+    },
+
     async moveBlockToToday(block) {
       try {
         // Save in-progress edits before moving
@@ -2234,10 +2295,13 @@ const Page = {
         '<span class="markdown-italic">$1</span>'
       );
 
-      // Replace italic markdown _text_ with styled spans (single underscores)
+      // Replace italic markdown _text_ with styled spans (single
+      // underscores). Word-boundary guarded, per CommonMark: intra-word
+      // underscores are literal, so snake_case tokens like move_to_daily
+      // don't sprout italics mid-word.
       formatted = formatted.replace(
-        /_([^_]+?)_/g,
-        '<span class="markdown-italic">$1</span>'
+        /(^|[^\w])_([^_\s][^_]*?)_(?!\w)/g,
+        '$1<span class="markdown-italic">$2</span>'
       );
 
       // Replace strikethrough markdown ~~text~~ with styled spans
@@ -4882,6 +4946,7 @@ const Page = {
                 :moveBlockUp="moveBlockUp"
                 :moveBlockDown="moveBlockDown"
                 :moveBlockToToday="moveBlockToToday"
+                :runAutomation="runAutomation"
                 :openMovePagePicker="openMovePagePicker"
                 :openMoveUnderPicker="openMoveUnderPicker"
                 :moveDraggable="true"
@@ -4945,6 +5010,7 @@ const Page = {
                 :moveBlockUp="moveBlockUp"
                 :moveBlockDown="moveBlockDown"
                 :moveBlockToToday="moveBlockToToday"
+                :runAutomation="runAutomation"
                 :openMovePagePicker="openMovePagePicker"
                 :openMoveUnderPicker="openMoveUnderPicker"
                 :openBlockInfoModal="openBlockInfoModal"

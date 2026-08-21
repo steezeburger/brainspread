@@ -50,6 +50,11 @@ urlpatterns = [
         name="move_undone_todos",
     ),
     path(
+        "api/automations/run/",
+        views.run_automation,
+        name="run_automation",
+    ),
+    path(
         "api/blocks/move-to-daily/",
         views.move_block_to_daily,
         name="move_block_to_daily",

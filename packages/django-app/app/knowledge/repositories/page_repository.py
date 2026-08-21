@@ -274,3 +274,16 @@ class PageRepository(BaseRepository):
         return (
             cls.get_queryset().filter(user=user, page_type="template").order_by("title")
         )
+
+    @classmethod
+    def get_template_by_title(cls, user, title: str) -> Optional[Page]:
+        """The user's template page matching this reference — title first,
+        slug fallback, both case-insensitive (mirrors get_by_title_or_slug,
+        scoped to templates). Used by the automations `apply_template`
+        action, so `"daily log"` and `"daily-log"` both resolve."""
+        ref = title.strip()
+        templates = cls.get_queryset().filter(user=user, page_type="template")
+        return (
+            templates.filter(title__iexact=ref).first()
+            or templates.filter(slug__iexact=ref).first()
+        )

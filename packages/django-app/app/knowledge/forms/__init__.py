@@ -50,6 +50,7 @@ from .preview_saved_view_form import PreviewSavedViewForm
 from .reorder_blocks_form import ReorderBlocksForm
 from .reorder_favorited_pages_form import ReorderFavoritedPagesForm
 from .reorder_page_embedded_views_form import ReorderPageEmbeddedViewsForm
+from .run_automation_form import RunAutomationForm
 from .run_saved_view_form import RunSavedViewForm
 from .schedule_block_form import ScheduleBlockForm
 from .search_notes_form import SearchNotesForm
