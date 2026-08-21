@@ -850,3 +850,127 @@ class TestSmallVerbActions(TestCase):
         target.refresh_from_db()
         self.assertEqual(target.block_type, "todo")
         self.assertEqual(target.properties.get("priority"), "high")
+
+
+class TestDueRemindClauses(TestCase):
+    """`due` / `remind` clauses on create_block and the extended
+    `set_due <date> [HH:MM] [remind HH:MM]` grammar — the street-sweeping
+    use case: a third-Wednesday cron creates a timed todo with a
+    morning reminder."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+
+    def _automation(self, **props):
+        page = PageFactory(
+            user=self.user,
+            title="Automations",
+            slug=f"automations-{uuid_lib.uuid4().hex[:8]}",
+        )
+        return BlockFactory(
+            user=self.user,
+            page=page,
+            content="My automation #automation",
+            properties=props,
+        )
+
+    def _run(self, automation_block, trigger="manual"):
+        form = RunAutomationForm(
+            {
+                "user": self.user,
+                "automation_block": automation_block.uuid,
+                "trigger": trigger,
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return RunAutomationCommand(form).execute()
+
+    def test_create_block_with_due_time_and_reminder_on_daily(self):
+        automation = self._automation(
+            trigger="manual",
+            action='create_block "move car for street sweeping" on today '
+            "as todo due 7:30 remind 7:30",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        created = Block.objects.get(
+            user=self.user, content="move car for street sweeping"
+        )
+        self.assertEqual(created.block_type, "todo")
+        self.assertEqual(created.page.page_type, "daily")
+        self.assertIsNotNone(created.due_at)
+        self.assertTrue(created.due_at_has_time)
+        self.assertIsNotNone(created.get_pending_reminder())
+
+    def test_create_block_due_date_only_is_all_day(self):
+        PageFactory(user=self.user, title="Inbox", slug="inbox")
+        automation = self._automation(
+            trigger="manual",
+            action='create_block "review" on Inbox due tomorrow',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        created = Block.objects.get(user=self.user, content="review")
+        self.assertIsNotNone(created.due_at)
+        self.assertFalse(created.due_at_has_time)
+
+    def test_bare_due_time_requires_date_target(self):
+        PageFactory(user=self.user, title="Inbox", slug="inbox")
+        automation = self._automation(
+            trigger="manual",
+            action='create_block "x" on Inbox due 7:30',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("needs a date", result["last_error"])
+
+    def test_remind_requires_due_clause(self):
+        automation = self._automation(
+            trigger="manual",
+            action='create_block "x" on today remind 7:30',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("requires a `due` clause", result["last_error"])
+
+    def test_set_due_with_time_and_reminder(self):
+        page = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        target = BlockFactory(
+            user=self.user, page=page, block_type="todo", content="call bank"
+        )
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action="set_due tomorrow 14:00 remind 13:30",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        target.refresh_from_db()
+        self.assertIsNotNone(target.due_at)
+        self.assertTrue(target.due_at_has_time)
+        self.assertIsNotNone(target.get_pending_reminder())
+
+    def test_set_due_rejects_garbage_tail(self):
+        page = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        BlockFactory(user=self.user, page=page, block_type="todo", content="x")
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action="set_due tomorrow banana",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("set_due <date>", result["last_error"])

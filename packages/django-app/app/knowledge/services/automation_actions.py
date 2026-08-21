@@ -44,6 +44,7 @@ from ..commands.bulk_move_blocks_to_page_command import BulkMoveBlocksToPageComm
 from ..commands.bulk_schedule_command import BulkScheduleCommand
 from ..commands.bulk_set_block_type_command import BulkSetBlockTypeCommand
 from ..commands.create_block_command import CreateBlockCommand
+from ..commands.schedule_block_command import ScheduleBlockCommand
 from ..commands.set_block_type_command import STATE_PREFIXES
 from ..commands.tag_blocks_command import UntagBlocksCommand
 from ..commands.update_block_command import UpdateBlockCommand
@@ -54,6 +55,7 @@ from ..forms.bulk_move_blocks_to_page_form import BulkMoveBlocksToPageForm
 from ..forms.bulk_schedule_form import BulkScheduleForm
 from ..forms.bulk_set_block_type_form import BulkSetBlockTypeForm
 from ..forms.create_block_form import CreateBlockForm
+from ..forms.schedule_block_form import ScheduleBlockForm
 from ..forms.tag_blocks_form import UntagBlocksForm
 from ..forms.update_block_form import UpdateBlockForm
 from ..models import Block
@@ -498,9 +500,13 @@ def _untag(
 def _set_due(
     ctx: ActionContext, blocks: List[Block], args: Tuple[str, ...]
 ) -> ActionResult:
-    """Set (or clear) the due date on every matched block. `set_due none`
-    clears due_at and any pending reminders; any date token sets an
-    all-day due date."""
+    """Set (or clear) the due date on every matched block.
+
+    Grammar: `set_due <date> [HH:MM] [remind HH:MM]` | `set_due none`.
+    A bare date is all-day; a time sets due_at_has_time; `remind`
+    replaces each block's pending reminders with one at that user-local
+    time on the due date. `none`/`clear` drops due_at and pending
+    reminders."""
     if not args:
         raise ActionError(
             "`set_due` needs a date token or `none`, e.g. `set_due tomorrow`"
@@ -508,6 +514,8 @@ def _set_due(
     token = args[0].strip().lower()
 
     if token in {"none", "clear"}:
+        if len(args) > 1:
+            raise ActionError("`set_due none` takes no further arguments")
         clear_form = BulkClearScheduleForm(
             data={
                 "user": ctx.user.id,
@@ -527,13 +535,34 @@ def _set_due(
     except ValueError as exc:
         raise ActionError(str(exc)) from exc
 
-    form = BulkScheduleForm(
-        data={
-            "user": ctx.user.id,
-            "block_uuids": [str(block.uuid) for block in blocks],
-            "new_date": target.isoformat() if target else "",
-        }
-    )
+    rest = [a.strip() for a in args[1:]]
+    due_time: Optional[str] = None
+    remind_time: Optional[str] = None
+    if rest and _CLAUSE_TIME_RE.match(rest[0]):
+        due_time = rest.pop(0)
+    if rest:
+        if (
+            len(rest) == 2
+            and rest[0].lower() == "remind"
+            and _CLAUSE_TIME_RE.match(rest[1])
+        ):
+            remind_time = rest[1]
+            rest = []
+        else:
+            raise ActionError(
+                "expected `set_due <date> [HH:MM] [remind HH:MM]` or `set_due none`"
+            )
+
+    data = {
+        "user": ctx.user.id,
+        "block_uuids": [str(block.uuid) for block in blocks],
+        "new_date": target.isoformat() if target else "",
+    }
+    if due_time is not None:
+        data["new_time"] = due_time
+    if remind_time is not None:
+        data["reminder_time"] = remind_time
+    form = BulkScheduleForm(data=data)
     if not form.is_valid():
         raise ActionError(form.errors.as_json())
     outcome = BulkScheduleCommand(form).execute()
@@ -543,6 +572,8 @@ def _set_due(
             {
                 "updated_count": outcome["updated_count"],
                 "new_date": outcome["new_date"],
+                "new_time": due_time,
+                "remind_time": remind_time,
             }
         ],
     )
@@ -605,12 +636,17 @@ def _set_property(
 
 # Clause keywords for the create_block grammar. Everything after the
 # content arg is sectioned by these; each collects tokens until the next.
-_CREATE_BLOCK_KEYWORDS = ("on", "as", "tagged", "with")
+_CREATE_BLOCK_KEYWORDS = ("on", "as", "tagged", "with", "due", "remind")
 
 _CREATE_BLOCK_USAGE = (
     'expected `create_block "<content>" on <date|page> [as <type>] '
-    "[tagged <slug> …] [with key=value …]`"
+    "[tagged <slug> …] [with key=value …] [due <date|HH:MM|date HH:MM>] "
+    "[remind HH:MM]`"
 )
+
+# User-local wall-clock time for the due/remind clauses (24h, minutes
+# required) — same shape the schedule cadences accept.
+_CLAUSE_TIME_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 
 
 def _create_block(
@@ -706,6 +742,46 @@ def _create_block(
     except ValueError:
         target_date = None
 
+    due_date = None
+    due_time: Optional[str] = None
+    if "due" in sections:
+        due_tokens = sections["due"]
+        if not due_tokens or len(due_tokens) > 2:
+            raise ActionError(
+                "`due` expects `due <date>`, `due <HH:MM>`, or `due <date> <HH:MM>`"
+            )
+        if len(due_tokens) == 1 and _CLAUSE_TIME_RE.match(due_tokens[0]):
+            # Bare time: the date comes from the explicit `on <date>` target.
+            if target_date is None:
+                raise ActionError(
+                    "`due <HH:MM>` needs a date when the target is a page — "
+                    "use `due <date> <HH:MM>`"
+                )
+            due_date, due_time = target_date, due_tokens[0]
+        else:
+            try:
+                due_date = parse_relative_date(due_tokens[0], ctx.user.today())
+            except ValueError as exc:
+                raise ActionError(str(exc)) from exc
+            if len(due_tokens) == 2:
+                if not _CLAUSE_TIME_RE.match(due_tokens[1]):
+                    raise ActionError(
+                        f"bad time `{due_tokens[1]}` in `due` clause (expected HH:MM)"
+                    )
+                due_time = due_tokens[1]
+
+    remind_time: Optional[str] = None
+    if "remind" in sections:
+        remind_tokens = sections["remind"]
+        if len(remind_tokens) != 1 or not _CLAUSE_TIME_RE.match(remind_tokens[0]):
+            raise ActionError("`remind` expects one HH:MM time, e.g. `remind 7:30`")
+        if due_date is None:
+            raise ActionError(
+                "`remind` requires a `due` clause — the reminder anchors to "
+                "the due date"
+            )
+        remind_time = remind_tokens[0]
+
     if target_date is not None:
         page, _ = PageRepository.get_or_create_daily_note(ctx.user, target_date)
     else:
@@ -731,6 +807,22 @@ def _create_block(
     if not form.is_valid():
         raise ActionError(form.errors.as_json())
     block = CreateBlockCommand(form).execute()
+
+    if due_date is not None:
+        schedule_data = {
+            "user": ctx.user.id,
+            "block": str(block.uuid),
+            "due_date": due_date.isoformat(),
+        }
+        if due_time is not None:
+            schedule_data["due_time"] = due_time
+        if remind_time is not None:
+            schedule_data["reminder_time"] = remind_time
+        schedule_form = ScheduleBlockForm(data=schedule_data)
+        if not schedule_form.is_valid():
+            raise ActionError(schedule_form.errors.as_json())
+        block = ScheduleBlockCommand(schedule_form).execute()
+
     return ActionResult(
         affected=1,
         details=[
@@ -740,6 +832,9 @@ def _create_block(
                 "block_type": block_type,
                 "tags": tag_slugs,
                 "properties": dict(props),
+                "due_date": due_date.isoformat() if due_date else None,
+                "due_time": due_time,
+                "remind_time": remind_time,
             }
         ],
     )
