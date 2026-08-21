@@ -2268,6 +2268,10 @@ kbd {
     justify-content: center;
   }
 
+  .daily-weekday {
+    font-size: 0.85rem;
+  }
+
   .child-block {
     margin-left: 1rem;
     padding-left: 0.5rem;
@@ -5664,6 +5668,19 @@ a.sidebar-item:visited {
 .daily-nav-btn:focus-visible {
   outline: 2px solid var(--border-primary);
   outline-offset: 2px;
+}
+
+/* Day of week for the current daily (issue #196). Plain secondary text
+   rather than a chip so it reads as an annotation on the date input
+   instead of competing with it, same reasoning as the bare-glyph
+   nav arrows above. */
+.daily-weekday {
+  margin-left: 0.15rem;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1;
+  white-space: nowrap;
+  user-select: none;
 }
 
 /* Spotlight Search Styles */
