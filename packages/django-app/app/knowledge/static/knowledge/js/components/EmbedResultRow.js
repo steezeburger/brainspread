@@ -305,6 +305,10 @@ window.EmbedResultRow = {
         title: "move block to page",
         placeholder: "search pages…",
         confirmLabel: "move",
+        // Tag pages first, same as the host page's picker. Embed rows
+        // whose payload has no tags just fall back to recents.
+        suggestedPages: window.suggestedPagesFromBlockTags([b]),
+        suggestedLabel: "tagged",
       });
       if (!target) return;
       try {

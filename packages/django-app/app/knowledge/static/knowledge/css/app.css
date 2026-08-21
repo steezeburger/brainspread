@@ -961,6 +961,20 @@ body {
   letter-spacing: 0.04em;
 }
 
+/* Badge on picker rows the caller pinned to the top (e.g. the pages a
+ * block is tagged with in the move-to-page flow). Reads louder than
+ * -result-type so the reordering is self-explaining. */
+.app-modal-picker-result-hint {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--tag-text);
+  background: var(--tag-bg);
+  padding: 1px 6px;
+  border-radius: 0;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
 .app-modal-picker-result-slug {
   font-size: 0.75rem;
   color: var(--text-muted);

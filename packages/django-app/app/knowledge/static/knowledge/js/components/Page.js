@@ -1652,6 +1652,11 @@ const Page = {
         title: "move block to page",
         placeholder: "search pages…",
         confirmLabel: "move",
+        // A block's tags are the strongest signal for where it belongs —
+        // "#recipes buy saffron" almost always wants the Recipes page —
+        // so offer them before the generic recents list (issue #195).
+        suggestedPages: window.suggestedPagesFromBlockTags([block]),
+        suggestedLabel: "tagged",
       });
       if (!targetPage || !block) return;
 
@@ -4515,10 +4520,17 @@ const Page = {
         return;
       }
 
+      const selected = new Set(uuids);
+      const blocks = this.getAllBlocks().filter((b) => selected.has(b.uuid));
       const targetPage = await window.appModals.pickPage({
         title: "move selected blocks to page",
         placeholder: "search pages…",
         confirmLabel: "move",
+        // Same tag-first ranking as the single-block move, pooled across
+        // the selection — a page tagged by several of the selected blocks
+        // outranks one tagged by a single block.
+        suggestedPages: window.suggestedPagesFromBlockTags(blocks),
+        suggestedLabel: "tagged",
       });
       if (!targetPage) return;
 
