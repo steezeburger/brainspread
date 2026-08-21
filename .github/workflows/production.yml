@@ -7,9 +7,43 @@ on:
     types: [completed]
 
 jobs:
+  check:
+    name: Check deploy labels
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      should_deploy: ${{ steps.labels.outputs.should_deploy }}
+    steps:
+      # workflow_run fires off the push to main, so the payload carries no PR
+      # context — look the merged PR up from its squash commit instead. A
+      # direct push to main has no associated PR and always deploys.
+      - name: Check merged PR for no-deploy label
+        id: labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          labels=$(gh api "repos/${REPO}/commits/${HEAD_SHA}/pulls" \
+            --jq '.[].labels[].name' || true)
+          echo "Labels on associated PRs: ${labels:-<none>}"
+
+          if grep -qx 'no-deploy' <<< "$labels"; then
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping production deploy - merged PR is labeled no-deploy"
+          else
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+
   deploy:
     name: Deploy to Production
-    if: github.event.workflow_run.conclusion == 'success'
+    needs: check
+    if: needs.check.outputs.should_deploy == 'true'
     runs-on: ubuntu-latest
     environment: ci
     steps:

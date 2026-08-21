@@ -3,7 +3,7 @@ name: Staging
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, closed]
+    types: [opened, synchronize, reopened, closed, labeled]
 
 # Serialize staging runs per PR. Without this, a runner backlog can
 # dequeue two deploys at once; both `git fetch` the same checkout on
@@ -17,7 +17,13 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to Staging
-    if: github.event.action != 'closed'
+    # Deploys run on PR pushes only. `labeled` is in the trigger list so the
+    # teardown label fires immediately; without pinning the action here, an
+    # unrelated label would kick off a redeploy.
+    if: >-
+      contains(fromJSON('["opened", "synchronize", "reopened"]'), github.event.action)
+      && !contains(github.event.pull_request.labels.*.name, 'no-staging')
+      && !contains(github.event.pull_request.labels.*.name, 'teardown-staging')
     runs-on: ubuntu-latest
     environment: ci
     steps:
@@ -140,7 +146,9 @@ jobs:
 
   teardown:
     name: Teardown Staging
-    if: github.event.action == 'closed'
+    if: >-
+      github.event.action == 'closed'
+      || (github.event.action == 'labeled' && github.event.label.name == 'teardown-staging')
     runs-on: ubuntu-latest
     environment: ci
     steps:
@@ -190,4 +198,4 @@ jobs:
             | | |
             |---|---|
             | **Branch** | `${{ github.head_ref }}` |
-            | **Status** | Torn down (PR closed) |
+            | **Status** | ${{ github.event.action == 'closed' && 'Torn down (PR closed)' || 'Torn down (`teardown-staging` label)' }} |
