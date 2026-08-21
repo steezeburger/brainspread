@@ -503,9 +503,15 @@ const Page = {
       this.currentDate = today;
       // The selection points at yesterday's blocks, and the bulk actions
       // send those uuids as-is — clear it rather than let a bulk delete
-      // reach blocks that are no longer on screen.
+      // reach blocks that are no longer on screen. Same for the
+      // restore-editing target handleWindowFocus reads.
       this.clearBlockSelection();
+      this.lastEditingBlockUuid = null;
       this.loadPage({ silent: true });
+      // The day changed without a navigation, so anything else showing
+      // "today" (the left nav's day glyph and recent-dailies list) has
+      // no other way to find out.
+      document.dispatchEvent(new CustomEvent("brainspread:day-rolled-over"));
     },
 
     monitorTick() {
@@ -519,6 +525,11 @@ const Page = {
           // to navigate, keeping ?monitor=1 (and any refresh override).
           if (this.isRootRoute()) {
             this.rollOverToToday();
+            // The embeds poll off this same tick; without their poke
+            // here they'd render yesterday's results for one interval.
+            document.dispatchEvent(
+              new CustomEvent("brainspread:refresh-embeds")
+            );
             return;
           }
           window.location.href = `/knowledge/page/${today}/${window.location.search}`;
@@ -3190,13 +3201,9 @@ const Page = {
             // The LeftNav templates list listens for this and refetches.
             document.dispatchEvent(new CustomEvent("templates:changed"));
           }
-          // Navigate to today's page after deletion
-          const today = new Date();
-          const year = today.getFullYear();
-          const month = String(today.getMonth() + 1).padStart(2, "0");
-          const day = String(today.getDate()).padStart(2, "0");
-          const todayString = `${year}-${month}-${day}`;
-          window.location.href = `/knowledge/page/${todayString}/`;
+          // Back to today's daily note. The root route resolves the
+          // date itself, so this doesn't re-pin the URL to a day.
+          window.location.href = "/knowledge/";
         } else {
           this.error = "failed to delete page";
         }

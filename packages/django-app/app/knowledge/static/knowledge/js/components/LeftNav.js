@@ -78,6 +78,13 @@ window.LeftNav = {
       // ignore localStorage failures
     }
     return {
+      // Current day-of-month, drawn inside the today nav icon so the
+      // glyph reads as "today" at a glance (instead of the generic
+      // planner block it used to be). Data rather than a computed: a
+      // computed over `new Date()` has no reactive dependency, so it
+      // would cache yesterday's number forever once the page rolls the
+      // day over in place (see brainspread:day-rolled-over below).
+      todayDayNumber: new Date().getDate(),
       historicalData: null,
       loading: false,
       error: null,
@@ -128,12 +135,6 @@ window.LeftNav = {
       // address" — stays date-free.
       return "/knowledge/";
     },
-    // Current day-of-month, drawn inside the today nav icon so the
-    // glyph reads as "today" at a glance (instead of the generic
-    // planner block it used to be).
-    todayDayNumber() {
-      return new Date().getDate();
-    },
   },
 
   mounted() {
@@ -146,6 +147,16 @@ window.LeftNav = {
     // current page so the Favorites list refreshes without a reload.
     this.handleFavoritesChanged = () => this.loadFavorites();
     document.addEventListener("favorites:changed", this.handleFavoritesChanged);
+    // The page swapped to a new daily note without a navigation, so the
+    // day glyph and the recent-dailies list are both a day behind.
+    this.handleDayRolledOver = () => {
+      this.todayDayNumber = new Date().getDate();
+      this.loadHistoricalData();
+    };
+    document.addEventListener(
+      "brainspread:day-rolled-over",
+      this.handleDayRolledOver
+    );
     // SavedViewsPage dispatches this when the user pins or unpins a
     // view so the pinned-views section refreshes without a reload.
     this.handlePinnedViewsChanged = () => this.loadPinnedViews();
@@ -180,6 +191,12 @@ window.LeftNav = {
       document.removeEventListener(
         "favorites:changed",
         this.handleFavoritesChanged
+      );
+    }
+    if (this.handleDayRolledOver) {
+      document.removeEventListener(
+        "brainspread:day-rolled-over",
+        this.handleDayRolledOver
       );
     }
     if (this.handlePinnedViewsChanged) {
