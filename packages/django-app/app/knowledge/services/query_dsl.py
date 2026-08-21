@@ -38,7 +38,8 @@ tokens (today / tomorrow / N days ago / ISO) — resolution happens at
 query compile time in the engine, not here. Date tokens compare at
 user-local day boundaries; ``now`` and ISO datetimes
 (``2026-08-21T14:30``) compare against the full due/completed datetime
-with no day rounding. ``now`` does NOT imply timed-blocks-only — all-day
+with no day rounding (``now`` is for ordering comparisons — the engine
+rejects ``due = now``). ``now`` does NOT imply timed-blocks-only — all-day
 dues sit at local midnight, so ``due <= now`` matches them from 00:00;
 add ``due_has_time:true`` explicitly when only blocks with a real time
 of day should match (``due_has_time:false`` also matches blocks with no
@@ -207,6 +208,11 @@ _COMPARISON_OPS = {"<": "lt", "<=": "lte", ">": "gt", ">=": "gte", "=": "eq"}
 def _date_field(field: str) -> str:
     mapped = _DATE_FIELDS.get(field)
     if mapped is None:
+        if field == "due_has_time":
+            raise QueryDSLError(
+                "`due_has_time` is a flag predicate — write "
+                "`due_has_time:true` or `due_has_time:false`"
+            )
         raise QueryDSLError(
             f"unknown field `{field}` (expected one of: "
             f"{', '.join(sorted(set(_DATE_FIELDS)))})"

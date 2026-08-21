@@ -51,7 +51,6 @@ class TestCompileInlineQuery(SimpleTestCase):
         # the engine resolves them (to the current instant / an exact
         # user-local instant) at query compile time.
         self.assertEqual(compile_inline_query("due <= now"), {"due_at": {"lte": "now"}})
-        self.assertEqual(compile_inline_query("due:now"), {"due_at": "now"})
         self.assertEqual(
             compile_inline_query("due <= 2026-08-21T14:30"),
             {"due_at": {"lte": "2026-08-21T14:30"}},
@@ -78,6 +77,11 @@ class TestCompileInlineQuery(SimpleTestCase):
         self.assertIn("true", str(ctx.exception))
         with self.assertRaises(QueryDSLError):
             compile_inline_query("due_has_time:")
+
+    def test_due_has_time_comparison_form_points_at_colon_spelling(self):
+        with self.assertRaises(QueryDSLError) as ctx:
+            compile_inline_query("due_has_time = true")
+        self.assertIn("due_has_time:true", str(ctx.exception))
 
     def test_start_when_due_acceptance_query(self):
         self.assertEqual(

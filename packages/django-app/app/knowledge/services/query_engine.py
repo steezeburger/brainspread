@@ -15,8 +15,9 @@ Date tokens (``today``, ``tomorrow``, ``yesterday``, ``N days ago``,
 ``N days from now``, ISO ``YYYY-MM-DD``) are resolved at execute time
 against ``user.today()`` so views stay relative. Date tokens compare at
 user-local day boundaries; the datetime tokens ``now`` (the current
-instant) and ISO ``YYYY-MM-DDTHH:MM[:SS]`` (naive, user-local wall
-clock) compare against the full stored datetime with no day rounding.
+instant, ordering comparisons only — ``eq`` is rejected) and ISO
+``2026-08-21T14:30`` (naive → user-local wall clock, offset/``Z`` →
+absolute) compare against the full stored datetime with no day rounding.
 ``now`` deliberately does NOT imply timed-blocks-only — all-day blocks
 sit at user-local midnight, so ``due_at <= now`` sweeps them in from
 00:00; compose with the ``due_has_time`` predicate explicitly when only
@@ -141,21 +142,32 @@ def _start_of_local_day(d: date, user) -> datetime:
     return start_of_local_day(d, user.tz())
 
 
-# Time-granular value tokens for datetime-field comparisons. Only the
-# ``T``-separated ISO shape counts — plain ``YYYY-MM-DD`` stays a date
-# token with day-boundary semantics.
-_ISO_DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}(?::\d{2})?$")
+def _start_of_next_local_day(d: date, user) -> datetime:
+    """The exclusive upper bound for "through the end of local day d" —
+    midnight of the following day in the user's timezone."""
+    return _start_of_local_day(d + timedelta(days=1), user)
+
+
+# Time-granular value tokens for datetime-field comparisons. Anything
+# ``T``-separated is claimed as a datetime token — plain ``YYYY-MM-DD``
+# stays a date token with day-boundary semantics.
+_ISO_DATETIME_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[Tt]")
 
 
 def _resolve_datetime_token(raw: Any, user) -> "datetime | None":
-    """Resolve tokens that carry time-of-day granularity, or return None.
+    """Resolve string tokens that carry time-of-day granularity, or None.
 
-    ``"now"`` resolves to the current instant; ISO datetime strings
-    (``2026-08-21T14:30``, optionally with seconds) are naive user-local
-    wall-clock times converted to UTC. Both compare against the full
-    stored datetime — no day-boundary rounding. Returning None means
-    "not a datetime token": the caller falls back to the date-token
-    path, so existing day-boundary semantics are untouched.
+    ``"now"`` resolves to the current instant. ISO datetime strings
+    (anything ``T``-separated that ``datetime.fromisoformat`` accepts:
+    ``2026-08-21T14:30``, with seconds/fractional seconds, ``Z`` or a
+    numeric offset) resolve to an exact instant — naive values are
+    user-local wall-clock times, offset-carrying values are absolute.
+    Both compare against the full stored datetime, no day-boundary
+    rounding. Returning None means "not a datetime token": the caller
+    falls back to the date-token path, so existing day-boundary
+    semantics are untouched. Only *strings* are considered — raw
+    ``date``/``datetime`` objects keep their legacy day-boundary
+    handling in :func:`_resolve_date_token`.
 
     Unlike date tokens these never rebase on ``context_date`` — ``now``
     is the live instant and ISO datetimes are absolute by construction.
@@ -165,12 +177,14 @@ def _resolve_datetime_token(raw: Any, user) -> "datetime | None":
     s = raw.strip()
     if s.lower() == "now":
         return timezone.now()
-    if _ISO_DATETIME_RE.match(s):
+    if _ISO_DATETIME_PREFIX_RE.match(s):
         try:
-            naive = datetime.fromisoformat(s)
+            parsed = datetime.fromisoformat(s)
         except ValueError as exc:
             raise QueryEngineError(f"Invalid datetime token: {raw!r}") from exc
-        return combine_local_to_utc(naive.date(), naive.time(), user.tz())
+        if parsed.tzinfo is not None:
+            return parsed
+        return combine_local_to_utc(parsed.date(), parsed.time(), user.tz())
     return None
 
 
@@ -224,13 +238,16 @@ def _date_field_q(
     ``>= start of next day``. ``between [a, b]`` is inclusive on both
     ends in user-local terms.
 
-    Datetime tokens (``now``, ISO ``YYYY-MM-DDTHH:MM[:SS]`` — see
+    Datetime string tokens (``now``, ISO ``2026-08-21T14:30`` — see
     :func:`_resolve_datetime_token`) skip the day-boundary anchoring
     entirely: ``lte: "now"`` compares the raw stored datetime against
-    the current instant, and ``eq`` means that exact instant. In
-    ``between``, each bound resolves independently, so a date bound
-    keeps its inclusive-local-day edge while a datetime bound is an
-    inclusive exact instant.
+    the current instant, and ``eq`` with an ISO datetime means that
+    exact instant. ``eq: "now"`` is rejected — it would only match a
+    due set to the very microsecond of evaluation. In ``between``,
+    each bound resolves independently, so a date bound keeps its
+    inclusive-local-day edge while a datetime bound is an inclusive
+    exact instant. Raw ``date``/``datetime`` *objects* always take the
+    day-boundary path.
     """
     if isinstance(value, str) or isinstance(value, (date, datetime)):
         value = {"eq": value}
@@ -242,6 +259,12 @@ def _date_field_q(
         if is_datetime and op in ("eq", "lt", "lte", "gt", "gte"):
             dt_arg = _resolve_datetime_token(arg, user)
             if dt_arg is not None:
+                if op == "eq" and arg.strip().lower() == "now":
+                    raise QueryEngineError(
+                        f"eq 'now' on {field_name} would only match that exact "
+                        "microsecond — compare with lte/gte instead "
+                        "(e.g. due <= now)"
+                    )
                 lookup = field_name if op == "eq" else f"{field_name}__{op}"
                 q &= Q(**{lookup: dt_arg})
                 continue
@@ -261,15 +284,13 @@ def _date_field_q(
         elif op == "lte":
             d = _resolve_date_token(arg, user, context_date)
             if is_datetime:
-                next_day = _start_of_local_day(d + timedelta(days=1), user)
-                q &= Q(**{f"{field_name}__lt": next_day})
+                q &= Q(**{f"{field_name}__lt": _start_of_next_local_day(d, user)})
             else:
                 q &= Q(**{f"{field_name}__lte": d})
         elif op == "gt":
             d = _resolve_date_token(arg, user, context_date)
             if is_datetime:
-                next_day = _start_of_local_day(d + timedelta(days=1), user)
-                q &= Q(**{f"{field_name}__gte": next_day})
+                q &= Q(**{f"{field_name}__gte": _start_of_next_local_day(d, user)})
             else:
                 q &= Q(**{f"{field_name}__gt": d})
         elif op == "gte":
@@ -299,9 +320,7 @@ def _date_field_q(
                     q &= Q(
                         **{
                             f"{field_name}__gte": start_dt,
-                            f"{field_name}__lt": _start_of_local_day(
-                                end_d + timedelta(days=1), user
-                            ),
+                            f"{field_name}__lt": _start_of_next_local_day(end_d, user),
                         }
                     )
             else:
@@ -321,7 +340,7 @@ def _date_field_q(
 def _date_eq_q(field_name: str, d: date, user, is_datetime: bool) -> Q:
     if is_datetime:
         start = _start_of_local_day(d, user)
-        end = _start_of_local_day(d + timedelta(days=1), user)
+        end = _start_of_next_local_day(d, user)
         return Q(**{f"{field_name}__gte": start, f"{field_name}__lt": end})
     return Q(**{field_name: d})
 
@@ -351,6 +370,9 @@ def _due_has_time_q(value: Any, user, context_date: "date | None" = None) -> Q:
     ``due_at is_null: false`` for "all-day dues only".
     """
     if isinstance(value, dict):
+        unsupported = [op for op in value if op != "eq"]
+        if unsupported:
+            raise QueryEngineError(f"Unsupported op {unsupported[0]!r} on due_has_time")
         value = value.get("eq")
     if not isinstance(value, bool):
         raise QueryEngineError(f"due_has_time must be true or false: {value!r}")

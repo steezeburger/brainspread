@@ -932,11 +932,14 @@ class NowTokenTests(_NowTestBase):
         out = self.run_query({"due_at": {"lt": "now"}})
         self.assertEqual([b.id for b in out], [earlier.id])
 
-    def test_eq_now_matches_the_exact_instant_only(self):
-        at_noon = self._timed(12)
-        self._timed(11, 59)
-        out = self.run_query({"due_at": "now"})
-        self.assertEqual([b.id for b in out], [at_noon.id])
+    def test_eq_now_rejected(self):
+        # Exact-instant equality against the live clock can never match
+        # a real due — reject it at compile so an automation doesn't
+        # silently succeed with matched=0 forever.
+        with self.assertRaises(query_engine.QueryEngineError):
+            query_engine.compile({"due_at": "now"}, user=self.user)
+        with self.assertRaises(query_engine.QueryEngineError):
+            query_engine.compile({"due_at": {"eq": "now"}}, user=self.user)
 
     def test_now_is_case_insensitive(self):
         past = self._timed(9)
@@ -1060,11 +1063,24 @@ class IsoDatetimeTokenTests(_NowTestBase):
         out = self.run_query({"due_at": {"between": ["2026-04-23", "2026-04-24"]}})
         self.assertEqual([b.id for b in out], [end_of_day.id])
 
+    def test_zulu_suffix_is_absolute_utc(self):
+        # Date.toISOString() output (the default JS serialization).
+        match = self._timed(14, 30)
+        self._timed(15)
+        out = self.run_query({"due_at": "2026-04-24T14:30:00.000Z"})
+        self.assertEqual([b.id for b in out], [match.id])
+
+    def test_numeric_offset_is_absolute(self):
+        # 08:30 at -06:00 == 14:30 UTC.
+        match = self._timed(14, 30)
+        self._timed(14, 31)
+        out = self.run_query({"due_at": "2026-04-24T08:30:00-06:00"})
+        self.assertEqual([b.id for b in out], [match.id])
+
     def test_invalid_datetime_token_rejected(self):
-        with self.assertRaises(query_engine.QueryEngineError):
-            query_engine.compile(
-                {"due_at": {"lte": "2026-04-24T25:99"}}, user=self.user
-            )
+        for bad in ("2026-04-24T25:99", "2026-04-24Tnoon"):
+            with self.assertRaises(query_engine.QueryEngineError):
+                query_engine.compile({"due_at": {"lte": bad}}, user=self.user)
 
     def test_plain_iso_date_still_day_rounds(self):
         # Guard: ``lte: 2026-04-24`` (no time part) still means "through
@@ -1121,7 +1137,14 @@ class DueHasTimeTests(_NowTestBase):
         self.assertEqual([b.id for b in out], [timed.id])
 
     def test_non_bool_rejected(self):
-        for bad in ("true", 1, None, {"in": [True]}):
+        for bad in ("true", 1, None):
+            with self.assertRaises(query_engine.QueryEngineError):
+                query_engine.compile({"due_has_time": bad}, user=self.user)
+
+    def test_unsupported_op_rejected(self):
+        # Unknown dict ops must error, not silently drop — matching the
+        # other predicate handlers.
+        for bad in ({"in": [True]}, {"ne": True}, {"eq": True, "ne": False}):
             with self.assertRaises(query_engine.QueryEngineError):
                 query_engine.compile({"due_has_time": bad}, user=self.user)
 
