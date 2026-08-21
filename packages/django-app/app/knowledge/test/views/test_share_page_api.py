@@ -99,6 +99,23 @@ class PublicPageViewTestCase(TestCase):
         # specific recipient, not for search engines.
         self.assertIn("noindex", body)
 
+    def test_public_view_follows_owner_emoji_preference(self):
+        """Share visitors are anonymous, so the page renders emoji per the
+        owner's setting rather than defaulting on."""
+        self.page.share_token = "emoji-token"
+        self.page.share_mode = "link"
+        self.page.save()
+
+        client = Client()
+        response = client.get(f"/knowledge/share/{self.page.share_token}/")
+        self.assertIn("setEnabled(true)", response.content.decode("utf-8"))
+
+        self.user.render_emoji = False
+        self.user.save(update_fields=["render_emoji"])
+
+        response = client.get(f"/knowledge/share/{self.page.share_token}/")
+        self.assertIn("setEnabled(false)", response.content.decode("utf-8"))
+
     def test_public_view_includes_linked_references(self):
         # Topic / tag-style pages live on tagged blocks scattered across
         # daily notes. Sharing the topic page should surface those

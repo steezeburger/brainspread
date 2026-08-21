@@ -577,6 +577,26 @@ class ApiService {
     }
   }
 
+  async updateUserRenderEmoji(renderEmoji) {
+    try {
+      const result = await this.request("/api/auth/update-render-emoji/", {
+        method: "POST",
+        body: JSON.stringify({ render_emoji: !!renderEmoji }),
+      });
+      if (result.success) {
+        const currentUser = this.getCurrentUser();
+        if (currentUser) {
+          currentUser.render_emoji = !!renderEmoji;
+          localStorage.setItem("user", JSON.stringify(currentUser));
+        }
+      }
+      return result;
+    } catch (error) {
+      console.error("Failed to update emoji setting:", error);
+      throw error;
+    }
+  }
+
   async updateUserTheme(newTheme) {
     try {
       const result = await this.request("/api/auth/update-theme/", {

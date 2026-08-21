@@ -41,6 +41,7 @@ class GetUserPreferencesCommand(AbstractBaseCommand):
             "timezone": user.timezone or "UTC",
             "theme": user.theme,
             "time_format": user.time_format,
+            "render_emoji": user.render_emoji,
             "has_discord_webhook": bool(user.discord_webhook_url),
             "has_discord_user_id": bool(user.discord_user_id),
             "preferred_model_label": preferred_model_label,

@@ -341,6 +341,13 @@ const KnowledgeApp = createApp({
       this.openSettings(activeTab);
     },
 
+    onUserUpdated(updatedUser) {
+      // A settings change that doesn't need any other side effect —
+      // just keep the shared user object current so components reading
+      // the `user` prop don't go stale until the next reload.
+      this.user = { ...this.user, ...updatedUser };
+    },
+
     onThemeUpdated(updatedUser) {
       // Update user data with new theme
       this.user = { ...this.user, ...updatedUser };
@@ -1259,6 +1266,7 @@ const KnowledgeApp = createApp({
             :active-tab="settingsActiveTab"
             @close="closeSettings"
             @theme-updated="onThemeUpdated"
+            @user-updated="onUserUpdated"
         />
 
         <!-- Help Modal -->

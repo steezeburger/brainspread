@@ -353,7 +353,8 @@ _READ_SCHEMAS: List[Dict[str, Any]] = [
         "name": "get_user_preferences",
         "description": (
             "Read the user's display / app-level preferences"
-            " (timezone, theme, time_format, preferred_model_label,"
+            " (timezone, theme, time_format, render_emoji,"
+            " preferred_model_label,"
             " and booleans for whether discord webhook / user id are"
             " configured). Secrets — api keys, webhook URLs — are"
             " deliberately omitted. Useful when the user says 'pick"

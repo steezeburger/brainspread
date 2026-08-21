@@ -1,4 +1,5 @@
 window.LeftNav = {
+  mixins: [window.brainspreadEmojiRenderMixin || {}],
   props: {
     user: {
       type: Object,
@@ -729,6 +730,10 @@ window.LeftNav = {
     formatContentWithTags(content, blockType = null) {
       if (!content) return "";
 
+      // Touch the key so Vue tracks it as a dependency of this render —
+      // see brainspreadEmojiRenderMixin.
+      void this.emojiRenderKey;
+
       let formatted = content;
 
       if (
@@ -747,6 +752,12 @@ window.LeftNav = {
         codeSegments.push(code);
         return `\x00CODE${idx}\x00`;
       });
+
+      // Emoji shortcodes — after the code extraction so `:joy:` inside a
+      // code span stays literal. Mirrors Page.formatContentWithTags.
+      if (window.brainspreadEmoji) {
+        formatted = window.brainspreadEmoji.render(formatted);
+      }
 
       const escapedChars = [];
       formatted = formatted.replace(/\\([*_~`\\#>])/g, (_match, char) => {

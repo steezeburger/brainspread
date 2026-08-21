@@ -65,6 +65,14 @@
 
     <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.5/dist/purify.min.js"></script>
+    <script src="{% static 'knowledge/js/services/emoji.js' %}?v={{ STATIC_VERSION }}"></script>
+    <script>
+      // No logged-in user here, so the shared page follows the page
+      // owner's render_emoji setting rather than the viewer's.
+      if (window.brainspreadEmoji) {
+        window.brainspreadEmoji.setEnabled({{ render_emoji|yesno:"true,false" }});
+      }
+    </script>
     <script>
       // marked GFM autolinks bare URLs, but if the bundle is stale or
       // some content edge-case slips through we still want bare URLs to
@@ -150,9 +158,13 @@
         }
         try {
           var html = marked.parse(raw, { breaks: true, gfm: true });
-          el.innerHTML = DOMPurify.sanitize(html, {
+          var clean = DOMPurify.sanitize(html, {
             ADD_ATTR: ["target", "rel"],
           });
+          if (window.brainspreadEmoji) {
+            clean = window.brainspreadEmoji.renderInHtml(clean);
+          }
+          el.innerHTML = clean;
           linkifyTextNodes(el);
           decorateLinks(el);
         } catch (e) {
@@ -170,9 +182,13 @@
         if (!raw.trim()) return;
         try {
           var html = marked.parseInline(raw, { gfm: true });
-          el.innerHTML = DOMPurify.sanitize(html, {
+          var clean = DOMPurify.sanitize(html, {
             ADD_ATTR: ["target", "rel"],
           });
+          if (window.brainspreadEmoji) {
+            clean = window.brainspreadEmoji.renderInHtml(clean);
+          }
+          el.innerHTML = clean;
         } catch (e) {
           el.textContent = raw;
         }

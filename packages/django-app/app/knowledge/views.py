@@ -432,6 +432,9 @@ def public_page(request, share_token: str):
             "blocks": blocks,
             "references": references,
             "owner_email": page.user.email,
+            # Visitors are anonymous, so the shared page follows the
+            # page owner's emoji preference.
+            "render_emoji": page.user.render_emoji,
         },
     )
     # Public pages can be cached briefly by the browser, but always revalidate

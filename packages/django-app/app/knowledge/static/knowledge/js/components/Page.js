@@ -32,6 +32,7 @@ const PAGE_SORT_LABELS = Object.fromEntries(
 const PAGE_SORT_STORAGE_PREFIX = "bs:page-sort:";
 
 const Page = {
+  mixins: [window.brainspreadEmojiRenderMixin || {}],
   components: {
     BlockComponent: window.BlockComponent || {},
     Whiteboard: window.Whiteboard || {},
@@ -2204,6 +2205,10 @@ const Page = {
     formatContentWithTags(content, blockType = null, properties = null) {
       if (!content) return "";
 
+      // Touch the key so Vue tracks it as a dependency of this render —
+      // see brainspreadEmojiRenderMixin.
+      void this.emojiRenderKey;
+
       const escapeHtml = (s) =>
         s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -2310,6 +2315,16 @@ const Page = {
         codeSegments.push(code);
         return `\x00CODE${idx}\x00`;
       });
+
+      // Substitute :shortcode: emoji. Runs after the code/fence
+      // extraction above so `:joy:` inside a code span stays literal,
+      // and before the emphasis transforms since the emoji it emits
+      // contain no markdown punctuation. No-op when the user has emoji
+      // rendering turned off — the block content itself always keeps
+      // the shortcode text.
+      if (window.brainspreadEmoji) {
+        formatted = window.brainspreadEmoji.render(formatted);
+      }
 
       // Extract backslash-escaped characters to protect them from formatting
       const escapedChars = [];

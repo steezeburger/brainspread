@@ -94,6 +94,10 @@ window.HelpModal = {
                   <td><span class="inline-tag">#tagname</span></td>
                 </tr>
                 <tr>
+                  <td><code class="help-syntax">:grimacing:</code></td>
+                  <td>😬 &mdash; toggle in settings &rarr; emoji</td>
+                </tr>
+                <tr>
                   <td><code class="help-syntax">\\*</code></td>
                   <td>escape a special character</td>
                 </tr>
