@@ -9,12 +9,13 @@ models — so when you tweak a view here, also bump it in the migration
 
 from typing import Any, Dict, List
 
+from knowledge.constants import COMPLETED_TODO_TYPES, OPEN_TODO_TYPES
 from knowledge.models import SavedView
 from knowledge.repositories import SavedViewRepository
 
 OVERDUE_FILTER: Dict[str, Any] = {
     "all": [
-        {"block_type": {"in": ["todo", "doing", "later"]}},
+        {"block_type": {"in": list(OPEN_TODO_TYPES)}},
         {"due_at": {"lt": "today"}},
         {"completed_at": {"is_null": True}},
     ]
@@ -27,7 +28,7 @@ OVERDUE_SORT = [
 
 DONE_THIS_WEEK_FILTER: Dict[str, Any] = {
     "all": [
-        {"block_type": {"in": ["done", "wontdo"]}},
+        {"block_type": {"in": list(COMPLETED_TODO_TYPES)}},
         {"completed_at": {"gte": "7 days ago"}},
     ]
 }

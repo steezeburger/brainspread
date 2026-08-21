@@ -47,6 +47,7 @@ from knowledge.commands.set_block_completed_at_command import (
 )
 from knowledge.commands.tag_blocks_command import TagBlocksCommand, UntagBlocksCommand
 from knowledge.commands.update_block_command import UpdateBlockCommand
+from knowledge.constants import OPEN_TODO_TYPES
 from knowledge.forms import (
     CreateBlockForm,
     CreatePageForm,
@@ -283,7 +284,7 @@ def _list_today_todos(ctx: ToolContext, _args: dict[str, Any]) -> dict[str, Any]
     if not form.is_valid():
         raise ToolError(_form_errors_to_str(form))
     page, direct, _refs, _embeds = GetPageWithBlocksCommand(form).execute()
-    undone = [b.to_dict() for b in direct if b.block_type in {"todo", "doing", "later"}]
+    undone = [b.to_dict() for b in direct if b.block_type in OPEN_TODO_TYPES]
     # The page payload no longer carries overdue blocks (the daily-page
     # overdue section was replaced by embeddable saved views), so the
     # overdue list comes from the dedicated command instead — keeps this
