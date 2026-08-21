@@ -343,8 +343,17 @@ const Page = {
     window.addEventListener("hashchange", this.scrollToHashBlock);
     // A home-screen / PWA session can sit backgrounded across midnight.
     // The root route means "today", so re-resolve the date when the tab
-    // becomes visible again rather than showing yesterday's note.
-    document.addEventListener("visibilitychange", this.handleVisibilityChange);
+    // comes back rather than showing yesterday's note. `pageshow` covers
+    // a bfcache restore, which doesn't always fire visibilitychange.
+    document.addEventListener("visibilitychange", this.handleResume);
+    window.addEventListener("pageshow", this.handleResume);
+    // ...and a tab that simply stays open and visible across midnight
+    // never fires either event. Outside monitor mode nothing else polls,
+    // so watch the clock directly. This is a date-string compare — it
+    // costs a request only on the tick where the day actually changes.
+    if (!this.monitorMode && this.isRootRoute()) {
+      this._dayWatchTimer = setInterval(() => this.rollOverToToday(), 60000);
+    }
     // Monitor mode: poll for fresh data. The interval is configurable
     // via ?refresh=<seconds> (min 2, default 5). The body class lets
     // app-level CSS strip interactive chrome without threading a prop
@@ -392,10 +401,8 @@ const Page = {
       this.handleResumeBlockEditing
     );
     window.removeEventListener("hashchange", this.scrollToHashBlock);
-    document.removeEventListener(
-      "visibilitychange",
-      this.handleVisibilityChange
-    );
+    document.removeEventListener("visibilitychange", this.handleResume);
+    window.removeEventListener("pageshow", this.handleResume);
     window.removeEventListener(
       "brainspread:notes-modified",
       this.handleNotesModified
@@ -415,6 +422,10 @@ const Page = {
     if (this._monitorTimer) {
       clearInterval(this._monitorTimer);
       this._monitorTimer = null;
+    }
+    if (this._dayWatchTimer) {
+      clearInterval(this._dayWatchTimer);
+      this._dayWatchTimer = null;
     }
     document.body.classList.remove("monitor-mode");
   },
@@ -447,6 +458,18 @@ const Page = {
       return this.isRootRoute() ? this.localDateString() : null;
     },
 
+    // True while the user is typing in a block on this page. Silent
+    // reloads bail on this rather than clobbering an in-progress edit.
+    isEditingBlockOnPage() {
+      const active = document.activeElement;
+      return !!(
+        active &&
+        active.tagName === "TEXTAREA" &&
+        this.$el &&
+        this.$el.contains(active)
+      );
+    },
+
     getMonitorFromURL() {
       return new URLSearchParams(window.location.search).get("monitor") === "1";
     },
@@ -462,7 +485,7 @@ const Page = {
       );
     },
 
-    handleVisibilityChange() {
+    handleResume() {
       if (document.hidden) return;
       this.rollOverToToday();
     },
@@ -470,14 +493,19 @@ const Page = {
     // Move the view to today's daily note when the calendar day has
     // changed under a long-lived session. Only the root route follows
     // the date this way — a URL naming a specific day stays put.
-    // Returns true when it did something.
     rollOverToToday() {
-      if (!this.isRootRoute()) return false;
+      if (!this.isRootRoute()) return;
       const today = this.localDateString();
-      if (this.currentDate === today) return false;
+      if (this.currentDate === today) return;
+      // Never yank the page out from under an in-progress edit. The day
+      // watcher keeps ticking, so the roll lands once they finish.
+      if (this.isEditingBlockOnPage()) return;
       this.currentDate = today;
+      // The selection points at yesterday's blocks, and the bulk actions
+      // send those uuids as-is — clear it rather than let a bulk delete
+      // reach blocks that are no longer on screen.
+      this.clearBlockSelection();
       this.loadPage({ silent: true });
-      return true;
     },
 
     monitorTick() {
@@ -489,7 +517,10 @@ const Page = {
           // Midnight rolled over. On the root route the URL already
           // means "today", so swap the date in place; a dated URL has
           // to navigate, keeping ?monitor=1 (and any refresh override).
-          if (this.rollOverToToday()) return;
+          if (this.isRootRoute()) {
+            this.rollOverToToday();
+            return;
+          }
           window.location.href = `/knowledge/page/${today}/${window.location.search}`;
           return;
         }
@@ -605,15 +636,7 @@ const Page = {
         // the reload — clobbering an in-progress edit would be worse than
         // showing stale state. They'll see the AI's changes the next time
         // they finish editing (which saves and reloads).
-        const active = document.activeElement;
-        if (
-          active &&
-          active.tagName === "TEXTAREA" &&
-          this.$el &&
-          this.$el.contains(active)
-        ) {
-          return;
-        }
+        if (this.isEditingBlockOnPage()) return;
         this.loadPage({ silent: true });
       }, 300);
     },
@@ -656,15 +679,7 @@ const Page = {
       if (this._blockChangedTimer) clearTimeout(this._blockChangedTimer);
       this._blockChangedTimer = setTimeout(() => {
         this._blockChangedTimer = null;
-        const active = document.activeElement;
-        if (
-          active &&
-          active.tagName === "TEXTAREA" &&
-          this.$el &&
-          this.$el.contains(active)
-        ) {
-          return;
-        }
+        if (this.isEditingBlockOnPage()) return;
         this.loadPage({ silent: true });
       }, 300);
     },
