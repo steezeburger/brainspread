@@ -5,7 +5,7 @@ from django.test import TestCase
 
 from knowledge.commands import RunAutomationCommand
 from knowledge.forms.run_automation_form import RunAutomationForm
-from knowledge.models import AutomationRun
+from knowledge.models import AutomationRun, Block
 from knowledge.repositories import AutomationRunRepository, SavedViewRepository
 
 from ..helpers import BlockFactory, PageFactory, UserFactory
@@ -460,3 +460,244 @@ class TestRunAutomationCommand(TestCase):
 
         self.assertEqual(result["result"]["matched"], 2)
         self.assertEqual(result["result"]["affected"], 1)
+
+
+class TestSmallVerbActions(TestCase):
+    """The data-model verbs added on #199: tag / untag / set_due /
+    set_property / create_block. All integration-tested through
+    RunAutomationCommand so allow:: defaulting and result recording are
+    exercised alongside each handler."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+
+    def _automation(self, **props):
+        page = PageFactory(
+            user=self.user,
+            title="Automations",
+            slug=f"automations-{uuid_lib.uuid4().hex[:8]}",
+        )
+        return BlockFactory(
+            user=self.user,
+            page=page,
+            content="My automation #automation",
+            properties=props,
+        )
+
+    def _run(self, automation_block, trigger="manual"):
+        form = RunAutomationForm(
+            {
+                "user": self.user,
+                "automation_block": automation_block.uuid,
+                "trigger": trigger,
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return RunAutomationCommand(form).execute()
+
+    def _todo(self, content="TODO ship it", **kwargs):
+        page = kwargs.pop(
+            "page",
+            PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}"),
+        )
+        return BlockFactory(
+            user=self.user, page=page, block_type="todo", content=content, **kwargs
+        )
+
+    # -- tag / untag --------------------------------------------------------
+
+    def test_tag_action_adds_page_tag_to_matches(self):
+        tag_page = PageFactory(
+            user=self.user, title="Needs Review", slug="needs-review"
+        )
+        target = self._todo()
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action="tag needs-review",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        self.assertEqual(result["result"]["affected"], 1)
+        self.assertIn(tag_page, target.pages.all())
+
+    def test_untag_own_query_tag_is_self_stopping(self):
+        sticky = PageFactory(user=self.user, title="Sticky", slug="sticky")
+        target = self._todo()
+        target.pages.add(sticky)
+        automation = self._automation(
+            trigger="manual",
+            query="tag:sticky",
+            action="untag sticky",
+        )
+
+        first = self._run(automation)
+        self.assertEqual(first["status"], AutomationRun.STATUS_SUCCEEDED)
+        self.assertEqual(first["result"]["affected"], 1)
+        self.assertNotIn(sticky, target.pages.all())
+
+        second = self._run(automation)
+        self.assertEqual(second["result"]["matched"], 0)
+
+    def test_tag_rejects_hashtag_args_with_guidance(self):
+        PageFactory(user=self.user, title="Sticky", slug="sticky")
+        self._todo()
+        automation = self._automation(
+            trigger="manual", query="type:todo", action="tag #sticky"
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("automation block itself", result["last_error"])
+
+    def test_tag_missing_page_fails_instead_of_creating(self):
+        self._todo()
+        automation = self._automation(
+            trigger="manual", query="type:todo", action="tag no-such-tag"
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("no-such-tag", result["last_error"])
+
+    # -- set_due ------------------------------------------------------------
+
+    def test_set_due_sets_all_day_due_date(self):
+        target = self._todo()
+        automation = self._automation(
+            trigger="manual", query="type:todo", action="set_due tomorrow"
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        target.refresh_from_db()
+        self.assertIsNotNone(target.due_at)
+        self.assertFalse(target.due_at_has_time)
+
+    def test_set_due_none_clears_due_date(self):
+        target = self._todo()
+        set_automation = self._automation(
+            trigger="manual", query="type:todo", action="set_due today"
+        )
+        self._run(set_automation)
+        target.refresh_from_db()
+        self.assertIsNotNone(target.due_at)
+
+        clear_automation = self._automation(
+            trigger="manual", query="type:todo", action="set_due none"
+        )
+        result = self._run(clear_automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        target.refresh_from_db()
+        self.assertIsNone(target.due_at)
+
+    def test_set_due_bad_token_fails(self):
+        self._todo()
+        automation = self._automation(
+            trigger="manual", query="type:todo", action="set_due banana"
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("banana", result["last_error"])
+
+    # -- set_property -------------------------------------------------------
+
+    def test_set_property_appends_content_line_and_syncs(self):
+        target = self._todo(content="Buy milk")
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action="set_property priority high",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        target.refresh_from_db()
+        self.assertIn("priority:: high", target.content)
+        self.assertEqual(target.properties.get("priority"), "high")
+
+    def test_set_property_replaces_existing_line_without_duplicating(self):
+        target = self._todo(content="Buy milk\npriority:: low")
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action='set_property priority "very high"',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        target.refresh_from_db()
+        self.assertEqual(target.content.count("priority::"), 1)
+        self.assertEqual(target.properties.get("priority"), "very high")
+
+    def test_set_property_bad_key_fails(self):
+        self._todo()
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action='set_property "bad key" value',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("bad property key", result["last_error"])
+
+    # -- create_block -------------------------------------------------------
+
+    def test_create_block_on_daily_date_token(self):
+        automation = self._automation(
+            trigger="manual",
+            action='create_block "drink water" on today as todo',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        self.assertEqual(result["result"]["affected"], 1)
+        created = Block.objects.get(user=self.user, content="drink water")
+        self.assertEqual(created.block_type, "todo")
+        self.assertEqual(created.page.page_type, "daily")
+
+    def test_create_block_on_named_page(self):
+        inbox = PageFactory(user=self.user, title="Inbox", slug="inbox")
+        automation = self._automation(
+            trigger="manual",
+            action='create_block "captured thought" on Inbox',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        created = Block.objects.get(user=self.user, content="captured thought")
+        self.assertEqual(created.page, inbox)
+        self.assertEqual(created.block_type, "bullet")
+
+    def test_create_block_requires_explicit_target(self):
+        automation = self._automation(trigger="manual", action='create_block "orphan"')
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("explicit", result["last_error"])
+
+    def test_create_block_rejects_unknown_type(self):
+        automation = self._automation(
+            trigger="manual", action='create_block "x" on today as banana'
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("banana", result["last_error"])

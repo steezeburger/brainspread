@@ -1,9 +1,13 @@
-"""The action vocabulary for automations (issue #143, slice 1).
+"""The action vocabulary for automations (issues #143 / #199).
 
 A `command` action maps a verb (e.g. ``move_to_daily``) onto an existing,
 whitelisted Command and runs it over the automation's query result. This
 is the declarative, zero-LLM half of the platform — the `prompt` action
-(slice 2) lives elsewhere.
+(#199 slice 2) lives elsewhere. The vocabulary mirrors the block data
+model's axes (location, type, tags, due, properties, existence) and is
+deliberately closed: workflows are new trigger × query × verb
+combinations, and the long tail belongs to ``prompt`` / ``http`` and,
+eventually, user-defined handlers (#193).
 
 Handlers receive the whole matched batch and delegate to the app's bulk
 commands, which own the batch semantics — notably ``BulkMoveBlocksCommand``
@@ -34,13 +38,23 @@ from core.models import User
 from ..commands.add_template_blocks_to_page_command import (
     AddTemplateBlocksToPageCommand,
 )
+from ..commands.bulk_clear_schedule_command import BulkClearScheduleCommand
 from ..commands.bulk_move_blocks_command import BulkMoveBlocksCommand
 from ..commands.bulk_move_blocks_to_page_command import BulkMoveBlocksToPageCommand
+from ..commands.bulk_schedule_command import BulkScheduleCommand
 from ..commands.bulk_set_block_type_command import BulkSetBlockTypeCommand
+from ..commands.create_block_command import CreateBlockCommand
+from ..commands.tag_blocks_command import TagBlocksCommand, UntagBlocksCommand
+from ..commands.update_block_command import UpdateBlockCommand
 from ..forms.add_template_blocks_to_page_form import AddTemplateBlocksToPageForm
+from ..forms.bulk_clear_schedule_form import BulkClearScheduleForm
 from ..forms.bulk_move_blocks_form import BulkMoveBlocksForm
 from ..forms.bulk_move_blocks_to_page_form import BulkMoveBlocksToPageForm
+from ..forms.bulk_schedule_form import BulkScheduleForm
 from ..forms.bulk_set_block_type_form import BulkSetBlockTypeForm
+from ..forms.create_block_form import CreateBlockForm
+from ..forms.tag_blocks_form import TagBlocksForm, UntagBlocksForm
+from ..forms.update_block_form import UpdateBlockForm
 from ..models import Block
 from ..repositories.page_repository import PageRepository
 from .automation_spec import ActionSpec
@@ -344,10 +358,277 @@ def _apply_template(
     )
 
 
+def _resolve_tag_pages(ctx: ActionContext, args: Tuple[str, ...], verb: str):
+    """Resolve tag-slug args into page uuids, strict-by-default (a missing
+    tag page fails the run rather than being silently created — the same
+    typo guard the MCP tag tools use)."""
+    if not args:
+        raise ActionError(f"`{verb}` needs at least one tag slug, e.g. `{verb} sticky`")
+    page_uuids: List[str] = []
+    missing: List[str] = []
+    for raw in args:
+        slug = raw.strip()
+        if slug.startswith("#"):
+            # Mirrors the query DSL's hashtag guard: a literal `#x` in the
+            # action:: line would tag the automation block itself.
+            raise ActionError(
+                f"use `{verb} {slug.lstrip('#')}` — a literal `#` in the "
+                "action line would tag the automation block itself"
+            )
+        if not slug:
+            raise ActionError(f"`{verb}` got an empty tag slug")
+        page = PageRepository.get_by_slug(slug, user=ctx.user)
+        if page is None:
+            missing.append(slug)
+        else:
+            page_uuids.append(str(page.uuid))
+    if missing:
+        raise ActionError(
+            f"tag page(s) not found: {', '.join(missing)} — create the page(s) first"
+        )
+    return page_uuids
+
+
+def _apply_tag_verb(
+    ctx: ActionContext, blocks: List[Block], args: Tuple[str, ...], *, add: bool
+) -> ActionResult:
+    verb = "tag" if add else "untag"
+    page_uuids = _resolve_tag_pages(ctx, args, verb)
+    form_cls = TagBlocksForm if add else UntagBlocksForm
+    form = form_cls(
+        data={
+            "user": ctx.user.id,
+            "block_uuids": [str(block.uuid) for block in blocks],
+            "page_uuids": page_uuids,
+        }
+    )
+    if not form.is_valid():
+        raise ActionError(form.errors.as_json())
+    command_cls = TagBlocksCommand if add else UntagBlocksCommand
+    outcome = command_cls(form).execute()
+    return ActionResult(
+        affected=outcome["updated_count"],
+        details=[
+            {
+                "updated_count": outcome["updated_count"],
+                "tags": [a.strip() for a in args],
+            }
+        ],
+    )
+
+
+def _tag(
+    ctx: ActionContext, blocks: List[Block], args: Tuple[str, ...]
+) -> ActionResult:
+    """Add page tags to every matched block, e.g. `tag needs-review`.
+    Idempotent; multiple slugs allowed. Self-stopping when the query
+    excludes the tag being added."""
+    return _apply_tag_verb(ctx, blocks, args, add=True)
+
+
+def _untag(
+    ctx: ActionContext, blocks: List[Block], args: Tuple[str, ...]
+) -> ActionResult:
+    """Remove page tags from every matched block, e.g. `untag sticky`.
+    Untagging the query's own tag is self-stopping: untagged blocks leave
+    the match set."""
+    return _apply_tag_verb(ctx, blocks, args, add=False)
+
+
+def _set_due(
+    ctx: ActionContext, blocks: List[Block], args: Tuple[str, ...]
+) -> ActionResult:
+    """Set (or clear) the due date on every matched block. `set_due none`
+    clears due_at and any pending reminders; any date token sets an
+    all-day due date."""
+    if not args:
+        raise ActionError(
+            "`set_due` needs a date token or `none`, e.g. `set_due tomorrow`"
+        )
+    token = args[0].strip().lower()
+
+    if token in {"none", "clear"}:
+        clear_form = BulkClearScheduleForm(
+            data={
+                "user": ctx.user.id,
+                "block_uuids": [str(block.uuid) for block in blocks],
+            }
+        )
+        if not clear_form.is_valid():
+            raise ActionError(clear_form.errors.as_json())
+        outcome = BulkClearScheduleCommand(clear_form).execute()
+        return ActionResult(
+            affected=outcome["cleared_count"],
+            details=[{"cleared_count": outcome["cleared_count"]}],
+        )
+
+    try:
+        target = parse_relative_date(token, ctx.user.today())
+    except ValueError as exc:
+        raise ActionError(str(exc)) from exc
+
+    form = BulkScheduleForm(
+        data={
+            "user": ctx.user.id,
+            "block_uuids": [str(block.uuid) for block in blocks],
+            "new_date": target.isoformat() if target else "",
+        }
+    )
+    if not form.is_valid():
+        raise ActionError(form.errors.as_json())
+    outcome = BulkScheduleCommand(form).execute()
+    return ActionResult(
+        affected=outcome["updated_count"],
+        details=[
+            {
+                "updated_count": outcome["updated_count"],
+                "new_date": outcome["new_date"],
+            }
+        ],
+    )
+
+
+# Property keys share the charset the content-property parser accepts, so
+# the `key:: value` line we write is guaranteed to round-trip through
+# extract_properties_from_content.
+_PROPERTY_KEY_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+def _upsert_property_line(content: str, key: str, value: str) -> str:
+    """Replace an existing line-start ``key:: …`` line, or append one.
+
+    Properties must live in content: extract_properties_from_content
+    re-syncs the properties dict from content on every edit, so a
+    dict-only write would silently evaporate on the block's next save.
+    Line-start properties take precedence over inline ones during
+    extraction, so appending also effectively overrides an inline value.
+    """
+    line_re = re.compile(rf"^{re.escape(key)}::\s*.*$", re.MULTILINE)
+    new_line = f"{key}:: {value}"
+    if line_re.search(content or ""):
+        return line_re.sub(new_line, content, count=1)
+    if not content:
+        return new_line
+    return f"{content}\n{new_line}"
+
+
+def _set_property(
+    ctx: ActionContext, blocks: List[Block], args: Tuple[str, ...]
+) -> ActionResult:
+    """`set_property <key> <value>` — write the ``key:: value`` line into
+    each matched block's content (quoted values keep spaces). Routed
+    through UpdateBlockCommand so tag/property syncing stays uniform."""
+    if len(args) != 2:
+        raise ActionError(
+            "`set_property` expects `set_property <key> <value>`, e.g. "
+            "set_property priority high — quote multi-word values"
+        )
+    key, value = args[0].strip(), args[1].strip()
+    if not _PROPERTY_KEY_RE.match(key):
+        raise ActionError(
+            f"bad property key `{key}` (letters, digits, `_` and `-` only)"
+        )
+    if not value:
+        raise ActionError("`set_property` needs a non-empty value")
+
+    updated = 0
+    details: List[dict] = []
+    for block in blocks:
+        form = UpdateBlockForm(
+            data={
+                "user": ctx.user.id,
+                "block": str(block.uuid),
+                "content": _upsert_property_line(block.content or "", key, value),
+            }
+        )
+        if not form.is_valid():
+            details.append(
+                {"block_uuid": str(block.uuid), "error": form.errors.as_json()}
+            )
+            continue
+        UpdateBlockCommand(form).execute()
+        updated += 1
+    details.insert(0, {"updated_count": updated, "key": key, "value": value})
+    return ActionResult(affected=updated, details=details)
+
+
+def _create_block(
+    ctx: ActionContext, blocks: List[Block], args: Tuple[str, ...]
+) -> ActionResult:
+    """Standalone: `create_block "content" on <target> [as <type>]`.
+
+    Target is explicit — a date token (daily page, created if needed) or
+    a page reference (title / slug / [[wiki]]); no silent defaulting.
+    """
+    if not args or not args[0].strip():
+        raise ActionError(
+            "`create_block` needs content, e.g. "
+            'create_block "review inbox" on today as todo'
+        )
+    content = args[0]
+
+    rest = list(args[1:])
+    block_type = "bullet"
+    if len(rest) >= 2 and rest[-2].lower() == "as":
+        block_type = rest[-1].lower()
+        rest = rest[:-2]
+        valid_types = {c[0] for c in Block._meta.get_field("block_type").choices}
+        if block_type not in valid_types:
+            raise ActionError(
+                f"unknown block type `{block_type}` "
+                f"(expected one of: {', '.join(sorted(valid_types))})"
+            )
+    if len(rest) < 2 or rest[0].lower() != "on":
+        raise ActionError(
+            'expected `create_block "<content>" on <date|page> [as <type>]` '
+            "— the target page is always explicit"
+        )
+    target_tokens = tuple(rest[1:])
+
+    try:
+        target_date = parse_relative_date(" ".join(target_tokens), ctx.user.today())
+    except ValueError:
+        target_date = None
+
+    if target_date is not None:
+        page, _ = PageRepository.get_or_create_daily_note(ctx.user, target_date)
+    else:
+        page = _resolve_target_page(ctx, target_tokens, "create_block")
+
+    form = CreateBlockForm(
+        data={
+            "user": ctx.user.id,
+            "page": str(page.uuid),
+            "content": content,
+            "block_type": block_type,
+        }
+    )
+    if not form.is_valid():
+        raise ActionError(form.errors.as_json())
+    block = CreateBlockCommand(form).execute()
+    return ActionResult(
+        affected=1,
+        details=[
+            {
+                "block_uuid": str(block.uuid),
+                "target_page_uuid": str(page.uuid),
+                "block_type": block_type,
+            }
+        ],
+    )
+
+
 COMMAND_ACTIONS: Dict[str, ActionDef] = {
     "move_to_daily": ActionDef(handler=_move_to_daily, capability="move_to_daily"),
     "move_to_page": ActionDef(handler=_move_to_page, capability="move_to_page"),
     "set_type": ActionDef(handler=_set_type, capability="set_type"),
+    "tag": ActionDef(handler=_tag, capability="tag"),
+    "untag": ActionDef(handler=_untag, capability="untag"),
+    "set_due": ActionDef(handler=_set_due, capability="set_due"),
+    "set_property": ActionDef(handler=_set_property, capability="set_property"),
+    "create_block": ActionDef(
+        handler=_create_block, capability="create_block", requires_query=False
+    ),
     "notify": ActionDef(handler=_notify, capability="notify", requires_query=False),
     "apply_template": ActionDef(
         handler=_apply_template, capability="apply_template", requires_query=False
