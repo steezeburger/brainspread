@@ -168,14 +168,7 @@ class UpdateBlockCommand(AbstractBaseCommand):
         # SetBlockTypeCommand.STATE_PREFIXES), so editing "LATER x" to
         # "TODO x" must move the type too. Don't override other explicit
         # types like heading, code, etc.
-        if current_block_type not in [
-            "bullet",
-            "todo",
-            "doing",
-            "done",
-            "later",
-            "wontdo",
-        ]:
+        if current_block_type != "bullet" and current_block_type not in TODO_TYPES:
             return current_block_type
 
         # Only auto-detect if we have content
