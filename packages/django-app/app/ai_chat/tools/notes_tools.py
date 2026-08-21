@@ -26,27 +26,33 @@ from .notes_handlers import READ_HANDLERS, WRITE_HANDLERS
 # wire-format renderers (core.llm_tools).
 _READ_SCHEMAS: List[Dict[str, Any]] = [
     {
-        "name": "search_notes",
+        "name": "run_query",
         "description": (
-            "Full-text search over the user's note blocks. Returns up to `limit`"
-            " matching blocks with their page title, block content, and block uuid."
-            " Use this when the user refers to notes whose exact location is unknown."
+            'Query the user\'s blocks with structured filters — THE search tool. Prefer `query`, a compact expression: predicates are tag:slug, type:todo,doing (comma = OR), content:"text" (plain text search), has:key, prop:key=value, page_type:daily, and due / completed comparisons (due < today, completed >= "7 days ago", due is null; dates: today, tomorrow, N days ago, YYYY-MM-DD). Combine with and / or / not and parentheses. Examples: content:"dentist" · tag:project-x and type:todo,doing · due < today and completed is null (overdue). For shapes the expression can\'t say (property ops like contains/gte, custom nesting), pass `filter` — raw query-engine JSON — instead.'
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Substring to search for in block content (case-insensitive).",
+                    "description": "Filter expression (preferred). Pass exactly one of query / filter.",
+                },
+                "filter": {
+                    "type": "object",
+                    "description": "Raw query-engine filter JSON (escape hatch).",
+                },
+                "sort": {
+                    "type": "array",
+                    "description": 'Optional [{"field", "dir"}]; fields: due_at, completed_at, created_at, modified_at, order, block_type, properties.<key>; dir: asc|desc.',
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Maximum number of matching blocks to return (default 10, max 25).",
+                    "description": "Max results (default 25, max 100).",
                     "minimum": 1,
-                    "maximum": 25,
+                    "maximum": 100,
                 },
             },
-            "required": ["query"],
+            "required": [],
         },
     },
     {
@@ -57,7 +63,7 @@ _READ_SCHEMAS: List[Dict[str, Any]] = [
             " first; slug is the fallback. Prefer this when the user"
             " names a page — including when their reference comes from"
             " a `#hashtag` style mention (the slug form). For free-"
-            "text discovery, use search_notes instead."
+            "text discovery, use run_query instead."
         ),
         "input_schema": {
             "type": "object",
@@ -78,7 +84,7 @@ _READ_SCHEMAS: List[Dict[str, Any]] = [
         "name": "get_block_by_id",
         "description": (
             "Fetch a single block by uuid and its direct children. Use after"
-            " search_notes to expand a promising hit into more detail."
+            " run_query to expand a promising hit into more detail."
         ),
         "input_schema": {
             "type": "object",
@@ -607,7 +613,7 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
         "description": (
             "Create a new block on a page. Use after confirming the"
             " target page via get_page_by_title_or_slug or"
-            " search_notes. Every call pauses for explicit user"
+            " run_query. Every call pauses for explicit user"
             " approval before execution."
             "\n\nTagging: if the user says 'tag with #slug' (or already"
             " uses `#slug` syntax in their request), include the literal"

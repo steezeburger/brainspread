@@ -89,13 +89,24 @@ class TestCompileInlineQuery(SimpleTestCase):
             {"all": [{"has_tag": "ping-me-15"}, {"block_type": "doing"}]},
         )
 
+    def test_bare_text_compiles_to_content_search(self):
+        self.assertEqual(
+            compile_inline_query("meeting with bob"),
+            {"content_contains": "meeting with bob"},
+        )
+        self.assertEqual(
+            compile_inline_query("meeting"), {"content_contains": "meeting"}
+        )
+        # Anything with DSL syntax still parses as an expression.
+        self.assertEqual(compile_inline_query("tag:meeting"), {"has_tag": "meeting"})
+
     def test_errors_are_specific(self):
         with self.assertRaises(QueryDSLError):
             compile_inline_query("")
         with self.assertRaises(QueryDSLError):
             compile_inline_query("tag:")
         with self.assertRaises(QueryDSLError):
-            compile_inline_query("bogus~~query")
+            compile_inline_query("(((")
         with self.assertRaises(QueryDSLError):
             compile_inline_query("tag:a and")
         with self.assertRaises(QueryDSLError):

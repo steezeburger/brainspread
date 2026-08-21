@@ -92,7 +92,7 @@ def _serialize_web_search_content(content: Any) -> Any:
 
 
 class AnthropicService(BaseAIService):
-    def __init__(self, api_key: str, model: str = "claude-opus-4-7") -> None:
+    def __init__(self, api_key: str, model: str = "claude-opus-5") -> None:
         super().__init__(api_key, model)
         self._ai_model: Optional[AIModel] = None
         self._ai_model_loaded: bool = False

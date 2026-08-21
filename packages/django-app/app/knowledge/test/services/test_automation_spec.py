@@ -191,7 +191,7 @@ class TestParseAutomationBlock(SimpleTestCase):
                     {
                         "trigger": "manual",
                         "action": "move_to_daily today",
-                        "query": "bogus~~query",
+                        "query": "due <",
                     }
                 )
             )

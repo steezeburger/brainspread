@@ -34,8 +34,8 @@ from knowledge.commands import (
     ListAutomationsCommand,
     ReorderBlocksCommand,
     RunAutomationCommand,
+    RunQueryCommand,
     ScheduleBlockCommand,
-    SearchNotesCommand,
     ToggleBlockTodoCommand,
 )
 from knowledge.commands.list_overdue_blocks_command import ListOverdueBlocksCommand
@@ -60,7 +60,7 @@ from knowledge.forms.list_overdue_blocks_form import ListOverdueBlocksForm
 from knowledge.forms.list_scheduled_blocks_form import ListScheduledBlocksForm
 from knowledge.forms.move_block_to_daily_form import MoveBlockToDailyForm
 from knowledge.forms.run_automation_form import RunAutomationForm
-from knowledge.forms.search_notes_form import SearchNotesForm
+from knowledge.forms.run_query_form import RunQueryForm
 from knowledge.forms.search_pages_form import SearchPagesForm
 from knowledge.forms.set_block_completed_at_form import SetBlockCompletedAtForm
 from knowledge.forms.tag_blocks_form import TagBlocksForm, UntagBlocksForm
@@ -383,14 +383,22 @@ def _move_block_to_daily(ctx: ToolContext, args: dict[str, Any]) -> dict[str, An
     }
 
 
-def _search_notes(ctx: ToolContext, args: dict[str, Any]) -> Any:
-    payload: dict[str, Any] = {"user": ctx.user.id, "query": args.get("query") or ""}
-    if args.get("limit") is not None:
-        payload["limit"] = args["limit"]
-    form = SearchNotesForm(data=payload)
+def _run_query(ctx: ToolContext, args: dict[str, Any]) -> Any:
+    form = RunQueryForm(
+        data={
+            "user": ctx.user.id,
+            "query": args.get("query") or "",
+            "filter": args.get("filter"),
+            "sort": args.get("sort"),
+            "limit": args.get("limit"),
+        }
+    )
     if not form.is_valid():
         raise ToolError(_form_errors_to_str(form))
-    return SearchNotesCommand(form).execute()
+    try:
+        return RunQueryCommand(form).execute()
+    except ValidationError as exc:
+        raise ToolError(str(exc)) from exc
 
 
 def _search_pages(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
@@ -779,22 +787,43 @@ REGISTRY = ToolRegistry(
             handler=_move_block_to_daily,
         ),
         Tool(
-            name="search_notes",
-            description="Substring search over block content.",
+            name="run_query",
+            description=(
+                "Query blocks with structured filters — THE search tool."
+                " Prefer `query`, a compact expression: tag:slug,"
+                ' type:todo,doing (comma = OR), content:"text" (plain'
+                " text search), has:key, prop:key=value, page_type:daily,"
+                " due / completed comparisons (due < today, completed >="
+                ' "7 days ago", due is null). Combine with and / or /'
+                ' not + parens. Examples: content:"dentist" ·'
+                " tag:project-x and type:todo,doing · due < today and"
+                " completed is null (overdue). Escape hatch: pass `filter`"
+                " (raw query-engine JSON) for property ops the expression"
+                " can't say. Exactly one of query / filter."
+            ),
             input_schema={
                 "type": "object",
                 "properties": {
                     "query": {"type": "string"},
+                    "filter": {"type": "object"},
+                    "sort": {
+                        "type": "array",
+                        "description": (
+                            '[{"field", "dir"}]; fields: due_at,'
+                            " completed_at, created_at, modified_at,"
+                            " order, block_type, properties.<key>."
+                        ),
+                    },
                     "limit": {
                         "type": "integer",
                         "minimum": 1,
-                        "maximum": 25,
-                        "description": "1-25; defaults to 10.",
+                        "maximum": 100,
+                        "description": "1-100; defaults to 25.",
                     },
                 },
-                "required": ["query"],
+                "required": [],
             },
-            handler=_search_notes,
+            handler=_run_query,
         ),
         Tool(
             name="search_pages",
@@ -822,7 +851,7 @@ REGISTRY = ToolRegistry(
             name="toggle_todo",
             description=(
                 "Cycle a TODO block's state (todo → doing → done → todo). "
-                "Use a block uuid from search_notes or list_today_todos."
+                "Use a block uuid from run_query or list_today_todos."
             ),
             input_schema={
                 "type": "object",
