@@ -132,12 +132,6 @@ one follows the user onto whichever daily note is open rather than sticking to
 one date.
 _Avoid_: widget, query block, embed
 
-**Anchored**:
-Said of a saved view whose relative dates resolve against the daily note being
-viewed rather than the real today. An anchored "due today" view sitting on last
-Tuesday's daily shows what was due last Tuesday.
-_Avoid_: dates relative to daily, rebased, pinned
-
 **Whiteboard**:
 A page whose body is a drawing canvas instead of blocks.
 _Avoid_: canvas, board, sketch
