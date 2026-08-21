@@ -875,3 +875,311 @@ class ContextDateTests(_EngineTestBase):
         )
         out = list(BlockRepository.run_compiled_query(self.user, compiled))
         self.assertEqual([b.id for b in out], [match.id])
+
+
+class _NowTestBase(_EngineTestBase):
+    """Additionally pins the engine's ``now`` to noon UTC of the base
+    class's pinned today (2026-04-24 12:00 UTC)."""
+
+    def setUp(self):
+        super().setUp()
+        patcher = patch("knowledge.services.query_engine.timezone")
+        mock_engine_tz = patcher.start()
+        mock_engine_tz.now.return_value = _utc_noon(self.today)
+        self.addCleanup(patcher.stop)
+
+
+class NowTokenTests(_NowTestBase):
+    """``now`` resolves to the current instant and compares against the
+    full stored datetime — no day-boundary rounding. Purely additive:
+    ``today`` and friends keep their day semantics (pinned by the
+    contrast test below)."""
+
+    def _timed(self, hour: int, minute: int = 0):
+        return BlockFactory(
+            user=self.user,
+            page=self.page,
+            due_at=due_dt(self.today, hour=hour, minute=minute),
+            due_at_has_time=True,
+            block_type="todo",
+        )
+
+    def test_lte_now_splits_today_at_the_current_instant(self):
+        past = self._timed(9)
+        self._timed(15)  # later today — excluded
+        out = self.run_query({"due_at": {"lte": "now"}})
+        self.assertEqual([b.id for b in out], [past.id])
+
+    def test_lte_today_still_day_rounds(self):
+        # Guard: the date token keeps matching the whole local day even
+        # though ``now`` (noon) sits in the middle of it.
+        past = self._timed(9)
+        future = self._timed(15)
+        out = self.run_query({"due_at": {"lte": "today"}})
+        self.assertEqual({b.id for b in out}, {past.id, future.id})
+
+    def test_gt_and_gte_now_boundary(self):
+        at_noon = self._timed(12)
+        later = self._timed(15)
+        out_gte = self.run_query({"due_at": {"gte": "now"}})
+        self.assertEqual({b.id for b in out_gte}, {at_noon.id, later.id})
+        out_gt = self.run_query({"due_at": {"gt": "now"}})
+        self.assertEqual([b.id for b in out_gt], [later.id])
+
+    def test_lt_now_excludes_the_exact_instant(self):
+        earlier = self._timed(9)
+        self._timed(12)  # exactly now — excluded by strict lt
+        out = self.run_query({"due_at": {"lt": "now"}})
+        self.assertEqual([b.id for b in out], [earlier.id])
+
+    def test_eq_now_rejected(self):
+        # Exact-instant equality against the live clock can never match
+        # a real due — reject it at compile so an automation doesn't
+        # silently succeed with matched=0 forever.
+        with self.assertRaises(query_engine.QueryEngineError):
+            query_engine.compile({"due_at": "now"}, user=self.user)
+        with self.assertRaises(query_engine.QueryEngineError):
+            query_engine.compile({"due_at": {"eq": "now"}}, user=self.user)
+
+    def test_now_is_case_insensitive(self):
+        past = self._timed(9)
+        out = self.run_query({"due_at": {"lte": "NOW"}})
+        self.assertEqual([b.id for b in out], [past.id])
+
+    def test_lte_now_sweeps_all_day_blocks_from_local_midnight(self):
+        # The documented reason due_has_time exists: an all-day block
+        # sits at local midnight, so by noon it's <= now. ``now`` does
+        # NOT silently imply timed-blocks-only — the two concerns
+        # compose explicitly (see the combined test below).
+        all_day = BlockFactory(
+            user=self.user,
+            page=self.page,
+            due_at=due_dt(self.today),
+            due_at_has_time=False,
+            block_type="todo",
+        )
+        out = self.run_query({"due_at": {"lte": "now"}})
+        self.assertEqual([b.id for b in out], [all_day.id])
+
+    def test_now_ignores_context_date(self):
+        # Rebasing on the embedded-daily date makes no sense for an
+        # instant — ``now`` stays the live current time.
+        past = self._timed(9)
+        compiled = query_engine.compile(
+            {"due_at": {"lte": "now"}}, user=self.user, context_date=date(2026, 4, 10)
+        )
+        out = list(BlockRepository.run_compiled_query(self.user, compiled))
+        self.assertEqual([b.id for b in out], [past.id])
+
+    def test_completed_at_supports_now_too(self):
+        done = BlockFactory(
+            user=self.user,
+            page=self.page,
+            block_type="done",
+            completed_at=datetime(2026, 4, 24, 9, 0, tzinfo=pytz.UTC),
+        )
+        BlockFactory(
+            user=self.user,
+            page=self.page,
+            block_type="done",
+            completed_at=datetime(2026, 4, 24, 15, 0, tzinfo=pytz.UTC),
+        )
+        out = self.run_query({"completed_at": {"lte": "now"}})
+        self.assertEqual([b.id for b in out], [done.id])
+
+
+class IsoDatetimeTokenTests(_NowTestBase):
+    """ISO ``YYYY-MM-DDTHH:MM[:SS]`` values compare as exact instants,
+    interpreted as wall-clock time in the user's timezone. Plain
+    ``YYYY-MM-DD`` stays a date token with day-boundary semantics."""
+
+    def _timed(self, hour: int, minute: int = 0):
+        return BlockFactory(
+            user=self.user,
+            page=self.page,
+            due_at=due_dt(self.today, hour=hour, minute=minute),
+            due_at_has_time=True,
+        )
+
+    def test_gte_iso_datetime(self):
+        self._timed(9)
+        late = self._timed(11)
+        out = self.run_query({"due_at": {"gte": "2026-04-24T10:30"}})
+        self.assertEqual([b.id for b in out], [late.id])
+
+    def test_eq_iso_datetime_with_seconds(self):
+        match = self._timed(14, 30)
+        self._timed(14, 31)
+        out = self.run_query({"due_at": "2026-04-24T14:30:00"})
+        self.assertEqual([b.id for b in out], [match.id])
+
+    def test_naive_iso_datetime_resolves_in_user_timezone(self):
+        # 10:30 wall-clock in Denver (MDT, UTC-6 in April) = 16:30 UTC.
+        denver = UserFactory(timezone="America/Denver")
+        page = PageFactory(user=denver, page_type="page", title="Denver notes")
+        late = BlockFactory(
+            user=denver,
+            page=page,
+            due_at=datetime(2026, 4, 24, 17, 0, tzinfo=pytz.UTC),
+            due_at_has_time=True,
+        )
+        BlockFactory(
+            user=denver,
+            page=page,
+            due_at=datetime(2026, 4, 24, 15, 0, tzinfo=pytz.UTC),
+            due_at_has_time=True,
+        )
+        compiled = query_engine.compile(
+            {"due_at": {"gte": "2026-04-24T10:30"}}, user=denver
+        )
+        out = list(BlockRepository.run_compiled_query(denver, compiled))
+        self.assertEqual([b.id for b in out], [late.id])
+
+    def test_between_with_datetime_bounds_is_inclusive(self):
+        self._timed(8, 59)
+        at_start = self._timed(9)
+        at_end = self._timed(12)
+        self._timed(12, 1)
+        out = self.run_query(
+            {"due_at": {"between": ["2026-04-24T09:00", "2026-04-24T12:00"]}}
+        )
+        self.assertEqual({b.id for b in out}, {at_start.id, at_end.id})
+
+    def test_between_mixes_date_and_datetime_bounds(self):
+        # Date start keeps its local-day edge (>= local midnight);
+        # datetime end is an inclusive exact instant.
+        midnight = BlockFactory(
+            user=self.user, page=self.page, due_at=due_dt(self.today)
+        )
+        morning = self._timed(11)
+        self._timed(13)
+        out = self.run_query({"due_at": {"between": ["today", "2026-04-24T12:00"]}})
+        self.assertEqual({b.id for b in out}, {midnight.id, morning.id})
+
+    def test_between_date_bounds_keep_day_semantics(self):
+        # Guard: the pre-existing all-date between shape is untouched —
+        # inclusive of the entire end day.
+        end_of_day = self._timed(23, 59)
+        out = self.run_query({"due_at": {"between": ["2026-04-23", "2026-04-24"]}})
+        self.assertEqual([b.id for b in out], [end_of_day.id])
+
+    def test_zulu_suffix_is_absolute_utc(self):
+        # Date.toISOString() output (the default JS serialization).
+        match = self._timed(14, 30)
+        self._timed(15)
+        out = self.run_query({"due_at": "2026-04-24T14:30:00.000Z"})
+        self.assertEqual([b.id for b in out], [match.id])
+
+    def test_numeric_offset_is_absolute(self):
+        # 08:30 at -06:00 == 14:30 UTC.
+        match = self._timed(14, 30)
+        self._timed(14, 31)
+        out = self.run_query({"due_at": "2026-04-24T08:30:00-06:00"})
+        self.assertEqual([b.id for b in out], [match.id])
+
+    def test_invalid_datetime_token_rejected(self):
+        for bad in ("2026-04-24T25:99", "2026-04-24Tnoon"):
+            with self.assertRaises(query_engine.QueryEngineError):
+                query_engine.compile({"due_at": {"lte": bad}}, user=self.user)
+
+    def test_plain_iso_date_still_day_rounds(self):
+        # Guard: ``lte: 2026-04-24`` (no time part) still means "through
+        # the end of that local day".
+        end_of_day = self._timed(23, 59)
+        out = self.run_query({"due_at": {"lte": "2026-04-24"}})
+        self.assertEqual([b.id for b in out], [end_of_day.id])
+
+
+class DueHasTimeTests(_NowTestBase):
+    def test_true_matches_only_timed_dues(self):
+        timed = BlockFactory(
+            user=self.user,
+            page=self.page,
+            due_at=due_dt(self.today, hour=9),
+            due_at_has_time=True,
+        )
+        BlockFactory(
+            user=self.user,
+            page=self.page,
+            due_at=due_dt(self.today),
+            due_at_has_time=False,
+        )
+        out = self.run_query({"due_has_time": True})
+        self.assertEqual([b.id for b in out], [timed.id])
+
+    def test_false_matches_all_day_and_undated_blocks(self):
+        # Explicit-composition principle: false is the raw flag value,
+        # so blocks with no due at all (flag defaults off) match too.
+        all_day = BlockFactory(
+            user=self.user,
+            page=self.page,
+            due_at=due_dt(self.today),
+            due_at_has_time=False,
+        )
+        undated = BlockFactory(user=self.user, page=self.page, due_at=None)
+        BlockFactory(
+            user=self.user,
+            page=self.page,
+            due_at=due_dt(self.today, hour=9),
+            due_at_has_time=True,
+        )
+        out = self.run_query({"due_has_time": False})
+        self.assertEqual({b.id for b in out}, {all_day.id, undated.id})
+
+    def test_eq_dict_form(self):
+        timed = BlockFactory(
+            user=self.user,
+            page=self.page,
+            due_at=due_dt(self.today, hour=9),
+            due_at_has_time=True,
+        )
+        out = self.run_query({"due_has_time": {"eq": True}})
+        self.assertEqual([b.id for b in out], [timed.id])
+
+    def test_non_bool_rejected(self):
+        for bad in ("true", 1, None):
+            with self.assertRaises(query_engine.QueryEngineError):
+                query_engine.compile({"due_has_time": bad}, user=self.user)
+
+    def test_unsupported_op_rejected(self):
+        # Unknown dict ops must error, not silently drop — matching the
+        # other predicate handlers.
+        for bad in ({"in": [True]}, {"ne": True}, {"eq": True, "ne": False}):
+            with self.assertRaises(query_engine.QueryEngineError):
+                query_engine.compile({"due_has_time": bad}, user=self.user)
+
+    def test_start_when_due_acceptance_filter(self):
+        # The motivating automation: a todo whose due TIME has arrived
+        # matches; an all-day todo due today and a not-yet-due timed
+        # todo do not.
+        due_now = BlockFactory(
+            user=self.user,
+            page=self.page,
+            block_type="todo",
+            due_at=due_dt(self.today, hour=11, minute=50),
+            due_at_has_time=True,
+        )
+        BlockFactory(  # all-day today — excluded by due_has_time
+            user=self.user,
+            page=self.page,
+            block_type="todo",
+            due_at=due_dt(self.today),
+            due_at_has_time=False,
+        )
+        BlockFactory(  # timed, later today — excluded by now
+            user=self.user,
+            page=self.page,
+            block_type="todo",
+            due_at=due_dt(self.today, hour=15),
+            due_at_has_time=True,
+        )
+        out = self.run_query(
+            {
+                "all": [
+                    {"block_type": "todo"},
+                    {"due_at": {"lte": "now"}},
+                    {"due_has_time": True},
+                ]
+            }
+        )
+        self.assertEqual([b.id for b in out], [due_now.id])
