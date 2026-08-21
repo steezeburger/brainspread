@@ -701,3 +701,108 @@ class TestSmallVerbActions(TestCase):
 
         self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
         self.assertIn("banana", result["last_error"])
+
+    # -- content-durable tagging & create_block clauses ---------------------
+
+    def test_tag_writes_hashtag_into_content(self):
+        PageFactory(user=self.user, title="Needs Review", slug="needs-review")
+        target = self._todo(content="TODO ship it")
+        automation = self._automation(
+            trigger="manual", query="type:todo", action="tag needs-review"
+        )
+
+        self._run(automation)
+
+        target.refresh_from_db()
+        self.assertIn("#needs-review", target.content)
+
+    def test_tag_is_idempotent_on_rerun(self):
+        PageFactory(user=self.user, title="Needs Review", slug="needs-review")
+        target = self._todo(content="TODO ship it")
+        automation = self._automation(
+            trigger="manual", query="type:todo", action="tag needs-review"
+        )
+
+        self._run(automation)
+        second = self._run(automation)
+
+        self.assertEqual(second["result"]["affected"], 0)
+        target.refresh_from_db()
+        self.assertEqual(target.content.count("#needs-review"), 1)
+
+    def test_untag_strips_content_hashtag(self):
+        sticky = PageFactory(user=self.user, title="Sticky", slug="sticky")
+        target = self._todo(content="TODO ship it #sticky")
+        target.pages.add(sticky)
+        automation = self._automation(
+            trigger="manual", query="tag:sticky", action="untag sticky"
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        target.refresh_from_db()
+        self.assertNotIn("#sticky", target.content)
+        self.assertNotIn(sticky, target.pages.all())
+
+    def test_create_block_tagged_and_with_clauses(self):
+        groceries = PageFactory(user=self.user, title="Groceries", slug="groceries")
+        automation = self._automation(
+            trigger="manual",
+            action='create_block "buy milk" on today as todo '
+            'tagged groceries with priority=high status="in review"',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        created = Block.objects.get(user=self.user, content__startswith="buy milk")
+        self.assertIn("#groceries", created.content)
+        self.assertIn(groceries, created.pages.all())
+        self.assertEqual(created.properties.get("priority"), "high")
+        self.assertEqual(created.properties.get("status"), "in review")
+        self.assertEqual(created.block_type, "todo")
+
+    def test_create_block_rejects_bare_hashtag_in_content(self):
+        automation = self._automation(
+            trigger="manual",
+            action='create_block "buy milk #groceries" on today',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("tagged", result["last_error"])
+
+    def test_create_block_rejects_property_syntax_in_content(self):
+        automation = self._automation(
+            trigger="manual",
+            action='create_block "buy milk priority:: high" on today',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("with key=value", result["last_error"])
+
+    def test_create_block_rejects_bad_with_pair(self):
+        automation = self._automation(
+            trigger="manual",
+            action='create_block "x" on today with priority',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("key=value", result["last_error"])
+
+    def test_create_block_tagged_missing_page_fails(self):
+        automation = self._automation(
+            trigger="manual",
+            action='create_block "x" on today tagged no-such-tag',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("no-such-tag", result["last_error"])

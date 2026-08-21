@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from django.conf import settings
 
@@ -44,7 +44,7 @@ from ..commands.bulk_move_blocks_to_page_command import BulkMoveBlocksToPageComm
 from ..commands.bulk_schedule_command import BulkScheduleCommand
 from ..commands.bulk_set_block_type_command import BulkSetBlockTypeCommand
 from ..commands.create_block_command import CreateBlockCommand
-from ..commands.tag_blocks_command import TagBlocksCommand, UntagBlocksCommand
+from ..commands.tag_blocks_command import UntagBlocksCommand
 from ..commands.update_block_command import UpdateBlockCommand
 from ..forms.add_template_blocks_to_page_form import AddTemplateBlocksToPageForm
 from ..forms.bulk_clear_schedule_form import BulkClearScheduleForm
@@ -53,7 +53,7 @@ from ..forms.bulk_move_blocks_to_page_form import BulkMoveBlocksToPageForm
 from ..forms.bulk_schedule_form import BulkScheduleForm
 from ..forms.bulk_set_block_type_form import BulkSetBlockTypeForm
 from ..forms.create_block_form import CreateBlockForm
-from ..forms.tag_blocks_form import TagBlocksForm, UntagBlocksForm
+from ..forms.tag_blocks_form import UntagBlocksForm
 from ..forms.update_block_form import UpdateBlockForm
 from ..models import Block
 from ..repositories.page_repository import PageRepository
@@ -358,13 +358,15 @@ def _apply_template(
     )
 
 
-def _resolve_tag_pages(ctx: ActionContext, args: Tuple[str, ...], verb: str):
-    """Resolve tag-slug args into page uuids, strict-by-default (a missing
-    tag page fails the run rather than being silently created — the same
-    typo guard the MCP tag tools use)."""
+def _resolve_tag_slugs(
+    ctx: ActionContext, args: Tuple[str, ...], verb: str
+) -> List[str]:
+    """Validate tag-slug args, strict-by-default: every slug must already
+    exist as a page (a missing one fails the run rather than being
+    silently created — the same typo guard the MCP tag tools use)."""
     if not args:
         raise ActionError(f"`{verb}` needs at least one tag slug, e.g. `{verb} sticky`")
-    page_uuids: List[str] = []
+    slugs: List[str] = []
     missing: List[str] = []
     for raw in args:
         slug = raw.strip()
@@ -377,62 +379,107 @@ def _resolve_tag_pages(ctx: ActionContext, args: Tuple[str, ...], verb: str):
             )
         if not slug:
             raise ActionError(f"`{verb}` got an empty tag slug")
-        page = PageRepository.get_by_slug(slug, user=ctx.user)
-        if page is None:
+        if PageRepository.get_by_slug(slug, user=ctx.user) is None:
             missing.append(slug)
         else:
-            page_uuids.append(str(page.uuid))
+            slugs.append(slug)
     if missing:
         raise ActionError(
             f"tag page(s) not found: {', '.join(missing)} — create the page(s) first"
         )
-    return page_uuids
+    return slugs
 
 
-def _apply_tag_verb(
-    ctx: ActionContext, blocks: List[Block], args: Tuple[str, ...], *, add: bool
-) -> ActionResult:
-    verb = "tag" if add else "untag"
-    page_uuids = _resolve_tag_pages(ctx, args, verb)
-    form_cls = TagBlocksForm if add else UntagBlocksForm
-    form = form_cls(
-        data={
-            "user": ctx.user.id,
-            "block_uuids": [str(block.uuid) for block in blocks],
-            "page_uuids": page_uuids,
-        }
+def _tag_occurrence_re(slug: str) -> re.Pattern:
+    """Matches a live ``#slug`` occurrence in block content — the same
+    shape the tag sync scans for (backslash-escaped ``\\#slug`` excluded,
+    no partial-slug matches)."""
+    return re.compile(rf"(?<!\\)#{re.escape(slug)}(?![A-Za-z0-9_-])")
+
+
+def _update_block_content(ctx: ActionContext, block: Block, content: str) -> None:
+    form = UpdateBlockForm(
+        data={"user": ctx.user.id, "block": str(block.uuid), "content": content}
     )
     if not form.is_valid():
         raise ActionError(form.errors.as_json())
-    command_cls = TagBlocksCommand if add else UntagBlocksCommand
-    outcome = command_cls(form).execute()
-    return ActionResult(
-        affected=outcome["updated_count"],
-        details=[
-            {
-                "updated_count": outcome["updated_count"],
-                "tags": [a.strip() for a in args],
-            }
-        ],
-    )
+    UpdateBlockCommand(form).execute()
 
 
 def _tag(
     ctx: ActionContext, blocks: List[Block], args: Tuple[str, ...]
 ) -> ActionResult:
-    """Add page tags to every matched block, e.g. `tag needs-review`.
-    Idempotent; multiple slugs allowed. Self-stopping when the query
-    excludes the tag being added."""
-    return _apply_tag_verb(ctx, blocks, args, add=True)
+    """Append ``#slug`` hashtags to each matched block's first content
+    line, e.g. `tag needs-review`. Tags must live in content to be
+    durable: the content↔tag sync removes M2M links whose hashtag isn't
+    present on every content edit, so a link-only tag would silently
+    vanish the next time the block is touched. Idempotent; multiple
+    slugs allowed."""
+    slugs = _resolve_tag_slugs(ctx, args, "tag")
+    updated = 0
+    for block in blocks:
+        content = block.content or ""
+        to_add = [s for s in slugs if not _tag_occurrence_re(s).search(content)]
+        if not to_add:
+            continue
+        lines = content.split("\n")
+        suffix = " ".join(f"#{s}" for s in to_add)
+        lines[0] = f"{lines[0].rstrip()} {suffix}".strip()
+        _update_block_content(ctx, block, "\n".join(lines))
+        updated += 1
+    return ActionResult(
+        affected=updated,
+        details=[{"updated_count": updated, "tags": slugs}],
+    )
 
 
 def _untag(
     ctx: ActionContext, blocks: List[Block], args: Tuple[str, ...]
 ) -> ActionResult:
-    """Remove page tags from every matched block, e.g. `untag sticky`.
-    Untagging the query's own tag is self-stopping: untagged blocks leave
-    the match set."""
-    return _apply_tag_verb(ctx, blocks, args, add=False)
+    """Remove tags from every matched block, e.g. `untag sticky` — strips
+    ``#slug`` from content (the sync then drops the page link) and removes
+    any content-less link directly, so both authoring styles untag
+    durably. Untagging the query's own tag is self-stopping: untagged
+    blocks leave the match set."""
+    slugs = _resolve_tag_slugs(ctx, args, "untag")
+    affected = 0
+    for block in blocks:
+        content = block.content or ""
+        had_tag = bool(set(slugs) & set(block.get_tag_names()))
+        new_content = content
+        for slug in slugs:
+            new_content = _tag_occurrence_re(slug).sub("", new_content)
+        if new_content != content:
+            new_content = re.sub(r"[ \t]{2,}", " ", new_content)
+            new_content = "\n".join(line.rstrip() for line in new_content.split("\n"))
+            _update_block_content(ctx, block, new_content)
+            affected += 1
+        elif had_tag:
+            affected += 1
+
+    # Content-less links (added via block.pages directly) aren't touched
+    # by the content sync — drop them explicitly. Idempotent for the rest.
+    page_uuids: List[str] = []
+    for slug in slugs:
+        page = PageRepository.get_by_slug(slug, user=ctx.user)
+        if page is not None:
+            page_uuids.append(str(page.uuid))
+    if page_uuids and blocks:
+        form = UntagBlocksForm(
+            data={
+                "user": ctx.user.id,
+                "block_uuids": [str(block.uuid) for block in blocks],
+                "page_uuids": page_uuids,
+            }
+        )
+        if not form.is_valid():
+            raise ActionError(form.errors.as_json())
+        UntagBlocksCommand(form).execute()
+
+    return ActionResult(
+        affected=affected,
+        details=[{"updated_count": affected, "tags": slugs}],
+    )
 
 
 def _set_due(
@@ -552,13 +599,31 @@ def _set_property(
     return ActionResult(affected=updated, details=details)
 
 
+# Clause keywords for the create_block grammar. Everything after the
+# content arg is sectioned by these; each collects tokens until the next.
+_CREATE_BLOCK_KEYWORDS = ("on", "as", "tagged", "with")
+
+_CREATE_BLOCK_USAGE = (
+    'expected `create_block "<content>" on <date|page> [as <type>] '
+    "[tagged <slug> …] [with key=value …]`"
+)
+
+
 def _create_block(
     ctx: ActionContext, blocks: List[Block], args: Tuple[str, ...]
 ) -> ActionResult:
-    """Standalone: `create_block "content" on <target> [as <type>]`.
+    """Standalone: `create_block "content" on <target> [as <type>]
+    [tagged <slug> …] [with key=value …]`.
 
     Target is explicit — a date token (daily page, created if needed) or
     a page reference (title / slug / [[wiki]]); no silent defaulting.
+    Tags and properties are ARGS, never content syntax: a bare `#x` or
+    `key:: value` inside the quoted content would be picked up by the
+    automation definition block's own tag/property sync and contaminate
+    the definition, so both are rejected with a pointer to the clause
+    that does it safely. The clauses write the canonical durable forms
+    onto the created block (`#slug` on the first line, `key:: value`
+    lines after), which its own sync then links up.
     """
     if not args or not args[0].strip():
         raise ActionError(
@@ -566,24 +631,71 @@ def _create_block(
             'create_block "review inbox" on today as todo'
         )
     content = args[0]
+    if re.search(r"(?<!\\)#", content):
+        raise ActionError(
+            "no bare `#` in create_block content — it would tag the "
+            "automation definition itself; use `tagged <slug>` "
+            "(or escape a literal hash as `\\#`)"
+        )
+    if "::" in content:
+        raise ActionError(
+            "no `key:: value` in create_block content — it would become a "
+            "property of the automation definition; use `with key=value`"
+        )
 
-    rest = list(args[1:])
+    sections: Dict[str, List[str]] = {}
+    current: Optional[str] = None
+    for token in args[1:]:
+        lowered = token.lower()
+        if lowered in _CREATE_BLOCK_KEYWORDS:
+            if lowered in sections:
+                raise ActionError(
+                    f"duplicate `{lowered}` clause — {_CREATE_BLOCK_USAGE}"
+                )
+            sections[lowered] = []
+            current = lowered
+        else:
+            if current is None:
+                raise ActionError(
+                    f"{_CREATE_BLOCK_USAGE} — the target page is always explicit"
+                )
+            sections[current].append(token)
+
+    target_tokens = tuple(sections.get("on") or ())
+    if not target_tokens:
+        raise ActionError(f"{_CREATE_BLOCK_USAGE} — the target page is always explicit")
+
     block_type = "bullet"
-    if len(rest) >= 2 and rest[-2].lower() == "as":
-        block_type = rest[-1].lower()
-        rest = rest[:-2]
+    if "as" in sections:
+        if len(sections["as"]) != 1:
+            raise ActionError("`as` expects exactly one block type")
+        block_type = sections["as"][0].lower()
         valid_types = {c[0] for c in Block._meta.get_field("block_type").choices}
         if block_type not in valid_types:
             raise ActionError(
                 f"unknown block type `{block_type}` "
                 f"(expected one of: {', '.join(sorted(valid_types))})"
             )
-    if len(rest) < 2 or rest[0].lower() != "on":
-        raise ActionError(
-            'expected `create_block "<content>" on <date|page> [as <type>]` '
-            "— the target page is always explicit"
+
+    tag_slugs: List[str] = []
+    if "tagged" in sections:
+        tag_slugs = _resolve_tag_slugs(
+            ctx, tuple(sections["tagged"]), "create_block tagged"
         )
-    target_tokens = tuple(rest[1:])
+
+    props: List[Tuple[str, str]] = []
+    if "with" in sections:
+        if not sections["with"]:
+            raise ActionError("`with` expects key=value pairs")
+        for pair in sections["with"]:
+            key, sep, value = pair.partition("=")
+            key, value = key.strip(), value.strip()
+            if not sep or not _PROPERTY_KEY_RE.match(key) or not value:
+                raise ActionError(
+                    f"bad `with` pair `{pair}` — expected key=value "
+                    '(quote multi-word values: status="in review")'
+                )
+            props.append((key, value))
 
     try:
         target_date = parse_relative_date(" ".join(target_tokens), ctx.user.today())
@@ -595,11 +707,20 @@ def _create_block(
     else:
         page = _resolve_target_page(ctx, target_tokens, "create_block")
 
+    final_content = content
+    if tag_slugs:
+        lines = final_content.split("\n")
+        suffix = " ".join(f"#{s}" for s in tag_slugs)
+        lines[0] = f"{lines[0].rstrip()} {suffix}".strip()
+        final_content = "\n".join(lines)
+    for key, value in props:
+        final_content = _upsert_property_line(final_content, key, value)
+
     form = CreateBlockForm(
         data={
             "user": ctx.user.id,
             "page": str(page.uuid),
-            "content": content,
+            "content": final_content,
             "block_type": block_type,
         }
     )
@@ -613,6 +734,8 @@ def _create_block(
                 "block_uuid": str(block.uuid),
                 "target_page_uuid": str(page.uuid),
                 "block_type": block_type,
+                "tags": tag_slugs,
+                "properties": dict(props),
             }
         ],
     )
