@@ -152,6 +152,19 @@ const Page = {
       return `/knowledge/page/${this.shiftDateString(this.page.date, 1)}/`;
     },
 
+    // Day of week for the daily page (issue #196). <input type="date">
+    // renders the numeric date only, so paging back through dailies gives
+    // no sense of which weekday you're looking at. Parsed as a local date
+    // (not Date.parse of the bare string, which is UTC) so the weekday
+    // matches the user's calendar day.
+    dailyWeekday() {
+      if (!this.isDaily || !this.page?.date) return "";
+      const [year, month, day] = this.page.date.split("-").map(Number);
+      const date = new Date(year, month - 1, day);
+      if (Number.isNaN(date.getTime())) return "";
+      return date.toLocaleDateString(undefined, { weekday: "long" });
+    },
+
     isWhiteboard() {
       return this.page?.page_type === "whiteboard";
     },
@@ -4698,6 +4711,11 @@ const Page = {
                   title="Next day"
                   aria-label="Go to next day"
                 >›</a>
+                <!-- Trails the arrows rather than sitting between the
+                     date and ›: weekday names vary in width, so placing
+                     it inside the group would shift the next-day hit
+                     target every time you page a day. -->
+                <span v-if="dailyWeekday" class="daily-weekday">{{ dailyWeekday }}</span>
               </div>
               <div class="header-controls">
                 <div class="context-menu-container page-sort-container">
