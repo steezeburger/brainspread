@@ -85,6 +85,10 @@ window.LeftNav = {
       // would cache yesterday's number forever once the page rolls the
       // day over in place (see brainspread:day-rolled-over below).
       todayDayNumber: new Date().getDate(),
+      // Bumped when the render-emoji setting changes. formatContentWithTags
+      // reads it purely to register a reactive dependency, so flipping the
+      // setting re-renders the block previews without a page reload.
+      emojiRenderKey: 0,
       historicalData: null,
       loading: false,
       error: null,
@@ -168,6 +172,15 @@ window.LeftNav = {
     // delete-template dispatch this so the sidebar list stays fresh.
     this.handleTemplatesChanged = () => this.loadTemplates();
     document.addEventListener("templates:changed", this.handleTemplatesChanged);
+    // Settings toggled emoji rendering. The block previews are rendered
+    // by a method rather than a computed, so they need a reactive nudge.
+    this.handleEmojiSettingChanged = () => {
+      this.emojiRenderKey += 1;
+    };
+    document.addEventListener(
+      "brainspread:emoji-setting-changed",
+      this.handleEmojiSettingChanged
+    );
     // Close the nav when the user clicks outside it on mobile only.
     // On desktop the rail and panel sit in their own real-estate column
     // and never overlap content, so an outside click shouldn't dismiss
@@ -191,6 +204,12 @@ window.LeftNav = {
       document.removeEventListener(
         "favorites:changed",
         this.handleFavoritesChanged
+      );
+    }
+    if (this.handleEmojiSettingChanged) {
+      document.removeEventListener(
+        "brainspread:emoji-setting-changed",
+        this.handleEmojiSettingChanged
       );
     }
     if (this.handleDayRolledOver) {
@@ -728,6 +747,10 @@ window.LeftNav = {
 
     formatContentWithTags(content, blockType = null) {
       if (!content) return "";
+
+      // Touch the key so Vue tracks it as a dependency of this render —
+      // see the emojiRenderKey comment in data().
+      void this.emojiRenderKey;
 
       let formatted = content;
 
