@@ -139,7 +139,6 @@ Navigate to `packages/django-app/` for most development tasks.
 
 ### Always load information from extra files in .ai/
 
-- .ai/DEBUGGING.md contains debugging tips and tricks
 - .ai/PROJECT_SETUP.md is the single setup guide. The canonical
   workflow is all-Docker (`just …` recipes against the dockerized
   web + db). Two fallbacks are documented for environments that

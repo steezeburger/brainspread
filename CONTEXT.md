@@ -24,6 +24,16 @@ A `key:: value` pair carried by a block. Most are typed into the block's own
 text, though a few are set by the interface instead.
 _Avoid_: attribute, field, metadata
 
+**Asset**:
+A stored file owned by a user, whatever produced it. Its *file type* is its
+shape (image, pdf, html); its *asset type* is which part of the app made it.
+_Avoid_: upload, attachment, media
+
+**Embed**:
+A block whose content is an external link, shown as a preview card. Unrelated
+to an *embedded view*, despite the shared word.
+_Avoid_: card, preview, link block
+
 ### References
 
 **Reference**:
@@ -116,6 +126,27 @@ A page whose block tree gets copied onto another page. The copy is independent,
 so working through it leaves the template untouched.
 _Avoid_: boilerplate, preset, skeleton
 
+**Embedded view**:
+A saved view pinned onto a page so its results render there. A *daily*-scoped
+one follows the user onto whichever daily note is open rather than sticking to
+one date.
+_Avoid_: widget, query block, embed
+
+**Whiteboard**:
+A page whose body is a drawing canvas instead of blocks.
+_Avoid_: canvas, board, sketch
+
 **Graph**:
 The network of pages joined by the references between them. Pages are the nodes.
 _Avoid_: knowledge graph, network, web
+
+### Assistant
+
+**Chat session**:
+One conversation between the user and the assistant.
+_Avoid_: thread, conversation, chat
+
+**Pending tool approval**:
+A chat turn parked mid-flight because the assistant asked to write something and
+needs the user to say yes first.
+_Avoid_: confirmation, prompt, gate
