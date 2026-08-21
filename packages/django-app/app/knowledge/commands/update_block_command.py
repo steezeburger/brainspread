@@ -2,6 +2,7 @@ from django.core.exceptions import ValidationError
 
 from common.commands.abstract_base_command import AbstractBaseCommand
 
+from ..forms.set_block_type_form import SetBlockTypeForm
 from ..forms.sync_block_tags_form import SyncBlockTagsForm
 from ..forms.touch_page_form import TouchPageForm
 from ..forms.update_block_form import UpdateBlockForm
@@ -59,11 +60,23 @@ class UpdateBlockCommand(AbstractBaseCommand):
 
             block.parent = parent
 
+        # An explicitly submitted block_type outranks content auto-detect.
+        # The web editor's content saves never include block_type, so the
+        # prefix-typing flow ("TODO x" flips the type) still goes through
+        # auto-detect; the AI edit_block tools DO submit it, and before
+        # this branch existed auto-detect silently overwrote their value
+        # while the response claimed success (issue #204). The type change
+        # itself is delegated to SetBlockTypeCommand below so prefix
+        # swapping, completed_at, and reminder-skipping stay in one place.
+        explicit_block_type = (
+            "block_type" in self.form.cleaned_data
+            and self.form.cleaned_data["block_type"] is not None
+        )
+
         # Update other fields
         for field in [
             "content",
             "content_type",
-            "block_type",
             "order",
             "media_url",
             "media_metadata",
@@ -85,7 +98,7 @@ class UpdateBlockCommand(AbstractBaseCommand):
             block.asset = self.form.cleaned_data["asset"]
 
         # Auto-detect block type from content if content was updated
-        if content_updated:
+        if content_updated and not explicit_block_type:
             auto_detected_type = self._detect_block_type_from_content(
                 block.content, block.block_type
             )
@@ -101,6 +114,20 @@ class UpdateBlockCommand(AbstractBaseCommand):
                 block.block_type = auto_detected_type
 
         block.save()
+
+        if explicit_block_type:
+            new_type = self.form.cleaned_data["block_type"]
+            if new_type != block.block_type:
+                type_form = SetBlockTypeForm(
+                    data={
+                        "user": user.id,
+                        "block": str(block.uuid),
+                        "block_type": new_type,
+                    }
+                )
+                if not type_form.is_valid():
+                    raise ValidationError(type_form.errors.as_json())
+                block = SetBlockTypeCommand(type_form).execute()
 
         # Extract and set tags if content was updated (business logic)
         # Skip for code blocks — their content is code, not markdown.
