@@ -78,7 +78,12 @@ class RunAutomationCommand(AbstractBaseCommand):
         except AutomationSpecError as exc:
             return self._finish(run, AutomationRun.STATUS_FAILED, error=str(exc))
 
-        if not spec.enabled:
+        # `enabled:: false` pauses AMBIENT firing (schedule now; events /
+        # webhooks later — this check is their backstop even though the
+        # dispatcher also skips disabled specs). An explicit manual run is
+        # the strongest intent signal there is and goes through — the UI
+        # confirms first when it knows the automation is disabled.
+        if not spec.enabled and run.trigger != AutomationRun.TRIGGER_MANUAL:
             return self._finish(
                 run, AutomationRun.STATUS_SKIPPED, result={"reason": "disabled"}
             )

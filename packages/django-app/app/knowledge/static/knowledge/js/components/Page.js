@@ -1425,6 +1425,24 @@ const Page = {
     },
 
     async runAutomation(block) {
+      // enabled:: false pauses the schedule, not the user — but a manual
+      // run of a paused automation deserves a beat of confirmation.
+      const enabledProp = block.properties?.enabled;
+      const isDisabled =
+        enabledProp === false ||
+        (typeof enabledProp === "string" &&
+          ["false", "no", "0", "off"].includes(
+            enabledProp.trim().toLowerCase()
+          ));
+      if (isDisabled) {
+        const confirmed = await window.appModals.confirm({
+          title: "run disabled automation?",
+          message:
+            "this automation is disabled (enabled:: false) and won't run on its own — run it once now?",
+          confirmLabel: "run",
+        });
+        if (!confirmed) return;
+      }
       try {
         // Save in-progress edits first so the run sees the latest spec.
         if (block.isEditing) {

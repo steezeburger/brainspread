@@ -98,25 +98,46 @@ class TestRunAutomationCommand(TestCase):
         self.assertEqual(target.block_type, "done")
         self.assertIsNotNone(target.completed_at)
 
-    def test_disabled_automation_is_skipped(self):
+    def test_disabled_automation_is_skipped_for_ambient_triggers(self):
         self._view()
         source = PageFactory(user=self.user, title="Notes", slug="notes")
         target = BlockFactory(
             user=self.user, page=source, block_type="todo", content="TODO ship it"
         )
         automation = self._automation(
-            trigger="manual",
+            trigger="schedule daily 6:00",
             query="view:todos",
             action="move_to_daily today",
             allow="move_to_daily",
             enabled="false",
         )
 
-        result = self._run(automation)
+        result = self._run(automation, trigger="schedule")
 
         self.assertEqual(result["status"], AutomationRun.STATUS_SKIPPED)
         target.refresh_from_db()
         self.assertEqual(target.page, source)
+
+    def test_disabled_automation_still_runs_manually(self):
+        # enabled:: false pauses ambient firing; an explicit manual run is
+        # deliberate intent and goes through (the UI confirms beforehand).
+        self._view()
+        source = PageFactory(user=self.user, title="Notes", slug="notes")
+        target = BlockFactory(
+            user=self.user, page=source, block_type="todo", content="TODO ship it"
+        )
+        automation = self._automation(
+            trigger="schedule daily 6:00",
+            query="view:todos",
+            action="set_type done",
+            enabled="false",
+        )
+
+        result = self._run(automation, trigger="manual")
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        target.refresh_from_db()
+        self.assertEqual(target.block_type, "done")
 
     def test_pre_claimed_run_is_finished_not_duplicated(self):
         # The scheduler's claim-then-execute path: a RUNNING run created at
