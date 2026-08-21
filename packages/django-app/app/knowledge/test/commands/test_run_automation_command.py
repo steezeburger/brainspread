@@ -806,3 +806,47 @@ class TestSmallVerbActions(TestCase):
 
         self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
         self.assertIn("no-such-tag", result["last_error"])
+
+    def test_untag_preserves_done_type_and_completed_at(self):
+        # Regression: content rewrites go through UpdateBlockCommand, whose
+        # prefix auto-detection demotes prefix-less todo-family content to
+        # bullet (and clears completed_at). Caught live on staging by the
+        # in-app QA agent.
+        sticky = PageFactory(user=self.user, title="Sticky", slug="sticky")
+        target = self._todo(content="test chore #sticky")
+        target.pages.add(sticky)
+        target.block_type = "done"
+        target.save()
+        from django.utils import timezone as dj_tz
+
+        stamp = dj_tz.now()
+        target.completed_at = stamp
+        target.save(update_fields=["completed_at"])
+
+        automation = self._automation(
+            trigger="manual",
+            query="tag:sticky and completed is not null",
+            action="untag sticky",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        target.refresh_from_db()
+        self.assertNotIn("#sticky", target.content)
+        self.assertEqual(target.block_type, "done")
+        self.assertEqual(target.completed_at, stamp)
+
+    def test_set_property_preserves_todo_type(self):
+        target = self._todo(content="Buy milk")
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action="set_property priority high",
+        )
+
+        self._run(automation)
+
+        target.refresh_from_db()
+        self.assertEqual(target.block_type, "todo")
+        self.assertEqual(target.properties.get("priority"), "high")

@@ -44,6 +44,7 @@ from ..commands.bulk_move_blocks_to_page_command import BulkMoveBlocksToPageComm
 from ..commands.bulk_schedule_command import BulkScheduleCommand
 from ..commands.bulk_set_block_type_command import BulkSetBlockTypeCommand
 from ..commands.create_block_command import CreateBlockCommand
+from ..commands.set_block_type_command import STATE_PREFIXES
 from ..commands.tag_blocks_command import UntagBlocksCommand
 from ..commands.update_block_command import UpdateBlockCommand
 from ..forms.add_template_blocks_to_page_form import AddTemplateBlocksToPageForm
@@ -398,6 +399,18 @@ def _tag_occurrence_re(slug: str) -> re.Pattern:
 
 
 def _update_block_content(ctx: ActionContext, block: Block, content: str) -> None:
+    """Rewrite a block's content the way the editor would.
+
+    UpdateBlockCommand auto-detects block type from a state-keyword
+    prefix (``TODO ``/``DONE ``/…) because the editor always submits
+    one for todo-family blocks — content without it demotes the block
+    to ``bullet`` and clears ``completed_at``. Blocks whose type was
+    set via commands/tools store bare content, so an automation rewrite
+    must re-assert the prefix or a `done` block silently loses its
+    completion the moment a verb touches its text."""
+    prefix = STATE_PREFIXES.get(block.block_type)
+    if prefix and not content.lstrip().lower().startswith(prefix.lower()):
+        content = f"{prefix} {content.lstrip()}"
     form = UpdateBlockForm(
         data={"user": ctx.user.id, "block": str(block.uuid), "content": content}
     )
@@ -579,24 +592,15 @@ def _set_property(
         raise ActionError("`set_property` needs a non-empty value")
 
     updated = 0
-    details: List[dict] = []
     for block in blocks:
-        form = UpdateBlockForm(
-            data={
-                "user": ctx.user.id,
-                "block": str(block.uuid),
-                "content": _upsert_property_line(block.content or "", key, value),
-            }
+        _update_block_content(
+            ctx, block, _upsert_property_line(block.content or "", key, value)
         )
-        if not form.is_valid():
-            details.append(
-                {"block_uuid": str(block.uuid), "error": form.errors.as_json()}
-            )
-            continue
-        UpdateBlockCommand(form).execute()
         updated += 1
-    details.insert(0, {"updated_count": updated, "key": key, "value": value})
-    return ActionResult(affected=updated, details=details)
+    return ActionResult(
+        affected=updated,
+        details=[{"updated_count": updated, "key": key, "value": value}],
+    )
 
 
 # Clause keywords for the create_block grammar. Everything after the
