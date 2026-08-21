@@ -23,6 +23,7 @@
  * home page; embed rows are display-only links into that home page.
  */
 window.EmbedResultRow = {
+  mixins: [window.brainspreadEmojiRenderMixin || {}],
   name: "EmbedResultRow",
 
   components: {
@@ -68,6 +69,10 @@ window.EmbedResultRow = {
       return ["done", "wontdo"].includes(b && b.block_type);
     },
     renderContent(b) {
+      // Touch the key so Vue tracks it as a dependency of this render —
+      // see brainspreadEmojiRenderMixin.
+      void this.emojiRenderKey;
+
       // Escape first, then linkify #hashtags into the same clickable
       // anchors the page block tree uses (.inline-tag .clickable-tag →
       // /knowledge/page/<tag>/). Rendered via v-html, so escaping is

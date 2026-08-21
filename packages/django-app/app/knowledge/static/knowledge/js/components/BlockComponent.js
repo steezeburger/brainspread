@@ -1,5 +1,6 @@
 const BlockComponent = {
   name: "BlockComponent",
+  mixins: [window.brainspreadEmojiRenderMixin || {}],
   props: {
     block: {
       type: Object,
@@ -300,6 +301,9 @@ const BlockComponent = {
       }
       if (this.detectedAssetType === "markdown") {
         if (!window.marked || !window.DOMPurify) return "";
+        // Touch the key so Vue tracks it as a dependency of this
+        // computed — see brainspreadEmojiRenderMixin.
+        void this.emojiRenderKey;
         // Per-call options (rather than marked.setOptions) so we don't
         // mutate global state shared with the chat panel. gfm + breaks
         // matches the chat panel's behavior, which is what users
@@ -309,7 +313,12 @@ const BlockComponent = {
           breaks: true,
         });
         const clean = window.DOMPurify.sanitize(html);
-        return `<div class="block-markdown">${clean}</div>`;
+        // Emoji shortcodes — post-sanitize DOM walk so `:joy:` inside a
+        // fenced block in the markdown asset stays literal.
+        const rendered = window.brainspreadEmoji
+          ? window.brainspreadEmoji.renderInHtml(clean)
+          : clean;
+        return `<div class="block-markdown">${rendered}</div>`;
       }
       return "";
     },

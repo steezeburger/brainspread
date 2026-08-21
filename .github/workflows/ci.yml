@@ -62,6 +62,10 @@ jobs:
         working-directory: ./packages/django-app
         run: npx prettier --check .
 
+      - name: Run JavaScript tests
+        working-directory: ./packages/django-app
+        run: node --test tests-js/*.test.js
+
       # --- Docker-based: build + migrate + django check + tests ---
 
       - name: Install Just

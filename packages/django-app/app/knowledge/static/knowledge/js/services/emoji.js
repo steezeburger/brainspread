@@ -54,6 +54,7 @@
     smirk: "😏",
     unamused: "😒",
     roll_eyes: "🙄",
+    grimace: "😬",
     grimacing: "😬",
     lying_face: "🤥",
     relieved: "😌",
@@ -442,11 +443,29 @@
 
   // Shortcode names are `[a-z0-9_+-]` — the `+`/`-` are for :+1: / :-1:.
   // Anything matching the shape but absent from the map is left exactly
-  // as typed, so time ranges ("10:30:45") and namespaced identifiers
-  // ("core:user:read") pass through untouched.
+  // as typed.
   const SHORTCODE_RE = /:([a-z0-9_+-]{1,32}):/gi;
 
+  // The opening colon has to start a word. Matching the shape alone
+  // isn't enough: `x:name:y` would hit too, and enough of those names
+  // are real shortcodes to wreck ordinary text — pasted lint output
+  // ("app.py:100:8" -> "app.py💯8"), a `key::value` block property, a
+  // colon-namespaced identifier ("cache:key:ttl" -> "cache🔑ttl"). In
+  // Page.formatContentWithTags the substitution runs ahead of the URL
+  // linkifier, so a mangled path ends up inside the href, not just the
+  // link text.
+  const WORDISH_RE = /[\w:]/;
+
   const hasOwn = Object.prototype.hasOwnProperty;
+
+  // `previousEnd` is the end offset of the last substitution. A run of
+  // shortcodes shares colons — the second `:` of `:smile::smile:` opens
+  // the second one — so a match butting straight up against the last
+  // emoji is allowed through even though a colon precedes it.
+  function startsAWord(source, offset, previousEnd) {
+    if (offset === 0 || offset === previousEnd) return true;
+    return !WORDISH_RE.test(source.charAt(offset - 1));
+  }
 
   const brainspreadEmoji = {
     SHORTCODES,
@@ -496,12 +515,17 @@
      */
     replaceShortcodes(text) {
       if (!text || text.indexOf(":") === -1) return text;
-      return String(text).replace(SHORTCODE_RE, (match, name) => {
+      const source = String(text);
+      let previousEnd = -1;
+      return source.replace(SHORTCODE_RE, (match, name, offset) => {
+        if (!startsAWord(source, offset, previousEnd)) return match;
         const key = name.toLowerCase();
         // hasOwnProperty, not a plain lookup — otherwise `:constructor:`
         // and `:__proto__:` resolve to inherited Object members and get
         // stringified into the user's note.
-        return hasOwn.call(SHORTCODES, key) ? SHORTCODES[key] : match;
+        if (!hasOwn.call(SHORTCODES, key)) return match;
+        previousEnd = offset + match.length;
+        return SHORTCODES[key];
       });
     },
 
@@ -550,4 +574,38 @@
   };
 
   window.brainspreadEmoji = brainspreadEmoji;
+
+  // Vue options mixin for components that render content through a
+  // method rather than a computed. A method has no dependency list of
+  // its own, so nothing would re-run it when the setting flips; reading
+  // `emojiRenderKey` inside the method registers the dependency against
+  // whichever render effect is active, and bumping the key on the
+  // settings event re-renders those consumers without a page reload.
+  //
+  // Loaded before the components in base.html, so it's there by the time
+  // a component's options object is built.
+  window.brainspreadEmojiRenderMixin = {
+    data() {
+      return { emojiRenderKey: 0 };
+    },
+
+    mounted() {
+      this._onEmojiSettingChanged = () => {
+        // Block content is unchanged — only its rendering is — so a
+        // reactive bump is enough; no refetch needed.
+        this.emojiRenderKey += 1;
+      };
+      document.addEventListener(
+        "brainspread:emoji-setting-changed",
+        this._onEmojiSettingChanged
+      );
+    },
+
+    beforeUnmount() {
+      document.removeEventListener(
+        "brainspread:emoji-setting-changed",
+        this._onEmojiSettingChanged
+      );
+    },
+  };
 })();

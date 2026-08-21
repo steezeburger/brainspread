@@ -656,14 +656,16 @@ body {
 
 /* Mirror the SettingsModal .model-checkbox styling so tool toggles use the
    same custom checkmark glyph as the rest of the app. The schedule
-   popover's reminder checkbox shares this style so all in-app
-   checkboxes look the same. */
+   popover's reminder checkbox and the settings-section checkboxes share
+   this style so all in-app checkboxes look the same. */
 .tools-menu-item input[type="checkbox"],
-.schedule-popover-row input[type="checkbox"] {
+.schedule-popover-row input[type="checkbox"],
+.settings-checkbox input[type="checkbox"] {
   appearance: none;
   width: 1.1rem;
   height: 1.1rem;
   border: 2px solid var(--border-primary);
+  border-radius: 0;
   background: var(--bg-primary);
   cursor: pointer;
   position: relative;
@@ -674,19 +676,23 @@ body {
 .tools-menu-item input[type="checkbox"]:hover,
 .tools-menu-item input[type="checkbox"]:focus,
 .schedule-popover-row input[type="checkbox"]:hover,
-.schedule-popover-row input[type="checkbox"]:focus {
+.schedule-popover-row input[type="checkbox"]:focus,
+.settings-checkbox input[type="checkbox"]:hover,
+.settings-checkbox input[type="checkbox"]:focus {
   border-color: var(--text-primary);
   outline: none;
 }
 
 .tools-menu-item input[type="checkbox"]:checked,
-.schedule-popover-row input[type="checkbox"]:checked {
+.schedule-popover-row input[type="checkbox"]:checked,
+.settings-checkbox input[type="checkbox"]:checked {
   background: var(--text-primary);
   border-color: var(--text-primary);
 }
 
 .tools-menu-item input[type="checkbox"]:checked::after,
-.schedule-popover-row input[type="checkbox"]:checked::after {
+.schedule-popover-row input[type="checkbox"]:checked::after,
+.settings-checkbox input[type="checkbox"]:checked::after {
   content: "✓";
   position: absolute;
   top: 50%;
@@ -1150,8 +1156,10 @@ body {
   border-color: var(--text-primary);
 }
 
-/* Checkbox row inside a settings section. Square corners and the same
-   custom checkmark glyph as the rest of the app's checkboxes. */
+/* Checkbox row inside a settings section. The box itself is styled with
+   the rest of the app's checkboxes above; this is just the row layout.
+   The shared rule top-aligns its box for multi-line labels, which a
+   single-line settings row doesn't want. */
 .settings-checkbox {
   display: flex;
   align-items: center;
@@ -1162,38 +1170,7 @@ body {
 }
 
 .settings-checkbox input[type="checkbox"] {
-  appearance: none;
-  width: 1.2rem;
-  height: 1.2rem;
-  border: 2px solid var(--border-primary);
-  border-radius: 0;
-  background: var(--bg-primary);
-  cursor: pointer;
-  position: relative;
-  flex-shrink: 0;
-}
-
-.settings-checkbox input[type="checkbox"]:hover,
-.settings-checkbox input[type="checkbox"]:focus {
-  border-color: var(--text-primary);
-  outline: none;
-}
-
-.settings-checkbox input[type="checkbox"]:checked {
-  background: var(--text-primary);
-  border-color: var(--text-primary);
-}
-
-.settings-checkbox input[type="checkbox"]:checked::after {
-  content: "✓";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 0.85rem;
-  color: var(--bg-primary);
-  font-weight: bold;
-  line-height: 1;
+  margin-top: 0;
 }
 
 .modal-actions {

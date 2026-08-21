@@ -16,6 +16,7 @@
 //   close — user dismissed (Esc, backdrop, "done" button)
 
 window.BlockChatPopover = {
+  mixins: [window.brainspreadEmojiRenderMixin || {}],
   name: "BlockChatPopover",
   props: {
     isOpen: { type: Boolean, default: false },
@@ -530,6 +531,11 @@ window.BlockChatPopover = {
     },
     parseMarkdown(content) {
       if (!content) return "";
+
+      // Touch the key so Vue tracks it as a dependency of this render —
+      // see brainspreadEmojiRenderMixin.
+      void this.emojiRenderKey;
+
       window.marked.setOptions({ breaks: true, gfm: true });
       const html = window.marked.parse(content);
       const clean = window.DOMPurify.sanitize(html);
