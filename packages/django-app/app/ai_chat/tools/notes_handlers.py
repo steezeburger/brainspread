@@ -18,6 +18,7 @@ from datetime import date, time, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import pytz
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from ai_chat.forms import GetChatHistorySummaryForm
@@ -71,9 +72,9 @@ from knowledge.commands.list_saved_views_command import ListSavedViewsCommand
 from knowledge.commands.list_scheduled_blocks_command import ListScheduledBlocksCommand
 from knowledge.commands.move_block_to_daily_command import MoveBlockToDailyCommand
 from knowledge.commands.run_automation_command import RunAutomationCommand
+from knowledge.commands.run_query_command import RunQueryCommand
 from knowledge.commands.run_saved_view_command import RunSavedViewCommand
 from knowledge.commands.schedule_block_command import ScheduleBlockCommand
-from knowledge.commands.search_notes_command import SearchNotesCommand
 from knowledge.commands.set_block_completed_at_command import (
     SetBlockCompletedAtCommand,
 )
@@ -118,9 +119,9 @@ from knowledge.forms.list_saved_views_form import ListSavedViewsForm
 from knowledge.forms.list_scheduled_blocks_form import ListScheduledBlocksForm
 from knowledge.forms.move_block_to_daily_form import MoveBlockToDailyForm
 from knowledge.forms.run_automation_form import RunAutomationForm
+from knowledge.forms.run_query_form import RunQueryForm
 from knowledge.forms.run_saved_view_form import RunSavedViewForm
 from knowledge.forms.schedule_block_form import ScheduleBlockForm
-from knowledge.forms.search_notes_form import SearchNotesForm
 from knowledge.forms.set_block_completed_at_form import SetBlockCompletedAtForm
 from knowledge.forms.set_block_type_form import SetBlockTypeForm
 from knowledge.forms.snooze_block_form import SnoozeBlockForm
@@ -137,17 +138,22 @@ from knowledge.repositories.page_repository import PageRepository
 # ---- Read handlers (thin form -> command wrappers) ----
 
 
-def _search_notes(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
-    form_data: Dict[str, Any] = {
-        "user": ctx.user.id,
-        "query": (args.get("query") or "").strip(),
-    }
-    if args.get("limit") is not None:
-        form_data["limit"] = args["limit"]
-    form = SearchNotesForm(form_data)
+def _run_query(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
+    form = RunQueryForm(
+        {
+            "user": ctx.user.id,
+            "query": args.get("query") or "",
+            "filter": args.get("filter"),
+            "sort": args.get("sort"),
+            "limit": args.get("limit"),
+        }
+    )
     if not form.is_valid():
         return {"error": _first_form_error(form)}
-    return SearchNotesCommand(form).execute()
+    try:
+        return RunQueryCommand(form).execute()
+    except ValidationError as exc:
+        return {"error": str(exc)}
 
 
 def _get_page_by_title_or_slug(
@@ -1314,7 +1320,7 @@ def _first_form_error(form) -> str:
 # ---- Handler maps (joined with the JSON schemas in notes_tools) ----
 
 READ_HANDLERS = {
-    "search_notes": _search_notes,
+    "run_query": _run_query,
     "get_page_by_title_or_slug": _get_page_by_title_or_slug,
     "get_block_by_id": _get_block_by_id,
     "get_current_time": _get_current_time,

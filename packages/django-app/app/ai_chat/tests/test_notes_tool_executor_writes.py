@@ -21,7 +21,7 @@ class NotesToolExecutorWriteTestCase(TestCase):
         read_only = NotesToolExecutor(self.user, allow_writes=False)
         writable = NotesToolExecutor(self.user, allow_writes=True)
 
-        self.assertTrue(read_only.is_known("search_notes"))
+        self.assertTrue(read_only.is_known("run_query"))
         self.assertFalse(read_only.is_known("create_block"))
         self.assertFalse(read_only.is_known("create_page"))
         self.assertFalse(read_only.is_known("edit_block"))
@@ -33,7 +33,7 @@ class NotesToolExecutorWriteTestCase(TestCase):
     def test_requires_approval_only_for_writes(self):
         ex = NotesToolExecutor(self.user, allow_writes=True)
 
-        self.assertFalse(ex.requires_approval("search_notes"))
+        self.assertFalse(ex.requires_approval("run_query"))
         self.assertTrue(ex.requires_approval("create_page"))
         self.assertTrue(ex.requires_approval("create_block"))
         self.assertTrue(ex.requires_approval("edit_block"))

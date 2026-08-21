@@ -96,7 +96,7 @@ class MCPEndpointTestCase(TestCase):
                 "get_page",
                 "get_current_time",
                 "move_block_to_daily",
-                "search_notes",
+                "run_query",
                 "search_pages",
                 "toggle_todo",
                 "schedule_block",
@@ -228,20 +228,20 @@ class MCPEndpointTestCase(TestCase):
         # Other user's page is not visible to us.
         self.assertTrue(response.json()["result"]["isError"])
 
-    # --- search_notes --------------------------------------------------
+    # --- run_query -----------------------------------------------------
 
-    def test_search_notes_finds_match(self):
+    def test_run_query_bare_text_finds_match(self):
         page = PageFactory(user=self.user)
         BlockFactory(user=self.user, page=page, content="meeting with bob")
         BlockFactory(user=self.user, page=page, content="grocery list")
         response = self.client.post(
             "/api/mcp/",
-            _tool_call("search_notes", {"query": "meeting"}),
+            _tool_call("run_query", {"query": "meeting"}),
             format="json",
         )
         payload = _content_json(response.json())
-        # SearchNotesCommand shape: {"results": [...]} or similar — assert
-        # the matching content shows up regardless of exact envelope.
+        # Bare text compiles to a content search; assert the matching
+        # content shows up regardless of exact envelope.
         text = json.dumps(payload)
         self.assertIn("meeting with bob", text)
         self.assertNotIn("grocery list", text)

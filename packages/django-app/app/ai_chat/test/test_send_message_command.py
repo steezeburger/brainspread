@@ -366,7 +366,7 @@ class SendMessageCommandTestCase(TestCase):
 
         # Block + page uuids both surface so the AI can call
         # create_block(page_uuid=..., parent_uuid=...) directly without
-        # going hunting via search_notes.
+        # going hunting via run_query.
         self.assertIn(
             "[block 7c8a3b9d-1234-5678-90ab-cdef01234567"
             " on page aaaaaaaa-1111-2222-3333-444444444444]",
@@ -417,7 +417,7 @@ class SendMessageCommandTestCase(TestCase):
         # No web search tool
         self.assertFalse(any(t.get("type") == "web_search_20250305" for t in tools))
         # Notes tools still present
-        self.assertIn("search_notes", tool_names)
+        self.assertIn("run_query", tool_names)
         self.assertIsNotNone(executor)
 
     def test_build_tools_auto_approve_disables_approval_gate(self):

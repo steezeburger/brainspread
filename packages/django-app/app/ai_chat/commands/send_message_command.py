@@ -36,15 +36,19 @@ BRAINSPREAD_SYSTEM_PROMPT = (
     " knowledge and cite specific items when relevant."
     "\n\n"
     "Notes are organized as blocks tagged with hashtags like #fruits or"
-    " #books, and as user-named pages like 'favorite things'. Tags are"
-    " first-class: the search_notes tool matches a block when its content"
-    " contains the query OR when it's tagged with a page whose slug or"
-    " title matches. So when the user asks 'what are my favorite X?',"
-    " try search_notes('X') (the tag), search_notes('favorite') (the"
-    " collecting page), and consider loading the page named 'favorite X'"
-    " or '#X' directly. Don't conclude you found nothing after a single"
-    " literal-phrase search — try the noun on its own, then try related"
-    " tags."
+    " #books, and as user-named pages like 'favorite things'. Search and"
+    " filter with the run_query tool — one expression covers tags, types,"
+    " dates, and text: run_query('tag:fruits') for a tag,"
+    " run_query('content:\"mango\"') for text,"
+    " run_query('due < today and completed is null') for overdue work,"
+    " run_query('completed >= \"7 days ago\"') for recent wins,"
+    " run_query('tag:project-x and type:todo,doing') for open items on a"
+    " tag. tag: matches both the block's hashtags and the page it lives"
+    " on. When the user asks 'what are my favorite X?', try"
+    " run_query('tag:X'), then run_query('content:\"X\"'), and consider"
+    " loading the page named 'favorite X' directly. Don't conclude you"
+    " found nothing after a single expression — try the noun alone, then"
+    " related tags."
 )
 
 
@@ -312,7 +316,7 @@ class SendMessageCommand(AbstractBaseCommand):
             can target it with notes tools. Both ids are needed because
             create_block requires `page_uuid` AND optionally
             `parent_uuid`; without the page id the AI ends up calling
-            search_notes / get_page_by_title_or_slug to hunt for the page,
+            run_query / get_page_by_title_or_slug to hunt for the page,
             which fails when the user attached the block visually
             without writing its title in the chat.
           - The text content (when present).

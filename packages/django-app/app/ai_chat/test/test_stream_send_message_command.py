@@ -114,13 +114,13 @@ class StreamSendMessageCommandTestCase(TransactionTestCase):
             yield {
                 "type": "tool_use",
                 "tool_use_id": "tu_1",
-                "name": "search_notes",
+                "name": "run_query",
                 "input": {"query": "foo"},
             }
             yield {
                 "type": "tool_result",
                 "tool_use_id": "tu_1",
-                "name": "search_notes",
+                "name": "run_query",
                 "result": {"count": 2, "results": [{"content": "a"}, {"content": "b"}]},
             }
             yield {"type": "text", "delta": " Found 2."}
@@ -133,13 +133,13 @@ class StreamSendMessageCommandTestCase(TransactionTestCase):
                     {
                         "type": "tool_use",
                         "tool_use_id": "tu_1",
-                        "name": "search_notes",
+                        "name": "run_query",
                         "input": {"query": "foo"},
                     },
                     {
                         "type": "tool_result",
                         "tool_use_id": "tu_1",
-                        "name": "search_notes",
+                        "name": "run_query",
                         "result": {"count": 2},
                     },
                 ],
@@ -158,7 +158,7 @@ class StreamSendMessageCommandTestCase(TransactionTestCase):
         self.assertIn("tool_result", types)
 
         tool_use = next(e for e in events if e["type"] == "tool_use")
-        self.assertEqual(tool_use["name"], "search_notes")
+        self.assertEqual(tool_use["name"], "run_query")
         self.assertEqual(tool_use["input"], {"query": "foo"})
 
         tool_result = next(e for e in events if e["type"] == "tool_result")

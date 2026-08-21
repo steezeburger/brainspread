@@ -251,8 +251,16 @@ def _compile_colon_predicate(field: str, value: str, raw: str) -> Dict[str, Any]
     )
 
 
+# Anything that marks a string as an actual DSL expression. A query with
+# none of these is plain text and compiles to a content search — so
+# `run_query("meeting with bob")` behaves like the old search_notes
+# instead of failing to parse.
+_DSL_SYNTAX_RE = re.compile(r"[:<>=()\"]|\b(?:and|or|not|is)\b", re.IGNORECASE)
+
+
 def compile_inline_query(text: str) -> Dict[str, Any]:
     """Compile an inline query expression into a query-engine filter dict.
+    Bare text with no DSL syntax compiles to ``content_contains``.
     Raises ``QueryDSLError`` on malformed input."""
     text = (text or "").strip()
     if not text:
@@ -262,4 +270,6 @@ def compile_inline_query(text: str) -> Dict[str, Any]:
             "use `tag:<slug>` instead of `#<slug>` in queries — a literal "
             "hashtag would tag the automation block itself"
         )
+    if not _DSL_SYNTAX_RE.search(text):
+        return {"content_contains": text}
     return _Parser(_tokenize(text), text).parse()

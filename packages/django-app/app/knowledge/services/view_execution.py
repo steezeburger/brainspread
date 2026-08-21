@@ -67,16 +67,17 @@ def run_filter(
     filter_spec: dict,
     *,
     limit: int,
+    sort: Optional[list] = None,
     context_date: Optional[date] = None,
 ) -> Tuple[List[Block], bool]:
-    """Execute a raw query-engine filter dict (e.g. from an automation's
-    inline query DSL). Same ``(blocks, truncated)`` contract as
-    ``run_view``; default engine sort applies since there's no view to
-    carry one."""
+    """Execute a raw query-engine filter dict (automation inline queries,
+    the run_query AI tool). Same ``(blocks, truncated)`` contract as
+    ``run_view``; without ``sort`` the engine's default ordering
+    applies."""
     compiled = query_engine.compile(
         filter_spec,
         user=user,
-        sort=None,
+        sort=sort,
         context_date=context_date,
     )
     rows = list(BlockRepository.run_compiled_query(user, compiled, limit=limit + 1))

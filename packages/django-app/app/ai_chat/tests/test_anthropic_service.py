@@ -284,12 +284,12 @@ class TestSerializeBlock:
 
     def test_tool_use_block_keeps_id(self):
         block = SimpleNamespace(
-            type="tool_use", id="tu_1", name="search_notes", input={"query": "x"}
+            type="tool_use", id="tu_1", name="run_query", input={"query": "x"}
         )
         assert AnthropicService._serialize_block(block) == {
             "type": "tool_use",
             "id": "tu_1",
-            "name": "search_notes",
+            "name": "run_query",
             "input": {"query": "x"},
         }
 

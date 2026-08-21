@@ -33,10 +33,10 @@ class NotesToolExecutorTestCase(TestCase):
             content="Follow up on launch",
         )
 
-    def test_search_notes_scopes_to_user(self):
+    def test_run_query_bare_text_scopes_to_user(self):
         executor = NotesToolExecutor(self.user)
 
-        result = executor.execute("search_notes", {"query": "follow up"})
+        result = executor.execute("run_query", {"query": "follow up"})
 
         self.assertEqual(result["count"], 1)
         self.assertEqual(result["results"][0]["page_title"], "Project Alpha")
@@ -86,7 +86,7 @@ class NotesToolExecutorTestCase(TestCase):
     def test_is_known(self):
         executor = NotesToolExecutor(self.user)
 
-        self.assertTrue(executor.is_known("search_notes"))
+        self.assertTrue(executor.is_known("run_query"))
         self.assertTrue(executor.is_known("get_page_by_title_or_slug"))
         self.assertTrue(executor.is_known("get_block_by_id"))
         self.assertFalse(executor.is_known("write_block"))
