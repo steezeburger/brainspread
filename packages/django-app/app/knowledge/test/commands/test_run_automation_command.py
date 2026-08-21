@@ -1,12 +1,15 @@
 import uuid as uuid_lib
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.test import TestCase
+from django.utils import timezone
 
 from knowledge.commands import RunAutomationCommand
 from knowledge.forms.run_automation_form import RunAutomationForm
 from knowledge.models import AutomationRun, Block
 from knowledge.repositories import AutomationRunRepository, SavedViewRepository
+from knowledge.services.due_dates import start_of_local_day
 
 from ..helpers import BlockFactory, PageFactory, UserFactory
 
@@ -433,6 +436,57 @@ class TestRunAutomationCommand(TestCase):
         bullet.refresh_from_db()
         self.assertEqual(todo.block_type, "done")
         self.assertEqual(bullet.block_type, "bullet")
+
+    def test_start_when_due_flips_timed_overdue_todo_to_doing(self):
+        # The motivating "Start when due" automation (#automation /
+        # `trigger:: schedule every 5m`): a todo whose due date-TIME has
+        # arrived flips to doing within one tick. An all-day todo due
+        # today must NOT match — its due_at sits at local midnight, so
+        # only the explicit due_has_time:true predicate keeps it out.
+        source = PageFactory(user=self.user, title="Notes", slug="notes-due-now")
+        now = timezone.now()
+        timed_past = BlockFactory(
+            user=self.user,
+            page=source,
+            block_type="todo",
+            content="TODO standup",
+            due_at=now - timedelta(minutes=10),
+            due_at_has_time=True,
+        )
+        all_day_today = BlockFactory(
+            user=self.user,
+            page=source,
+            block_type="todo",
+            content="TODO groceries",
+            due_at=start_of_local_day(self.user.today(), self.user.tz()),
+            due_at_has_time=False,
+        )
+        timed_future = BlockFactory(
+            user=self.user,
+            page=source,
+            block_type="todo",
+            content="TODO review",
+            due_at=now + timedelta(hours=1),
+            due_at_has_time=True,
+        )
+        automation = self._automation(
+            trigger="schedule every 5m",
+            query="type:todo and due <= now and due_has_time:true",
+            action="set_type doing",
+        )
+
+        result = self._run(automation, trigger="schedule")
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        self.assertEqual(result["result"]["matched"], 1)
+
+        timed_past.refresh_from_db()
+        all_day_today.refresh_from_db()
+        timed_future.refresh_from_db()
+        self.assertEqual(timed_past.block_type, "doing")
+        self.assertIsNone(timed_past.completed_at)
+        self.assertEqual(all_day_today.block_type, "todo")
+        self.assertEqual(timed_future.block_type, "todo")
 
     def test_bulk_action_counts_only_top_blocks_as_affected(self):
         # A matched child riding along with its matched parent counts the
