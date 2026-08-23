@@ -8,6 +8,7 @@ from ..forms.sync_block_tags_form import SyncBlockTagsForm
 from ..forms.touch_page_form import TouchPageForm
 from ..forms.update_block_form import UpdateBlockForm
 from ..models import Block
+from ..repositories import BlockRepository
 from .set_block_type_command import SetBlockTypeCommand
 from .sync_block_tags_command import SyncBlockTagsCommand
 from .touch_page_command import TouchPageCommand
@@ -58,6 +59,19 @@ class UpdateBlockCommand(AbstractBaseCommand):
                 raise ValidationError(
                     "Cannot create circular reference: block cannot be its own ancestor"
                 )
+
+            # Joining a different sibling group without an explicit
+            # position appends. Carrying the old group's order into the
+            # new one is how re-parenting (the AI edit_block path sends
+            # parent_uuid with no order) kept minting duplicate orders;
+            # the web editor's indent/outdent always submits order, so
+            # its precise placement is untouched.
+            new_parent_id = parent.id if parent else None
+            if (
+                new_parent_id != block.parent_id
+                and self.form.cleaned_data.get("order") is None
+            ):
+                block.order = BlockRepository.next_sibling_order(block.page, parent)
 
             block.parent = parent
 

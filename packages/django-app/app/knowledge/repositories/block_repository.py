@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta
+from operator import attrgetter
 from typing import Any, Dict, Iterable, List, Optional
 
 from django.db import transaction
@@ -15,6 +16,14 @@ from ..services.due_dates import start_of_local_day
 
 class BlockRepository(BaseRepository):
     model = Block
+
+    # One sibling group's canonical sort: stored order first, then
+    # creation time and id as stable tie-breakers for historical
+    # duplicates. Every renumber/enumeration surface (the page repair,
+    # clone enumeration, the fix_block_ordering management command)
+    # must sort by exactly this key, or running one repair after
+    # another reshuffles blocks the first one just placed.
+    SIBLING_SORT_FIELDS = ("order", "created_at", "id")
 
     @classmethod
     def get_by_uuid(cls, uuid: str, user=None) -> Optional[Block]:
@@ -676,8 +685,34 @@ class BlockRepository(BaseRepository):
             cls.get_queryset()
             .filter(page=page)
             .select_for_update()
-            .order_by("parent_id", "order", "created_at", "id")
+            .order_by("parent_id", *cls.SIBLING_SORT_FIELDS)
         )
+
+    @classmethod
+    def get_cross_page_children_for_renumber(
+        cls, page: Page, parent_ids: Iterable[int]
+    ) -> List[Block]:
+        """Children of the given on-page parents that live on OTHER
+        pages, row-locked — call inside a transaction. Rendered child
+        lists are fetched by parent with no page filter, so a page
+        repair must renumber these legacy cross-page rows together with
+        their on-page siblings — compacting only the on-page members
+        could assign an order an excluded child already holds."""
+        return list(
+            cls.get_queryset()
+            .filter(parent_id__in=list(parent_ids))
+            .exclude(page=page)
+            .select_for_update()
+            .order_by("parent_id", *cls.SIBLING_SORT_FIELDS)
+        )
+
+    @classmethod
+    def persist_block_orders(cls, blocks: List[Block]) -> None:
+        """Persist in-memory ``order`` values in batches. Only ``order``
+        is written, so ``modified_at`` doesn't churn. Unlike
+        ``reorder_blocks`` this propagates database errors — repair
+        callers must fail loudly, not shrug into a bool."""
+        Block.objects.bulk_update(blocks, ["order"], batch_size=1000)
 
     @classmethod
     def clone_block_tree_to_page(
@@ -696,17 +731,17 @@ class BlockRepository(BaseRepository):
         completed_at is intentionally cleared on clone — a duplicated
         todo starts uncompleted even if the source was done.
 
-        Cloned ROOT blocks are enumerated: sorted by (order, created_at,
-        id) and assigned ``order_offset``, ``order_offset + 1``, … — so
-        duplicate or gapped source root orders never survive the clone,
-        and the source's relative ordering is preserved. A source block
-        whose parent lives on another page (an orphan) clones as a
-        target root and joins the enumeration — mirroring the pass-2
-        attachment rule below, which can only re-link parents that are
-        part of this clone. Child blocks keep their source orders
-        untouched: sibling order is a per-parent space. ``order_offset``
-        defaults to 0 (full duplicate onto an empty page); callers
-        appending to an existing target pass
+        Every sibling group is enumerated on clone: within each group,
+        sources sort by (order, created_at, id) and renumber
+        contiguously — roots from ``order_offset``, each child group
+        from 0 in its own per-parent space — so duplicate or gapped
+        source orders never survive the clone while relative ordering
+        is preserved. A source block whose parent lives on another page
+        (an orphan) clones as a target root and joins the root
+        enumeration — mirroring the pass-2 attachment rule below, which
+        can only re-link parents that are part of this clone.
+        ``order_offset`` defaults to 0 (full duplicate onto an empty
+        page); callers appending to an existing target pass
         ``next_sibling_order(target)``.
 
         Returns the list of newly-created blocks.
@@ -717,15 +752,23 @@ class BlockRepository(BaseRepository):
         if not source_blocks:
             return []
 
-        # Root-equivalents: true roots plus orphans whose parent isn't in
-        # this clone (pass 2 below can't re-link those, so they become
-        # target roots and must join the root enumeration).
+        # Enumerate every sibling group, not just roots — child groups
+        # carry the same historical duplicates (the old tool-creation
+        # order=0 default) and would clone them verbatim into every
+        # application otherwise. Group key is the clone-target parent:
+        # true roots and orphans whose parent isn't in this clone (pass
+        # 2 below can't re-link those) both land in the root group.
         source_ids = {b.id for b in source_blocks}
-        root_sources = sorted(
-            (b for b in source_blocks if b.parent_id not in source_ids),
-            key=lambda b: (b.order, b.created_at, b.id),
-        )
-        root_order = {b.id: order_offset + i for i, b in enumerate(root_sources)}
+        sort_key = attrgetter(*cls.SIBLING_SORT_FIELDS)
+        sibling_groups: Dict[Optional[int], List[Block]] = {}
+        for block in source_blocks:
+            group_key = block.parent_id if block.parent_id in source_ids else None
+            sibling_groups.setdefault(group_key, []).append(block)
+        order_map: Dict[int, int] = {}
+        for group_key, members in sibling_groups.items():
+            base = order_offset if group_key is None else 0
+            for i, block in enumerate(sorted(members, key=sort_key)):
+                order_map[block.id] = base + i
 
         with transaction.atomic():
             uuid_map: Dict[Any, Block] = {}
@@ -742,7 +785,7 @@ class BlockRepository(BaseRepository):
                     content=src.content,
                     content_type=src.content_type,
                     block_type=src.block_type,
-                    order=root_order.get(src.id, src.order),
+                    order=order_map[src.id],
                     media_url=src.media_url,
                     media_metadata=src.media_metadata,
                     properties=dict(src.properties or {}),

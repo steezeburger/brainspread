@@ -818,3 +818,68 @@ class TestExplicitBlockTypeWins(TestCase):
 
         self.assertEqual(updated.block_type, "done")
         self.assertEqual(updated.completed_at, stamp)
+
+
+class TestReparentOrderAppends(TestCase):
+    """Joining a different sibling group without an explicit order must
+    append — carrying the old group's order into the new one regenerated
+    the duplicate-order bug through the edit path (the AI edit_block
+    handler sends parent_uuid with no order)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+        cls.page = PageFactory(user=cls.user)
+
+    def _update(self, block, **fields):
+        form = UpdateBlockForm(
+            {"user": self.user.id, "block": str(block.uuid), **fields}
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return UpdateBlockCommand(form).execute()
+
+    def test_reparent_without_order_appends_to_new_group(self):
+        new_parent = BlockFactory(user=self.user, page=self.page, content="p", order=0)
+        BlockFactory(
+            user=self.user, page=self.page, parent=new_parent, content="c0", order=0
+        )
+        mover = BlockFactory(user=self.user, page=self.page, content="m", order=0)
+
+        updated = self._update(mover, parent=str(new_parent.uuid))
+
+        self.assertEqual(updated.parent_id, new_parent.id)
+        self.assertEqual(updated.order, 1)
+
+    def test_reroot_without_order_appends_to_root_group(self):
+        parent = BlockFactory(user=self.user, page=self.page, content="p", order=0)
+        BlockFactory(user=self.user, page=self.page, content="r1", order=1)
+        child = BlockFactory(
+            user=self.user, page=self.page, parent=parent, content="c", order=0
+        )
+
+        updated = self._update(child, parent=None)
+
+        self.assertIsNone(updated.parent_id)
+        self.assertEqual(updated.order, 2)
+
+    def test_reparent_with_explicit_order_is_honored(self):
+        new_parent = BlockFactory(user=self.user, page=self.page, content="p", order=0)
+        BlockFactory(
+            user=self.user, page=self.page, parent=new_parent, content="c0", order=0
+        )
+        mover = BlockFactory(user=self.user, page=self.page, content="m", order=5)
+
+        updated = self._update(mover, parent=str(new_parent.uuid), order=0)
+
+        self.assertEqual(updated.parent_id, new_parent.id)
+        self.assertEqual(updated.order, 0)
+
+    def test_unchanged_parent_keeps_order(self):
+        parent = BlockFactory(user=self.user, page=self.page, content="p", order=0)
+        child = BlockFactory(
+            user=self.user, page=self.page, parent=parent, content="c", order=3
+        )
+
+        updated = self._update(child, parent=str(parent.uuid), content="c edited")
+
+        self.assertEqual(updated.order, 3)

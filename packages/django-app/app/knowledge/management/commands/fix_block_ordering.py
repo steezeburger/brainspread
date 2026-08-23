@@ -1,15 +1,28 @@
-from django.core.management.base import BaseCommand
-from django.db import transaction
+from typing import Any
 
-from knowledge.models import Block, Page
+from django.core.management.base import BaseCommand, CommandError
+
+from knowledge.commands.normalize_block_order_command import (
+    NormalizeBlockOrderCommand,
+)
+from knowledge.forms.normalize_block_order_form import NormalizeBlockOrderForm
+from knowledge.repositories import PageRepository
 
 
 class Command(BaseCommand):
+    """CLI shell around NormalizeBlockOrderCommand — one repair
+    implementation, not a parallel one. This command previously carried
+    its own renumbering loop with subtly different semantics (no page
+    filter on child groups, per-row saves, created_at-only sort), so a
+    run of it could reshuffle pages the admin action had just repaired.
+    Now both surfaces share the command's group semantics exactly."""
+
     help = (
-        "Fix block ordering by assigning sequential order values to blocks with order=0"
+        "Repair duplicate/gapped block orders: renumber every rendered "
+        "sibling group on each page"
     )
 
-    def add_arguments(self, parser):
+    def add_arguments(self, parser: Any) -> None:
         parser.add_argument(
             "--dry-run",
             action="store_true",
@@ -21,8 +34,8 @@ class Command(BaseCommand):
             help="Fix ordering only for a specific page date (YYYY-MM-DD format)",
         )
 
-    def handle(self, *args, **options):
-        dry_run = options["dry_run"]
+    def handle(self, *args: Any, **options: Any) -> None:
+        dry_run: bool = options["dry_run"]
         page_date = options.get("page_date")
 
         if dry_run:
@@ -30,88 +43,34 @@ class Command(BaseCommand):
                 self.style.WARNING("DRY RUN MODE - No changes will be made")
             )
 
-        # Get pages to process
-        pages_queryset = Page.objects.all()
-        if page_date:
-            pages_queryset = pages_queryset.filter(date=page_date)
+        pages = list(PageRepository.get_pages_for_order_repair(page_date=page_date))
+        self.stdout.write(f"Processing {len(pages)} page(s)...")
 
-        total_pages = pages_queryset.count()
-        self.stdout.write(f"Processing {total_pages} page(s)...")
-
-        total_blocks_fixed = 0
-
-        for page in pages_queryset:
-            blocks_fixed = self._fix_page_ordering(page, dry_run)
-            total_blocks_fixed += blocks_fixed
-
-            if blocks_fixed > 0:
+        total_renumbered = 0
+        for page in pages:
+            form = NormalizeBlockOrderForm(data={"page": page, "dry_run": dry_run})
+            if not form.is_valid():
+                raise CommandError(f"page {page.uuid}: {form.errors.as_text()}")
+            result = NormalizeBlockOrderCommand(form).execute()
+            total_renumbered += result["renumbered"]
+            if result["renumbered"] > 0:
                 page_display = page.date if page.date else page.title
                 self.stdout.write(
-                    f"  Page '{page_display}': {blocks_fixed} blocks reordered"
+                    f"  Page '{page_display}': "
+                    f"{result['renumbered']} blocks reordered"
                 )
 
         if dry_run:
             self.stdout.write(
                 self.style.WARNING(
-                    f"DRY RUN COMPLETE: Would fix {total_blocks_fixed} blocks across {total_pages} pages"
+                    f"DRY RUN COMPLETE: Would fix {total_renumbered} blocks "
+                    f"across {len(pages)} pages"
                 )
             )
         else:
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"COMPLETE: Fixed {total_blocks_fixed} blocks across {total_pages} pages"
+                    f"COMPLETE: Fixed {total_renumbered} blocks across "
+                    f"{len(pages)} pages"
                 )
             )
-
-    def _fix_page_ordering(self, page: Page, dry_run: bool) -> int:
-        """Fix ordering for a single page, returns number of blocks fixed"""
-        with transaction.atomic():
-            # Sort by (order, created_at, id) — the SAME semantics as
-            # NormalizeBlockOrderCommand and the Page admin's "Fix block
-            # ordering" action, so running one repair after the other
-            # never reshuffles a page. (This command previously sorted
-            # by created_at alone, which scrambled hand-dragged order.)
-            root_blocks = Block.objects.filter(page=page, parent=None).order_by(
-                "order", "created_at", "id"
-            )
-
-            blocks_to_fix = []
-            current_order = 0
-
-            for block in root_blocks:
-                # Assign sequential order values starting from 0
-                if block.order != current_order:
-                    blocks_to_fix.append((block, current_order))
-                current_order += 1
-
-            # Also fix child blocks recursively
-            for block in root_blocks:
-                child_fixes = self._fix_children_ordering(block, dry_run)
-                blocks_to_fix.extend(child_fixes)
-
-            if not dry_run and blocks_to_fix:
-                # Apply the fixes
-                for block, new_order in blocks_to_fix:
-                    block.order = new_order
-                    block.save(update_fields=["order"])
-
-            return len(blocks_to_fix)
-
-    def _fix_children_ordering(self, parent_block: Block, dry_run: bool) -> list:
-        """Fix ordering for children of a block recursively"""
-        fixes = []
-        children = Block.objects.filter(parent=parent_block).order_by(
-            "order", "created_at", "id"
-        )
-
-        current_order = 0
-        for child in children:
-            if child.order != current_order:
-                fixes.append((child, current_order))
-            current_order += 1
-
-            # Recursively fix grandchildren
-            grandchild_fixes = self._fix_children_ordering(child, dry_run)
-            fixes.extend(grandchild_fixes)
-
-        return fixes

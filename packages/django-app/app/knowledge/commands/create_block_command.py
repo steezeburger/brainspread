@@ -35,12 +35,8 @@ class CreateBlockCommand(AbstractBaseCommand):
         # omitted — the MCP and automation creation paths — append to
         # the sibling group instead of defaulting to 0, which collided
         # with the group's first block on every such creation.
-        if (
-            "order" in self.form.cleaned_data
-            and self.form.cleaned_data["order"] is not None
-        ):
-            order = self.form.cleaned_data["order"]
-        else:
+        order = self.form.cleaned_data.get("order")
+        if order is None:
             order = BlockRepository.next_sibling_order(page, parent)
         media_url = self.form.cleaned_data.get("media_url", "")
         media_metadata = self.form.cleaned_data.get("media_metadata", {})

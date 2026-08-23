@@ -262,6 +262,28 @@ class TestDuplicateAndOrphanTemplateRoots(TestCase):
         orders = sorted(b.order for b in roots)
         self.assertEqual(orders, [0, 1, 2, 3, 4, 5, 6])
 
+    def test_duplicate_child_orders_dedupe_on_clone(self):
+        # Children created via the old tool default all carried order=0;
+        # the clone must enumerate every sibling group, not just roots,
+        # or the template re-mints the collision on every application.
+        template = PageFactory(user=self.user, page_type="template", title="Kids")
+        root = BlockFactory(user=self.user, page=template, content="root", order=0)
+        for name in ("c1", "c2", "c3"):
+            BlockFactory(
+                user=self.user, page=template, parent=root, content=name, order=0
+            )
+        target = PageFactory(user=self.user, page_type="daily")
+
+        self._apply(template, target)
+
+        cloned_root = Block.objects.get(page=target, content="root")
+        children = Block.objects.filter(page=target, parent=cloned_root).order_by(
+            "order"
+        )
+        self.assertEqual([b.order for b in children], [0, 1, 2])
+        # Relative ordering preserved: creation order breaks the tie.
+        self.assertEqual([b.content for b in children], ["c1", "c2", "c3"])
+
     def test_orphan_source_block_joins_root_enumeration(self):
         elsewhere = PageFactory(user=self.user, title="Elsewhere")
         foreign_parent = BlockFactory(

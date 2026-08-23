@@ -438,18 +438,23 @@ class TestCreateBlockAppendOrder(TestCase):
 
         self.assertEqual(created.order, 1)
 
-    def test_cross_page_parent_rejected(self):
+    def test_cross_page_parent_adopts_parents_page(self):
+        # The web editor legitimately posts a mismatched page/parent
+        # pair from the Linked References section (viewed page + a
+        # parent living on the source page). The block joins its
+        # parent's page — honoring the submitted page would mint a
+        # cross-page orphan.
         other_page = PageFactory(user=self.user)
         foreign_parent = BlockFactory(
             user=self.user, page=other_page, content="fp", order=0
         )
-        form = CreateBlockForm(
-            {
-                "user": self.user.id,
-                "page": str(self.page.uuid),
-                "content": "child",
-                "parent": str(foreign_parent.uuid),
-            }
+        BlockFactory(
+            user=self.user, page=other_page, parent=foreign_parent, content="c0", order=0
         )
-        self.assertFalse(form.is_valid())
-        self.assertIn("not on the target page", str(form.errors))
+
+        created = self._create(content="child", parent=str(foreign_parent.uuid))
+
+        self.assertEqual(created.page_id, other_page.id)
+        self.assertEqual(created.parent_id, foreign_parent.id)
+        # Appended within the parent's real sibling group.
+        self.assertEqual(created.order, 1)
