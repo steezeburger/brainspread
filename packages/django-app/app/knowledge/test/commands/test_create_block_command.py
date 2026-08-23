@@ -6,7 +6,7 @@ from assets.models import Asset
 from knowledge.commands import CreateBlockCommand
 from knowledge.forms import CreateBlockForm
 
-from ..helpers import PageFactory, UserFactory
+from ..helpers import BlockFactory, PageFactory, UserFactory
 
 
 class TestCreateBlockCommand(TestCase):
@@ -390,3 +390,50 @@ class TestCreateBlockCommand(TestCase):
         )
         self.assertFalse(form.is_valid())
         self.assertIn("created_via", form.errors)
+
+
+class TestCreateBlockAppendOrder(TestCase):
+    """Omitted `order` appends to the sibling group instead of the old
+    default of 0, which collided with the group's first block on every
+    AI-chat / MCP / automation creation."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+        cls.page = PageFactory(user=cls.user)
+
+    def _create(self, **fields):
+        form = CreateBlockForm(
+            {"user": self.user.id, "page": str(self.page.uuid), **fields}
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return CreateBlockCommand(form).execute()
+
+    def test_omitted_order_appends_after_existing_roots(self):
+        BlockFactory(user=self.user, page=self.page, content="first", order=0)
+        BlockFactory(user=self.user, page=self.page, content="second", order=1)
+
+        created = self._create(content="third")
+
+        self.assertEqual(created.order, 2)
+
+    def test_omitted_order_on_empty_page_starts_at_zero(self):
+        created = self._create(content="only")
+        self.assertEqual(created.order, 0)
+
+    def test_explicit_order_still_honored(self):
+        BlockFactory(user=self.user, page=self.page, content="first", order=0)
+
+        created = self._create(content="wedge", order=0)
+
+        self.assertEqual(created.order, 0)
+
+    def test_omitted_order_appends_within_parent_group(self):
+        parent = BlockFactory(user=self.user, page=self.page, content="p", order=0)
+        BlockFactory(
+            user=self.user, page=self.page, parent=parent, content="c0", order=0
+        )
+
+        created = self._create(content="c1", parent=str(parent.uuid))
+
+        self.assertEqual(created.order, 1)

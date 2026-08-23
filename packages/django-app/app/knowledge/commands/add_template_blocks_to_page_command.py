@@ -1,7 +1,6 @@
 from typing import TypedDict
 
 from django.db import transaction
-from django.db.models import Max
 
 from common.commands.abstract_base_command import AbstractBaseCommand
 
@@ -36,22 +35,19 @@ class AddTemplateBlocksToPageCommand(AbstractBaseCommand):
 
         with transaction.atomic():
             # Pick an order_offset such that every cloned root lands
-            # below every existing block on the target. The offset is
-            # added to each source order, so source roots starting at
-            # order=1 will land at max+1, max+2, ... which keeps
-            # relative ordering identical to the template.
-            max_order = (
-                BlockRepository.get_queryset()
-                .filter(page=target_page)
-                .aggregate(max_order=Max("order"))["max_order"]
-            )
-            max_order = max_order if max_order is not None else 0
+            # strictly below every existing block on the target,
+            # regardless of whether the template's roots are 0- or
+            # 1-based. The old math (offset = target max) silently
+            # collided a 0-based template's first root with the
+            # target's last block — two blocks sharing one order.
+            next_order = BlockRepository.next_sibling_order(target_page)
+            min_src = BlockRepository.min_root_order(template)
 
             created = BlockRepository.clone_block_tree_to_page(
                 source_page=template,
                 target_page=target_page,
                 target_user=user,
-                order_offset=max_order,
+                order_offset=next_order - min_src,
             )
 
         # Touch the target page so it bubbles to the top of Recent.

@@ -2,7 +2,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional
 
 from django.db import transaction
-from django.db.models import Count, F, Max, Q, QuerySet
+from django.db.models import Count, F, Max, Min, Q, QuerySet
 from django.db.models.functions import TruncDate
 
 from common.repositories.base_repository import BaseRepository
@@ -656,6 +656,38 @@ class BlockRepository(BaseRepository):
         return qs.count()
 
     @classmethod
+    def next_sibling_order(cls, page: Page, parent: Optional[Block] = None) -> int:
+        """The append position for a new block in one sibling group —
+        max(order) + 1 within (page, parent), 0 for an empty group."""
+        max_order = (
+            cls.get_queryset()
+            .filter(page=page, parent=parent)
+            .aggregate(max_order=Max("order"))["max_order"]
+        )
+        return 0 if max_order is None else max_order + 1
+
+    @classmethod
+    def min_root_order(cls, page: Page) -> int:
+        """The smallest root-block order on ``page`` (0 when empty).
+        Template roots may be 0- or 1-based; offset math must not assume."""
+        min_order = (
+            cls.get_queryset()
+            .filter(page=page, parent__isnull=True)
+            .aggregate(min_order=Min("order"))["min_order"]
+        )
+        return 0 if min_order is None else min_order
+
+    @classmethod
+    def get_page_blocks_for_renumber(cls, page: Page) -> List[Block]:
+        """Every block on ``page`` in (parent, order, created_at, id)
+        order — the deterministic input for sibling renumbering."""
+        return list(
+            cls.get_queryset()
+            .filter(page=page)
+            .order_by("parent_id", "order", "created_at", "id")
+        )
+
+    @classmethod
     def clone_block_tree_to_page(
         cls,
         source_page: Page,
@@ -672,11 +704,16 @@ class BlockRepository(BaseRepository):
         completed_at is intentionally cleared on clone — a duplicated
         todo starts uncompleted even if the source was done.
 
-        ``order_offset`` shifts every cloned block's ``order`` by that
-        amount, preserving relative ordering. Defaults to 0 (full
-        duplicate, target page assumed empty). Callers appending to an
-        existing target should pass ``max(target.order) + 1`` (or
-        similar) so cloned roots land after the existing rows.
+        ``order_offset`` shifts every cloned ROOT block's ``order`` by
+        that amount, preserving the roots' relative ordering; child
+        blocks keep their source orders untouched — sibling order is a
+        per-parent space, and shifting children only skews it (and can
+        go negative on a PositiveIntegerField for a downward offset).
+        Defaults to 0 (full duplicate, target page assumed empty).
+        Callers appending to an existing target should pass
+        ``next_root_order(target) - min(source root order)`` so cloned
+        roots land strictly after the existing rows regardless of
+        whether the template is 0- or 1-based.
 
         Returns the list of newly-created blocks.
         """
@@ -701,7 +738,9 @@ class BlockRepository(BaseRepository):
                     content=src.content,
                     content_type=src.content_type,
                     block_type=src.block_type,
-                    order=src.order + order_offset,
+                    order=(
+                        src.order + order_offset if src.parent_id is None else src.order
+                    ),
                     media_url=src.media_url,
                     media_metadata=src.media_metadata,
                     properties=dict(src.properties or {}),

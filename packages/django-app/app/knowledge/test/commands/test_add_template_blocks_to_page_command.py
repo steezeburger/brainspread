@@ -181,3 +181,47 @@ class TestAddTemplateBlocksToPageCommand(TestCase):
             }
         )
         self.assertFalse(form.is_valid())
+
+
+class TestZeroBasedTemplateOffset(TestCase):
+    """Regression: a template whose roots start at order=0 used to clone
+    its first root onto the target's max order — two blocks sharing one
+    order (the duplicate-order=4 bug seen on dailies)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+
+    def test_zero_based_template_appends_without_collisions(self):
+        template = PageFactory(user=self.user, page_type="template", title="Zero Based")
+        root0 = BlockFactory(user=self.user, page=template, content="logs", order=0)
+        BlockFactory(
+            user=self.user, page=template, parent=root0, content="entry", order=0
+        )
+        BlockFactory(user=self.user, page=template, content="water", order=1)
+
+        target = PageFactory(user=self.user, page_type="daily")
+        for i in range(5):
+            BlockFactory(user=self.user, page=target, content=f"b{i}", order=i)
+
+        form = AddTemplateBlocksToPageForm(
+            {
+                "user": self.user.id,
+                "template": str(template.uuid),
+                "target_page": str(target.uuid),
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        AddTemplateBlocksToPageCommand(form).execute()
+
+        roots = Block.objects.filter(page=target, parent__isnull=True).order_by("order")
+        orders = [b.order for b in roots]
+        self.assertEqual(len(orders), len(set(orders)), f"duplicate orders: {orders}")
+        cloned_logs = Block.objects.get(page=target, content="logs")
+        self.assertEqual(cloned_logs.order, 5)
+        cloned_water = Block.objects.get(page=target, content="water")
+        self.assertEqual(cloned_water.order, 6)
+        # Child keeps its own sibling-space order, un-shifted.
+        cloned_entry = Block.objects.get(page=target, content="entry")
+        self.assertEqual(cloned_entry.order, 0)
+        self.assertEqual(cloned_entry.parent_id, cloned_logs.id)

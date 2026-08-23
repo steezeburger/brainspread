@@ -7,6 +7,7 @@ from ..forms.create_block_form import CreateBlockForm
 from ..forms.sync_block_tags_form import SyncBlockTagsForm
 from ..forms.touch_page_form import TouchPageForm
 from ..models import Block
+from ..repositories import BlockRepository
 from .sync_block_tags_command import SyncBlockTagsCommand
 from .touch_page_command import TouchPageCommand
 
@@ -26,10 +27,21 @@ class CreateBlockCommand(AbstractBaseCommand):
         content = self.form.cleaned_data.get("content", "")
         content_type = self.form.cleaned_data.get("content_type", "text")
         block_type = self.form.cleaned_data.get("block_type", "bullet")
-        order = self.form.cleaned_data.get("order", 0)
         parent = None
         if "parent" in self.form.cleaned_data:
             parent = self.form.cleaned_data.get("parent")
+        # An explicitly submitted order is honored (the web editor
+        # computes insert positions and shifts siblings itself). When
+        # omitted — the AI chat / MCP / automation creation paths —
+        # append to the sibling group instead of defaulting to 0, which
+        # collided with the group's first block on every tool creation.
+        if (
+            "order" in self.form.cleaned_data
+            and self.form.cleaned_data["order"] is not None
+        ):
+            order = self.form.cleaned_data["order"]
+        else:
+            order = BlockRepository.next_sibling_order(page, parent)
         media_url = self.form.cleaned_data.get("media_url", "")
         media_metadata = self.form.cleaned_data.get("media_metadata", {})
         properties = self.form.cleaned_data.get("properties", {})

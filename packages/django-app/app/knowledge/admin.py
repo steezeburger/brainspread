@@ -1,10 +1,37 @@
 from django.contrib import admin
 
+from .commands.normalize_block_order_command import NormalizeBlockOrderCommand
+from .forms.normalize_block_order_form import NormalizeBlockOrderForm
 from .models import AutomationRun, Block, Page, Reminder, ReminderAction
 
 
 @admin.register(Page)
 class PageAdmin(admin.ModelAdmin):
+    actions = ("fix_block_ordering",)
+
+    @admin.action(description="Fix block ordering (renumber sibling groups)")
+    def fix_block_ordering(self, request, queryset):
+        """Repair duplicate/gapped block orders on the selected pages —
+        each sibling group renumbers to 0..N-1 by (order, created_at)."""
+        pages = 0
+        renumbered = 0
+        for page in queryset:
+            form = NormalizeBlockOrderForm(
+                data={"user": page.user_id, "page": str(page.uuid)}
+            )
+            if not form.is_valid():
+                self.message_user(
+                    request, f"{page.title}: {form.errors.as_text()}", level="error"
+                )
+                continue
+            result = NormalizeBlockOrderCommand(form).execute()
+            pages += 1
+            renumbered += result["renumbered"]
+        self.message_user(
+            request,
+            f"Renumbered {renumbered} block(s) across {pages} page(s).",
+        )
+
     list_display = (
         "title",
         "short_uuid",
