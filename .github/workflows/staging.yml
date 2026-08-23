@@ -61,6 +61,7 @@ jobs:
             REPO="https://x-access-token:${GITHUB_TOKEN}@github.com/steezeburger/brainspread.git"
 
             if [ -d "$STAGING_DIR/.git" ]; then
+              git -C "$STAGING_DIR" remote set-url origin "$REPO"
               git -C "$STAGING_DIR" fetch origin
               git -C "$STAGING_DIR" checkout "$PR_BRANCH"
               git -C "$STAGING_DIR" reset --hard "origin/$PR_BRANCH"
@@ -139,7 +140,7 @@ jobs:
 
             | | |
             |---|---|
-            | **Port** | `${{ steps.vars.outputs.port }}` |
+            | **URL** | http://${{ secrets.DO_STAGING_HOST }}:${{ steps.vars.outputs.port }} |
             | **Branch** | `${{ github.head_ref }}` |
             | **Commit** | `${{ github.sha }}` |
             | **Status** | Deployed |
