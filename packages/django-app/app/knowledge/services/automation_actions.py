@@ -794,9 +794,7 @@ def _create_block(
             # None (blank token) would silently skip scheduling below —
             # an explicit `due` clause must set a date or fail loudly.
             if due_date is None:
-                raise ActionError(
-                    f"unrecognized date token {due_tokens[0]!r} in `due`"
-                )
+                raise ActionError(f"unrecognized date token {due_tokens[0]!r} in `due`")
             if len(due_tokens) == 2:
                 if not _CLAUSE_TIME_RE.match(due_tokens[1]):
                     raise ActionError(

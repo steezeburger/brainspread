@@ -1035,9 +1035,7 @@ class TestDueRemindClauses(TestCase):
         # loop — every block was classified "missing" and the run
         # recorded SUCCEEDED having scheduled nothing.
         page = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
-        target = BlockFactory(
-            user=self.user, page=page, block_type="todo", content="x"
-        )
+        target = BlockFactory(user=self.user, page=page, block_type="todo", content="x")
         reminds = " ".join(f"remind 9:{i:02d}" for i in range(11))
         automation = self._automation(
             trigger="manual",
@@ -1076,9 +1074,7 @@ class TestDueRemindClauses(TestCase):
 
         self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
         self.assertIn("unrecognized date token", result["last_error"])
-        self.assertFalse(
-            Block.objects.filter(user=self.user, content="x").exists()
-        )
+        self.assertFalse(Block.objects.filter(user=self.user, content="x").exists())
 
     def test_create_block_multiple_reminders(self):
         automation = self._automation(
