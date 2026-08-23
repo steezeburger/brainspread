@@ -219,7 +219,7 @@ window.HelpModal = {
               <tbody>
                 <tr>
                   <td><code class="help-syntax">Morning sweep #automation</code></td>
-                  <td>first line = name (and the slug used to run it)</td>
+                  <td>first line = the automation's name (hashtags and inline props are stripped)</td>
                 </tr>
                 <tr>
                   <td><code class="help-syntax">trigger:: schedule daily 5:30</code></td>

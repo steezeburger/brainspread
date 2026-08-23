@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from knowledge.commands import RunAutomationCommand
 from knowledge.forms.run_automation_form import RunAutomationForm
-from knowledge.models import AutomationRun, Block
+from knowledge.models import AutomationRun, Block, Reminder
 from knowledge.repositories import AutomationRunRepository, SavedViewRepository
 from knowledge.services.due_dates import start_of_local_day
 
@@ -1029,6 +1029,57 @@ class TestDueRemindClauses(TestCase):
         self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
         self.assertIn("set_due <date>", result["last_error"])
 
+    def test_set_due_too_many_reminders_fails_loudly(self):
+        # Regression: 11 remind clauses passed the bulk form (which only
+        # list-checked) and then failed the per-block form inside the
+        # loop — every block was classified "missing" and the run
+        # recorded SUCCEEDED having scheduled nothing.
+        page = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        target = BlockFactory(
+            user=self.user, page=page, block_type="todo", content="x"
+        )
+        reminds = " ".join(f"remind 9:{i:02d}" for i in range(11))
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action=f"set_due tomorrow {reminds}",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("at most 10", result["last_error"])
+        target.refresh_from_db()
+        self.assertIsNone(target.due_at)
+
+    def test_remind_blank_date_token_fails(self):
+        page = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        BlockFactory(user=self.user, page=page, block_type="todo", content="x")
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action='set_due tomorrow remind "" 18:00',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("unrecognized date token", result["last_error"])
+
+    def test_create_block_blank_due_token_fails(self):
+        automation = self._automation(
+            trigger="manual",
+            action='create_block "x" on today due "" 14:00',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("unrecognized date token", result["last_error"])
+        self.assertFalse(
+            Block.objects.filter(user=self.user, content="x").exists()
+        )
+
     def test_create_block_multiple_reminders(self):
         automation = self._automation(
             trigger="manual",
@@ -1040,8 +1091,6 @@ class TestDueRemindClauses(TestCase):
 
         self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
         created = Block.objects.get(user=self.user, content="move car")
-        from knowledge.models import Reminder
-
         pending = Reminder.objects.filter(block=created, sent_at__isnull=True)
         self.assertEqual(pending.count(), 2)
 
@@ -1072,8 +1121,6 @@ class TestDueRemindClauses(TestCase):
         result = self._run(automation)
 
         self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
-        from knowledge.models import Reminder
-
         pending = Reminder.objects.filter(block=target, sent_at__isnull=True)
         self.assertEqual(pending.count(), 2)
 
