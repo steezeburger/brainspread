@@ -2,7 +2,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional
 
 from django.db import transaction
-from django.db.models import Count, F, Max, Min, Q, QuerySet
+from django.db.models import Count, F, Max, Q, QuerySet
 from django.db.models.functions import TruncDate
 
 from common.repositories.base_repository import BaseRepository
@@ -667,23 +667,15 @@ class BlockRepository(BaseRepository):
         return 0 if max_order is None else max_order + 1
 
     @classmethod
-    def min_root_order(cls, page: Page) -> int:
-        """The smallest root-block order on ``page`` (0 when empty).
-        Template roots may be 0- or 1-based; offset math must not assume."""
-        min_order = (
-            cls.get_queryset()
-            .filter(page=page, parent__isnull=True)
-            .aggregate(min_order=Min("order"))["min_order"]
-        )
-        return 0 if min_order is None else min_order
-
-    @classmethod
     def get_page_blocks_for_renumber(cls, page: Page) -> List[Block]:
         """Every block on ``page`` in (parent, order, created_at, id)
-        order — the deterministic input for sibling renumbering."""
+        order, row-locked — call inside a transaction. The lock keeps a
+        concurrent user reorder from being silently overwritten by
+        renumbering computed from a stale snapshot."""
         return list(
             cls.get_queryset()
             .filter(page=page)
+            .select_for_update()
             .order_by("parent_id", "order", "created_at", "id")
         )
 
@@ -704,16 +696,18 @@ class BlockRepository(BaseRepository):
         completed_at is intentionally cleared on clone — a duplicated
         todo starts uncompleted even if the source was done.
 
-        ``order_offset`` shifts every cloned ROOT block's ``order`` by
-        that amount, preserving the roots' relative ordering; child
-        blocks keep their source orders untouched — sibling order is a
-        per-parent space, and shifting children only skews it (and can
-        go negative on a PositiveIntegerField for a downward offset).
-        Defaults to 0 (full duplicate, target page assumed empty).
-        Callers appending to an existing target should pass
-        ``next_root_order(target) - min(source root order)`` so cloned
-        roots land strictly after the existing rows regardless of
-        whether the template is 0- or 1-based.
+        Cloned ROOT blocks are enumerated: sorted by (order, created_at,
+        id) and assigned ``order_offset``, ``order_offset + 1``, … — so
+        duplicate or gapped source root orders never survive the clone,
+        and the source's relative ordering is preserved. A source block
+        whose parent lives on another page (an orphan) clones as a
+        target root and joins the enumeration — mirroring the pass-2
+        attachment rule below, which can only re-link parents that are
+        part of this clone. Child blocks keep their source orders
+        untouched: sibling order is a per-parent space. ``order_offset``
+        defaults to 0 (full duplicate onto an empty page); callers
+        appending to an existing target pass
+        ``next_sibling_order(target)``.
 
         Returns the list of newly-created blocks.
         """
@@ -722,6 +716,16 @@ class BlockRepository(BaseRepository):
         )
         if not source_blocks:
             return []
+
+        # Root-equivalents: true roots plus orphans whose parent isn't in
+        # this clone (pass 2 below can't re-link those, so they become
+        # target roots and must join the root enumeration).
+        source_ids = {b.id for b in source_blocks}
+        root_sources = sorted(
+            (b for b in source_blocks if b.parent_id not in source_ids),
+            key=lambda b: (b.order, b.created_at, b.id),
+        )
+        root_order = {b.id: order_offset + i for i, b in enumerate(root_sources)}
 
         with transaction.atomic():
             uuid_map: Dict[Any, Block] = {}
@@ -738,9 +742,7 @@ class BlockRepository(BaseRepository):
                     content=src.content,
                     content_type=src.content_type,
                     block_type=src.block_type,
-                    order=(
-                        src.order + order_offset if src.parent_id is None else src.order
-                    ),
+                    order=root_order.get(src.id, src.order),
                     media_url=src.media_url,
                     media_metadata=src.media_metadata,
                     properties=dict(src.properties or {}),

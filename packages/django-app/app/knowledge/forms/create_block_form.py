@@ -20,7 +20,7 @@ class CreateBlockForm(BaseForm):
     content = forms.CharField(required=False, initial="")
     content_type = forms.CharField(max_length=50, required=False, initial="text")
     block_type = forms.CharField(max_length=50, required=False, initial="bullet")
-    order = forms.IntegerField(min_value=0, required=False, initial=0)
+    order = forms.IntegerField(min_value=0, required=False)
     parent = UUIDModelChoiceField(
         queryset=BlockRepository.get_queryset(), required=False
     )
@@ -51,6 +51,15 @@ class CreateBlockForm(BaseForm):
 
         if parent and user and parent.user != user:
             raise ValidationError("Parent block does not belong to the specified user")
+
+        # A parent on a different page would put this block in a sibling
+        # group it can't render with (children are fetched by parent with
+        # no page filter) and breaks per-group order accounting. The MCP
+        # and AI-chat handlers already reject this; the web endpoint was
+        # the one path without the check.
+        page = self.cleaned_data.get("page")
+        if parent and page and parent.page_id != page.id:
+            raise ValidationError("Parent block is not on the target page")
 
         return parent
 

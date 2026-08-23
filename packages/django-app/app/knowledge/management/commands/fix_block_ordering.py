@@ -66,10 +66,13 @@ class Command(BaseCommand):
     def _fix_page_ordering(self, page: Page, dry_run: bool) -> int:
         """Fix ordering for a single page, returns number of blocks fixed"""
         with transaction.atomic():
-            # Get all root blocks (no parent) for this page, ordered by creation time
-            # This gives us a stable, predictable order for blocks that currently have order=0
+            # Sort by (order, created_at, id) — the SAME semantics as
+            # NormalizeBlockOrderCommand and the Page admin's "Fix block
+            # ordering" action, so running one repair after the other
+            # never reshuffles a page. (This command previously sorted
+            # by created_at alone, which scrambled hand-dragged order.)
             root_blocks = Block.objects.filter(page=page, parent=None).order_by(
-                "created_at"
+                "order", "created_at", "id"
             )
 
             blocks_to_fix = []
@@ -97,7 +100,9 @@ class Command(BaseCommand):
     def _fix_children_ordering(self, parent_block: Block, dry_run: bool) -> list:
         """Fix ordering for children of a block recursively"""
         fixes = []
-        children = Block.objects.filter(parent=parent_block).order_by("created_at")
+        children = Block.objects.filter(parent=parent_block).order_by(
+            "order", "created_at", "id"
+        )
 
         current_order = 0
         for child in children:

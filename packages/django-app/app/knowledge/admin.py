@@ -9,24 +9,36 @@ from .models import AutomationRun, Block, Page, Reminder, ReminderAction
 class PageAdmin(admin.ModelAdmin):
     actions = ("fix_block_ordering",)
 
-    @admin.action(description="Fix block ordering (renumber sibling groups)")
-    def fix_block_ordering(self, request, queryset):
+    @admin.action(
+        description="Fix block ordering (renumber sibling groups)",
+        permissions=["change"],
+    )
+    def fix_block_ordering(self, request, queryset) -> None:
         """Repair duplicate/gapped block orders on the selected pages —
-        each sibling group renumbers to 0..N-1 by (order, created_at)."""
+        each sibling group renumbers to 0..N-1 by (order, created_at).
+        Gated on change_page so view-only staff can't bulk-rewrite; each
+        page is isolated so one failure doesn't abort or hide the rest."""
         pages = 0
         renumbered = 0
+        failures: list[str] = []
         for page in queryset:
-            form = NormalizeBlockOrderForm(
-                data={"user": page.user_id, "page": str(page.uuid)}
-            )
+            form = NormalizeBlockOrderForm(data={"page": str(page.uuid)})
             if not form.is_valid():
-                self.message_user(
-                    request, f"{page.title}: {form.errors.as_text()}", level="error"
-                )
+                failures.append(f"{page.title}: {form.errors.as_text()}")
                 continue
-            result = NormalizeBlockOrderCommand(form).execute()
+            try:
+                result = NormalizeBlockOrderCommand(form).execute()
+            except Exception as exc:  # noqa: BLE001 — report, don't abort the batch
+                failures.append(f"{page.title}: {exc}")
+                continue
             pages += 1
             renumbered += result["renumbered"]
+        if failures:
+            self.message_user(
+                request,
+                f"{len(failures)} page(s) failed: " + "; ".join(failures[:5]),
+                level="error",
+            )
         self.message_user(
             request,
             f"Renumbered {renumbered} block(s) across {pages} page(s).",

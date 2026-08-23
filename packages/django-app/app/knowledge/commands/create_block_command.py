@@ -30,11 +30,11 @@ class CreateBlockCommand(AbstractBaseCommand):
         parent = None
         if "parent" in self.form.cleaned_data:
             parent = self.form.cleaned_data.get("parent")
-        # An explicitly submitted order is honored (the web editor
-        # computes insert positions and shifts siblings itself). When
-        # omitted — the AI chat / MCP / automation creation paths —
-        # append to the sibling group instead of defaulting to 0, which
-        # collided with the group's first block on every tool creation.
+        # An explicitly submitted order is honored (the web editor and
+        # the AI chat both compute insert positions themselves). When
+        # omitted — the MCP and automation creation paths — append to
+        # the sibling group instead of defaulting to 0, which collided
+        # with the group's first block on every such creation.
         if (
             "order" in self.form.cleaned_data
             and self.form.cleaned_data["order"] is not None

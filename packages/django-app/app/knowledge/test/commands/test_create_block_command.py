@@ -437,3 +437,19 @@ class TestCreateBlockAppendOrder(TestCase):
         created = self._create(content="c1", parent=str(parent.uuid))
 
         self.assertEqual(created.order, 1)
+
+    def test_cross_page_parent_rejected(self):
+        other_page = PageFactory(user=self.user)
+        foreign_parent = BlockFactory(
+            user=self.user, page=other_page, content="fp", order=0
+        )
+        form = CreateBlockForm(
+            {
+                "user": self.user.id,
+                "page": str(self.page.uuid),
+                "content": "child",
+                "parent": str(foreign_parent.uuid),
+            }
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("not on the target page", str(form.errors))

@@ -13,7 +13,7 @@ class TestNormalizeBlockOrderCommand(TestCase):
         cls.page = PageFactory(user=cls.user)
 
     def _run(self, page):
-        form = NormalizeBlockOrderForm({"user": self.user.id, "page": str(page.uuid)})
+        form = NormalizeBlockOrderForm({"page": str(page.uuid)})
         self.assertTrue(form.is_valid(), form.errors)
         return NormalizeBlockOrderCommand(form).execute()
 
@@ -48,10 +48,36 @@ class TestNormalizeBlockOrderCommand(TestCase):
         self.assertGreater(first["renumbered"], 0)
         self.assertEqual(second["renumbered"], 0)
 
-    def test_rejects_other_users_page(self):
-        other = UserFactory()
-        their_page = PageFactory(user=other)
-        form = NormalizeBlockOrderForm(
-            {"user": self.user.id, "page": str(their_page.uuid)}
+    def test_cross_page_orphans_are_left_untouched(self):
+        # A block whose parent lives on ANOTHER page belongs to that
+        # parent's sibling group — renumbering it here would collide
+        # with the parent's real children (and jump the orphan from the
+        # end of the child list to the front).
+        other_page = PageFactory(user=self.user)
+        parent_elsewhere = BlockFactory(
+            user=self.user, page=other_page, content="p", order=0
         )
-        self.assertFalse(form.is_valid())
+        orphan = BlockFactory(
+            user=self.user,
+            page=self.page,
+            parent=parent_elsewhere,
+            content="orphan",
+            order=41,
+        )
+        BlockFactory(user=self.user, page=self.page, content="root", order=3)
+
+        result = self._run(self.page)
+
+        orphan.refresh_from_db()
+        self.assertEqual(orphan.order, 41)
+        self.assertEqual(result["skipped_orphans"], 1)
+
+    def test_repair_does_not_bump_modified_at(self):
+        block = BlockFactory(user=self.user, page=self.page, content="m", order=7)
+        before = block.modified_at
+
+        self._run(self.page)
+
+        block.refresh_from_db()
+        self.assertEqual(block.order, 0)
+        self.assertEqual(block.modified_at, before)

@@ -225,3 +225,65 @@ class TestZeroBasedTemplateOffset(TestCase):
         cloned_entry = Block.objects.get(page=target, content="entry")
         self.assertEqual(cloned_entry.order, 0)
         self.assertEqual(cloned_entry.parent_id, cloned_logs.id)
+
+
+class TestDuplicateAndOrphanTemplateRoots(TestCase):
+    """Clone enumeration: in-template duplicate root orders dedupe, and a
+    source block whose parent lives on another page joins the root
+    enumeration instead of landing at its raw order inside the occupied
+    range."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+
+    def _apply(self, template, target):
+        form = AddTemplateBlocksToPageForm(
+            {
+                "user": self.user.id,
+                "template": str(template.uuid),
+                "target_page": str(target.uuid),
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        AddTemplateBlocksToPageCommand(form).execute()
+
+    def test_duplicate_root_orders_in_template_clone_collision_free(self):
+        template = PageFactory(user=self.user, page_type="template", title="Dups")
+        for name in ("r1", "r2", "r3"):
+            BlockFactory(user=self.user, page=template, content=name, order=0)
+        target = PageFactory(user=self.user, page_type="daily")
+        for i in range(4):
+            BlockFactory(user=self.user, page=target, content=f"b{i}", order=i)
+
+        self._apply(template, target)
+
+        roots = Block.objects.filter(page=target, parent__isnull=True)
+        orders = sorted(b.order for b in roots)
+        self.assertEqual(orders, [0, 1, 2, 3, 4, 5, 6])
+
+    def test_orphan_source_block_joins_root_enumeration(self):
+        elsewhere = PageFactory(user=self.user, title="Elsewhere")
+        foreign_parent = BlockFactory(
+            user=self.user, page=elsewhere, content="fp", order=0
+        )
+        template = PageFactory(user=self.user, page_type="template", title="Orph")
+        BlockFactory(user=self.user, page=template, content="root", order=0)
+        BlockFactory(
+            user=self.user,
+            page=template,
+            parent=foreign_parent,
+            content="orphan",
+            order=0,
+        )
+        target = PageFactory(user=self.user, page_type="daily")
+        for i in range(3):
+            BlockFactory(user=self.user, page=target, content=f"b{i}", order=i)
+
+        self._apply(template, target)
+
+        cloned_orphan = Block.objects.get(page=target, content="orphan")
+        self.assertIsNone(cloned_orphan.parent_id)
+        roots = Block.objects.filter(page=target, parent__isnull=True)
+        orders = sorted(b.order for b in roots)
+        self.assertEqual(orders, [0, 1, 2, 3, 4])

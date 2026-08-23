@@ -34,20 +34,17 @@ class AddTemplateBlocksToPageCommand(AbstractBaseCommand):
         target_page = self.form.cleaned_data["target_page"]
 
         with transaction.atomic():
-            # Pick an order_offset such that every cloned root lands
-            # strictly below every existing block on the target,
-            # regardless of whether the template's roots are 0- or
-            # 1-based. The old math (offset = target max) silently
-            # collided a 0-based template's first root with the
-            # target's last block — two blocks sharing one order.
-            next_order = BlockRepository.next_sibling_order(target_page)
-            min_src = BlockRepository.min_root_order(template)
-
+            # Cloned roots are enumerated from the target's next free
+            # ROOT position (children keep their own per-parent orders).
+            # Enumeration — rather than a flat offset — means a template
+            # whose roots carry duplicate or gapped orders (e.g. several
+            # created at the old order=0 tool default) still clones
+            # collision-free, appended after the existing roots.
             created = BlockRepository.clone_block_tree_to_page(
                 source_page=template,
                 target_page=target_page,
                 target_user=user,
-                order_offset=next_order - min_src,
+                order_offset=BlockRepository.next_sibling_order(target_page),
             )
 
         # Touch the target page so it bubbles to the top of Recent.
