@@ -449,7 +449,11 @@ class TestCreateBlockAppendOrder(TestCase):
             user=self.user, page=other_page, content="fp", order=0
         )
         BlockFactory(
-            user=self.user, page=other_page, parent=foreign_parent, content="c0", order=0
+            user=self.user,
+            page=other_page,
+            parent=foreign_parent,
+            content="c0",
+            order=0,
         )
 
         created = self._create(content="child", parent=str(foreign_parent.uuid))

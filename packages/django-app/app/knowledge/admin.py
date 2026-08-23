@@ -15,9 +15,7 @@ class PageAdmin(admin.ModelAdmin):
         description="Fix block ordering (renumber sibling groups)",
         permissions=["change"],
     )
-    def fix_block_ordering(
-        self, request: HttpRequest, queryset: QuerySet
-    ) -> None:
+    def fix_block_ordering(self, request: HttpRequest, queryset: QuerySet) -> None:
         """Repair duplicate/gapped block orders on the selected pages —
         each rendered sibling group renumbers to 0..N-1 by
         (order, created_at, id). Gated on change_page so view-only staff
