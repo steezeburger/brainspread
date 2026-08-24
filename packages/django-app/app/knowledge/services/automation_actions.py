@@ -644,6 +644,11 @@ def _parse_remind_spec(ctx: ActionContext, tokens: List[str]) -> dict:
             date_value = parse_relative_date(tokens[0], ctx.user.today())
         except ValueError as exc:
             raise ActionError(str(exc)) from exc
+        # parse_relative_date returns None (not ValueError) for blank
+        # input — a quoted empty token would otherwise crash on
+        # .isoformat() below.
+        if date_value is None:
+            raise ActionError(f"unrecognized date token {tokens[0]!r} in `remind`")
         return {"date": date_value.isoformat(), "time": tokens[1]}
     raise ActionError(
         "`remind` expects `[<date>] <HH:MM>`, e.g. `remind 7:30` or "
@@ -786,6 +791,10 @@ def _create_block(
                 due_date = parse_relative_date(due_tokens[0], ctx.user.today())
             except ValueError as exc:
                 raise ActionError(str(exc)) from exc
+            # None (blank token) would silently skip scheduling below —
+            # an explicit `due` clause must set a date or fail loudly.
+            if due_date is None:
+                raise ActionError(f"unrecognized date token {due_tokens[0]!r} in `due`")
             if len(due_tokens) == 2:
                 if not _CLAUSE_TIME_RE.match(due_tokens[1]):
                     raise ActionError(
