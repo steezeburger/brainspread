@@ -1891,8 +1891,12 @@ kbd {
   padding: 6px 10px;
   border: 2px solid var(--error-color);
   border-radius: 0;
-  background: var(--bg-secondary);
-  color: var(--error-color);
+  /* The border carries the error signal; the text stays primary-on-
+     primary so the message (often a long token vocabulary) is fully
+     legible in every theme — error-red text on themed backgrounds
+     drops below readable contrast in some palettes. */
+  background: var(--bg-primary);
+  color: var(--text-primary);
   font-size: 0.85em;
   line-height: 1.4;
   white-space: pre-wrap;
