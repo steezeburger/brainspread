@@ -6,7 +6,7 @@ from assets.models import Asset
 from knowledge.commands import CreateBlockCommand
 from knowledge.forms import CreateBlockForm
 
-from ..helpers import PageFactory, UserFactory
+from ..helpers import BlockFactory, PageFactory, UserFactory
 
 
 class TestCreateBlockCommand(TestCase):
@@ -390,3 +390,75 @@ class TestCreateBlockCommand(TestCase):
         )
         self.assertFalse(form.is_valid())
         self.assertIn("created_via", form.errors)
+
+
+class TestCreateBlockAppendOrder(TestCase):
+    """Omitted `order` appends to the sibling group instead of the old
+    default of 0, which collided with the group's first block on every
+    AI-chat / MCP / automation creation."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+        cls.page = PageFactory(user=cls.user)
+
+    def _create(self, **fields):
+        form = CreateBlockForm(
+            {"user": self.user.id, "page": str(self.page.uuid), **fields}
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return CreateBlockCommand(form).execute()
+
+    def test_omitted_order_appends_after_existing_roots(self):
+        BlockFactory(user=self.user, page=self.page, content="first", order=0)
+        BlockFactory(user=self.user, page=self.page, content="second", order=1)
+
+        created = self._create(content="third")
+
+        self.assertEqual(created.order, 2)
+
+    def test_omitted_order_on_empty_page_starts_at_zero(self):
+        created = self._create(content="only")
+        self.assertEqual(created.order, 0)
+
+    def test_explicit_order_still_honored(self):
+        BlockFactory(user=self.user, page=self.page, content="first", order=0)
+
+        created = self._create(content="wedge", order=0)
+
+        self.assertEqual(created.order, 0)
+
+    def test_omitted_order_appends_within_parent_group(self):
+        parent = BlockFactory(user=self.user, page=self.page, content="p", order=0)
+        BlockFactory(
+            user=self.user, page=self.page, parent=parent, content="c0", order=0
+        )
+
+        created = self._create(content="c1", parent=str(parent.uuid))
+
+        self.assertEqual(created.order, 1)
+
+    def test_cross_page_parent_adopts_parents_page(self):
+        # The web editor legitimately posts a mismatched page/parent
+        # pair from the Linked References section (viewed page + a
+        # parent living on the source page). The block joins its
+        # parent's page — honoring the submitted page would mint a
+        # cross-page orphan.
+        other_page = PageFactory(user=self.user)
+        foreign_parent = BlockFactory(
+            user=self.user, page=other_page, content="fp", order=0
+        )
+        BlockFactory(
+            user=self.user,
+            page=other_page,
+            parent=foreign_parent,
+            content="c0",
+            order=0,
+        )
+
+        created = self._create(content="child", parent=str(foreign_parent.uuid))
+
+        self.assertEqual(created.page_id, other_page.id)
+        self.assertEqual(created.parent_id, foreign_parent.id)
+        # Appended within the parent's real sibling group.
+        self.assertEqual(created.order, 1)

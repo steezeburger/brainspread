@@ -1,10 +1,58 @@
 from django.contrib import admin
+from django.db.models import QuerySet
+from django.http import HttpRequest
 
+from .commands.normalize_block_order_command import NormalizeBlockOrderCommand
+from .forms.normalize_block_order_form import NormalizeBlockOrderForm
 from .models import AutomationRun, Block, Page, Reminder, ReminderAction
 
 
 @admin.register(Page)
 class PageAdmin(admin.ModelAdmin):
+    actions = ("fix_block_ordering",)
+
+    @admin.action(
+        description="Fix block ordering (renumber sibling groups)",
+        permissions=["change"],
+    )
+    def fix_block_ordering(self, request: HttpRequest, queryset: QuerySet) -> None:
+        """Repair duplicate/gapped block orders on the selected pages —
+        each rendered sibling group renumbers to 0..N-1 by
+        (order, created_at, id). Gated on change_page so view-only staff
+        can't bulk-rewrite; each page is isolated so one failure doesn't
+        abort or hide the rest."""
+        pages = 0
+        renumbered = 0
+        failures: list[str] = []
+        for page in queryset:
+            # Daily pages have an empty title — fall back to the date,
+            # then the uuid, so failure entries stay identifiable.
+            label = str(page.title or page.date or page.uuid)
+            form = NormalizeBlockOrderForm(data={"page": page})
+            if not form.is_valid():
+                failures.append(f"{label}: {form.errors.as_text()}")
+                continue
+            try:
+                result = NormalizeBlockOrderCommand(form).execute()
+            except Exception as exc:  # noqa: BLE001 — report, don't abort the batch
+                failures.append(f"{label}: {exc}")
+                continue
+            pages += 1
+            renumbered += result["renumbered"]
+        if failures:
+            shown = "; ".join(failures[:5])
+            more = f" (and {len(failures) - 5} more)" if len(failures) > 5 else ""
+            self.message_user(
+                request,
+                f"{len(failures)} page(s) failed: {shown}{more}",
+                level="error",
+            )
+        if pages:
+            self.message_user(
+                request,
+                f"Renumbered {renumbered} block(s) across {pages} page(s).",
+            )
+
     list_display = (
         "title",
         "short_uuid",
