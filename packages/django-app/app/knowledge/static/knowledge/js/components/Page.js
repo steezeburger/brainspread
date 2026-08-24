@@ -881,10 +881,7 @@ const Page = {
         return result;
       } catch (error) {
         console.error("failed to create block:", error);
-        this.error =
-          error && error.status === 400 && error.message
-            ? error.message
-            : "failed to create block";
+        this.toastBlockError(error, "failed to create block");
         return { success: false };
       }
     },
@@ -996,12 +993,7 @@ const Page = {
           return;
         }
         console.error("failed to update block:", error);
-        // A 400 carries a user-facing message (e.g. an unknown
-        // {{token}} naming the vocabulary) — show it verbatim.
-        this.error =
-          error && error.status === 400 && error.message
-            ? error.message
-            : "failed to update block";
+        this.toastBlockError(error, "failed to update block");
       }
     },
 
@@ -1262,7 +1254,7 @@ const Page = {
         }
       } catch (error) {
         console.error("failed to delete block:", error);
-        this.error = "failed to delete block";
+        this.toastBlockError(error, "failed to delete block");
       } finally {
         // Hold the guard briefly so any in-flight blur handlers that
         // queued after the delete still see the block as "deleting".
@@ -1331,12 +1323,14 @@ const Page = {
           // a manual collapse-expand.
           this.broadcastBlockChanged(block.uuid);
         } else {
-          this.error =
-            result.errors?.non_field_errors?.[0] || "Failed to toggle todo";
+          this.emitToast(
+            result.errors?.non_field_errors?.[0] || "failed to toggle todo",
+            "error"
+          );
         }
       } catch (error) {
         console.error("failed to toggle block todo:", error);
-        this.error = "failed to toggle todo. please try again.";
+        this.toastBlockError(error, "failed to toggle todo. please try again.");
       }
     },
 
@@ -1371,7 +1365,7 @@ const Page = {
         await this.createBlock("", currentBlock.parent, newOrder);
       } catch (error) {
         console.error("failed to create block after:", error);
-        this.error = "failed to create block";
+        this.toastBlockError(error, "failed to create block");
       }
     },
 
@@ -1397,7 +1391,7 @@ const Page = {
         await this.createBlock("", currentBlock.parent, newOrder);
       } catch (error) {
         console.error("failed to create block before:", error);
-        this.error = "failed to create block";
+        this.toastBlockError(error, "failed to create block");
       }
     },
 
@@ -1442,7 +1436,7 @@ const Page = {
         });
       } catch (error) {
         console.error("failed to duplicate block:", error);
-        this.error = "failed to duplicate block";
+        this.toastBlockError(error, "failed to duplicate block");
       }
     },
 
@@ -1479,7 +1473,7 @@ const Page = {
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to move block up:", error);
-        this.error = "failed to move block up";
+        this.toastBlockError(error, "failed to move block up");
       }
     },
 
@@ -1516,7 +1510,7 @@ const Page = {
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to move block down:", error);
-        this.error = "failed to move block down";
+        this.toastBlockError(error, "failed to move block down");
       }
     },
 
@@ -1611,7 +1605,6 @@ const Page = {
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to move block to today:", error);
-        this.error = "failed to move block to today";
         this.$parent?.addToast?.("failed to move block to today", "error");
       }
     },
@@ -3201,7 +3194,7 @@ const Page = {
           this.page = { ...this.page, ...result.data };
           this.shareLinkCopied = false;
         } else {
-          this.error = "failed to update share settings";
+          this.emitToast("failed to update share settings", "error");
         }
       } catch (error) {
         console.error("failed to set share mode:", error);
@@ -3282,11 +3275,11 @@ const Page = {
           // date itself, so this doesn't re-pin the URL to a day.
           window.location.href = "/knowledge/";
         } else {
-          this.error = "failed to delete page";
+          this.emitToast("failed to delete page", "error");
         }
       } catch (error) {
         console.error("failed to delete page:", error);
-        this.error = "failed to delete page";
+        this.toastBlockError(error, "failed to delete page");
       }
     },
 
@@ -3436,12 +3429,10 @@ const Page = {
             );
           }
         } else {
-          this.error = "failed to move undone TODOs";
           this.$parent.addToast("failed to move undone TODOs", "error");
         }
       } catch (error) {
         console.error("failed to move undone TODOs:", error);
-        this.error = "failed to move undone TODOs";
         this.$parent.addToast("failed to move undone TODOs", "error");
       }
     },
@@ -3494,11 +3485,11 @@ const Page = {
             window.location.href = `/knowledge/page/${encodeURIComponent(result.data.slug)}/`;
           }
         } else {
-          this.error = "failed to update page title";
+          this.emitToast("failed to update page title", "error");
         }
       } catch (error) {
         console.error("failed to update page title:", error);
-        this.error = "failed to update page title";
+        this.toastBlockError(error, "failed to update page title");
       }
     },
 
@@ -3738,6 +3729,20 @@ const Page = {
       // Single token, http(s), no whitespace. Strict so inline URLs in text
       // don't accidentally trigger capture on paste.
       return /^https?:\/\/[^\s<>"']+$/i.test(text);
+    },
+
+    // Block-level failures surface as toasts; this.error is reserved
+    // for page-load failures, because the error state replaces the
+    // entire page render. A 400 carries a user-facing message (an
+    // unknown {{token}} naming the vocabulary, a broken {{count:}}
+    // query, a validation error) — show it verbatim over the fallback.
+    toastBlockError(error, fallback) {
+      const specific =
+        error &&
+        error.status === 400 &&
+        error.message &&
+        error.message !== "Request failed";
+      this.emitToast(specific ? error.message : fallback, "error", 6000);
     },
 
     emitToast(message, type = "info", duration = 4000) {
@@ -4192,7 +4197,7 @@ const Page = {
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to paste markdown list:", error);
-        this.error = "failed to paste markdown list";
+        this.toastBlockError(error, "failed to paste markdown list");
       }
     },
 
@@ -4526,7 +4531,6 @@ const Page = {
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to bulk-delete blocks:", error);
-        this.error = "failed to delete selected blocks";
         this.$parent?.addToast?.("failed to delete selected blocks", "error");
       }
     },
@@ -4560,7 +4564,6 @@ const Page = {
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to bulk-move blocks:", error);
-        this.error = "failed to move selected blocks";
         this.$parent?.addToast?.("failed to move selected blocks", "error");
       }
     },
@@ -4614,7 +4617,6 @@ const Page = {
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to bulk-move blocks to page:", error);
-        this.error = "failed to move selected blocks";
         this.$parent?.addToast?.(
           `failed to move selected blocks: ${error.message || error}`,
           "error"
@@ -4733,7 +4735,6 @@ const Page = {
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to bulk-schedule blocks:", error);
-        this.error = "failed to schedule selected blocks";
         this.$parent?.addToast?.(
           `failed to schedule selected blocks: ${error.message || error}`,
           "error"
