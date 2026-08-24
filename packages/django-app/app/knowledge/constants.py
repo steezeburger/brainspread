@@ -17,6 +17,11 @@ from typing import Tuple
 
 OPEN_TODO_TYPES: Tuple[str, ...] = ("todo", "doing", "later")
 
+# Slug of the tag that marks a block as an automation definition. Lives
+# here (import-free module) so models can use it without pulling in the
+# services layer; knowledge.services.automation_spec re-exports it.
+AUTOMATION_TAG_SLUG = "automation"
+
 COMPLETED_TODO_TYPES: Tuple[str, ...] = ("done", "wontdo")
 
 # Every block_type that tracks work, as against bullet / heading /

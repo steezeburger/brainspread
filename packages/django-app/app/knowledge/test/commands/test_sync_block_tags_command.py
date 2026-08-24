@@ -45,3 +45,36 @@ class TestSyncBlockTagsCommand(TestCase):
         block = self._run(content)
         self.assertEqual(self._tag_slugs(block), {"real"})
         self.assertFalse(Page.objects.filter(slug="fake", user=self.user).exists())
+
+
+class TestOwnPageTagSync(TestCase):
+    """A block can be tagged with the page it lives on (type #x while on
+    page x). get_tags used to hide own-page tags, so removal sync could
+    never see them — the M2M link outlived the hashtag forever."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+        cls.page = PageFactory(user=cls.user, title="Automation", slug="automation")
+
+    def _sync(self, block, content: str):
+        form = SyncBlockTagsForm(
+            {"user": self.user.id, "block": str(block.uuid), "content": content}
+        )
+        self.assertTrue(form.is_valid(), msg=form.errors)
+        SyncBlockTagsCommand(form).execute()
+
+    def test_own_page_hashtag_links_and_unlinks(self):
+        block = BlockFactory(
+            user=self.user, page=self.page, content="sweep #automation"
+        )
+        self._sync(block, block.content)
+        self.assertIn("automation", set(block.pages.values_list("slug", flat=True)))
+        self.assertIn("automation", block.get_tag_names())
+
+        block.content = "sweep"
+        block.save()
+        self._sync(block, "sweep")
+        self.assertNotIn(
+            "automation", set(block.pages.values_list("slug", flat=True))
+        )

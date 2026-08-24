@@ -219,7 +219,10 @@ const BlockComponent = {
   },
   computed: {
     isAutomationBlock() {
-      return (this.block.tags || []).some((t) => t.name === "automation");
+      // Server-derived: tagged #automation OR living on the automation
+      // page (see Block.is_automation). Deriving it here from the tag
+      // list missed page-resident definitions.
+      return !!this.block.is_automation;
     },
     blockInContext() {
       return this.isBlockInContext(this.block.uuid);
@@ -1450,6 +1453,9 @@ const BlockComponent = {
         }
         if (result.data && Array.isArray(result.data.tags)) {
           this.block.tags = result.data.tags;
+        }
+        if (result.data && result.data.is_automation !== undefined) {
+          this.block.is_automation = result.data.is_automation;
         }
       } catch (error) {
         console.error("failed to persist embed tags:", error);

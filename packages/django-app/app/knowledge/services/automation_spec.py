@@ -42,13 +42,11 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from django.utils.text import slugify
 
+from ..constants import AUTOMATION_TAG_SLUG  # noqa: F401  (re-exported)
 from .query_dsl import QueryDSLError, compile_inline_query
 
 if TYPE_CHECKING:
     from knowledge.models import Block
-
-# Slug of the tag that marks a block as an automation definition.
-AUTOMATION_TAG_SLUG = "automation"
 
 TRIGGER_SCHEDULE = "schedule"
 TRIGGER_MANUAL = "manual"

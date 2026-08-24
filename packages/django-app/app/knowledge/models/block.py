@@ -1,12 +1,13 @@
 import re
 from datetime import time
-from typing import Optional, TypedDict
+from typing import List, Optional, TypedDict
 
 from django.conf import settings
 from django.db import models
 
 from common.models.crud_timestamps_mixin import CRUDTimestampsMixin
 from common.models.uuid_mixin import UUIDModelMixin
+from knowledge.constants import AUTOMATION_TAG_SLUG
 from knowledge.services.due_dates import combine_local_to_utc
 
 
@@ -295,8 +296,27 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
         return lines[0] if lines else ""
 
     def get_tags(self):
-        """Get all pages this block is tagged with (excludes the page it belongs to and daily notes)"""
-        return self.pages.exclude(uuid=self.page.uuid).exclude(page_type="daily")
+        """Every page this block is tagged with — the M2M links minus
+        daily notes (a daily link means "appears on that daily", not a
+        tag). The block's own page is NOT excluded: a block living on a
+        tag page it also carries the hashtag for is genuinely tagged
+        with it, and hiding that here broke every truth-consumer
+        downstream (tag sync couldn't unlink own-page tags, and the
+        serialized tag list lied to the run-automation menu). Redundant
+        own-page *display* is a renderer concern, not a data one."""
+        return self.pages.exclude(page_type="daily")
+
+    def is_automation(self, tag_slugs: Optional[List[str]] = None) -> bool:
+        """Whether this block is a live automation definition. Mirrors
+        BlockRepository._automation_blocks_qs — tagged ``automation`` or
+        living on the ``automation`` page, never inside a template
+        (dormant blueprint) — keep the two in sync. Pass ``tag_slugs``
+        when the tag list is already loaded (to_dict) to skip the
+        query."""
+        if self.page.page_type == "template":
+            return False
+        slugs = self.get_tag_names() if tag_slugs is None else tag_slugs
+        return self.page.slug == AUTOMATION_TAG_SLUG or AUTOMATION_TAG_SLUG in slugs
 
     def get_tag_names(self):
         """Get tag names (uses slug format without # prefix)"""
@@ -307,6 +327,7 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
         due_date, due_time = self._due_local()
         pending_reminders = self._pending_reminders_local()
         first_reminder = pending_reminders[0] if pending_reminders else None
+        tag_slugs = self.get_tag_names()
         data: BlockData = {
             "uuid": str(self.uuid),
             "content": self.content,
@@ -323,7 +344,10 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             "media_url": self.media_url,
             "asset": self.asset.to_dict() if self.asset_id else None,
             "properties": self.properties or {},
-            "tags": [{"name": tag.slug, "color": "#007bff"} for tag in self.get_tags()],
+            "tags": [{"name": slug, "color": "#007bff"} for slug in tag_slugs],
+            # Derived server-side so the client never re-implements the
+            # membership rule (tag OR automation-page residency).
+            "is_automation": self.is_automation(tag_slugs),
             "children": None,
             # `due_at` is the raw UTC instant; `due_date` / `due_time` are the
             # user-local pieces the UI renders (time is None for all-day items).
@@ -501,6 +525,7 @@ class BlockData(TypedDict):
     asset: Optional[dict]
     properties: dict
     tags: Optional[list]
+    is_automation: bool
     children: Optional[list["BlockData"]]
     due_at: Optional[str]
     due_date: Optional[str]
