@@ -75,6 +75,4 @@ class TestOwnPageTagSync(TestCase):
         block.content = "sweep"
         block.save()
         self._sync(block, "sweep")
-        self.assertNotIn(
-            "automation", set(block.pages.values_list("slug", flat=True))
-        )
+        self.assertNotIn("automation", set(block.pages.values_list("slug", flat=True)))
