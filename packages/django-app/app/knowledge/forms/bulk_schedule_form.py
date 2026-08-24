@@ -7,6 +7,8 @@ from django.core.exceptions import ValidationError
 from common.forms.base_form import BaseForm
 from core.repositories import UserRepository
 
+from .schedule_block_form import MAX_REMINDERS_PER_BLOCK
+
 
 class BulkScheduleForm(BaseForm):
     """Inputs for the assistant's bulk_schedule tool — set the same due
@@ -52,6 +54,16 @@ class BulkScheduleForm(BaseForm):
             return None
         if not isinstance(raw, list):
             raise ValidationError("reminders must be a list")
+        # Enforce the per-block cap here too. The inner ScheduleBlockForm
+        # also checks it, but its failure inside the bulk loop classifies
+        # every block as "missing" — a silent no-op reported as success
+        # (an automation's `set_due … remind ×11` scheduled nothing while
+        # its run recorded SUCCEEDED). Failing the bulk form surfaces the
+        # error to the caller instead.
+        if len(raw) > MAX_REMINDERS_PER_BLOCK:
+            raise ValidationError(
+                f"at most {MAX_REMINDERS_PER_BLOCK} reminders per block"
+            )
         return raw
 
     def clean_block_uuids(self) -> List[str]:

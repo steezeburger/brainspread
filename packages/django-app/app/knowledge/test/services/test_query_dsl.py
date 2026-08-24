@@ -46,6 +46,55 @@ class TestCompileInlineQuery(SimpleTestCase):
             {"completed_at": {"is_null": False}},
         )
 
+    def test_now_and_iso_datetime_values_pass_through(self):
+        # ``now`` / ISO datetimes are ordinary comparison values here —
+        # the engine resolves them (to the current instant / an exact
+        # user-local instant) at query compile time.
+        self.assertEqual(compile_inline_query("due <= now"), {"due_at": {"lte": "now"}})
+        self.assertEqual(
+            compile_inline_query("due <= 2026-08-21T14:30"),
+            {"due_at": {"lte": "2026-08-21T14:30"}},
+        )
+        self.assertEqual(
+            compile_inline_query('completed >= "2026-08-21T14:30:00"'),
+            {"completed_at": {"gte": "2026-08-21T14:30:00"}},
+        )
+
+    def test_due_has_time_predicate(self):
+        self.assertEqual(
+            compile_inline_query("due_has_time:true"), {"due_has_time": True}
+        )
+        self.assertEqual(
+            compile_inline_query("due_has_time:false"), {"due_has_time": False}
+        )
+        self.assertEqual(
+            compile_inline_query("due_has_time:TRUE"), {"due_has_time": True}
+        )
+
+    def test_due_has_time_rejects_non_boolean_values(self):
+        with self.assertRaises(QueryDSLError) as ctx:
+            compile_inline_query("due_has_time:yes")
+        self.assertIn("true", str(ctx.exception))
+        with self.assertRaises(QueryDSLError):
+            compile_inline_query("due_has_time:")
+
+    def test_due_has_time_comparison_form_points_at_colon_spelling(self):
+        with self.assertRaises(QueryDSLError) as ctx:
+            compile_inline_query("due_has_time = true")
+        self.assertIn("due_has_time:true", str(ctx.exception))
+
+    def test_start_when_due_acceptance_query(self):
+        self.assertEqual(
+            compile_inline_query("type:todo and due <= now and due_has_time:true"),
+            {
+                "all": [
+                    {"block_type": "todo"},
+                    {"due_at": {"lte": "now"}},
+                    {"due_has_time": True},
+                ]
+            },
+        )
+
     def test_boolean_combinators_and_precedence(self):
         # not > and > or
         self.assertEqual(

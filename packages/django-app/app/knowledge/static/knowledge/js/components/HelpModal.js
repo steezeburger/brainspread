@@ -211,6 +211,36 @@ window.HelpModal = {
             <h3>block actions</h3>
             <p class="help-hint">click the <strong>⋮</strong> button, <kbd>Tab</kbd> to it, or press <kbd>⌘</kbd>+<kbd>.</kbd> while focused on a block to open the actions menu: indent, outdent, move up/down, create before/after, add to AI context, and delete. inside the menu, use <kbd>↑</kbd><kbd>↓</kbd> to navigate, <kbd>Enter</kbd> to select, <kbd>Esc</kbd> to close.</p>
           </div>
+
+          <div class="help-section">
+            <h3>automations</h3>
+            <p class="help-hint">any block tagged <span class="inline-tag">#automation</span> (or living on the <code class="help-syntax">automation</code> page) is a live automation, configured with <code class="help-syntax">key:: value</code> lines. example — unfinished work moves itself onto today's daily every morning:</p>
+            <table class="help-table">
+              <tbody>
+                <tr>
+                  <td><code class="help-syntax">Morning sweep #automation</code></td>
+                  <td>first line = the automation's name (hashtags and inline props are stripped)</td>
+                </tr>
+                <tr>
+                  <td><code class="help-syntax">trigger:: schedule daily 5:30</code></td>
+                  <td>when it runs, in your timezone. also: <code class="help-syntax">manual</code>, <code class="help-syntax">hourly</code>, <code class="help-syntax">weekly mon 9:00</code>, <code class="help-syntax">every 15m</code>, <code class="help-syntax">cron m h dom mon dow</code> (dom×dow are AND-ed, so <code class="help-syntax">cron 0 5 15-21 * 3</code> = third wednesday)</td>
+                </tr>
+                <tr>
+                  <td><code class="help-syntax">query:: type:todo,doing and due &lt; today</code></td>
+                  <td>which blocks it acts on. predicates: <code class="help-syntax">tag:</code> <code class="help-syntax">type:</code> <code class="help-syntax">page_type:</code> <code class="help-syntax">content:"…"</code> <code class="help-syntax">has:</code> <code class="help-syntax">prop:k=v</code> <code class="help-syntax">due_has_time:</code>, due/completed comparisons (<code class="help-syntax">due &lt;= now</code>, <code class="help-syntax">completed &gt;= "7 days ago"</code>, <code class="help-syntax">due is null</code>), combined with <code class="help-syntax">and / or / not</code> and parentheses. or reference a saved view: <code class="help-syntax">view:&lt;slug&gt;</code>. plain text = content search. use <code class="help-syntax">tag:x</code>, never <code class="help-syntax">#x</code> — a literal hashtag would tag the automation itself</td>
+                </tr>
+                <tr>
+                  <td><code class="help-syntax">action:: move_to_daily today</code></td>
+                  <td>what it does (one verb): <code class="help-syntax">move_to_daily</code>, <code class="help-syntax">move_to_page "ref"</code>, <code class="help-syntax">set_type done</code>, <code class="help-syntax">tag</code>/<code class="help-syntax">untag &lt;slug&gt;</code>, <code class="help-syntax">set_due &lt;date&gt; [HH:MM] [remind [date] HH:MM]…</code> (<code class="help-syntax">none</code> clears), <code class="help-syntax">set_property key value</code>, <code class="help-syntax">create_block "…" on &lt;date|page&gt; [as type] [tagged slug…] [with k=v…] [due …] [remind …]</code>, <code class="help-syntax">notify "…"</code> (discord; silent when nothing matches), <code class="help-syntax">apply_template "…" to today</code></td>
+                </tr>
+                <tr>
+                  <td><code class="help-syntax">enabled:: false</code></td>
+                  <td>pause ambient runs; an explicit manual run still works (with confirmation). <code class="help-syntax">allow::</code> is optional — omitted grants exactly the declared verb</td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="help-hint">date tokens: <code class="help-syntax">today</code> <code class="help-syntax">tomorrow</code> <code class="help-syntax">yesterday</code> <code class="help-syntax">+3d</code> <code class="help-syntax">-1w</code> or ISO dates; queries also take <code class="help-syntax">now</code> (exact time) and <code class="help-syntax">"N days ago"</code>. definitions inside templates stay dormant until the template is applied. run one on demand from its block's <strong>⋮</strong> menu ("run automation") or by asking the ai chat. every run is recorded — check the admin's automation runs if something misbehaves.</p>
+          </div>
         </div>
       </div>
     </div>

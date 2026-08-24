@@ -24,6 +24,16 @@ class PageRepository(BaseRepository):
             return None
 
     @classmethod
+    def get_pages_for_order_repair(cls, page_date: Optional[str] = None) -> QuerySet:
+        """Pages in scope for the block-order repair sweep, optionally
+        narrowed to one daily date. Maintenance surface — deliberately
+        unscoped by user, mirroring NormalizeBlockOrderForm."""
+        queryset = cls.get_queryset()
+        if page_date:
+            queryset = queryset.filter(date=page_date)
+        return queryset
+
+    @classmethod
     def get_by_slug(cls, slug: str, user=None) -> Optional[Page]:
         """Get page by slug, optionally filtered by user"""
         queryset = cls.get_queryset()

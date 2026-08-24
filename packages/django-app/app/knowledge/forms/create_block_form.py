@@ -20,7 +20,7 @@ class CreateBlockForm(BaseForm):
     content = forms.CharField(required=False, initial="")
     content_type = forms.CharField(max_length=50, required=False, initial="text")
     block_type = forms.CharField(max_length=50, required=False, initial="bullet")
-    order = forms.IntegerField(min_value=0, required=False, initial=0)
+    order = forms.IntegerField(min_value=0, required=False)
     parent = UUIDModelChoiceField(
         queryset=BlockRepository.get_queryset(), required=False
     )
@@ -51,6 +51,19 @@ class CreateBlockForm(BaseForm):
 
         if parent and user and parent.user != user:
             raise ValidationError("Parent block does not belong to the specified user")
+
+        # A block always joins its parent's page: sibling groups are
+        # parent-scoped, so honoring a mismatched ``page`` would mint a
+        # cross-page orphan — invisible to per-page order accounting yet
+        # rendered in the parent's child list. The web editor hits the
+        # mismatch legitimately (creating a sibling inside a Linked
+        # References section posts the VIEWED page with a parent from
+        # the source page), so adopt the parent's page rather than
+        # reject. The MCP and AI-chat handlers reject mismatches before
+        # this form ever sees them.
+        page = self.cleaned_data.get("page")
+        if parent and page and parent.page_id != page.id:
+            self.cleaned_data["page"] = parent.page
 
         return parent
 
