@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.test import TestCase
 
 from knowledge.commands import AddTemplateBlocksToPageCommand
@@ -181,6 +182,129 @@ class TestAddTemplateBlocksToPageCommand(TestCase):
             }
         )
         self.assertFalse(form.is_valid())
+
+
+class TestTemplateApplyTokens(TestCase):
+    """Apply is the resolve boundary for {{tokens}} (issue #140):
+    dormant in the template, frozen into the cloned copies."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+
+    def _apply(self, template, target, inputs=None):
+        data = {
+            "user": self.user,
+            "template": template.uuid,
+            "target_page": target.uuid,
+        }
+        if inputs is not None:
+            data["inputs"] = inputs
+        form = AddTemplateBlocksToPageForm(data)
+        self.assertTrue(form.is_valid(), form.errors)
+        return AddTemplateBlocksToPageCommand(form).execute()
+
+    def _template(self, *contents):
+        template = PageFactory(user=self.user, page_type="template")
+        for order, content in enumerate(contents, start=1):
+            BlockFactory(user=self.user, page=template, content=content, order=order)
+        return template
+
+    def _target_contents(self, target):
+        return [b.content for b in Block.objects.filter(page=target).order_by("order")]
+
+    def test_tokens_stay_dormant_in_template_and_resolve_on_apply(self):
+        template = self._template("standup {{today}}", "on {{page.title}}")
+        target = PageFactory(user=self.user, title="Sprint Board", page_type="page")
+
+        result = self._apply(template, target)
+
+        self.assertEqual(result["added"], 2)
+        self.assertEqual(result["needs_input"], [])
+        self.assertEqual(
+            self._target_contents(target),
+            [
+                f"standup {self.user.today().isoformat()}",
+                "on Sprint Board",
+            ],
+        )
+        # The template's own blocks still carry the raw tokens.
+        template_contents = [b.content for b in Block.objects.filter(page=template)]
+        self.assertIn("standup {{today}}", template_contents)
+
+    def test_apply_reports_needed_inputs_and_clones_nothing(self):
+        template = self._template(
+            "Project {{input:name}}", "Goal: {{input:goal}} for {{input:name}}"
+        )
+        target = PageFactory(user=self.user, page_type="page")
+
+        result = self._apply(template, target)
+
+        self.assertEqual(result["added"], 0)
+        self.assertEqual(result["needs_input"], ["name", "goal"])
+        self.assertEqual(Block.objects.filter(page=target).count(), 0)
+
+    def test_apply_substitutes_provided_inputs(self):
+        template = self._template("Project {{input:name}}")
+        target = PageFactory(user=self.user, page_type="page")
+
+        result = self._apply(template, target, inputs={"name": "Q3 launch"})
+
+        self.assertEqual(result["added"], 1)
+        self.assertEqual(result["needs_input"], [])
+        self.assertEqual(self._target_contents(target), ["Project Q3 launch"])
+
+    def test_named_uuid_is_shared_across_the_apply(self):
+        template = self._template("root {{uuid|name:proj}}", "{{uuid|name:proj}}")
+        target = PageFactory(user=self.user, page_type="page")
+
+        self._apply(template, target)
+
+        first, second = self._target_contents(target)
+        shared_id = first.removeprefix("root ")
+        self.assertEqual(second, shared_id)
+        self.assertEqual(len(shared_id), 36)
+
+    def test_count_token_freezes_at_apply(self):
+        target = PageFactory(user=self.user, page_type="daily")
+        BlockFactory(user=self.user, page=target, block_type="todo", order=1)
+        BlockFactory(user=self.user, page=target, block_type="todo", order=2)
+        template = self._template(
+            "Open going into the week: " "{{count:type:todo and completed is null}}"
+        )
+
+        self._apply(template, target)
+
+        contents = self._target_contents(target)
+        self.assertIn("Open going into the week: 2", contents)
+
+    def test_resolved_properties_are_extracted(self):
+        template = self._template("carried:: {{today}}")
+        target = PageFactory(user=self.user, page_type="page")
+
+        self._apply(template, target)
+
+        block = Block.objects.filter(page=target).first()
+        self.assertEqual(block.properties.get("carried"), self.user.today().isoformat())
+
+    def test_resolved_input_hashtag_is_tag_synced(self):
+        template = self._template("task {{input:tag}}")
+        target = PageFactory(user=self.user, page_type="page")
+
+        self._apply(template, target, inputs={"tag": "#urgent"})
+
+        block = Block.objects.filter(page=target).first()
+        self.assertEqual(block.content, "task #urgent")
+        self.assertIn("urgent", [p.slug for p in block.pages.all()])
+
+    def test_unknown_token_in_template_fails_the_apply(self):
+        template = self._template("hello {{blorp}}")
+        target = PageFactory(user=self.user, page_type="page")
+
+        with self.assertRaises(DjangoValidationError):
+            self._apply(template, target)
+        # The transaction rolled back — nothing landed on the target.
+        self.assertEqual(Block.objects.filter(page=target).count(), 0)
 
 
 class TestZeroBasedTemplateOffset(TestCase):

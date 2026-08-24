@@ -27,6 +27,18 @@ class AddTemplateBlocksToPageForm(BaseForm):
     target_page = UUIDModelChoiceField(
         queryset=PageRepository.get_queryset(), required=True
     )
+    # Apply-time values for {{input:<label>}} tokens, keyed by label.
+    # Omitted on the first call — the command answers with the labels
+    # it needs and the client re-submits with this filled in.
+    inputs = forms.JSONField(required=False)
+
+    def clean_inputs(self) -> dict:
+        inputs = self.cleaned_data.get("inputs")
+        if inputs in (None, ""):
+            return {}
+        if not isinstance(inputs, dict):
+            raise ValidationError("inputs must be an object of label: value")
+        return {str(key): str(value) for key, value in inputs.items()}
 
     def clean_user(self) -> User:
         user = self.cleaned_data.get("user")

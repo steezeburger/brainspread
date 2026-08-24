@@ -881,7 +881,7 @@ const Page = {
         return result;
       } catch (error) {
         console.error("failed to create block:", error);
-        this.error = "failed to create block";
+        this.toastBlockError(error, "failed to create block");
         return { success: false };
       }
     },
@@ -942,11 +942,17 @@ const Page = {
         const result = await window.apiService.updateBlock(block.uuid, payload);
 
         if (result.success) {
-          block.content = newContent;
-          block._baseContent =
+          block.saveError = null;
+          // Adopt the server's content: token expansion ({{today}} and
+          // friends, issue #140) means what got saved can differ from
+          // what was typed, and the display should show the frozen
+          // values immediately.
+          const savedContent =
             result.data && result.data.content !== undefined
               ? result.data.content
               : newContent;
+          block.content = savedContent;
+          block._baseContent = savedContent;
           if (result.data && result.data.block_type) {
             block.block_type = result.data.block_type;
             // A content prefix (e.g. typing "DONE ") can flip the type
@@ -988,7 +994,22 @@ const Page = {
           return;
         }
         console.error("failed to update block:", error);
-        this.error = "failed to update block";
+        // A 400 is a fixable authoring error (unknown {{token}}, broken
+        // {{count:}} query, validation) — pin it under the block and
+        // keep editing so the guidance stays visible while the user
+        // corrects the text. A toast is missable and gone by the time
+        // they look back at their content. Other failures still toast.
+        if (
+          error &&
+          error.status === 400 &&
+          error.message &&
+          error.message !== "Request failed"
+        ) {
+          block.saveError = error.message;
+          block.isEditing = true;
+        } else {
+          this.toastBlockError(error, "failed to update block");
+        }
       }
     },
 
@@ -1249,7 +1270,7 @@ const Page = {
         }
       } catch (error) {
         console.error("failed to delete block:", error);
-        this.error = "failed to delete block";
+        this.toastBlockError(error, "failed to delete block");
       } finally {
         // Hold the guard briefly so any in-flight blur handlers that
         // queued after the delete still see the block as "deleting".
@@ -1318,12 +1339,14 @@ const Page = {
           // a manual collapse-expand.
           this.broadcastBlockChanged(block.uuid);
         } else {
-          this.error =
-            result.errors?.non_field_errors?.[0] || "Failed to toggle todo";
+          this.emitToast(
+            result.errors?.non_field_errors?.[0] || "failed to toggle todo",
+            "error"
+          );
         }
       } catch (error) {
         console.error("failed to toggle block todo:", error);
-        this.error = "failed to toggle todo. please try again.";
+        this.toastBlockError(error, "failed to toggle todo. please try again.");
       }
     },
 
@@ -1358,7 +1381,7 @@ const Page = {
         await this.createBlock("", currentBlock.parent, newOrder);
       } catch (error) {
         console.error("failed to create block after:", error);
-        this.error = "failed to create block";
+        this.toastBlockError(error, "failed to create block");
       }
     },
 
@@ -1384,7 +1407,7 @@ const Page = {
         await this.createBlock("", currentBlock.parent, newOrder);
       } catch (error) {
         console.error("failed to create block before:", error);
-        this.error = "failed to create block";
+        this.toastBlockError(error, "failed to create block");
       }
     },
 
@@ -1429,7 +1452,7 @@ const Page = {
         });
       } catch (error) {
         console.error("failed to duplicate block:", error);
-        this.error = "failed to duplicate block";
+        this.toastBlockError(error, "failed to duplicate block");
       }
     },
 
@@ -1466,7 +1489,7 @@ const Page = {
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to move block up:", error);
-        this.error = "failed to move block up";
+        this.toastBlockError(error, "failed to move block up");
       }
     },
 
@@ -1503,7 +1526,7 @@ const Page = {
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to move block down:", error);
-        this.error = "failed to move block down";
+        this.toastBlockError(error, "failed to move block down");
       }
     },
 
@@ -1598,7 +1621,6 @@ const Page = {
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to move block to today:", error);
-        this.error = "failed to move block to today";
         this.$parent?.addToast?.("failed to move block to today", "error");
       }
     },
@@ -3085,12 +3107,31 @@ const Page = {
       if (!template) return;
 
       try {
-        const result = await window.apiService.addTemplateBlocksToPage(
+        let result = await window.apiService.addTemplateBlocksToPage(
           template.uuid,
           this.page.uuid
         );
         if (!result.success) {
           throw new Error(result.errors?.non_field_errors?.[0] || "add failed");
+        }
+        // Interactive template: the backend reported {{input:<label>}}
+        // tokens it needs values for. Prompt per label, then re-submit
+        // with the answers (issue #140).
+        if (result.data?.needs_input?.length) {
+          const inputs = await this.promptForTemplateInputs(
+            result.data.needs_input
+          );
+          if (inputs === null) return; // user cancelled
+          result = await window.apiService.addTemplateBlocksToPage(
+            template.uuid,
+            this.page.uuid,
+            inputs
+          );
+          if (!result.success) {
+            throw new Error(
+              result.errors?.non_field_errors?.[0] || "add failed"
+            );
+          }
         }
         const added = result.data?.added ?? 0;
         this.$parent?.addToast?.(
@@ -3105,6 +3146,23 @@ const Page = {
           "error"
         );
       }
+    },
+
+    async promptForTemplateInputs(labels) {
+      // Minimal apply-time prompt flow for {{input:<label>}} tokens:
+      // one prompt dialog per label, in template order. Returns a
+      // label→value object, or null if the user cancels any prompt.
+      const inputs = {};
+      for (const label of labels) {
+        const value = await window.appModals.prompt({
+          title: "template input",
+          message: label,
+          placeholder: label,
+        });
+        if (value === null) return null;
+        inputs[label] = value;
+      }
+      return inputs;
     },
 
     async toggleFavorited() {
@@ -3152,7 +3210,7 @@ const Page = {
           this.page = { ...this.page, ...result.data };
           this.shareLinkCopied = false;
         } else {
-          this.error = "failed to update share settings";
+          this.emitToast("failed to update share settings", "error");
         }
       } catch (error) {
         console.error("failed to set share mode:", error);
@@ -3233,11 +3291,11 @@ const Page = {
           // date itself, so this doesn't re-pin the URL to a day.
           window.location.href = "/knowledge/";
         } else {
-          this.error = "failed to delete page";
+          this.emitToast("failed to delete page", "error");
         }
       } catch (error) {
         console.error("failed to delete page:", error);
-        this.error = "failed to delete page";
+        this.toastBlockError(error, "failed to delete page");
       }
     },
 
@@ -3387,12 +3445,10 @@ const Page = {
             );
           }
         } else {
-          this.error = "failed to move undone TODOs";
           this.$parent.addToast("failed to move undone TODOs", "error");
         }
       } catch (error) {
         console.error("failed to move undone TODOs:", error);
-        this.error = "failed to move undone TODOs";
         this.$parent.addToast("failed to move undone TODOs", "error");
       }
     },
@@ -3445,11 +3501,11 @@ const Page = {
             window.location.href = `/knowledge/page/${encodeURIComponent(result.data.slug)}/`;
           }
         } else {
-          this.error = "failed to update page title";
+          this.emitToast("failed to update page title", "error");
         }
       } catch (error) {
         console.error("failed to update page title:", error);
-        this.error = "failed to update page title";
+        this.toastBlockError(error, "failed to update page title");
       }
     },
 
@@ -3689,6 +3745,20 @@ const Page = {
       // Single token, http(s), no whitespace. Strict so inline URLs in text
       // don't accidentally trigger capture on paste.
       return /^https?:\/\/[^\s<>"']+$/i.test(text);
+    },
+
+    // Block-level failures surface as toasts; this.error is reserved
+    // for page-load failures, because the error state replaces the
+    // entire page render. A 400 carries a user-facing message (an
+    // unknown {{token}} naming the vocabulary, a broken {{count:}}
+    // query, a validation error) — show it verbatim over the fallback.
+    toastBlockError(error, fallback) {
+      const specific =
+        error &&
+        error.status === 400 &&
+        error.message &&
+        error.message !== "Request failed";
+      this.emitToast(specific ? error.message : fallback, "error", 6000);
     },
 
     emitToast(message, type = "info", duration = 4000) {
@@ -4143,7 +4213,7 @@ const Page = {
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to paste markdown list:", error);
-        this.error = "failed to paste markdown list";
+        this.toastBlockError(error, "failed to paste markdown list");
       }
     },
 
@@ -4477,7 +4547,6 @@ const Page = {
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to bulk-delete blocks:", error);
-        this.error = "failed to delete selected blocks";
         this.$parent?.addToast?.("failed to delete selected blocks", "error");
       }
     },
@@ -4511,7 +4580,6 @@ const Page = {
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to bulk-move blocks:", error);
-        this.error = "failed to move selected blocks";
         this.$parent?.addToast?.("failed to move selected blocks", "error");
       }
     },
@@ -4565,7 +4633,6 @@ const Page = {
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to bulk-move blocks to page:", error);
-        this.error = "failed to move selected blocks";
         this.$parent?.addToast?.(
           `failed to move selected blocks: ${error.message || error}`,
           "error"
@@ -4684,7 +4751,6 @@ const Page = {
         await this.loadPage({ silent: true });
       } catch (error) {
         console.error("failed to bulk-schedule blocks:", error);
-        this.error = "failed to schedule selected blocks";
         this.$parent?.addToast?.(
           `failed to schedule selected blocks: ${error.message || error}`,
           "error"

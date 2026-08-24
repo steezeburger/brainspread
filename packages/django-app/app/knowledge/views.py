@@ -1014,6 +1014,15 @@ def create_block(request):
             }
             return Response(response, status=status.HTTP_400_BAD_REQUEST)
 
+    except ValidationError as e:
+        # Bad {{token}} content and similar business-rule rejections —
+        # a client error, not a server fault. e.messages gives the bare
+        # message strings (str(e) would wrap them in list syntax).
+        return Response(
+            {"success": False, "errors": {"non_field_errors": e.messages}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     except Exception as e:
         response: BlockResponse = {
             "success": False,
@@ -1066,7 +1075,7 @@ def update_block(request):
 
     except ValidationError as e:
         return Response(
-            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            {"success": False, "errors": {"non_field_errors": e.messages}},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -1578,7 +1587,7 @@ def add_template_blocks_to_page(request):
 
     except ValidationError as e:
         return Response(
-            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            {"success": False, "errors": {"non_field_errors": e.messages}},
             status=status.HTTP_400_BAD_REQUEST,
         )
 

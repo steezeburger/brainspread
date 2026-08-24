@@ -1882,6 +1882,27 @@ kbd {
   width: 100%;
 }
 
+/* Rejected-save error pinned under a block's textarea. Persistent
+   (unlike a toast) so fix guidance like the {{token}} vocabulary stays
+   readable while the user corrects the content; cleared on the next
+   keystroke or a successful save. */
+.block-save-error {
+  margin: 4px 0 2px;
+  padding: 6px 10px;
+  border: 2px solid var(--error-color);
+  border-radius: 0;
+  /* The border carries the error signal; the text stays primary-on-
+     primary so the message (often a long token vocabulary) is fully
+     legible in every theme — error-red text on themed backgrounds
+     drops below readable contrast in some palettes. */
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.85em;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .tag-suggestions {
   position: absolute;
   top: 100%;

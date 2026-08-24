@@ -1,3 +1,28 @@
+// Static {{token}} vocabulary for the editor autocomplete (issue #140).
+// Mirrors the backend resolver's TOKEN_VOCABULARY — no API call, same
+// pattern as hashtag autocomplete but with a fixed list. `open` tokens
+// take an argument, so insertion leaves the caret before the closing
+// braces instead of completing the token.
+const CONTENT_TOKEN_VOCABULARY = [
+  { token: "today", hint: "today's date" },
+  { token: "now", hint: "current date + time" },
+  { token: "tomorrow", hint: "tomorrow's date" },
+  { token: "yesterday", hint: "yesterday's date" },
+  { token: "current_time", hint: "current time" },
+  { token: "current_date", hint: "today's date" },
+  { token: "page.title", hint: "this page's title" },
+  { token: "page.slug", hint: "this page's slug" },
+  { token: "page.date", hint: "this page's date" },
+  { token: "page.url", hint: "this page's url" },
+  { token: "page.uuid", hint: "this page's id" },
+  { token: "user.email", hint: "your email" },
+  { token: "user.timezone", hint: "your timezone" },
+  { token: "uuid", hint: "fresh unique id" },
+  { token: "cursor", hint: "resolves away (caret marker)" },
+  { token: "input:", hint: "ask when template is applied", open: true },
+  { token: "count:", hint: "frozen count of a query", open: true },
+];
+
 const BlockComponent = {
   name: "BlockComponent",
   mixins: [window.brainspreadEmojiRenderMixin || {}],
@@ -200,6 +225,10 @@ const BlockComponent = {
       tagQuery: "",
       tagSelectedIndex: 0,
       tagSearchToken: 0,
+      // {{token}} autocomplete state (static vocabulary, issue #140)
+      tokenSuggestions: [],
+      tokenQueryStart: -1,
+      tokenSelectedIndex: 0,
       // Web archive state (loaded lazily for embed blocks)
       webArchive: null,
       webArchiveLoading: false,
@@ -340,6 +369,9 @@ const BlockComponent = {
     },
     showTagSuggestions() {
       return this.tagQueryStart >= 0 && this.tagSuggestions.length > 0;
+    },
+    showTokenSuggestions() {
+      return this.tokenQueryStart >= 0 && this.tokenSuggestions.length > 0;
     },
     isEmbed() {
       return this.block.content_type === "embed" && !!this.block.media_url;
@@ -1282,12 +1314,111 @@ const BlockComponent = {
         }
       });
     },
+    // --- {{token}} autocomplete (issue #140) ---
+    // Same shape as the hashtag autocomplete above, but against the
+    // static CONTENT_TOKEN_VOCABULARY — no API call. Detect a `{{query`
+    // prefix ending at the cursor; returns { start, query } or null.
+    detectTokenContext(value, caret) {
+      if (caret == null || caret < 0) return null;
+      const upToCaret = value.slice(0, caret);
+      const match = upToCaret.match(/\{\{([a-zA-Z0-9_.:|-]*)$/);
+      if (!match) return null;
+      const start = upToCaret.length - match[0].length;
+      // `\{{` is the escape for a literal brace — never suggest there.
+      if (start > 0 && upToCaret[start - 1] === "\\") return null;
+      return { start, query: match[1] };
+    },
+    closeTokenSuggestions() {
+      this.tokenSuggestions = [];
+      this.tokenQueryStart = -1;
+      this.tokenSelectedIndex = 0;
+    },
+    updateTokenSuggestions(value, caret) {
+      const ctx = this.detectTokenContext(value, caret);
+      if (!ctx) {
+        this.closeTokenSuggestions();
+        return;
+      }
+      const query = ctx.query.toLowerCase();
+      const matches = CONTENT_TOKEN_VOCABULARY.filter((entry) =>
+        entry.token.startsWith(query)
+      );
+      this.tokenQueryStart = ctx.start;
+      this.tokenSuggestions = matches;
+      if (this.tokenSelectedIndex >= matches.length) {
+        this.tokenSelectedIndex = 0;
+      }
+    },
+    tokenSuggestionLabel(entry) {
+      return `{{${entry.token}}}`;
+    },
+    insertTokenSuggestion(entry) {
+      if (!entry || this.tokenQueryStart < 0) return;
+      const textarea = this.$refs.blockTextarea;
+      const content = this.block.content || "";
+      const caret = textarea ? textarea.selectionEnd : content.length;
+      const before = content.slice(0, this.tokenQueryStart);
+      const after = content.slice(caret);
+      const inserted = `{{${entry.token}}}`;
+      const newContent = before + inserted + after;
+      this.onBlockContentChange(this.block, newContent);
+      this.closeTokenSuggestions();
+      this.$nextTick(() => {
+        if (textarea) {
+          // Open tokens ({{input:}}, {{count:}}) park the caret before
+          // the closing braces so the argument can be typed straight in.
+          const pos = entry.open
+            ? before.length + inserted.length - 2
+            : before.length + inserted.length;
+          textarea.focus();
+          textarea.setSelectionRange(pos, pos);
+        }
+      });
+    },
     handleTextareaInput(event) {
+      // A rejected save pins its error under the block; the next
+      // keystroke means the user is addressing it.
+      if (this.block.saveError) {
+        this.block.saveError = null;
+      }
       const value = event.target.value;
       this.onBlockContentChange(this.block, value);
       this.updateTagSuggestions(value, event.target.selectionEnd);
+      this.updateTokenSuggestions(value, event.target.selectionEnd);
     },
     handleTextareaKeydown(event) {
+      if (this.showTokenSuggestions) {
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          event.stopPropagation();
+          this.tokenSelectedIndex =
+            (this.tokenSelectedIndex + 1) % this.tokenSuggestions.length;
+          return;
+        }
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          event.stopPropagation();
+          this.tokenSelectedIndex =
+            (this.tokenSelectedIndex - 1 + this.tokenSuggestions.length) %
+            this.tokenSuggestions.length;
+          return;
+        }
+        if (event.key === "Enter" || event.key === "Tab") {
+          const choice = this.tokenSuggestions[this.tokenSelectedIndex];
+          if (choice) {
+            event.preventDefault();
+            event.stopPropagation();
+            this.insertTokenSuggestion(choice);
+            return;
+          }
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          this.closeTokenSuggestions();
+          return;
+        }
+      }
       if (this.showTagSuggestions) {
         if (event.key === "ArrowDown") {
           event.preventDefault();
@@ -1324,7 +1455,10 @@ const BlockComponent = {
     },
     handleTextareaBlur() {
       // Delay close so a click on a suggestion item still registers.
-      setTimeout(() => this.closeTagSuggestions(), 150);
+      setTimeout(() => {
+        this.closeTagSuggestions();
+        this.closeTokenSuggestions();
+      }, 150);
       this.stopEditing(this.block);
     },
 
@@ -1784,6 +1918,11 @@ const BlockComponent = {
               placeholder="add caption…"
               ref="blockTextarea"
             ></textarea>
+            <div
+              v-if="block.saveError"
+              class="block-save-error"
+              role="alert"
+            >{{ block.saveError }}</div>
           </div>
           <!--
             Tag chip strip - reuses the embed-tag plumbing (parser,
@@ -1884,6 +2023,11 @@ const BlockComponent = {
               placeholder="label this link…"
               ref="blockTextarea"
             ></textarea>
+            <div
+              v-if="block.isEditing && block.saveError"
+              class="block-save-error"
+              role="alert"
+            >{{ block.saveError }}</div>
             <div
               v-else
               class="block-embed-title block-embed-title-clickable"
@@ -2017,6 +2161,18 @@ const BlockComponent = {
             placeholder="start writing..."
             ref="blockTextarea"
           ></textarea>
+          <!--
+            Rejected-save error, pinned under the block so the fix
+            guidance (e.g. the {{token}} vocabulary) stays visible
+            while the user corrects the text. A toast is missable and
+            gone by the time they re-read their content; this clears
+            on the next keystroke or a successful save.
+          -->
+          <div
+            v-if="block.saveError"
+            class="block-save-error"
+            role="alert"
+          >{{ block.saveError }}</div>
           <div
             v-if="showTagSuggestions"
             class="tag-suggestions"
@@ -2036,6 +2192,27 @@ const BlockComponent = {
             >
               <span class="tag-suggestion-slug">#{{ page.slug }}</span>
               <span v-if="page.title && page.title !== page.slug" class="tag-suggestion-title">{{ page.title }}</span>
+            </button>
+          </div>
+          <div
+            v-if="showTokenSuggestions"
+            class="tag-suggestions"
+            @mousedown.prevent
+            role="listbox"
+          >
+            <button
+              v-for="(entry, idx) in tokenSuggestions"
+              :key="entry.token"
+              type="button"
+              role="option"
+              :aria-selected="idx === tokenSelectedIndex"
+              class="tag-suggestion-item"
+              :class="{ 'is-selected': idx === tokenSelectedIndex }"
+              @click="insertTokenSuggestion(entry)"
+              @mouseenter="tokenSelectedIndex = idx"
+            >
+              <span class="tag-suggestion-slug" v-text="tokenSuggestionLabel(entry)"></span>
+              <span class="tag-suggestion-title">{{ entry.hint }}</span>
             </button>
           </div>
         </div>
