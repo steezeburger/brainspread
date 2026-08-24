@@ -1376,6 +1376,11 @@ const BlockComponent = {
       });
     },
     handleTextareaInput(event) {
+      // A rejected save pins its error under the block; the next
+      // keystroke means the user is addressing it.
+      if (this.block.saveError) {
+        this.block.saveError = null;
+      }
       const value = event.target.value;
       this.onBlockContentChange(this.block, value);
       this.updateTagSuggestions(value, event.target.selectionEnd);
@@ -1913,6 +1918,11 @@ const BlockComponent = {
               placeholder="add caption…"
               ref="blockTextarea"
             ></textarea>
+            <div
+              v-if="block.saveError"
+              class="block-save-error"
+              role="alert"
+            >{{ block.saveError }}</div>
           </div>
           <!--
             Tag chip strip - reuses the embed-tag plumbing (parser,
@@ -2013,6 +2023,11 @@ const BlockComponent = {
               placeholder="label this link…"
               ref="blockTextarea"
             ></textarea>
+            <div
+              v-if="block.isEditing && block.saveError"
+              class="block-save-error"
+              role="alert"
+            >{{ block.saveError }}</div>
             <div
               v-else
               class="block-embed-title block-embed-title-clickable"
@@ -2146,6 +2161,18 @@ const BlockComponent = {
             placeholder="start writing..."
             ref="blockTextarea"
           ></textarea>
+          <!--
+            Rejected-save error, pinned under the block so the fix
+            guidance (e.g. the {{token}} vocabulary) stays visible
+            while the user corrects the text. A toast is missable and
+            gone by the time they re-read their content; this clears
+            on the next keystroke or a successful save.
+          -->
+          <div
+            v-if="block.saveError"
+            class="block-save-error"
+            role="alert"
+          >{{ block.saveError }}</div>
           <div
             v-if="showTagSuggestions"
             class="tag-suggestions"

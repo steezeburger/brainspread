@@ -942,6 +942,7 @@ const Page = {
         const result = await window.apiService.updateBlock(block.uuid, payload);
 
         if (result.success) {
+          block.saveError = null;
           // Adopt the server's content: token expansion ({{today}} and
           // friends, issue #140) means what got saved can differ from
           // what was typed, and the display should show the frozen
@@ -993,7 +994,22 @@ const Page = {
           return;
         }
         console.error("failed to update block:", error);
-        this.toastBlockError(error, "failed to update block");
+        // A 400 is a fixable authoring error (unknown {{token}}, broken
+        // {{count:}} query, validation) — pin it under the block and
+        // keep editing so the guidance stays visible while the user
+        // corrects the text. A toast is missable and gone by the time
+        // they look back at their content. Other failures still toast.
+        if (
+          error &&
+          error.status === 400 &&
+          error.message &&
+          error.message !== "Request failed"
+        ) {
+          block.saveError = error.message;
+          block.isEditing = true;
+        } else {
+          this.toastBlockError(error, "failed to update block");
+        }
       }
     },
 
