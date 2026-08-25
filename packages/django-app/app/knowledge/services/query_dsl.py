@@ -24,6 +24,8 @@ Predicates (compact ``field:value`` or comparison ``field op value``):
     due < today             → {"due_at": {"lt": "today"}}
     due:today               → {"due_at": "today"}
     due is null             → {"due_at": {"is_null": true}}
+    due <= now              → {"due_at": {"lte": "now"}}
+    due_has_time:true       → {"due_has_time": true}
     completed >= "7 days ago" → {"completed_at": {"gte": "7 days ago"}}
     prop:key=value          → {"property_eq": {"key": ..., "eq": ...}}
 
@@ -33,7 +35,15 @@ literal hashtag in block content would tag the automation block itself.
 
 Values with spaces are double-quoted. Date values take the engine's own
 tokens (today / tomorrow / N days ago / ISO) — resolution happens at
-query compile time in the engine, not here.
+query compile time in the engine, not here. Date tokens compare at
+user-local day boundaries; ``now`` and ISO datetimes
+(``2026-08-21T14:30``) compare against the full due/completed datetime
+with no day rounding (``now`` is for ordering comparisons — the engine
+rejects ``due = now``). ``now`` does NOT imply timed-blocks-only — all-day
+dues sit at local midnight, so ``due <= now`` matches them from 00:00;
+add ``due_has_time:true`` explicitly when only blocks with a real time
+of day should match (``due_has_time:false`` also matches blocks with no
+due at all).
 """
 
 from __future__ import annotations
@@ -198,6 +208,11 @@ _COMPARISON_OPS = {"<": "lt", "<=": "lte", ">": "gt", ">=": "gte", "=": "eq"}
 def _date_field(field: str) -> str:
     mapped = _DATE_FIELDS.get(field)
     if mapped is None:
+        if field == "due_has_time":
+            raise QueryDSLError(
+                "`due_has_time` is a flag predicate — write "
+                "`due_has_time:true` or `due_has_time:false`"
+            )
         raise QueryDSLError(
             f"unknown field `{field}` (expected one of: "
             f"{', '.join(sorted(set(_DATE_FIELDS)))})"
@@ -235,6 +250,11 @@ def _compile_colon_predicate(field: str, value: str, raw: str) -> Dict[str, Any]
         )
     if field == "has":
         return {"has_property": value}
+    if field == "due_has_time":
+        lowered = value.lower()
+        if lowered not in ("true", "false"):
+            raise QueryDSLError(f"`{raw}` — `due_has_time:` expects `true` or `false`")
+        return {"due_has_time": lowered == "true"}
     if field == "content":
         return {"content_contains": value}
     if field == "prop":
@@ -247,7 +267,7 @@ def _compile_colon_predicate(field: str, value: str, raw: str) -> Dict[str, Any]
 
     raise QueryDSLError(
         f"unknown predicate `{field}:` (expected tag / type / page_type / "
-        "has / content / prop / due / completed)"
+        "has / content / prop / due / due_has_time / completed)"
     )
 
 

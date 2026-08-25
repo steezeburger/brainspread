@@ -761,3 +761,173 @@ class TestUpdateBlockCommand(TestCase):
 
         child.refresh_from_db()
         self.assertIsNone(child.parent_id)
+
+
+class TestExplicitBlockTypeWins(TestCase):
+    """Issue #204: an explicitly submitted block_type must not be silently
+    overwritten by content auto-detect (which is the editor's contract for
+    content-only saves). The type change delegates to SetBlockTypeCommand,
+    so completed_at stamping and content-prefix maintenance apply."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+        cls.page = PageFactory(user=cls.user)
+
+    def _update(self, block, **fields):
+        form = UpdateBlockForm(
+            {"user": self.user.id, "block": str(block.uuid), **fields}
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return UpdateBlockCommand(form).execute()
+
+    def test_content_and_explicit_type_in_one_call(self):
+        block = BlockFactory(page=self.page, user=self.user, block_type="bullet")
+
+        updated = self._update(block, content="test chore", block_type="done")
+
+        self.assertEqual(updated.block_type, "done")
+        self.assertIsNotNone(updated.completed_at)
+        self.assertTrue(updated.content.startswith("DONE "))
+
+    def test_explicit_type_only_stamps_completed_at(self):
+        block = BlockFactory(
+            page=self.page, user=self.user, block_type="todo", content="ship it"
+        )
+
+        updated = self._update(block, block_type="done")
+
+        self.assertEqual(updated.block_type, "done")
+        self.assertIsNotNone(updated.completed_at)
+
+    def test_content_only_save_still_auto_detects(self):
+        block = BlockFactory(page=self.page, user=self.user, block_type="bullet")
+
+        updated = self._update(block, content="TODO write docs")
+
+        self.assertEqual(updated.block_type, "todo")
+
+    def test_explicit_same_type_keeps_completed_at(self):
+        block = BlockFactory(
+            page=self.page, user=self.user, block_type="todo", content="a #x b"
+        )
+        done = self._update(block, block_type="done")
+        stamp = done.completed_at
+
+        updated = self._update(done, content="a b", block_type="done")
+
+        self.assertEqual(updated.block_type, "done")
+        self.assertEqual(updated.completed_at, stamp)
+
+
+class TestUpdateBlockTokenExpansion(TestCase):
+    """Content {{tokens}} resolve when an edit saves (issue #140)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+        cls.page = PageFactory(user=cls.user, page_type="daily")
+
+    def _update(self, block, content):
+        form = UpdateBlockForm(
+            {
+                "user": self.user.id,
+                "block": str(block.uuid),
+                "content": content,
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return UpdateBlockCommand(form).execute()
+
+    def test_should_expand_tokens_on_content_update(self):
+        block = BlockFactory(page=self.page, user=self.user, content="plain")
+        updated = self._update(block, "reviewed on {{today}}")
+        self.assertEqual(
+            updated.content, f"reviewed on {self.user.today().isoformat()}"
+        )
+
+    def test_should_keep_tokens_dormant_on_template_pages(self):
+        template = PageFactory(user=self.user, page_type="template")
+        block = BlockFactory(page=template, user=self.user, content="plain")
+        updated = self._update(block, "reviewed on {{today}}")
+        self.assertEqual(updated.content, "reviewed on {{today}}")
+
+    def test_should_skip_expansion_for_code_blocks(self):
+        block = BlockFactory(
+            page=self.page, user=self.user, block_type="code", content="x"
+        )
+        updated = self._update(block, "render({{today}})")
+        self.assertEqual(updated.content, "render({{today}})")
+
+    def test_unknown_token_rejects_the_save(self):
+        block = BlockFactory(page=self.page, user=self.user, content="before")
+        with self.assertRaises(ValidationError) as caught:
+            self._update(block, "hello {{blorp}}")
+        self.assertIn("{{blorp}}", str(caught.exception))
+        block.refresh_from_db()
+        self.assertEqual(block.content, "before")
+
+
+class TestReparentOrderAppends(TestCase):
+    """Joining a different sibling group without an explicit order must
+    append — carrying the old group's order into the new one regenerated
+    the duplicate-order bug through the edit path (the AI edit_block
+    handler sends parent_uuid with no order)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+        cls.page = PageFactory(user=cls.user)
+
+    def _update(self, block, **fields):
+        form = UpdateBlockForm(
+            {"user": self.user.id, "block": str(block.uuid), **fields}
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return UpdateBlockCommand(form).execute()
+
+    def test_reparent_without_order_appends_to_new_group(self):
+        new_parent = BlockFactory(user=self.user, page=self.page, content="p", order=0)
+        BlockFactory(
+            user=self.user, page=self.page, parent=new_parent, content="c0", order=0
+        )
+        mover = BlockFactory(user=self.user, page=self.page, content="m", order=0)
+
+        updated = self._update(mover, parent=str(new_parent.uuid))
+
+        self.assertEqual(updated.parent_id, new_parent.id)
+        self.assertEqual(updated.order, 1)
+
+    def test_reroot_without_order_appends_to_root_group(self):
+        parent = BlockFactory(user=self.user, page=self.page, content="p", order=0)
+        BlockFactory(user=self.user, page=self.page, content="r1", order=1)
+        child = BlockFactory(
+            user=self.user, page=self.page, parent=parent, content="c", order=0
+        )
+
+        updated = self._update(child, parent=None)
+
+        self.assertIsNone(updated.parent_id)
+        self.assertEqual(updated.order, 2)
+
+    def test_reparent_with_explicit_order_is_honored(self):
+        new_parent = BlockFactory(user=self.user, page=self.page, content="p", order=0)
+        BlockFactory(
+            user=self.user, page=self.page, parent=new_parent, content="c0", order=0
+        )
+        mover = BlockFactory(user=self.user, page=self.page, content="m", order=5)
+
+        updated = self._update(mover, parent=str(new_parent.uuid), order=0)
+
+        self.assertEqual(updated.parent_id, new_parent.id)
+        self.assertEqual(updated.order, 0)
+
+    def test_unchanged_parent_keeps_order(self):
+        parent = BlockFactory(user=self.user, page=self.page, content="p", order=0)
+        child = BlockFactory(
+            user=self.user, page=self.page, parent=parent, content="c", order=3
+        )
+
+        updated = self._update(child, parent=str(parent.uuid), content="c edited")
+
+        self.assertEqual(updated.order, 3)

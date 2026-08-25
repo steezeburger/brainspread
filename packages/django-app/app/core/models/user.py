@@ -106,6 +106,16 @@ class User(
         help_text=_("Whether to display times as 24-hour or 12-hour"),
     )
 
+    render_emoji = models.BooleanField(
+        _("render emoji"),
+        default=True,
+        help_text=_(
+            "Whether :shortcode: sequences (e.g. :grimacing:) display as "
+            "emoji. Block content always stores the shortcode text itself, "
+            "so this only affects rendering."
+        ),
+    )
+
     def __str__(self):
         return self.email
 
@@ -151,6 +161,7 @@ class User(
             discord_webhook_url=self.discord_webhook_url,
             discord_user_id=self.discord_user_id,
             time_format=self.time_format,
+            render_emoji=self.render_emoji,
             created_at=self.created_at.isoformat(),
         )
 
@@ -171,4 +182,5 @@ class UserData(TypedDict):
     discord_webhook_url: str
     discord_user_id: str
     time_format: str
+    render_emoji: bool
     created_at: str

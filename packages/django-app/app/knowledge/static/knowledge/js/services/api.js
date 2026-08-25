@@ -188,13 +188,20 @@ class ApiService {
     return await this.request("/knowledge/api/pages/templates/");
   }
 
-  async addTemplateBlocksToPage(templateUuid, targetPageUuid) {
+  async addTemplateBlocksToPage(templateUuid, targetPageUuid, inputs = null) {
+    // First call omits `inputs`; when the template carries
+    // {{input:<label>}} tokens the response's data.needs_input lists
+    // the labels and the caller re-submits with values (issue #140).
+    const body = {
+      template: templateUuid,
+      target_page: targetPageUuid,
+    };
+    if (inputs) {
+      body.inputs = inputs;
+    }
     return await this.request("/knowledge/api/pages/add-template-blocks/", {
       method: "POST",
-      body: JSON.stringify({
-        template: templateUuid,
-        target_page: targetPageUuid,
-      }),
+      body: JSON.stringify(body),
     });
   }
 
@@ -573,6 +580,26 @@ class ApiService {
       return result;
     } catch (error) {
       console.error("Failed to update time format:", error);
+      throw error;
+    }
+  }
+
+  async updateUserRenderEmoji(renderEmoji) {
+    try {
+      const result = await this.request("/api/auth/update-render-emoji/", {
+        method: "POST",
+        body: JSON.stringify({ render_emoji: !!renderEmoji }),
+      });
+      if (result.success) {
+        const currentUser = this.getCurrentUser();
+        if (currentUser) {
+          currentUser.render_emoji = !!renderEmoji;
+          localStorage.setItem("user", JSON.stringify(currentUser));
+        }
+      }
+      return result;
+    } catch (error) {
+      console.error("Failed to update emoji setting:", error);
       throw error;
     }
   }

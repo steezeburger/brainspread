@@ -244,6 +244,7 @@ class GetUserPreferencesTests(TestCase):
         self.assertEqual(result["timezone"], "America/Los_Angeles")
         self.assertEqual(result["theme"], "purple")
         self.assertEqual(result["time_format"], "24h")
+        self.assertTrue(result["render_emoji"])
         self.assertTrue(result["has_discord_webhook"])
         self.assertTrue(result["has_discord_user_id"])
 

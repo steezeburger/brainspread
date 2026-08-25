@@ -2,10 +2,15 @@ from django.core.exceptions import ValidationError
 
 from common.commands.abstract_base_command import AbstractBaseCommand
 
+from ..constants import TODO_TYPES
+from ..forms.set_block_type_form import SetBlockTypeForm
 from ..forms.sync_block_tags_form import SyncBlockTagsForm
 from ..forms.touch_page_form import TouchPageForm
 from ..forms.update_block_form import UpdateBlockForm
 from ..models import Block
+from ..repositories import BlockRepository
+from ..services.content_tokens import TokenError, resolve_content_tokens
+from ..services.token_context import build_token_context
 from .set_block_type_command import SetBlockTypeCommand
 from .sync_block_tags_command import SyncBlockTagsCommand
 from .touch_page_command import TouchPageCommand
@@ -57,13 +62,61 @@ class UpdateBlockCommand(AbstractBaseCommand):
                     "Cannot create circular reference: block cannot be its own ancestor"
                 )
 
+            # Joining a different sibling group without an explicit
+            # position appends. Carrying the old group's order into the
+            # new one is how re-parenting (the AI edit_block path sends
+            # parent_uuid with no order) kept minting duplicate orders;
+            # the web editor's indent/outdent always submits order, so
+            # its precise placement is untouched.
+            new_parent_id = parent.id if parent else None
+            if (
+                new_parent_id != block.parent_id
+                and self.form.cleaned_data.get("order") is None
+            ):
+                block.order = BlockRepository.next_sibling_order(block.page, parent)
+
             block.parent = parent
+
+        # An explicitly submitted block_type outranks content auto-detect.
+        # The web editor's content saves never include block_type, so the
+        # prefix-typing flow ("TODO x" flips the type) still goes through
+        # auto-detect; the AI edit_block tools DO submit it, and before
+        # this branch existed auto-detect silently overwrote their value
+        # while the response claimed success (issue #204). The type change
+        # itself is delegated to SetBlockTypeCommand below so prefix
+        # swapping, completed_at, and reminder-skipping stay in one place.
+        explicit_block_type = (
+            "block_type" in self.form.cleaned_data
+            and self.form.cleaned_data["block_type"] is not None
+        )
+
+        # Resolve {{tokens}} in the incoming content — snapshot
+        # semantics (issue #140). Skipped on template pages (tokens
+        # stay dormant until apply) and for code blocks; an explicitly
+        # submitted block_type decides code-ness for this save, the
+        # stored type otherwise.
+        effective_type = (
+            self.form.cleaned_data["block_type"]
+            if explicit_block_type
+            else block.block_type
+        )
+        if (
+            self.form.cleaned_data.get("content")
+            and effective_type != "code"
+            and block.page.page_type != "template"
+        ):
+            try:
+                self.form.cleaned_data["content"] = resolve_content_tokens(
+                    self.form.cleaned_data["content"],
+                    build_token_context(user, block.page),
+                )
+            except TokenError as e:
+                raise ValidationError(str(e))
 
         # Update other fields
         for field in [
             "content",
             "content_type",
-            "block_type",
             "order",
             "media_url",
             "media_metadata",
@@ -85,7 +138,7 @@ class UpdateBlockCommand(AbstractBaseCommand):
             block.asset = self.form.cleaned_data["asset"]
 
         # Auto-detect block type from content if content was updated
-        if content_updated:
+        if content_updated and not explicit_block_type:
             auto_detected_type = self._detect_block_type_from_content(
                 block.content, block.block_type
             )
@@ -101,6 +154,20 @@ class UpdateBlockCommand(AbstractBaseCommand):
                 block.block_type = auto_detected_type
 
         block.save()
+
+        if explicit_block_type:
+            new_type = self.form.cleaned_data["block_type"]
+            if new_type != block.block_type:
+                type_form = SetBlockTypeForm(
+                    data={
+                        "user": user.id,
+                        "block": str(block.uuid),
+                        "block_type": new_type,
+                    }
+                )
+                if not type_form.is_valid():
+                    raise ValidationError(type_form.errors.as_json())
+                block = SetBlockTypeCommand(type_form).execute()
 
         # Extract and set tags if content was updated (business logic)
         # Skip for code blocks — their content is code, not markdown.
@@ -140,14 +207,7 @@ class UpdateBlockCommand(AbstractBaseCommand):
         # SetBlockTypeCommand.STATE_PREFIXES), so editing "LATER x" to
         # "TODO x" must move the type too. Don't override other explicit
         # types like heading, code, etc.
-        if current_block_type not in [
-            "bullet",
-            "todo",
-            "doing",
-            "done",
-            "later",
-            "wontdo",
-        ]:
+        if current_block_type != "bullet" and current_block_type not in TODO_TYPES:
             return current_block_type
 
         # Only auto-detect if we have content
@@ -177,8 +237,8 @@ class UpdateBlockCommand(AbstractBaseCommand):
         elif content_lower.startswith("wontdo"):
             return "wontdo"
 
-        # If none of the patterns match, return bullet for todo-family types
-        if current_block_type in ["todo", "doing", "done", "later", "wontdo"]:
+        # If none of the patterns match, return bullet for todo types
+        if current_block_type in TODO_TYPES:
             return "bullet"
         return current_block_type
 

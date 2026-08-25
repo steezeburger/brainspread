@@ -320,6 +320,10 @@ format-check-py:
 format-js:
   npx prettier --write .
 
+# Run the browser-side JavaScript tests (node's built-in runner, no deps)
+test-js:
+  node --test tests-js/*.test.js
+
 # Format all code (Python and JavaScript)
 format:
   just format-py
@@ -392,7 +396,12 @@ prepush:
   echo "✅ All tests passed"
   echo ""
   
-  echo "6️⃣  Checking for missing migrations..."
+  echo "6️⃣  Running JavaScript tests..."
+  just test-js
+  echo "✅ JavaScript tests passed"
+  echo ""
+  
+  echo "7️⃣  Checking for missing migrations..."
   docker compose run --rm -w /code/app web python manage.py makemigrations --check --dry-run
   echo "✅ No missing migrations"
   echo ""

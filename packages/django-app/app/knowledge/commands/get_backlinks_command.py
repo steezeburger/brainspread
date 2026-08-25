@@ -10,9 +10,9 @@ CONTENT_PREVIEW_LEN = 160
 
 class GetBacklinksCommand(AbstractBaseCommand):
     """Return blocks that reference a page either via `[[Page Title]]`
-    content links (Page.get_backlinks) or via the Block.pages M2M tag.
-    The two sources are unioned, deduped by block uuid, and ordered by
-    most-recently-modified.
+    content links (Page.get_content_backlinks) or via the Block.pages M2M
+    tag. The two sources are unioned, deduped by block uuid, and ordered
+    by most-recently-modified.
     """
 
     def __init__(self, form: GetBacklinksForm) -> None:
@@ -29,7 +29,7 @@ class GetBacklinksCommand(AbstractBaseCommand):
         # - tag backlinks: blocks tagged with this page (M2M)
         # Union by id then re-fetch ordered + bounded so we don't blow
         # the limit on either source alone.
-        content_ids = list(page.get_backlinks().values_list("id", flat=True))
+        content_ids = list(page.get_content_backlinks().values_list("id", flat=True))
         tag_ids = list(page.tagged_blocks.values_list("id", flat=True))
         all_ids = list(set(content_ids + tag_ids))
 

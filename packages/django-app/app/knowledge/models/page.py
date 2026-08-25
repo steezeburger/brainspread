@@ -104,8 +104,12 @@ class Page(UUIDModelMixin, CRUDTimestampsMixin):
         """Generate hashtag format from slug for tag matching: 'my-page' -> '#my-page'"""
         return f"#{self.slug}"
 
-    def get_backlinks(self):
-        """Get all blocks that link to this page"""
+    def get_content_backlinks(self):
+        """Blocks whose content carries a `[[Title]]` link to this page.
+
+        Content links only - the page's *backlinks* are these plus every
+        block that tags it, which GetBacklinksCommand unions together.
+        """
         from .block import Block
 
         pattern = r"\[\[" + re.escape(self.title) + r"\]\]"

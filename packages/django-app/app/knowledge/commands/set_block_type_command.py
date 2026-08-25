@@ -5,6 +5,7 @@ from django.utils import timezone
 
 from common.commands.abstract_base_command import AbstractBaseCommand
 
+from ..constants import COMPLETED_TODO_TYPES
 from ..forms.set_block_type_form import SetBlockTypeForm
 from ..forms.touch_page_form import TouchPageForm
 from ..models import Block, Reminder
@@ -18,9 +19,6 @@ STATE_PREFIXES = {
     "later": "LATER",
     "wontdo": "WONTDO",
 }
-
-# Terminal states — entering these sets completed_at; leaving clears it.
-COMPLETED_TYPES = {"done", "wontdo"}
 
 
 class SetBlockTypeCommand(AbstractBaseCommand):
@@ -47,14 +45,14 @@ class SetBlockTypeCommand(AbstractBaseCommand):
         block.block_type = new_type
         block.save()
 
-        # Once a block enters a terminal state, pending reminders are noise.
+        # Once a block is completed, pending reminders are noise.
         # Stay-skipped on un-complete: user can reschedule manually. We set
         # sent_at alongside status because the block-level "pending reminder"
         # lookup (see Block._pending_reminder_local) keys off sent_at IS NULL.
-        entering_terminal = (
-            new_type in COMPLETED_TYPES and old_type not in COMPLETED_TYPES
+        entering_completed = (
+            new_type in COMPLETED_TODO_TYPES and old_type not in COMPLETED_TODO_TYPES
         )
-        if entering_terminal:
+        if entering_completed:
             now = timezone.now()
             Reminder.objects.filter(block=block, status=Reminder.STATUS_PENDING).update(
                 status=Reminder.STATUS_SKIPPED,
@@ -70,11 +68,13 @@ class SetBlockTypeCommand(AbstractBaseCommand):
 
     @staticmethod
     def _next_completed_at(old_type: str, new_type: str, current):
-        entering = new_type in COMPLETED_TYPES and old_type not in COMPLETED_TYPES
-        leaving = old_type in COMPLETED_TYPES and new_type not in COMPLETED_TYPES
-        if entering:
+        """Stamp completed_at on the way into a completed state, clear it
+        on the way out, and leave it alone for any other transition."""
+        was_completed = old_type in COMPLETED_TODO_TYPES
+        is_completed = new_type in COMPLETED_TODO_TYPES
+        if is_completed and not was_completed:
             return timezone.now()
-        if leaving:
+        if was_completed and not is_completed:
             return None
         return current
 

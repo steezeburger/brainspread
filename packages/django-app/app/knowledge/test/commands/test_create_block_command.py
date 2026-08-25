@@ -1,12 +1,13 @@
 from unittest.mock import Mock, patch
 
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from assets.models import Asset
 from knowledge.commands import CreateBlockCommand
 from knowledge.forms import CreateBlockForm
 
-from ..helpers import PageFactory, UserFactory
+from ..helpers import BlockFactory, PageFactory, UserFactory
 
 
 class TestCreateBlockCommand(TestCase):
@@ -390,3 +391,142 @@ class TestCreateBlockCommand(TestCase):
         )
         self.assertFalse(form.is_valid())
         self.assertIn("created_via", form.errors)
+
+
+class TestCreateBlockTokenExpansion(TestCase):
+    """Content {{tokens}} resolve at save and freeze (issue #140)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+        cls.page = PageFactory(user=cls.user, page_type="daily")
+
+    def _create(self, content, page=None, **extra):
+        form = CreateBlockForm(
+            {
+                "user": self.user.id,
+                "page": (page or self.page).uuid,
+                "content": content,
+                **extra,
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return CreateBlockCommand(form).execute()
+
+    def test_should_expand_date_tokens_at_save(self):
+        block = self._create("standup notes {{today}}")
+        self.assertEqual(
+            block.content, f"standup notes {self.user.today().isoformat()}"
+        )
+
+    def test_should_expand_page_tokens_against_source_page(self):
+        block = self._create("on {{page.slug}}")
+        self.assertEqual(block.content, f"on {self.page.slug}")
+
+    def test_should_keep_tokens_dormant_on_template_pages(self):
+        template = PageFactory(
+            user=self.user, page_type="template", slug="tpl", title="Tpl"
+        )
+        block = self._create("standup notes {{today}}", page=template)
+        self.assertEqual(block.content, "standup notes {{today}}")
+
+    def test_should_skip_expansion_for_code_blocks(self):
+        block = self._create("render({{today}})", block_type="code")
+        self.assertEqual(block.content, "render({{today}})")
+
+    def test_should_unescape_literal_braces(self):
+        block = self._create("write \\{{today}} to insert the date")
+        self.assertEqual(block.content, "write {{today}} to insert the date")
+
+    def test_unknown_token_fails_loudly(self):
+        with self.assertRaises(ValidationError) as caught:
+            self._create("hello {{blorp}}")
+        self.assertIn("{{blorp}}", str(caught.exception))
+        self.assertIn("available tokens", str(caught.exception))
+
+    def test_input_token_fails_at_block_save(self):
+        with self.assertRaises(ValidationError) as caught:
+            self._create("Project {{input:name}}")
+        self.assertIn("applying a template", str(caught.exception))
+
+    def test_count_token_freezes_a_number(self):
+        BlockFactory(user=self.user, page=self.page, block_type="todo")
+        BlockFactory(user=self.user, page=self.page, block_type="todo")
+        block = self._create("open todos: {{count:type:todo and completed is null}}")
+        self.assertEqual(block.content, "open todos: 2")
+
+    def test_expanded_properties_are_extracted(self):
+        block = self._create("carried:: {{today}}")
+        self.assertEqual(block.properties.get("carried"), self.user.today().isoformat())
+
+
+class TestCreateBlockAppendOrder(TestCase):
+    """Omitted `order` appends to the sibling group instead of the old
+    default of 0, which collided with the group's first block on every
+    AI-chat / MCP / automation creation."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+        cls.page = PageFactory(user=cls.user)
+
+    def _create(self, **fields):
+        form = CreateBlockForm(
+            {"user": self.user.id, "page": str(self.page.uuid), **fields}
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return CreateBlockCommand(form).execute()
+
+    def test_omitted_order_appends_after_existing_roots(self):
+        BlockFactory(user=self.user, page=self.page, content="first", order=0)
+        BlockFactory(user=self.user, page=self.page, content="second", order=1)
+
+        created = self._create(content="third")
+
+        self.assertEqual(created.order, 2)
+
+    def test_omitted_order_on_empty_page_starts_at_zero(self):
+        created = self._create(content="only")
+        self.assertEqual(created.order, 0)
+
+    def test_explicit_order_still_honored(self):
+        BlockFactory(user=self.user, page=self.page, content="first", order=0)
+
+        created = self._create(content="wedge", order=0)
+
+        self.assertEqual(created.order, 0)
+
+    def test_omitted_order_appends_within_parent_group(self):
+        parent = BlockFactory(user=self.user, page=self.page, content="p", order=0)
+        BlockFactory(
+            user=self.user, page=self.page, parent=parent, content="c0", order=0
+        )
+
+        created = self._create(content="c1", parent=str(parent.uuid))
+
+        self.assertEqual(created.order, 1)
+
+    def test_cross_page_parent_adopts_parents_page(self):
+        # The web editor legitimately posts a mismatched page/parent
+        # pair from the Linked References section (viewed page + a
+        # parent living on the source page). The block joins its
+        # parent's page — honoring the submitted page would mint a
+        # cross-page orphan.
+        other_page = PageFactory(user=self.user)
+        foreign_parent = BlockFactory(
+            user=self.user, page=other_page, content="fp", order=0
+        )
+        BlockFactory(
+            user=self.user,
+            page=other_page,
+            parent=foreign_parent,
+            content="c0",
+            order=0,
+        )
+
+        created = self._create(content="child", parent=str(foreign_parent.uuid))
+
+        self.assertEqual(created.page_id, other_page.id)
+        self.assertEqual(created.parent_id, foreign_parent.id)
+        # Appended within the parent's real sibling group.
+        self.assertEqual(created.order, 1)

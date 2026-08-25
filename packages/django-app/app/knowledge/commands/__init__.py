@@ -47,6 +47,7 @@ from .list_templates_command import ListTemplatesCommand
 from .move_block_to_daily_command import MoveBlockToDailyCommand
 from .move_block_to_page_command import MoveBlockToPageCommand
 from .move_undone_todos_command import MoveUndoneTodosCommand
+from .normalize_block_order_command import NormalizeBlockOrderCommand
 from .preview_saved_view_command import PreviewSavedViewCommand
 from .reorder_blocks_command import ReorderBlocksCommand
 from .reorder_favorited_pages_command import ReorderFavoritedPagesCommand

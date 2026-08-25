@@ -14,6 +14,7 @@ from core.commands import (
     RegisterCommand,
     UpdateDiscordUserIdCommand,
     UpdateDiscordWebhookCommand,
+    UpdateRenderEmojiCommand,
     UpdateThemeCommand,
     UpdateTimeFormatCommand,
     UpdateTimezoneCommand,
@@ -23,6 +24,7 @@ from core.forms import (
     RegisterForm,
     UpdateDiscordUserIdForm,
     UpdateDiscordWebhookForm,
+    UpdateRenderEmojiForm,
     UpdateThemeForm,
     UpdateTimeFormatForm,
     UpdateTimezoneForm,
@@ -58,6 +60,10 @@ class UpdateDiscordUserIdResponse(TypedDict):
 
 
 class UpdateTimeFormatResponse(TypedDict):
+    user: UserData
+
+
+class UpdateRenderEmojiResponse(TypedDict):
     user: UserData
 
 
@@ -298,6 +304,35 @@ def update_time_format(request):
             payload: UpdateTimeFormatResponse = {"user": updated_user.to_user_data()}
             return Response(
                 {"success": True, "data": payload, "message": "Time format updated"}
+            )
+        return Response(
+            {"success": False, "errors": form.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+def update_render_emoji(request):
+    """Update whether :shortcode: sequences render as emoji."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = UpdateRenderEmojiForm(data)
+        if form.is_valid():
+            updated_user = UpdateRenderEmojiCommand(form).execute()
+            payload: UpdateRenderEmojiResponse = {"user": updated_user.to_user_data()}
+            return Response(
+                {"success": True, "data": payload, "message": "Emoji setting updated"}
             )
         return Response(
             {"success": False, "errors": form.errors},

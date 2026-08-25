@@ -76,6 +76,13 @@ class UserRepository(BaseRepository):
         return user
 
     @classmethod
+    def update_render_emoji(cls, user: User, render_emoji: bool) -> User:
+        """Update whether :shortcode: text renders as emoji for this user."""
+        user.render_emoji = render_emoji
+        user.save(update_fields=["render_emoji"])
+        return user
+
+    @classmethod
     def update_discord_webhook_url(cls, user: User, url: str) -> User:
         """Update the user's Discord reminder webhook URL.
 

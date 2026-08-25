@@ -1,12 +1,16 @@
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from common.commands.abstract_base_command import AbstractBaseCommand
 
+from ..constants import COMPLETED_TODO_TYPES
 from ..forms.create_block_form import CreateBlockForm
 from ..forms.sync_block_tags_form import SyncBlockTagsForm
 from ..forms.touch_page_form import TouchPageForm
 from ..models import Block
-from .set_block_type_command import COMPLETED_TYPES
+from ..repositories import BlockRepository
+from ..services.content_tokens import TokenError, resolve_content_tokens
+from ..services.token_context import build_token_context
 from .sync_block_tags_command import SyncBlockTagsCommand
 from .touch_page_command import TouchPageCommand
 
@@ -26,15 +30,33 @@ class CreateBlockCommand(AbstractBaseCommand):
         content = self.form.cleaned_data.get("content", "")
         content_type = self.form.cleaned_data.get("content_type", "text")
         block_type = self.form.cleaned_data.get("block_type", "bullet")
-        order = self.form.cleaned_data.get("order", 0)
         parent = None
         if "parent" in self.form.cleaned_data:
             parent = self.form.cleaned_data.get("parent")
+        # An explicitly submitted order is honored (the web editor and
+        # the AI chat both compute insert positions themselves). When
+        # omitted — the MCP and automation creation paths — append to
+        # the sibling group instead of defaulting to 0, which collided
+        # with the group's first block on every such creation.
+        order = self.form.cleaned_data.get("order")
+        if order is None:
+            order = BlockRepository.next_sibling_order(page, parent)
         media_url = self.form.cleaned_data.get("media_url", "")
         media_metadata = self.form.cleaned_data.get("media_metadata", {})
         properties = self.form.cleaned_data.get("properties", {})
         asset = self.form.cleaned_data.get("asset")
         created_via = self.form.cleaned_data.get("created_via") or Block.CREATED_VIA_WEB
+
+        # Resolve {{tokens}} at save — snapshot semantics (issue #140).
+        # Skipped on template pages (tokens stay dormant until apply)
+        # and for code blocks (their content is code, not prose).
+        if content and block_type != "code" and page.page_type != "template":
+            try:
+                content = resolve_content_tokens(
+                    content, build_token_context(user, page)
+                )
+            except TokenError as e:
+                raise ValidationError(str(e))
 
         # Auto-detect block type from content if not explicitly set
         final_block_type = self._detect_block_type_from_content(content, block_type)
@@ -43,7 +65,9 @@ class CreateBlockCommand(AbstractBaseCommand):
         # creation — SetBlockTypeCommand only fires on transitions, so a
         # block born done would otherwise have a null completed_at and
         # be invisible to "done this week" / completion queries.
-        completed_at = timezone.now() if final_block_type in COMPLETED_TYPES else None
+        completed_at = (
+            timezone.now() if final_block_type in COMPLETED_TODO_TYPES else None
+        )
 
         # Create the block
         block = Block.objects.create(

@@ -7,6 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from common.commands.abstract_base_command import AbstractBaseCommand
+from knowledge.constants import OPEN_TODO_TYPES
 from knowledge.forms.send_due_reminders_form import SendDueRemindersForm
 from knowledge.models import Reminder, ReminderAction
 from knowledge.services.block_links import block_page_url
@@ -153,14 +154,6 @@ _COLOR_STAGING = 0xF59E0B  # amber
 _COLOR_DEFAULT = 0x6B7280  # gray (local / unknown)
 
 
-# Status-change actions ("Mark done" / "Mark doing") only make sense for
-# task-like blocks — the same open-task set used across the app (see
-# OPEN_TODO_TYPES in get_completion_stats_command). A plain bullet,
-# heading, quote, code, or divider block can still carry a reminder, but
-# advancing a task state it doesn't have would be nonsensical, so those
-# blocks get the snooze actions only.
-_TASK_BLOCK_TYPES = {"todo", "doing", "later"}
-
 _SNOOZE_ACTIONS = [
     ReminderAction.ACTION_SNOOZE_5M,
     ReminderAction.ACTION_SNOOZE_15M,
@@ -173,15 +166,17 @@ _SNOOZE_ACTIONS = [
 def _actions_for_block(block) -> List[str]:
     """Which reminder actions to surface for `block`, in display order.
 
-    Snooze is always offered. The status-change actions are added only
-    for task-like blocks so non-task blocks (bullet/heading/quote/...)
-    don't get a confusing "Mark done" link. "Move to today" is offered
+    Snooze is always offered. The status-change actions ("Mark done" /
+    "Mark doing") are added only for open todos — a bullet, heading,
+    quote, code, or divider block can still carry a reminder, but
+    advancing a state it doesn't have would be nonsensical, so those
+    blocks get the snooze actions only. "Move to today" is offered
     for every block type — it relocates rather than advances state —
     but is dropped when the block already lives on today's daily note,
     where the link would be a no-op.
     """
     actions: List[str] = []
-    if block.block_type in _TASK_BLOCK_TYPES:
+    if block.block_type in OPEN_TODO_TYPES:
         actions.append(ReminderAction.ACTION_COMPLETE)
         actions.append(ReminderAction.ACTION_MARK_DOING)
     if not _is_on_todays_daily(block):

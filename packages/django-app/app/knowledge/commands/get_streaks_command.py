@@ -5,11 +5,11 @@ import pytz
 
 from common.commands.abstract_base_command import AbstractBaseCommand
 
+from ..constants import COMPLETED_TODO_TYPES
 from ..forms.get_streaks_form import GetStreaksForm
 from ..repositories.block_repository import BlockRepository
 
 LOOKBACK_DAYS = 366
-COMPLETED_TYPES = ("done", "wontdo")
 
 
 class GetStreaksCommand(AbstractBaseCommand):
@@ -45,7 +45,7 @@ class GetStreaksCommand(AbstractBaseCommand):
             ).astimezone(pytz.UTC)
             active_days = set(
                 BlockRepository.get_completion_active_dates(
-                    user, COMPLETED_TYPES, start_dt, end_dt, tz
+                    user, COMPLETED_TODO_TYPES, start_dt, end_dt, tz
                 )
             )
 

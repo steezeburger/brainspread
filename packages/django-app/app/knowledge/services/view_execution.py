@@ -87,6 +87,23 @@ def run_filter(
     return rows, truncated
 
 
+def count_filter(
+    user,
+    filter_spec: dict,
+    *,
+    context_date: Optional[date] = None,
+) -> int:
+    """Count the blocks a raw filter dict matches, without fetching
+    rows — the ``{{count:<query>}}`` content token (issue #140), which
+    freezes an exact number into block content at resolve time."""
+    compiled = query_engine.compile(
+        filter_spec,
+        user=user,
+        context_date=context_date,
+    )
+    return BlockRepository.count_compiled_query(user, compiled)
+
+
 def resolve_and_run_view(
     user,
     *,

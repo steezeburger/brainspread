@@ -152,10 +152,29 @@ const TemplatesPage = {
       });
       if (!page || !page.uuid) return;
       try {
-        const result = await window.apiService.addTemplateBlocksToPage(
+        let result = await window.apiService.addTemplateBlocksToPage(
           t.uuid,
           page.uuid
         );
+        // Interactive template ({{input:<label>}} tokens): prompt for
+        // each reported label and re-submit with the values.
+        if (result?.success && result.data?.needs_input?.length) {
+          const inputs = {};
+          for (const label of result.data.needs_input) {
+            const value = await window.appModals.prompt({
+              title: "template input",
+              message: label,
+              placeholder: label,
+            });
+            if (value === null) return; // user cancelled
+            inputs[label] = value;
+          }
+          result = await window.apiService.addTemplateBlocksToPage(
+            t.uuid,
+            page.uuid,
+            inputs
+          );
+        }
         if (result && result.success) {
           window.location.href = `/knowledge/page/${encodeURIComponent(page.slug)}/`;
         } else {
