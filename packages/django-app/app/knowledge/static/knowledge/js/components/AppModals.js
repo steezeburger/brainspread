@@ -25,8 +25,9 @@
 // `Block.to_dict()` ships each tag as {name: <the page's slug>, uuid,
 // title, page_type}, so a block's tags are already page-shaped — this
 // just renames `name` to `slug` for the picker's result rows. Pages
-// shared by more of the given blocks rank first (bulk move); ties keep
-// the server's order, which is alphabetical by title.
+// shared by more of the given blocks rank first (bulk move), then by
+// title — a stable sort alone would tie-break on the order the blocks
+// happened to be selected in, which reads as random to the user.
 window.suggestedPagesFromBlockTags = function (blocks) {
   const byUuid = new Map();
   for (const block of blocks || []) {
@@ -49,7 +50,9 @@ window.suggestedPagesFromBlockTags = function (blocks) {
     }
   }
   const entries = [...byUuid.values()];
-  entries.sort((a, b) => b.count - a.count);
+  entries.sort(
+    (a, b) => b.count - a.count || a.page.title.localeCompare(b.page.title)
+  );
   return entries.map((entry) => entry.page);
 };
 
@@ -249,11 +252,11 @@ window.AppModals = {
       // candidates the caller actually wants.
       //
       // ``suggestedPages`` is a caller-ranked list of page-shaped objects
-      // ({uuid, title, slug, page_type}) hoisted above everything else —
+      // ({uuid, title, slug, page_type}) hoisted above the recents list —
       // the move flows pass the block's tag pages so "move #recipes block"
-      // offers Recipes first instead of burying it under recents. They're
-      // deduped against the server results and, once the user starts
-      // typing, filtered by the same match rule the server uses.
+      // offers Recipes first instead of burying it under recents. They
+      // show only while the query is empty (typing hands the list to the
+      // search endpoint) and are deduped against the server's rows.
       // ``suggestedLabel`` is the badge rendered on those rows.
       const normalized = opts || {};
       return new Promise((resolve) => {
@@ -371,8 +374,11 @@ window.AppModals = {
       } catch (err) {
         if (requestId !== this._pickerRequestId) return;
         console.error("pickPage search failed:", err);
-        // Suggestions come from the caller, not the network — keep them
-        // usable so a failed search still offers the obvious targets.
+        // `suggested` is empty for any non-empty query, so a failed
+        // search collapses to the empty state with nothing selected —
+        // Enter can't move the block somewhere the user never picked.
+        // On the empty query the caller's suggestions survive, since
+        // those came from the block itself rather than the network.
         this._applyPickerResults(suggested, []);
       } finally {
         if (requestId === this._pickerRequestId) {
@@ -382,11 +388,16 @@ window.AppModals = {
     },
 
     _suggestedPages(query) {
-      // Caller-ranked pages to hoist above the search/recent results:
-      // deduped by uuid, filtered to the active pageType, and (once the
-      // user types) narrowed to the ones that match. Returned as-is so
-      // the object handed back on confirm is a plain page; the template
-      // badges them off pickerSuggestedUuids instead of a marker field.
+      // Caller-ranked pages to hoist above the recents list, deduped by
+      // uuid and filtered to the active pageType.
+      //
+      // Suggestions are the *no-query* affordance only. The moment the
+      // user types they've said what they're looking for, and the search
+      // endpoint is the authority on that — pinning a caller-supplied row
+      // above those results means a page the query didn't ask for sits
+      // pre-selected under Enter. It also kept a copy of the server's
+      // match rule in the client, which was one more thing to drift.
+      if ((query || "").trim() !== "") return [];
       const opts = this.active?.opts || {};
       const pageType = opts.pageType || null;
       const seen = new Set();
@@ -394,28 +405,10 @@ window.AppModals = {
       for (const page of opts.suggestedPages || []) {
         if (!page || !page.uuid || seen.has(page.uuid)) continue;
         if (pageType && page.page_type !== pageType) continue;
-        if (!this._pageMatchesQuery(page, query)) continue;
         seen.add(page.uuid);
         out.push(page);
       }
       return out;
-    },
-
-    _pageMatchesQuery(page, query) {
-      // Mirrors SearchPagesCommand: prefix-only for a single character
-      // (a bare "c" matching "recipes" is noise), substring beyond that.
-      // Without this a suggestion would sit at the top of a result list
-      // it has nothing to do with as soon as the user starts typing.
-      const needle = (query || "").trim().toLowerCase();
-      if (!needle) return true;
-      const prefixOnly = needle.length === 1;
-      for (const field of [page.title, page.slug]) {
-        const value = (field || "").toLowerCase();
-        if (prefixOnly ? value.startsWith(needle) : value.includes(needle)) {
-          return true;
-        }
-      }
-      return false;
     },
 
     _applyPickerResults(suggested, pages) {

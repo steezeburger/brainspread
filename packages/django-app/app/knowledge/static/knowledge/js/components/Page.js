@@ -848,6 +848,12 @@ const Page = {
             properties: result.data.properties || {},
             media_url: result.data.media_url || "",
             media_metadata: result.data.media_metadata || {},
+            // Hashtags in the initial content are resolved server-side,
+            // so adopt the tag pages the save came back with. Without
+            // this the block has no `tags` until the next loadPage(),
+            // and every surface keyed off them (the move picker's
+            // tag-first suggestions) silently sees an untagged block.
+            tags: result.data.tags || [],
           };
 
           if (parent) {
@@ -959,6 +965,13 @@ const Page = {
             // to/from a terminal state; mirror the server's completed_at
             // so the block-info modal stays accurate without a reload.
             block.completed_at = result.data.completed_at;
+          }
+          // Editing content adds and removes hashtags, so the tag pages
+          // the server just re-synced are the only accurate set. Mirror
+          // them the way persistEmbedContent already does, or the move
+          // picker keeps suggesting the pre-edit tags.
+          if (result.data && Array.isArray(result.data.tags)) {
+            block.tags = result.data.tags;
           }
           // Inline URL detection on save: if the user typed (or pasted
           // without the paste handler firing, e.g. mobile) a bare URL,
@@ -1671,6 +1684,14 @@ const Page = {
         console.error("appModals.pickPage is not available");
         return;
       }
+      // Flush a pending edit *before* reading tags, not after the picker
+      // resolves. Typing "#recipes" and going straight to the menu is the
+      // motivating case (issue #195), and the tags only exist once that
+      // edit round-trips — sampling them first would suggest the block's
+      // pre-edit tags, or none at all on a block just created.
+      if (block?.isEditing) {
+        await this.updateBlock(block, block.content, true);
+      }
       const targetPage = await window.appModals.pickPage({
         title: "move block to page",
         placeholder: "search pages…",
@@ -1684,10 +1705,6 @@ const Page = {
       if (!targetPage || !block) return;
 
       try {
-        if (block.isEditing) {
-          await this.updateBlock(block, block.content, true);
-        }
-
         const result = await window.apiService.moveBlockToPage(
           block.uuid,
           targetPage.uuid
