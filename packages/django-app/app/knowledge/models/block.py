@@ -1,6 +1,6 @@
 import re
 from datetime import time
-from typing import Optional, TypedDict
+from typing import TYPE_CHECKING, Optional, TypedDict
 
 from django.conf import settings
 from django.db import models
@@ -8,6 +8,11 @@ from django.db import models
 from common.models.crud_timestamps_mixin import CRUDTimestampsMixin
 from common.models.uuid_mixin import UUIDModelMixin
 from knowledge.services.due_dates import combine_local_to_utc
+
+if TYPE_CHECKING:
+    # Page imports Block at module scope, so the reverse import is
+    # type-checking only to keep the cycle out of runtime.
+    from .page import Page
 
 
 class Block(UUIDModelMixin, CRUDTimestampsMixin):
@@ -302,6 +307,23 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
         """Get tag names (uses slug format without # prefix)"""
         return [page.slug for page in self.get_tags()]
 
+    def _tag_to_dict(self, tag: "Page") -> "BlockTagData":
+        """Serialize one tag page for BlockData["tags"].
+
+        ``name`` is the page slug (what the hashtag chips render). ``uuid``
+        / ``title`` / ``page_type`` ride along so surfaces that treat a tag
+        as a *page* — the move-to-page picker suggests a block's tag pages
+        ahead of the generic recents list — don't need a second round trip
+        to resolve the slug back into a page.
+        """
+        return {
+            "name": tag.slug,
+            "uuid": str(tag.uuid),
+            "title": tag.title,
+            "page_type": tag.page_type,
+            "color": "#007bff",
+        }
+
     def to_dict(self, include_page_context: bool = False) -> "BlockData":
         """Convert block to dictionary with proper typing"""
         due_date, due_time = self._due_local()
@@ -323,7 +345,7 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
             "media_url": self.media_url,
             "asset": self.asset.to_dict() if self.asset_id else None,
             "properties": self.properties or {},
-            "tags": [{"name": tag.slug, "color": "#007bff"} for tag in self.get_tags()],
+            "tags": [self._tag_to_dict(tag) for tag in self.get_tags()],
             "children": None,
             # `due_at` is the raw UTC instant; `due_date` / `due_time` are the
             # user-local pieces the UI renders (time is None for all-day items).
@@ -451,6 +473,17 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin):
         return block_data
 
 
+class BlockTagData(TypedDict):
+    """One tag page attached to a block, as rendered by the hashtag chips
+    and consumed by the move-to-page picker's suggestions."""
+
+    name: str
+    uuid: str
+    title: str
+    page_type: str
+    color: str
+
+
 class PendingReminderData(TypedDict):
     """One pending reminder in user-local terms, as round-tripped by the
     schedule popover's editable reminder list."""
@@ -500,7 +533,7 @@ class BlockData(TypedDict):
     media_url: str
     asset: Optional[dict]
     properties: dict
-    tags: Optional[list]
+    tags: Optional[list[BlockTagData]]
     children: Optional[list["BlockData"]]
     due_at: Optional[str]
     due_date: Optional[str]

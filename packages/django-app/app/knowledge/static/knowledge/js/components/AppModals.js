@@ -21,6 +21,41 @@
 // a conflicting block) and resolves with the chosen option's value, or
 // null on dismiss.
 
+// Build pickPage's `suggestedPages` from the tags on one or more blocks.
+// `Block.to_dict()` ships each tag as {name: <the page's slug>, uuid,
+// title, page_type}, so a block's tags are already page-shaped — this
+// just renames `name` to `slug` for the picker's result rows. Pages
+// shared by more of the given blocks rank first (bulk move), then by
+// title — a stable sort alone would tie-break on the order the blocks
+// happened to be selected in, which reads as random to the user.
+window.suggestedPagesFromBlockTags = function (blocks) {
+  const byUuid = new Map();
+  for (const block of blocks || []) {
+    for (const tag of (block && block.tags) || []) {
+      if (!tag || !tag.uuid) continue;
+      const seen = byUuid.get(tag.uuid);
+      if (seen) {
+        seen.count += 1;
+        continue;
+      }
+      byUuid.set(tag.uuid, {
+        count: 1,
+        page: {
+          uuid: tag.uuid,
+          title: tag.title || tag.name,
+          slug: tag.name,
+          page_type: tag.page_type || "page",
+        },
+      });
+    }
+  }
+  const entries = [...byUuid.values()];
+  entries.sort(
+    (a, b) => b.count - a.count || a.page.title.localeCompare(b.page.title)
+  );
+  return entries.map((entry) => entry.page);
+};
+
 window.AppModals = {
   name: "AppModals",
 
@@ -39,6 +74,9 @@ window.AppModals = {
       // pickPage opens or any modal closes.
       pickerQuery: "",
       pickerResults: [],
+      // uuids of the rows that came from the caller's `suggestedPages`
+      // rather than the search endpoint — drives the row badge.
+      pickerSuggestedUuids: [],
       pickerSelectedIndex: 0,
       pickerLoading: false,
       _pickerDebounce: null,
@@ -212,6 +250,14 @@ window.AppModals = {
       // to a single page_type. Both the empty-query "recent" list and
       // the typed-query search honor the filter, so the user only sees
       // candidates the caller actually wants.
+      //
+      // ``suggestedPages`` is a caller-ranked list of page-shaped objects
+      // ({uuid, title, slug, page_type}) hoisted above the recents list —
+      // the move flows pass the block's tag pages so "move #recipes block"
+      // offers Recipes first instead of burying it under recents. They
+      // show only while the query is empty (typing hands the list to the
+      // search endpoint) and are deduped against the server's rows.
+      // ``suggestedLabel`` is the badge rendered on those rows.
       const normalized = opts || {};
       return new Promise((resolve) => {
         this.queue.push({
@@ -224,6 +270,8 @@ window.AppModals = {
             confirmLabel: normalized.confirmLabel || "select",
             cancelLabel: normalized.cancelLabel || "cancel",
             pageType: normalized.pageType || null,
+            suggestedPages: normalized.suggestedPages || [],
+            suggestedLabel: normalized.suggestedLabel || "suggested",
           },
           resolve,
         });
@@ -257,6 +305,7 @@ window.AppModals = {
     _resetPicker() {
       this.pickerQuery = "";
       this.pickerResults = [];
+      this.pickerSuggestedUuids = [];
       this.pickerSelectedIndex = 0;
       this.pickerLoading = false;
       if (this._pickerDebounce) {
@@ -284,6 +333,7 @@ window.AppModals = {
       const requestId = ++this._pickerRequestId;
       this.pickerLoading = true;
       const pageType = this.active?.opts?.pageType || null;
+      const suggested = this._suggestedPages(query);
       try {
         let pages;
         if (query.trim() === "") {
@@ -320,20 +370,58 @@ window.AppModals = {
           if (requestId !== this._pickerRequestId) return; // stale
           pages = (result && result.data && result.data.pages) || [];
         }
-        this.pickerResults = pages;
-        // Clamp selectedIndex into range — keep highlight on the first
-        // result by default so Enter picks the obvious choice.
-        this.pickerSelectedIndex = pages.length ? 0 : -1;
+        this._applyPickerResults(suggested, pages);
       } catch (err) {
         if (requestId !== this._pickerRequestId) return;
         console.error("pickPage search failed:", err);
-        this.pickerResults = [];
-        this.pickerSelectedIndex = -1;
+        // `suggested` is empty for any non-empty query, so a failed
+        // search collapses to the empty state with nothing selected —
+        // Enter can't move the block somewhere the user never picked.
+        // On the empty query the caller's suggestions survive, since
+        // those came from the block itself rather than the network.
+        this._applyPickerResults(suggested, []);
       } finally {
         if (requestId === this._pickerRequestId) {
           this.pickerLoading = false;
         }
       }
+    },
+
+    _suggestedPages(query) {
+      // Caller-ranked pages to hoist above the recents list, deduped by
+      // uuid and filtered to the active pageType.
+      //
+      // Suggestions are the *no-query* affordance only. The moment the
+      // user types they've said what they're looking for, and the search
+      // endpoint is the authority on that — pinning a caller-supplied row
+      // above those results means a page the query didn't ask for sits
+      // pre-selected under Enter. It also kept a copy of the server's
+      // match rule in the client, which was one more thing to drift.
+      if ((query || "").trim() !== "") return [];
+      const opts = this.active?.opts || {};
+      const pageType = opts.pageType || null;
+      const seen = new Set();
+      const out = [];
+      for (const page of opts.suggestedPages || []) {
+        if (!page || !page.uuid || seen.has(page.uuid)) continue;
+        if (pageType && page.page_type !== pageType) continue;
+        seen.add(page.uuid);
+        out.push(page);
+      }
+      return out;
+    },
+
+    _applyPickerResults(suggested, pages) {
+      // Suggestions first, then the server's rows minus any page already
+      // listed as one (a tag page is frequently in "recent" too).
+      // pickerSuggestedUuids drives the badge on those rows.
+      const uuids = suggested.map((p) => p.uuid);
+      const rest = pages.filter((p) => !uuids.includes(p.uuid));
+      this.pickerSuggestedUuids = uuids;
+      this.pickerResults = [...suggested, ...rest];
+      // Keep the highlight on the first result so Enter picks the
+      // obvious choice; -1 disables the confirm button on an empty list.
+      this.pickerSelectedIndex = this.pickerResults.length ? 0 : -1;
     },
 
     async _runBlockPickerSearch(query) {
@@ -716,6 +804,10 @@ window.AppModals = {
                 :aria-selected="index === pickerSelectedIndex"
               >
                 <span class="app-modal-picker-result-title">{{ page.title }}</span>
+                <span
+                  v-if="pickerSuggestedUuids.includes(page.uuid)"
+                  class="app-modal-picker-result-hint"
+                >{{ active.opts.suggestedLabel }}</span>
                 <span
                   v-if="page.page_type && page.page_type !== 'page'"
                   class="app-modal-picker-result-type"
