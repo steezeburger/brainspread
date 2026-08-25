@@ -1124,6 +1124,12 @@ const BlockComponent = {
         case "Escape":
         case "Tab":
           event.preventDefault();
+          // Keep the keystroke inside the menu. Both app.js and Page.js
+          // have document-level Escape handlers (close the left nav /
+          // chat panel, exit selection mode); without this, dismissing
+          // the context menu would also collapse an open sidebar in the
+          // same keypress.
+          event.stopPropagation();
           this.hideContextMenu();
           this.$nextTick(() => {
             const menuBtn = this.$el?.querySelector(".block-menu");
