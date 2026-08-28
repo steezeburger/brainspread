@@ -81,6 +81,31 @@ class TestRunAutomationCommand(TestCase):
         self.assertEqual(str(run.automation_block_uuid), str(automation.uuid))
         self.assertIsNotNone(run.finished_at)
 
+    def test_move_to_daily_accepts_a_quoted_weekday_token(self):
+        """The #220 case: a weekday target lands on that weekday no matter
+        which day the automation actually runs on, where `+3d` drifts. The
+        two-word form has to be quoted — action args are shell-split."""
+        self._view()
+        source = PageFactory(user=self.user, title="Notes", slug="notes")
+        target = BlockFactory(
+            user=self.user, page=source, block_type="todo", content="TODO ship it"
+        )
+        automation = self._automation(
+            trigger="manual",
+            query="view:todos",
+            action='move_to_daily "next monday"',
+            allow="move_to_daily",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        target.refresh_from_db()
+        self.assertEqual(target.page.page_type, "daily")
+        self.assertEqual(target.page.date.weekday(), 0)
+        # Strictly ahead: a Monday run targets the *next* Monday.
+        self.assertIn((target.page.date - self.user.today()).days, range(1, 8))
+
     def test_set_type_action_changes_matched_block_type(self):
         self._view()
         source = PageFactory(user=self.user, title="Notes", slug="notes")

@@ -187,12 +187,26 @@ class ScheduleBlockToolTestCase(TestCase):
         self.block.refresh_from_db()
         self.assertIsNone(self.block.due_at)
 
-    def test_rejects_garbage_date(self):
+    def test_resolves_weekday_tokens(self):
         ex = NotesToolExecutor(self.user, allow_writes=True)
 
         result = ex.execute(
             "schedule_block",
             {"block_uuid": str(self.block.uuid), "due_date": "next thursday"},
+        )
+
+        self.assertTrue(result.get("scheduled"))
+        self.block.refresh_from_db()
+        due = date.fromisoformat(self.block._due_local_date())
+        self.assertEqual(due.weekday(), 3)
+        self.assertIn((due - self.user.today()).days, range(1, 8))
+
+    def test_rejects_garbage_date(self):
+        ex = NotesToolExecutor(self.user, allow_writes=True)
+
+        result = ex.execute(
+            "schedule_block",
+            {"block_uuid": str(self.block.uuid), "due_date": "sometime next week"},
         )
 
         self.assertIn("error", result)

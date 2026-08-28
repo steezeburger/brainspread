@@ -239,7 +239,7 @@ window.HelpModal = {
                 </tr>
               </tbody>
             </table>
-            <p class="help-hint">date tokens: <code class="help-syntax">today</code> <code class="help-syntax">tomorrow</code> <code class="help-syntax">yesterday</code> <code class="help-syntax">+3d</code> <code class="help-syntax">-1w</code> or ISO dates; queries also take <code class="help-syntax">now</code> (exact time) and <code class="help-syntax">"N days ago"</code>. definitions inside templates stay dormant until the template is applied. run one on demand from its block's <strong>⋮</strong> menu ("run automation") or by asking the ai chat. every run is recorded — check the admin's automation runs if something misbehaves.</p>
+            <p class="help-hint">date tokens: <code class="help-syntax">today</code> <code class="help-syntax">tomorrow</code> <code class="help-syntax">yesterday</code> <code class="help-syntax">+3d</code> <code class="help-syntax">-1w</code> or ISO dates; action args also take weekday names — <code class="help-syntax">monday</code> <code class="help-syntax">"next monday"</code> <code class="help-syntax">"last monday"</code> <code class="help-syntax">"this monday"</code> (quote the two-word forms) — which land on that weekday whatever day the run happens, skipping today; queries also take <code class="help-syntax">now</code> (exact time) and <code class="help-syntax">"N days ago"</code>. definitions inside templates stay dormant until the template is applied. run one on demand from its block's <strong>⋮</strong> menu ("run automation") or by asking the ai chat. every run is recorded — check the admin's automation runs if something misbehaves.</p>
           </div>
         </div>
       </div>

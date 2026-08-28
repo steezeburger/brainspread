@@ -160,7 +160,8 @@ _READ_SCHEMAS: List[Dict[str, Any]] = [
             " reviews or summarize what happened across a span of days."
             " The range is capped at 60 days to keep the result small."
             " Dates accept ISO YYYY-MM-DD or 'today' / 'tomorrow' /"
-            " 'yesterday' / '+Nd' / '-Nd'."
+            " 'yesterday' / '+Nd' / '-Nd' / a weekday name"
+            " ('monday' / 'next monday' / 'last monday')."
         ),
         "input_schema": {
             "type": "object",
@@ -169,7 +170,8 @@ _READ_SCHEMAS: List[Dict[str, Any]] = [
                     "type": "string",
                     "description": (
                         "Inclusive lower bound. ISO YYYY-MM-DD, or 'today',"
-                        " 'tomorrow', 'yesterday', '+Nd' / '-Nd'."
+                        " 'tomorrow', 'yesterday', '+Nd' / '-Nd', or a"
+                        " weekday like 'next monday' / 'last monday'."
                     ),
                 },
                 "end_date": {
@@ -200,7 +202,8 @@ _READ_SCHEMAS: List[Dict[str, Any]] = [
                     "type": "string",
                     "description": (
                         "Inclusive lower bound. ISO YYYY-MM-DD, or 'today',"
-                        " 'tomorrow', 'yesterday', '+Nd' / '-Nd'."
+                        " 'tomorrow', 'yesterday', '+Nd' / '-Nd', or a"
+                        " weekday like 'next monday' / 'last monday'."
                     ),
                 },
                 "end_date": {
@@ -418,7 +421,7 @@ _READ_SCHEMAS: List[Dict[str, Any]] = [
             " range. Defaults: start_date = today (user tz), end_date ="
             " start_date + 30 days. Useful for 'what's coming up this week'"
             " questions. Dates accept ISO YYYY-MM-DD or 'today' / 'tomorrow'"
-            " / '+Nd' offsets."
+            " / '+Nd' offsets / weekday names like 'next monday'."
         ),
         "input_schema": {
             "type": "object",
@@ -427,8 +430,9 @@ _READ_SCHEMAS: List[Dict[str, Any]] = [
                     "type": "string",
                     "description": (
                         "Inclusive lower bound. ISO YYYY-MM-DD, or 'today',"
-                        " 'tomorrow', 'yesterday', '+Nd' / '-Nd'. Default:"
-                        " today in the user's timezone."
+                        " 'tomorrow', 'yesterday', '+Nd' / '-Nd', or a"
+                        " weekday like 'next monday'. Default: today in the"
+                        " user's timezone."
                     ),
                 },
                 "end_date": {
@@ -772,7 +776,8 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
             " due_time is given. Re-calling on the same block replaces any"
             " pending reminder; sent reminders stay as history. Pass an"
             " absolute ISO date or one of 'today' / 'tomorrow' / 'yesterday'"
-            " / '+Nd' / '-Nd'. Reminder time is HH:MM 24-hour in the user's"
+            " / '+Nd' / '-Nd' / a weekday name like 'next monday'."
+            " Reminder time is HH:MM 24-hour in the user's"
             " timezone. Use clear_schedule to unschedule a block. Every call"
             " pauses for explicit user approval before execution."
         ),
@@ -787,7 +792,8 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
                     "type": "string",
                     "description": (
                         "Due date. ISO YYYY-MM-DD, or 'today' / 'tomorrow'"
-                        " / 'yesterday' / '+Nd' / '-Nd'."
+                        " / 'yesterday' / '+Nd' / '-Nd' / a weekday like"
+                        " 'next monday'."
                     ),
                 },
                 "due_time": {
@@ -888,8 +894,9 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
                     "type": "string",
                     "description": (
                         "Optional target date. ISO YYYY-MM-DD or 'today' /"
-                        " 'tomorrow' / 'yesterday' / '+Nd' / '-Nd'. Default:"
-                        " today in the user's timezone."
+                        " 'tomorrow' / 'yesterday' / '+Nd' / '-Nd' / a"
+                        " weekday like 'next monday'. Default: today in the"
+                        " user's timezone."
                     ),
                 },
             },
@@ -1051,7 +1058,8 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
             " (b) `reminder_time` supplied — every block gets the same"
             " reminder, replacing any prior pending reminder. Date /"
             " reminder_date accept ISO YYYY-MM-DD or 'today' /"
-            " 'tomorrow' / '+Nd'. reminder_time accepts HH:MM (24h,"
+            " 'tomorrow' / '+Nd' / 'next monday'. reminder_time accepts"
+            " HH:MM (24h,"
             " user's tz) or '+Nm' / '+Nh' offsets from now. Every call"
             " pauses for explicit user approval before execution."
         ),
@@ -1067,7 +1075,8 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
                     "type": "string",
                     "description": (
                         "Target date. ISO YYYY-MM-DD, or 'today' /"
-                        " 'tomorrow' / 'yesterday' / '+Nd' / '-Nd'."
+                        " 'tomorrow' / 'yesterday' / '+Nd' / '-Nd' / a"
+                        " weekday like 'next monday'."
                     ),
                 },
                 "new_time": {

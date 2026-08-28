@@ -692,7 +692,8 @@ REGISTRY = ToolRegistry(
                 "Scheduled blocks within a date range (inclusive). Use for"
                 " 'what's coming up this week?'. Dates accept ISO"
                 " YYYY-MM-DD or relative tokens ('today', 'tomorrow',"
-                " 'yesterday', '+Nd', '-Nd', '+Nw', '-Nw'). Omit both"
+                " 'yesterday', '+Nd', '-Nd', '+Nw', '-Nw', 'next monday')."
+                " Omit both"
                 " bounds for the full upcoming view."
             ),
             input_schema={
@@ -727,7 +728,7 @@ REGISTRY = ToolRegistry(
                 "Get a page with its blocks. Pass slug for a regular page,"
                 " date for a daily note, or neither for today. date accepts"
                 " ISO YYYY-MM-DD or relative tokens ('today', 'tomorrow',"
-                " 'yesterday', '+Nd', '-Nd')."
+                " 'yesterday', '+Nd', '-Nd', 'next monday')."
             ),
             input_schema={
                 "type": "object",
@@ -750,11 +751,11 @@ REGISTRY = ToolRegistry(
                 "Return the current date + time in the user's timezone."
                 " Call this before scheduling far-out dates when the user"
                 " says something time-relative that the simple relative"
-                " tokens can't express ('6 months from now', 'next"
-                " Tuesday', 'my birthday next year') so the model can"
-                " compute the absolute ISO date itself. For simple"
-                " offsets like 'tomorrow' or '+7d', just pass the token"
-                " straight to the date arg instead."
+                " tokens can't express ('6 months from now', 'the first"
+                " Friday of next month', 'my birthday next year') so the"
+                " model can compute the absolute ISO date itself. For"
+                " simple offsets like 'tomorrow', '+7d' or 'next monday',"
+                " just pass the token straight to the date arg instead."
             ),
             input_schema={"type": "object", "properties": {}},
             handler=_get_current_time,
@@ -779,7 +780,8 @@ REGISTRY = ToolRegistry(
                         "type": "string",
                         "description": (
                             "ISO YYYY-MM-DD or relative token ('today',"
-                            " 'tomorrow', '+1d'). Defaults to today."
+                            " 'tomorrow', '+1d', 'next monday'). Defaults"
+                            " to today."
                         ),
                     },
                 },
@@ -866,7 +868,8 @@ REGISTRY = ToolRegistry(
             description=(
                 "Set a block's due date (and optional reminder). Dates"
                 " accept ISO YYYY-MM-DD or relative tokens ('today',"
-                " 'tomorrow', 'yesterday', '+Nd', '-Nd', '+Nw', '-Nw')."
+                " 'tomorrow', 'yesterday', '+Nd', '-Nd', '+Nw', '-Nw',"
+                " or a weekday like 'next monday')."
                 " Due is all-day unless due_time is given. Empty due_date"
                 " clears the due date."
             ),
