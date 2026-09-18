@@ -15,9 +15,18 @@ Including another URLconf
 """
 
 from django.contrib import admin
+from django.templatetags.static import static
 from django.urls import include, path
+from django.views.generic.base import RedirectView
 
 urlpatterns = [
+    # Browsers request /favicon.ico at the origin root for any page that
+    # doesn't carry its own <link rel="icon"> - the django admin and the
+    # DRF browsable API, for instance. Without this they just 404.
+    path(
+        "favicon.ico",
+        RedirectView.as_view(url=static("knowledge/icons/favicon.ico")),
+    ),
     path("admin/", admin.site.urls),
     path("api/", include("core.urls")),
     path("knowledge/", include("knowledge.urls")),
