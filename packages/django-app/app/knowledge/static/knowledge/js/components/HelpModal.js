@@ -215,7 +215,7 @@ window.HelpModal = {
           <div class="help-section" v-pre>
             <h3>variables</h3>
             <p class="help-hint">type <code class="help-syntax">{{</code> in a block to insert a variable; autocomplete lists them as you type. a variable is <strong>filled in once, then frozen</strong> — it resolves when the block is saved (or when a template is applied) and is plain text from then on, so <code class="help-syntax">{{today}}</code> written today still reads today's date next week. that freezing is the point: a <code class="help-syntax">{{count:...}}</code> in a weekly template records one sample per apply, turning a recurring template into a time series.</p>
-            <table class="help-table">
+            <table class="help-table help-table-variables">
               <tbody>
                 <tr>
                   <td><code class="help-syntax">today</code> <code class="help-syntax">tomorrow</code> <code class="help-syntax">yesterday</code> <code class="help-syntax">now</code> <code class="help-syntax">current_date</code> <code class="help-syntax">current_time</code></td>

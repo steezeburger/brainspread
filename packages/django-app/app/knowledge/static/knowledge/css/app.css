@@ -1269,6 +1269,13 @@ body {
   background: var(--hover-bg);
 }
 
+/* The variables table inverts the usual shape: short names on the left,
+   long explanations on the right. The shared 55% first column would
+   strand half of each row empty while the description wraps beside it. */
+.help-table-variables td:first-child {
+  width: 34%;
+}
+
 .help-syntax {
   font-family: monospace;
   font-size: 0.85rem;
@@ -1293,6 +1300,30 @@ kbd {
   color: var(--text-secondary);
   font-size: 0.9rem;
   line-height: 1.5;
+}
+
+/* The help tables carry long `{{...}}` / `key:: value` examples with no
+   natural break opportunities, and `.help-table td` widths are fixed
+   percentages — so on a narrow screen one unbreakable chip pushes the
+   table past the modal body and the whole panel scrolls sideways. Use
+   `anywhere` rather than `break-word`: only `anywhere` lowers the
+   min-content width that table layout actually measures, so
+   `break-word` would leave the table just as wide. Desktop is
+   untouched, keeping chips unbroken where there's room. */
+@media (max-width: 768px) {
+  .help-syntax {
+    overflow-wrap: anywhere;
+  }
+
+  /* 34% is a desktop measure. At phone width it squeezes the names
+     hard enough that the `anywhere` above starts breaking them
+     mid-identifier (`current_d` / `ate`), so hand the room back and
+     let the descriptions wrap instead. Same specificity as the shared
+     `.help-table td:first-child`, so this has to restate its value
+     rather than unset it — keep the two in sync. */
+  .help-table-variables td:first-child {
+    width: 55%;
+  }
 }
 
 /* Tags */
