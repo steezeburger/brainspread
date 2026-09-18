@@ -6,6 +6,7 @@ from django.contrib.staticfiles import finders
 from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse
 from django.shortcuts import render
+from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -223,7 +224,17 @@ class BulkMoveBlocksToPageResponse(TypedDict):
     errors: Optional[Dict[str, List[str]]]
 
 
+@ensure_csrf_cookie
 def index(request, date=None, tag_name=None, slug=None):
+    # The SPA reads the CSRF token from the `csrftoken` cookie (see
+    # api.js), so the cookie has to be set on the shell response. This
+    # decorator is what does that. It used to be a bare {% csrf_token %}
+    # in base.html's <head>, but that tag renders a hidden <input>, and
+    # an <input> is not allowed in <head> - the parser closed </head>
+    # early and every <link rel="icon"> / rel="manifest" below it landed
+    # in <body>, where neither is honored. Keep the cookie here, not in
+    # the template head.
+    #
     # The HTML shell references hashed/versioned asset URLs, so it must
     # never be cached - otherwise mobile browsers keep serving stale script
     # tags and never pick up new deploys.

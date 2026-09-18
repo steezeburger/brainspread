@@ -7,7 +7,14 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
     <title>{% block title %}brainspread{% endblock %}</title>
-    {% load static %} {% csrf_token %}
+    {% load static %}
+    <!-- NOTE: only head-content elements may go here. The csrf_token
+         tag in particular renders a hidden form input, which is not
+         permitted in a head: browsers end the head at it and reparent
+         everything below into the body, where rel=icon and
+         rel=manifest are both silently ignored. The CSRF cookie is set
+         by @ensure_csrf_cookie on knowledge.views.index instead.
+         Covered by knowledge/test/views/test_index_view_head.py. -->
 
     <!-- PWA: installable app manifest + icons (Android/Chrome) -->
     <link rel="manifest" href="{% static 'knowledge/manifest.json' %}" />
