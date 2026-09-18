@@ -212,6 +212,44 @@ window.HelpModal = {
             <p class="help-hint">click the <strong>⋮</strong> button, <kbd>Tab</kbd> to it, or press <kbd>⌘</kbd>+<kbd>.</kbd> while focused on a block to open the actions menu: indent, outdent, move up/down, create before/after, add to AI context, and delete. inside the menu, use <kbd>↑</kbd><kbd>↓</kbd> to navigate, <kbd>Enter</kbd> to select, <kbd>Esc</kbd> to close.</p>
           </div>
 
+          <div class="help-section" v-pre>
+            <h3>variables</h3>
+            <p class="help-hint">type <code class="help-syntax">{{</code> in a block to insert a variable; autocomplete lists them as you type. a variable is <strong>filled in once, then frozen</strong> — it resolves when the block is saved (or when a template is applied) and is plain text from then on, so <code class="help-syntax">{{today}}</code> written today still reads today's date next week. that freezing is the point: a <code class="help-syntax">{{count:...}}</code> in a weekly template records one sample per apply, turning a recurring template into a time series.</p>
+            <table class="help-table">
+              <tbody>
+                <tr>
+                  <td><code class="help-syntax">today</code> <code class="help-syntax">tomorrow</code> <code class="help-syntax">yesterday</code> <code class="help-syntax">now</code> <code class="help-syntax">current_date</code> <code class="help-syntax">current_time</code></td>
+                  <td>dates and times, in your timezone</td>
+                </tr>
+                <tr>
+                  <td><code class="help-syntax">page.title</code> <code class="help-syntax">page.slug</code> <code class="help-syntax">page.date</code> <code class="help-syntax">page.url</code> <code class="help-syntax">page.uuid</code></td>
+                  <td>the page the block lives on</td>
+                </tr>
+                <tr>
+                  <td><code class="help-syntax">user.email</code> <code class="help-syntax">user.timezone</code></td>
+                  <td>your account</td>
+                </tr>
+                <tr>
+                  <td><code class="help-syntax">uuid</code></td>
+                  <td>a fresh id. <code class="help-syntax">{{uuid|name:cart}}</code> gives the <em>same</em> id everywhere that label appears in one template apply — this is how a template wires its own blocks together</td>
+                </tr>
+                <tr>
+                  <td><code class="help-syntax">cursor</code></td>
+                  <td>resolves to nothing; marks where the caret should land</td>
+                </tr>
+                <tr>
+                  <td><code class="help-syntax">input:&lt;label&gt;</code></td>
+                  <td>asks you for the value when a template is applied, one prompt per label. templates only — a plain block save has nothing to prompt</td>
+                </tr>
+                <tr>
+                  <td><code class="help-syntax">count:&lt;query&gt;</code></td>
+                  <td>frozen count of a query, e.g. <code class="help-syntax">{{count:type:todo and completed is null}}</code>. same query language as an automation's <code class="help-syntax">query::</code></td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="help-hint">filters chain with <code class="help-syntax">|</code>, jinja-style: <code class="help-syntax">{{now|time}}</code> and <code class="help-syntax">{{now|date}}</code> keep just that half, <code class="help-syntax">{{today|format:%A}}</code> takes any strftime pattern, and <code class="help-syntax">{{uuid|name:&lt;label&gt;}}</code> labels an id. variables inside a template stay dormant until the template is applied. write <code class="help-syntax">\\{{</code> for a literal <code class="help-syntax">{{</code>. an unknown variable or a broken count query is rejected when the block saves, and the error names the full vocabulary.</p>
+          </div>
+
           <div class="help-section">
             <h3>automations</h3>
             <p class="help-hint">any block tagged <span class="inline-tag">#automation</span> (or living on the <code class="help-syntax">automation</code> page) is a live automation, configured with <code class="help-syntax">key:: value</code> lines. example — unfinished work moves itself onto today's daily every morning:</p>
