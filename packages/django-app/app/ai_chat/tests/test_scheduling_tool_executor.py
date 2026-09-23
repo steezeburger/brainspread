@@ -192,7 +192,7 @@ class ScheduleBlockToolTestCase(TestCase):
 
         result = ex.execute(
             "schedule_block",
-            {"block_uuid": str(self.block.uuid), "due_date": "next thursday"},
+            {"block_uuid": str(self.block.uuid), "due_date": "next blorpday"},
         )
 
         self.assertIn("error", result)

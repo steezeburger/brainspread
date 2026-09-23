@@ -150,7 +150,7 @@ class Command(BaseCommand):
                 )
 
             # Top-level blocks
-            focus = block("Today's Focus", order=0, block_type="heading")
+            focus = block("Today's Focus", order=0)
             block(
                 "Review and test block reordering",
                 order=0,
@@ -176,7 +176,7 @@ class Command(BaseCommand):
                 "Set up staging environment", order=3, parent=focus, block_type="done"
             )
 
-            notes = block("Notes", order=1, block_type="heading")
+            notes = block("Notes", order=1)
             block(
                 "Block ordering now uses a single batch API call instead of N+1 requests",
                 order=0,
@@ -205,7 +205,7 @@ class Command(BaseCommand):
                 block_type="quote",
             )
 
-            ideas = block("Ideas", order=2, block_type="heading")
+            ideas = block("Ideas", order=2)
             block(
                 "Add drag-and-drop block reordering",
                 order=0,

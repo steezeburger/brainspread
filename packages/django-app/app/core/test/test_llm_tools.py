@@ -140,6 +140,50 @@ class ParseRelativeDateTestCase(SimpleTestCase):
 
     def test_garbage_raises_value_error(self):
         with self.assertRaises(ValueError):
-            parse_relative_date("next thursday", self.TODAY)
+            parse_relative_date("next blorpday", self.TODAY)
         with self.assertRaises(ValueError):
             parse_relative_date("+5x", self.TODAY)
+
+    def test_bare_weekday_tokens(self):
+        # TODAY is Saturday 2026-06-20.
+        self.assertEqual(parse_relative_date("monday", self.TODAY), date(2026, 6, 22))
+        self.assertEqual(parse_relative_date("tuesday", self.TODAY), date(2026, 6, 23))
+        self.assertEqual(
+            parse_relative_date("wednesday", self.TODAY), date(2026, 6, 24)
+        )
+        self.assertEqual(parse_relative_date("thursday", self.TODAY), date(2026, 6, 25))
+        self.assertEqual(parse_relative_date("friday", self.TODAY), date(2026, 6, 26))
+        self.assertEqual(parse_relative_date("sunday", self.TODAY), date(2026, 6, 21))
+        # Abbreviations and case-insensitivity.
+        self.assertEqual(parse_relative_date("Mon", self.TODAY), date(2026, 6, 22))
+        self.assertEqual(parse_relative_date("SUN", self.TODAY), date(2026, 6, 21))
+
+    def test_bare_weekday_matching_today_skips_to_next_week(self):
+        # TODAY is itself a Saturday, so asking for "saturday" must skip
+        # today and land on next Saturday, not return today unchanged.
+        self.assertEqual(parse_relative_date("saturday", self.TODAY), date(2026, 6, 27))
+
+    def test_next_weekday_token(self):
+        self.assertEqual(
+            parse_relative_date("next monday", self.TODAY), date(2026, 6, 22)
+        )
+        self.assertEqual(
+            parse_relative_date("next saturday", self.TODAY), date(2026, 6, 27)
+        )
+
+    def test_last_weekday_token(self):
+        self.assertEqual(
+            parse_relative_date("last monday", self.TODAY), date(2026, 6, 15)
+        )
+        self.assertEqual(
+            parse_relative_date("last saturday", self.TODAY), date(2026, 6, 13)
+        )
+
+    def test_this_weekday_token(self):
+        self.assertEqual(
+            parse_relative_date("this monday", self.TODAY), date(2026, 6, 22)
+        )
+        # "this <today's weekday>" can land on today itself.
+        self.assertEqual(
+            parse_relative_date("this saturday", self.TODAY), date(2026, 6, 20)
+        )
