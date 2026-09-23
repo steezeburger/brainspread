@@ -769,7 +769,7 @@ class MCPEndpointTestCase(TestCase):
             "/api/mcp/",
             _tool_call(
                 "schedule_block",
-                {"block_uuid": str(block.uuid), "due_date": "next thursday"},
+                {"block_uuid": str(block.uuid), "due_date": "next blorpday"},
             ),
             format="json",
         )
