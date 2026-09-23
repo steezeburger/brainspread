@@ -7,6 +7,7 @@ from django.core.exceptions import ValidationError
 from common.forms.base_form import BaseForm
 from core.repositories import UserRepository
 
+from ..models import BlockRevision
 from .schedule_block_form import MAX_REMINDERS_PER_BLOCK
 
 
@@ -47,6 +48,10 @@ class BulkScheduleForm(BaseForm):
     # reminder_date isn't. Ignored when `reminders` is supplied.
     reminder_date = forms.DateField(required=False)
     reminder_time = forms.TimeField(required=False)
+    # Who's making this change, for BlockRevision attribution. Omitted by
+    # the web UI (the command defaults to "user"); automation / the AI
+    # chat pass their own value explicitly.
+    source = forms.ChoiceField(choices=BlockRevision.SOURCE_CHOICES, required=False)
 
     def clean_reminders(self):
         raw = self.cleaned_data.get("reminders")

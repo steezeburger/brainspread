@@ -66,7 +66,7 @@ from knowledge.forms.search_pages_form import SearchPagesForm
 from knowledge.forms.set_block_completed_at_form import SetBlockCompletedAtForm
 from knowledge.forms.tag_blocks_form import TagBlocksForm, UntagBlocksForm
 from knowledge.forms.update_block_form import UpdateBlockForm
-from knowledge.models import Block
+from knowledge.models import Block, BlockRevision
 from knowledge.repositories import BlockRepository, PageRepository
 
 # --- helpers -----------------------------------------------------------
@@ -193,7 +193,11 @@ def _edit_block(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     if not block:
         raise ToolError(f"no block found with uuid {block_uuid}")
 
-    payload: dict[str, Any] = {"user": ctx.user.id, "block": str(block.uuid)}
+    payload: dict[str, Any] = {
+        "user": ctx.user.id,
+        "block": str(block.uuid),
+        "source": BlockRevision.SOURCE_ASSISTANT,
+    }
     touched = False
     if args.get("content") is not None:
         payload["content"] = args["content"]
@@ -237,6 +241,7 @@ def _edit_block(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
                 "user": ctx.user.id,
                 "block": str(updated.uuid),
                 "completed_at": completed_at,
+                "source": BlockRevision.SOURCE_ASSISTANT,
             }
         )
         if not ca_form.is_valid():
@@ -418,7 +423,11 @@ def _search_pages(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
 
 def _toggle_todo(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     form = ToggleBlockTodoForm(
-        data={"user": ctx.user.id, "block": args.get("block_uuid") or ""}
+        data={
+            "user": ctx.user.id,
+            "block": args.get("block_uuid") or "",
+            "source": BlockRevision.SOURCE_ASSISTANT,
+        }
     )
     if not form.is_valid():
         raise ToolError(_form_errors_to_str(form))
@@ -433,6 +442,7 @@ def _schedule_block(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
         "block": args.get("block_uuid") or "",
         # ScheduleBlockForm treats empty/absent as "clear".
         "due_date": due_date or "",
+        "source": BlockRevision.SOURCE_ASSISTANT,
     }
     if args.get("due_time"):
         payload["due_time"] = args["due_time"]

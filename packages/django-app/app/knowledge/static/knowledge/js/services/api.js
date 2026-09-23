@@ -326,6 +326,29 @@ class ApiService {
     });
   }
 
+  /**
+   * A block's revision history, newest first (issue #234).
+   */
+  async getBlockRevisions(blockUuid) {
+    const params = new URLSearchParams({ block: blockUuid });
+    return await this.request(`/knowledge/api/blocks/revisions/?${params.toString()}`);
+  }
+
+  /**
+   * Restore a block to a past revision's field values. The restore
+   * itself is recorded as a new revision, so it can be undone the same
+   * way.
+   */
+  async restoreBlockRevision(blockUuid, revisionUuid) {
+    return await this.request("/knowledge/api/blocks/revisions/restore/", {
+      method: "POST",
+      body: JSON.stringify({
+        block: blockUuid,
+        revision: revisionUuid,
+      }),
+    });
+  }
+
   async moveUndoneTodos(targetDate = null) {
     const body = targetDate ? { target_date: targetDate } : {};
     return await this.request("/knowledge/api/blocks/move-undone-todos/", {

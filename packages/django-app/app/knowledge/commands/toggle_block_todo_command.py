@@ -17,10 +17,16 @@ class ToggleBlockTodoCommand(AbstractBaseCommand):
 
         block: Block = self.form.cleaned_data["block"]
         user = self.form.cleaned_data["user"]
+        source = self.form.cleaned_data.get("source")
         next_type = get_next_todo_type(block.block_type)
 
         set_form = SetBlockTypeForm(
-            {"user": user.id, "block": str(block.uuid), "block_type": next_type}
+            {
+                "user": user.id,
+                "block": str(block.uuid),
+                "block_type": next_type,
+                **({"source": source} if source else {}),
+            }
         )
         if not set_form.is_valid():
             # Shouldn't happen — next_type is always a valid choice and ownership

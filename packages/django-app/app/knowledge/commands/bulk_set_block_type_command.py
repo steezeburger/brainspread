@@ -26,6 +26,7 @@ class BulkSetBlockTypeCommand(AbstractBaseCommand):
         user = self.form.cleaned_data["user"]
         block_uuids: List[str] = self.form.cleaned_data["block_uuids"]
         new_type: str = self.form.cleaned_data["new_type"]
+        source = self.form.cleaned_data.get("source")
 
         updated_count = 0
         failed: List[Dict[str, str]] = []
@@ -42,6 +43,7 @@ class BulkSetBlockTypeCommand(AbstractBaseCommand):
                         "user": user.id,
                         "block": str(block.uuid),
                         "block_type": new_type,
+                        **({"source": source} if source else {}),
                     }
                 )
                 if not inner.is_valid():

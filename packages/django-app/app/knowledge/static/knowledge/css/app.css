@@ -901,6 +901,121 @@ body {
   padding: 0.1rem 0.3rem;
 }
 
+/* Block history modal (issue #234) — revision list opened from the
+ * block context menu. Wider than the default .app-modal so a content
+ * summary + timestamp + source fit on one row without wrapping. */
+.history-modal {
+  max-width: 560px;
+  max-height: 80vh;
+}
+
+.history-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.history-empty {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 0.5rem 0;
+}
+
+.history-error {
+  color: var(--error-color, #c44);
+}
+
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.history-row {
+  border: 1px solid var(--border-secondary);
+  border-radius: 0;
+  padding: 0.5rem 0.6rem;
+}
+
+.history-row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.history-expand-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0.1rem 0.2rem;
+  line-height: 1.4;
+}
+
+.history-expand-btn:hover {
+  color: var(--text-primary);
+}
+
+.history-row-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-row-summary {
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  word-break: break-word;
+}
+
+.history-row-meta {
+  display: flex;
+  gap: 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  margin-top: 0.15rem;
+}
+
+.history-row-source {
+  text-transform: lowercase;
+  border: 1px solid var(--border-secondary);
+  padding: 0 0.3rem;
+}
+
+.history-restore-btn {
+  flex-shrink: 0;
+}
+
+.history-row-detail {
+  margin-top: 0.5rem;
+  padding-left: 1.4rem;
+}
+
+.history-row-content {
+  margin: 0;
+  padding: 0.5rem 0.6rem;
+  background: var(--bg-secondary, var(--bg-primary));
+  border: 1px solid var(--border-secondary);
+  border-radius: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.history-row-empty-content {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
 /* Page picker modal (window.appModals.pickPage). Wider than the
    prompt/confirm modals so longer page titles fit on one line, and
    wraps a scrollable result list under the input. */

@@ -40,6 +40,7 @@ from .get_streaks_form import GetStreaksForm
 from .get_tag_content_form import GetTagContentForm
 from .get_tag_graph_form import GetTagGraphForm
 from .get_user_pages_form import GetUserPagesForm
+from .list_block_revisions_form import ListBlockRevisionsForm
 from .list_custom_variables_form import ListCustomVariablesForm
 from .list_overdue_blocks_form import ListOverdueBlocksForm
 from .list_pending_reminders_form import ListPendingRemindersForm
@@ -54,6 +55,7 @@ from .preview_saved_view_form import PreviewSavedViewForm
 from .reorder_blocks_form import ReorderBlocksForm
 from .reorder_favorited_pages_form import ReorderFavoritedPagesForm
 from .reorder_page_embedded_views_form import ReorderPageEmbeddedViewsForm
+from .restore_block_revision_form import RestoreBlockRevisionForm
 from .run_automation_form import RunAutomationForm
 from .run_query_form import RunQueryForm
 from .run_saved_view_form import RunSavedViewForm

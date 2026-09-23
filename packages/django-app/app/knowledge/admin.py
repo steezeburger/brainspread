@@ -4,7 +4,7 @@ from django.http import HttpRequest
 
 from .commands.normalize_block_order_command import NormalizeBlockOrderCommand
 from .forms.normalize_block_order_form import NormalizeBlockOrderForm
-from .models import AutomationRun, Block, Page, Reminder, ReminderAction
+from .models import AutomationRun, Block, BlockRevision, Page, Reminder, ReminderAction
 
 
 @admin.register(Page)
@@ -268,6 +268,42 @@ class AutomationRunAdmin(admin.ModelAdmin):
         return (
             (obj.last_error[:80] + "…") if len(obj.last_error) > 80 else obj.last_error
         )
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+
+@admin.register(BlockRevision)
+class BlockRevisionAdmin(admin.ModelAdmin):
+    """Read-only ledger view — rows are written by BlockRevisionRepository,
+    never by hand."""
+
+    list_display = (
+        "short_uuid",
+        "block",
+        "block_type",
+        "source",
+        "created_at",
+    )
+    list_filter = ("source", "block_type", "created_at")
+    search_fields = ("block__uuid", "content")
+    raw_id_fields = ("block",)
+    readonly_fields = (
+        "id",
+        "uuid",
+        "block",
+        "content",
+        "block_type",
+        "properties",
+        "due_at",
+        "due_at_has_time",
+        "completed_at",
+        "source",
+        "created_at",
+        "modified_at",
+    )
+    ordering = ("-created_at",)
+    date_hierarchy = "created_at"
 
     def has_add_permission(self, request) -> bool:
         return False

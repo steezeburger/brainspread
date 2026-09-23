@@ -39,6 +39,7 @@ const Page = {
     ScheduleBlockPopover: window.ScheduleBlockPopover || {},
     BlockChatPopover: window.BlockChatPopover || {},
     BlockInfoModal: window.BlockInfoModal || {},
+    HistoryModal: window.HistoryModal || {},
     QueryEmbedBlock: window.QueryEmbedBlock || {},
   },
   props: {
@@ -88,6 +89,8 @@ const Page = {
       blockChatPopoverBlock: null,
       blockInfoModalOpen: false,
       blockInfoModalBlock: null,
+      historyModalOpen: false,
+      historyModalBlock: null,
       loading: false,
       error: null,
       // Page title editing
@@ -1646,6 +1649,23 @@ const Page = {
     closeBlockInfoModal() {
       this.blockInfoModalOpen = false;
       this.blockInfoModalBlock = null;
+    },
+
+    openBlockHistoryModal(block) {
+      this.historyModalBlock = block;
+      this.historyModalOpen = true;
+    },
+
+    closeBlockHistoryModal() {
+      this.historyModalOpen = false;
+      this.historyModalBlock = null;
+    },
+
+    async onBlockHistoryRestored({ block }) {
+      if (!block) return;
+      this.$parent?.addToast?.("block restored", "success");
+      this.broadcastBlockChanged(block.uuid);
+      await this.loadPage({ silent: true });
     },
 
     async onSaveBlockCompletedAt({ iso }) {
@@ -5149,6 +5169,7 @@ const Page = {
                 :onMoveDrop="onMoveDrop"
                 :onMoveDragEnd="onMoveDragEnd"
                 :openBlockInfoModal="openBlockInfoModal"
+                :openBlockHistoryModal="openBlockHistoryModal"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"
                 :onBlockAttachPick="onBlockAttachPick"
@@ -5207,6 +5228,7 @@ const Page = {
                 :openMovePagePicker="openMovePagePicker"
                 :openMoveUnderPicker="openMoveUnderPicker"
                 :openBlockInfoModal="openBlockInfoModal"
+                :openBlockHistoryModal="openBlockHistoryModal"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"
                 :onBlockAttachPick="onBlockAttachPick"
@@ -5253,6 +5275,14 @@ const Page = {
         :block="blockInfoModalBlock"
         @close="closeBlockInfoModal"
         @save-completed-at="onSaveBlockCompletedAt"
+      />
+
+      <!-- Block revision history modal (issue #234) -->
+      <HistoryModal
+        :is-open="historyModalOpen"
+        :block="historyModalBlock"
+        @close="closeBlockHistoryModal"
+        @restored="onBlockHistoryRestored"
       />
 
       <!-- Share modal (issue #90) -->
