@@ -2,7 +2,8 @@
 
 ``content_tokens`` stays pure — this module is where the resolver's
 context meets the real world: the user's clock/timezone, the target
-page, and the query engine behind ``{{count:<query>}}``. Commands call
+page, the query engine behind ``{{count:<query>}}``, and the user's
+custom variables (issue #228). Commands call
 ``build_token_context`` once per resolution pass (one block save, or
 one whole template apply) and hand the result to
 ``resolve_content_tokens``.
@@ -10,10 +11,11 @@ one whole template apply) and hand the result to
 
 from __future__ import annotations
 
-from typing import Callable, Mapping, Optional
+from typing import Callable, Dict, Iterator, Mapping, Optional
 
 from django.utils import timezone
 
+from ..repositories import CustomVariableRepository
 from .content_tokens import PageTokenContext, TokenContext, UserTokenContext
 from .query_dsl import compile_inline_query
 from .view_execution import count_filter
@@ -47,7 +49,31 @@ def build_token_context(
         ),
         inputs=inputs,
         count_query=_make_count_query(user),
+        custom_tokens=_LazyCustomVariables(user),
     )
+
+
+class _LazyCustomVariables(Mapping[str, str]):
+    """Loads the user's custom variables on first lookup, so a save
+    whose content has no ``{{`` never pays for the query."""
+
+    def __init__(self, user) -> None:
+        self._user = user
+        self._data: Optional[Dict[str, str]] = None
+
+    def _load(self) -> Dict[str, str]:
+        if self._data is None:
+            self._data = CustomVariableRepository.expansions_for_user(self._user)
+        return self._data
+
+    def __getitem__(self, key: str) -> str:
+        return self._load()[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._load())
+
+    def __len__(self) -> int:
+        return len(self._load())
 
 
 def _make_count_query(user) -> Callable[[str], int]:

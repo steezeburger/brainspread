@@ -7,7 +7,7 @@ from factory import Faker, SubFactory
 from factory.django import DjangoModelFactory
 
 from core.test.helpers import UserFactory
-from knowledge.models import Block, Page
+from knowledge.models import Block, CustomVariable, Page
 
 
 def due_dt(
@@ -56,3 +56,12 @@ class BlockFactory(DjangoModelFactory):
 
     class Meta:
         model = Block
+
+
+class CustomVariableFactory(DjangoModelFactory):
+    user = SubFactory(UserFactory)
+    name = factory.Sequence(lambda n: f"var_{n}")
+    expansion = Faker("sentence", nb_words=4)
+
+    class Meta:
+        model = CustomVariable

@@ -934,6 +934,33 @@ class ApiService {
     return `${this.baseURL}/api/assets/${uuid}/`;
   }
 
+  // ---- Custom variables (issue #228) -----------------------------------
+
+  async listCustomVariables() {
+    return await this.request("/knowledge/api/custom-variables/");
+  }
+
+  async createCustomVariable(name, expansion) {
+    return await this.request("/knowledge/api/custom-variables/create/", {
+      method: "POST",
+      body: JSON.stringify({ name, expansion }),
+    });
+  }
+
+  async updateCustomVariable(variableUuid, fields) {
+    return await this.request("/knowledge/api/custom-variables/update/", {
+      method: "PUT",
+      body: JSON.stringify({ variable_uuid: variableUuid, ...fields }),
+    });
+  }
+
+  async deleteCustomVariable(variableUuid) {
+    return await this.request("/knowledge/api/custom-variables/delete/", {
+      method: "DELETE",
+      body: JSON.stringify({ variable_uuid: variableUuid }),
+    });
+  }
+
   // ---- Saved views (issue #60) ----------------------------------------
 
   async listSavedViews() {

@@ -1,5 +1,6 @@
 from .automation_run import AutomationRun, AutomationRunData
 from .block import Block, BlockData
+from .custom_variable import CustomVariable, CustomVariableData
 from .page import Page, PageData, PagesData, PageWithBlocksData
 from .page_embedded_view import PageEmbeddedView, PageEmbeddedViewData
 from .reminder import Reminder, ReminderData

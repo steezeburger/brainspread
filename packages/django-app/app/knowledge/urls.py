@@ -155,6 +155,27 @@ urlpatterns = [
         views.reorder_page_embedded_views,
         name="reorder_embeds",
     ),
+    # Custom variables (issue #228) — user-defined {{name}} tokens.
+    path(
+        "api/custom-variables/",
+        views.list_custom_variables,
+        name="list_custom_variables",
+    ),
+    path(
+        "api/custom-variables/create/",
+        views.create_custom_variable,
+        name="create_custom_variable",
+    ),
+    path(
+        "api/custom-variables/update/",
+        views.update_custom_variable,
+        name="update_custom_variable",
+    ),
+    path(
+        "api/custom-variables/delete/",
+        views.delete_custom_variable,
+        name="delete_custom_variable",
+    ),
     # Standalone view page (the SPA shell catches the path; Vue routes to
     # the SavedViewPage component based on the slug).
     path("views/", views.index, name="views_index"),

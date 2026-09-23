@@ -23,6 +23,53 @@ const CONTENT_TOKEN_VOCABULARY = [
   { token: "count:", hint: "frozen count of a query", open: true },
 ];
 
+// The user's custom {{variables}} (issue #228), shared by every block
+// editor: fetched on the first `{{`, dropped whenever settings edits them.
+const customVariableCache = { entries: null, pending: null, generation: 0 };
+
+function customVariableHint(expansion) {
+  const flat = (expansion || "").replace(/\s+/g, " ").trim();
+  return flat.length > 48 ? `${flat.slice(0, 47)}…` : flat;
+}
+
+function loadCustomVariableEntries() {
+  if (customVariableCache.entries) {
+    return Promise.resolve(customVariableCache.entries);
+  }
+  if (!customVariableCache.pending) {
+    const generation = customVariableCache.generation;
+    customVariableCache.pending = window.apiService
+      .listCustomVariables()
+      .then((result) => {
+        const variables =
+          (result && result.data && result.data.variables) || [];
+        return variables.map((v) => ({
+          token: v.name,
+          hint: customVariableHint(v.expansion),
+          custom: true,
+        }));
+      })
+      .catch((error) => {
+        console.error("custom variable load failed:", error);
+        return [];
+      })
+      .then((entries) => {
+        if (generation === customVariableCache.generation) {
+          customVariableCache.entries = entries;
+        }
+        customVariableCache.pending = null;
+        return entries;
+      });
+  }
+  return customVariableCache.pending;
+}
+
+document.addEventListener("brainspread:custom-variables-changed", () => {
+  customVariableCache.generation += 1;
+  customVariableCache.entries = null;
+  customVariableCache.pending = null;
+});
+
 const BlockComponent = {
   name: "BlockComponent",
   mixins: [window.brainspreadEmojiRenderMixin || {}],
@@ -1320,10 +1367,11 @@ const BlockComponent = {
         }
       });
     },
-    // --- {{token}} autocomplete (issue #140) ---
-    // Same shape as the hashtag autocomplete above, but against the
-    // static CONTENT_TOKEN_VOCABULARY — no API call. Detect a `{{query`
-    // prefix ending at the cursor; returns { start, query } or null.
+    // --- {{token}} autocomplete (issues #140, #228) ---
+    // Same shape as the hashtag autocomplete above, against the static
+    // CONTENT_TOKEN_VOCABULARY plus the user's cached custom variables.
+    // Detect a `{{query` prefix ending at the cursor; returns
+    // { start, query } or null.
     detectTokenContext(value, caret) {
       if (caret == null || caret < 0) return null;
       const upToCaret = value.slice(0, caret);
@@ -1346,8 +1394,20 @@ const BlockComponent = {
         return;
       }
       const query = ctx.query.toLowerCase();
-      const matches = CONTENT_TOKEN_VOCABULARY.filter((entry) =>
-        entry.token.startsWith(query)
+      const custom = customVariableCache.entries;
+      if (!custom) {
+        loadCustomVariableEntries().then(() => {
+          const textarea = this.$refs.blockTextarea;
+          if (this.tokenQueryStart >= 0 && textarea) {
+            this.updateTokenSuggestions(
+              this.block.content || "",
+              textarea.selectionEnd
+            );
+          }
+        });
+      }
+      const matches = [...(custom || []), ...CONTENT_TOKEN_VOCABULARY].filter(
+        (entry) => entry.token.startsWith(query)
       );
       this.tokenQueryStart = ctx.start;
       this.tokenSuggestions = matches;

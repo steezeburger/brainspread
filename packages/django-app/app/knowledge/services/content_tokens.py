@@ -38,6 +38,16 @@ so input tokens fail there). ``{{uuid|name:<label>}}`` returns the same
 id for every occurrence of a label within one context — one template
 apply shares a single context across all its blocks, which is what lets
 a template wire internal references together.
+
+Custom variables (issue #228) are user-defined tokens: ``{{name}}``
+expands to the user's stored text, supplied via
+``TokenContext.custom_tokens`` (name → raw expansion). Built-in names
+always win — a custom variable can never shadow one. A custom
+variable's expansion is itself resolved before substitution, so it may
+contain built-ins (``{{current_time}} #food-log``) and other custom
+variables. That nested pass is the only re-scan: a *built-in's* value is
+still never re-scanned. Self and mutual references raise ``TokenError``
+naming the cycle, and nesting is capped at ``MAX_CUSTOM_TOKEN_DEPTH``.
 """
 
 from __future__ import annotations
@@ -46,7 +56,17 @@ import re
 import uuid as uuid_module
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from typing import Any, Callable, Dict, List, Mapping, Optional
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Mapping,
+    Optional,
+    Set,
+    Tuple,
+)
 
 TOKEN_VOCABULARY: tuple = (
     "today",
@@ -79,6 +99,17 @@ FILTER_VOCABULARY: tuple = (
 # first colon (count queries legitimately contain colons and spaces,
 # e.g. {{count:type:todo and completed is null}}).
 _ARG_TOKENS = frozenset({"input", "count"})
+
+# Bare names a custom variable may not take ("input:<label>" → "input").
+BUILTIN_TOKEN_NAMES = frozenset(entry.split(":", 1)[0] for entry in TOKEN_VOCABULARY)
+
+# Custom variables are hand-written aliases, so real chains are a few
+# levels deep. Cycles are caught exactly by the expansion stack; this cap
+# is a backstop that keeps a pathological (non-cyclic but huge) chain from
+# exhausting the Python stack or blowing up the output.
+MAX_CUSTOM_TOKEN_DEPTH = 10
+
+CUSTOM_TOKEN_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
 class TokenError(ValueError):
@@ -125,6 +156,8 @@ class TokenContext:
     count_query: Optional[Callable[[str], int]] = None
     uuid_factory: Callable[[], str] = field(default=lambda: str(uuid_module.uuid4()))
     named_uuids: Dict[str, str] = field(default_factory=dict)
+    # The user's custom variables: lowercase name → raw expansion text.
+    custom_tokens: Mapping[str, str] = field(default_factory=dict)
 
 
 # Escape first so `\{{` never parses as a token; token bodies stay on
@@ -137,6 +170,12 @@ def resolve_content_tokens(text: str, context: TokenContext) -> str:
 
     Returns ``text`` unchanged when it contains no tokens. Raises
     ``TokenError`` on the first unknown or unresolvable token."""
+    return _resolve_text(text, context, ())
+
+
+def _resolve_text(text: str, context: TokenContext, stack: Tuple[str, ...]) -> str:
+    # ``stack`` holds the custom variables currently being expanded,
+    # outermost first — the cycle detector reads it.
     if not text or "{{" not in text:
         return text
 
@@ -147,33 +186,84 @@ def resolve_content_tokens(text: str, context: TokenContext) -> str:
         if match.group(0).startswith("\\"):
             out.append("{{")
         else:
-            out.append(_resolve_token(match.group(1), context))
+            out.append(_resolve_token(match.group(1), context, stack))
         pos = match.end()
     out.append(text[pos:])
     return "".join(out)
 
 
-def find_input_tokens(text: str) -> List[str]:
+def find_input_tokens(
+    text: str, custom_tokens: Optional[Mapping[str, str]] = None
+) -> List[str]:
     """Labels of every ``{{input:<label>}}`` in ``text``, in order of
     first appearance, deduplicated. Escaped spans are skipped. Used by
-    template apply to report which values it needs before resolving."""
+    template apply to report which values it needs before resolving.
+    Looks through ``custom_tokens`` expansions too, so an input token
+    nested in a custom variable still prompts."""
     labels: List[str] = []
-    if not text or "{{" not in text:
-        return labels
-    for match in _SCAN_RE.finditer(text):
-        if match.group(0).startswith("\\"):
-            continue
-        body = match.group(1)
-        base = body.split("|", 1)[0]
-        name, _, arg = base.partition(":")
-        if name.strip().lower() == "input":
-            label = arg.strip()
-            if label and label not in labels:
-                labels.append(label)
+    _collect_input_labels(text, custom_tokens or {}, labels, set())
     return labels
 
 
-def _resolve_token(body: str, context: TokenContext) -> str:
+def _collect_input_labels(
+    text: str,
+    custom_tokens: Mapping[str, str],
+    labels: List[str],
+    seen: Set[str],
+) -> None:
+    for name, arg in _token_bases(text):
+        if name == "input":
+            if arg and arg not in labels:
+                labels.append(arg)
+        elif name in custom_tokens and name not in BUILTIN_TOKEN_NAMES:
+            # ``seen`` stops cycles here; resolution reports them later.
+            if name not in seen:
+                seen.add(name)
+                _collect_input_labels(custom_tokens[name], custom_tokens, labels, seen)
+
+
+def find_custom_token_cycle(
+    name: str, custom_tokens: Mapping[str, str]
+) -> Optional[List[str]]:
+    """The reference path from ``name`` back to itself through
+    ``custom_tokens`` (e.g. ``["a", "b", "a"]``), or None when ``name``
+    is not part of a cycle. Lets a variable be rejected at save instead
+    of on first use."""
+
+    # A variable already explored without reaching ``name`` can't reach
+    # it on a second visit either.
+    visited: Set[str] = {name}
+
+    def walk(current: str, path: List[str]) -> Optional[List[str]]:
+        for ref, _ in _token_bases(custom_tokens.get(current, "")):
+            if ref not in custom_tokens or ref in BUILTIN_TOKEN_NAMES:
+                continue
+            if ref == name:
+                return path + [ref]
+            if ref in visited:
+                continue
+            visited.add(ref)
+            found = walk(ref, path + [ref])
+            if found:
+                return found
+        return None
+
+    return walk(name, [name])
+
+
+def _token_bases(text: str) -> Iterator[Tuple[str, str]]:
+    """(lowercased name, stripped arg) of each unescaped token in ``text``."""
+    if not text or "{{" not in text:
+        return
+    for match in _SCAN_RE.finditer(text):
+        if match.group(0).startswith("\\"):
+            continue
+        base = match.group(1).split("|", 1)[0]
+        name, _, arg = base.partition(":")
+        yield name.strip().lower(), arg.strip()
+
+
+def _resolve_token(body: str, context: TokenContext, stack: Tuple[str, ...]) -> str:
     raw = "{{" + body + "}}"
     segments = body.split("|")
     base = segments[0]
@@ -199,7 +289,7 @@ def _resolve_token(body: str, context: TokenContext) -> str:
     if name == "uuid" and has_name_filter:
         value: Any = None
     else:
-        value = _base_value(name, arg, context, raw)
+        value = _base_value(name, arg, context, raw, stack)
 
     for segment in filters:
         fname, _, farg = segment.partition(":")
@@ -208,7 +298,9 @@ def _resolve_token(body: str, context: TokenContext) -> str:
     return _to_text(value, context)
 
 
-def _base_value(name: str, arg: str, context: TokenContext, raw: str) -> Any:
+def _base_value(
+    name: str, arg: str, context: TokenContext, raw: str, stack: Tuple[str, ...]
+) -> Any:
     if name == "today" or name == "current_date":
         return context.today
     if name == "tomorrow":
@@ -259,12 +351,32 @@ def _base_value(name: str, arg: str, context: TokenContext, raw: str) -> Any:
             return context.count_query(arg)
         except ValueError as exc:
             raise TokenError(f"`{raw}`: {exc}", raw) from exc
+    if name in context.custom_tokens:
+        return _expand_custom_token(name, context, raw, stack)
 
+    available = ", ".join(TOKEN_VOCABULARY)
+    if context.custom_tokens:
+        available += "; your variables: " + ", ".join(sorted(context.custom_tokens))
     raise TokenError(
         f"unknown token `{raw}` — available tokens: "
-        f"{', '.join(TOKEN_VOCABULARY)}. Escape a literal {{{{ as \\{{{{",
+        f"{available}. Escape a literal {{{{ as \\{{{{",
         raw,
     )
+
+
+def _expand_custom_token(
+    name: str, context: TokenContext, raw: str, stack: Tuple[str, ...]
+) -> str:
+    if name in stack:
+        cycle = " → ".join(stack[stack.index(name) :] + (name,))
+        raise TokenError(f"custom variable cycle: {cycle}", raw)
+    if len(stack) >= MAX_CUSTOM_TOKEN_DEPTH:
+        raise TokenError(
+            f"custom variables nested more than {MAX_CUSTOM_TOKEN_DEPTH} "
+            f"deep: {' → '.join(stack + (name,))}",
+            raw,
+        )
+    return _resolve_text(context.custom_tokens[name], context, stack + (name,))
 
 
 def _apply_filter(

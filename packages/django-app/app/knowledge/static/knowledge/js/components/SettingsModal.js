@@ -29,6 +29,17 @@ window.SettingsModal = {
       aiSettings: null,
       loadingAISettings: false,
       currentTab: this.activeTab || "general",
+      // Custom {{variables}} (issue #228) — edited in place, saved per row.
+      customVariables: [],
+      customVariablesLoaded: false,
+      loadingCustomVariables: false,
+      newVariableName: "",
+      newVariableExpansion: "",
+      editingVariableUuid: null,
+      editVariableName: "",
+      editVariableExpansion: "",
+      variableError: "",
+      variableBusy: false,
       commonTimezones: [
         "UTC",
         "America/New_York",
@@ -100,10 +111,16 @@ window.SettingsModal = {
       },
       immediate: true,
     },
+    currentTab(newTab) {
+      if (newTab === "variables") this.loadCustomVariables();
+    },
     isOpen: {
       async handler(newValue) {
         if (newValue) {
           this.currentTab = this.activeTab || "general";
+          this.editingVariableUuid = null;
+          this.variableError = "";
+          if (this.currentTab === "variables") this.loadCustomVariables();
           await this.loadAISettings();
           this.$nextTick(() => {
             const firstFocusable = this.$el?.querySelector(
@@ -476,6 +493,122 @@ window.SettingsModal = {
       }
     },
 
+    async loadCustomVariables() {
+      if (this.loadingCustomVariables || this.customVariablesLoaded) return;
+      this.loadingCustomVariables = true;
+      try {
+        const result = await window.apiService.listCustomVariables();
+        this.customVariables = result?.data?.variables || [];
+        this.customVariablesLoaded = true;
+      } catch (error) {
+        this.variableError = "failed to load variables";
+      } finally {
+        this.loadingCustomVariables = false;
+      }
+    },
+
+    variableErrorMessage(error) {
+      const errors = error?.payload?.errors || {};
+      const first = Object.values(errors).flat()[0];
+      return first || error?.message || "failed to save variable";
+    },
+
+    customVariablesChanged() {
+      // Block editors cache the list for {{ autocomplete — drop it.
+      document.dispatchEvent(
+        new CustomEvent("brainspread:custom-variables-changed")
+      );
+    },
+
+    async addCustomVariable() {
+      if (this.variableBusy) return;
+      this.variableBusy = true;
+      this.variableError = "";
+      try {
+        const result = await window.apiService.createCustomVariable(
+          this.newVariableName,
+          this.newVariableExpansion
+        );
+        this.customVariables = [...this.customVariables, result.data].sort(
+          (a, b) => a.name.localeCompare(b.name)
+        );
+        this.newVariableName = "";
+        this.newVariableExpansion = "";
+        this.customVariablesChanged();
+      } catch (error) {
+        this.variableError = this.variableErrorMessage(error);
+      } finally {
+        this.variableBusy = false;
+      }
+    },
+
+    startEditVariable(variable) {
+      this.editingVariableUuid = variable.uuid;
+      this.editVariableName = variable.name;
+      this.editVariableExpansion = variable.expansion;
+      this.variableError = "";
+    },
+
+    cancelEditVariable() {
+      this.editingVariableUuid = null;
+      this.variableError = "";
+    },
+
+    async saveEditVariable() {
+      if (this.variableBusy || !this.editingVariableUuid) return;
+      this.variableBusy = true;
+      this.variableError = "";
+      try {
+        const result = await window.apiService.updateCustomVariable(
+          this.editingVariableUuid,
+          { name: this.editVariableName, expansion: this.editVariableExpansion }
+        );
+        this.customVariables = this.customVariables
+          .map((v) => (v.uuid === result.data.uuid ? result.data : v))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        this.editingVariableUuid = null;
+        this.customVariablesChanged();
+      } catch (error) {
+        this.variableError = this.variableErrorMessage(error);
+      } finally {
+        this.variableBusy = false;
+      }
+    },
+
+    async deleteCustomVariable(variable) {
+      if (this.variableBusy) return;
+      const message = `delete {{${variable.name}}}? blocks that already used it keep their text.`;
+      const confirmed = window.appModals
+        ? await window.appModals.confirm({
+            title: "delete variable?",
+            message,
+            confirmLabel: "delete",
+            destructive: true,
+          })
+        : window.confirm(message);
+      if (!confirmed) return;
+      this.variableBusy = true;
+      this.variableError = "";
+      try {
+        await window.apiService.deleteCustomVariable(variable.uuid);
+        this.customVariables = this.customVariables.filter(
+          (v) => v.uuid !== variable.uuid
+        );
+        if (this.editingVariableUuid === variable.uuid) {
+          this.editingVariableUuid = null;
+        }
+        this.customVariablesChanged();
+      } catch (error) {
+        this.variableError = this.variableErrorMessage(error);
+      } finally {
+        this.variableBusy = false;
+      }
+    },
+
+    tokenLabel(name) {
+      return `{{${name}}}`;
+    },
+
     isModelEnabled(providerName, model) {
       if (
         !this.aiSettings ||
@@ -513,6 +646,13 @@ window.SettingsModal = {
             type="button"
           >
             ai
+          </button>
+          <button
+            :class="{ active: currentTab === 'variables' }"
+            @click="switchTab('variables')"
+            type="button"
+          >
+            variables
           </button>
         </div>
 
@@ -666,6 +806,132 @@ window.SettingsModal = {
           </div>
         </div>
 
+        <div v-if="currentTab === 'variables'" class="tab-content">
+          <div class="settings-section">
+            <h3>custom variables</h3>
+            <p class="settings-hint">
+              type <code v-text="tokenLabel('name')"></code> in a block and it
+              expands when the block is saved. an expansion can use other
+              variables and built-ins like
+              <code v-text="tokenLabel('current_time')"></code>.
+            </p>
+
+            <p v-if="variableError" class="custom-variable-error" role="alert">
+              {{ variableError }}
+            </p>
+
+            <div v-if="loadingCustomVariables" class="loading">
+              loading variables...
+            </div>
+            <p
+              v-else-if="customVariablesLoaded && !customVariables.length"
+              class="settings-hint"
+            >
+              no variables yet.
+            </p>
+            <ul v-else class="custom-variable-list">
+              <li
+                v-for="variable in customVariables"
+                :key="variable.uuid"
+                class="custom-variable-row"
+              >
+                <template v-if="editingVariableUuid === variable.uuid">
+                  <input
+                    type="text"
+                    v-model="editVariableName"
+                    class="form-control custom-variable-name-input"
+                    aria-label="variable name"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                  <textarea
+                    v-model="editVariableExpansion"
+                    class="form-control custom-variable-expansion-input"
+                    aria-label="expands to"
+                    rows="2"
+                    spellcheck="false"
+                  ></textarea>
+                  <div class="custom-variable-actions">
+                    <button
+                      type="button"
+                      class="btn btn-primary btn-compact"
+                      :disabled="variableBusy"
+                      @click="saveEditVariable"
+                    >
+                      save
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-outline btn-compact"
+                      :disabled="variableBusy"
+                      @click="cancelEditVariable"
+                    >
+                      cancel
+                    </button>
+                  </div>
+                </template>
+                <template v-else>
+                  <code
+                    class="custom-variable-name"
+                    v-text="tokenLabel(variable.name)"
+                  ></code>
+                  <span class="custom-variable-expansion">{{ variable.expansion }}</span>
+                  <div class="custom-variable-actions">
+                    <button
+                      type="button"
+                      class="btn btn-outline btn-compact"
+                      :disabled="variableBusy"
+                      @click="startEditVariable(variable)"
+                    >
+                      edit
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-danger btn-compact"
+                      :disabled="variableBusy"
+                      @click="deleteCustomVariable(variable)"
+                    >
+                      delete
+                    </button>
+                  </div>
+                </template>
+              </li>
+            </ul>
+          </div>
+
+          <div class="settings-section">
+            <h3>add variable</h3>
+            <form class="custom-variable-form" @submit.prevent="addCustomVariable">
+              <input
+                type="text"
+                v-model="newVariableName"
+                class="form-control custom-variable-name-input"
+                placeholder="name, e.g. food_log"
+                aria-label="new variable name"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <textarea
+                v-model="newVariableExpansion"
+                class="form-control custom-variable-expansion-input"
+                :placeholder="'expands to, e.g. ' + tokenLabel('current_time') + ' #food-log'"
+                aria-label="new variable expansion"
+                rows="2"
+                spellcheck="false"
+              ></textarea>
+              <div class="custom-variable-actions">
+                <button
+                  type="submit"
+                  class="btn btn-primary btn-compact"
+                  :disabled="variableBusy || !newVariableName.trim() || !newVariableExpansion.trim()"
+                >
+                  add
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
         <div class="modal-actions">
           <button
             class="btn btn-outline"
@@ -673,9 +939,10 @@ window.SettingsModal = {
             :disabled="isUpdating"
             type="button"
           >
-            cancel
+            {{ currentTab === 'variables' ? 'close' : 'cancel' }}
           </button>
           <button
+            v-if="currentTab !== 'variables'"
             class="btn btn-primary"
             @click="saveSettings"
             :disabled="isUpdating"

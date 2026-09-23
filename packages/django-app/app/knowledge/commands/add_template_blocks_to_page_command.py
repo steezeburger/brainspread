@@ -9,7 +9,7 @@ from ..forms.add_template_blocks_to_page_form import AddTemplateBlocksToPageForm
 from ..forms.sync_block_tags_form import SyncBlockTagsForm
 from ..forms.touch_page_form import TouchPageForm
 from ..models import Block, PageData
-from ..repositories import BlockRepository
+from ..repositories import BlockRepository, CustomVariableRepository
 from ..services.content_tokens import (
     TokenError,
     find_input_tokens,
@@ -52,7 +52,7 @@ class AddTemplateBlocksToPageCommand(AbstractBaseCommand):
         target_page = self.form.cleaned_data["target_page"]
         inputs = self.form.cleaned_data.get("inputs") or {}
 
-        needed = self._collect_input_labels(template)
+        needed = self._collect_input_labels(template, user)
         missing = [label for label in needed if label not in inputs]
         if missing:
             return {
@@ -95,14 +95,16 @@ class AddTemplateBlocksToPageCommand(AbstractBaseCommand):
             "message": f"Added {len(created)} blocks from {template.title}",
         }
 
-    def _collect_input_labels(self, template) -> List[str]:
+    def _collect_input_labels(self, template, user) -> List[str]:
         """Every {{input:<label>}} label in the template's blocks, in
-        block order, deduplicated."""
+        block order, deduplicated — including ones nested inside the
+        user's custom variables (issue #228)."""
         labels: List[str] = []
+        custom_tokens = CustomVariableRepository.expansions_for_user(user)
         for block in BlockRepository.get_page_blocks(template):
             if block.block_type == "code":
                 continue
-            for label in find_input_tokens(block.content or ""):
+            for label in find_input_tokens(block.content or "", custom_tokens):
                 if label not in labels:
                     labels.append(label)
         return labels

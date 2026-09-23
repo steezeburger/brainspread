@@ -11,10 +11,12 @@ from .cancel_reminder_command import CancelReminderCommand
 from .consume_reminder_action_command import ConsumeReminderActionCommand
 from .create_block_command import CreateBlockCommand
 from .create_blocks_bulk_command import CreateBlocksBulkCommand
+from .create_custom_variable_command import CreateCustomVariableCommand
 from .create_page_command import CreatePageCommand
 from .create_page_embedded_view_command import CreatePageEmbeddedViewCommand
 from .create_saved_view_command import CreateSavedViewCommand
 from .delete_block_command import DeleteBlockCommand
+from .delete_custom_variable_command import DeleteCustomVariableCommand
 from .delete_page_command import DeletePageCommand
 from .delete_page_embedded_view_command import DeletePageEmbeddedViewCommand
 from .delete_saved_view_command import DeleteSavedViewCommand
@@ -39,6 +41,7 @@ from .get_tag_content_command import GetTagContentCommand
 from .get_tag_graph_command import GetTagGraphCommand
 from .get_user_pages_command import GetUserPagesCommand
 from .list_automations_command import ListAutomationsCommand
+from .list_custom_variables_command import ListCustomVariablesCommand
 from .list_overdue_blocks_command import ListOverdueBlocksCommand
 from .list_pending_reminders_command import ListPendingRemindersCommand
 from .list_saved_views_command import ListSavedViewsCommand
@@ -72,6 +75,7 @@ from .tag_blocks_command import TagBlocksCommand, UntagBlocksCommand
 from .toggle_block_todo_command import ToggleBlockTodoCommand
 from .touch_page_command import TouchPageCommand
 from .update_block_command import BlockUpdateConflictError, UpdateBlockCommand
+from .update_custom_variable_command import UpdateCustomVariableCommand
 from .update_page_command import UpdatePageCommand
 from .update_page_embedded_view_command import UpdatePageEmbeddedViewCommand
 from .update_saved_view_command import UpdateSavedViewCommand
