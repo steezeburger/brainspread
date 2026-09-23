@@ -4,6 +4,7 @@ from django.test import SimpleTestCase
 
 from knowledge.models import Block
 from knowledge.services.automation_spec import (
+    MAX_FOR_ITEMS,
     SCHEDULE_CRON,
     SCHEDULE_DAILY,
     SCHEDULE_EVERY,
@@ -248,3 +249,223 @@ class TestParseAutomationBlock(SimpleTestCase):
                 _block({"trigger": "manual", "action": 'notify "oops'})
             )
         self.assertIn("unbalanced", "; ".join(ctx.exception.errors))
+
+
+class TestForDirective(SimpleTestCase):
+    """`for::` iteration (issue #209): a literal list of items binding
+    {{item}}, for standalone actions with no query::."""
+
+    def test_comma_list_parses_ascending_integers(self):
+        spec = parse_automation_block(
+            _block(
+                {
+                    "trigger": "manual",
+                    "for": "5,10,15,20,25,30",
+                    "action": 'create_block "nudge {{item}}m" on today',
+                }
+            )
+        )
+        self.assertEqual(spec.for_spec.items, ("5", "10", "15", "20", "25", "30"))
+
+    def test_range_form_expands_with_step(self):
+        spec = parse_automation_block(
+            _block(
+                {
+                    "trigger": "manual",
+                    "for": "5..30 by 5",
+                    "action": 'create_block "nudge {{item}}m" on today',
+                }
+            )
+        )
+        self.assertEqual(spec.for_spec.items, ("5", "10", "15", "20", "25", "30"))
+
+    def test_range_form_tolerates_loose_spacing(self):
+        spec = parse_automation_block(
+            _block(
+                {
+                    "trigger": "manual",
+                    "for": "5 .. 15 by 5",
+                    "action": 'create_block "x {{item}}" on today',
+                }
+            )
+        )
+        self.assertEqual(spec.for_spec.items, ("5", "10", "15"))
+
+    def test_no_for_prop_leaves_for_spec_none(self):
+        spec = parse_automation_block(
+            _block({"trigger": "manual", "action": "set_type done"})
+        )
+        self.assertIsNone(spec.for_spec)
+
+    def test_empty_for_is_a_spec_error(self):
+        with self.assertRaises(AutomationSpecError) as ctx:
+            parse_automation_block(
+                _block(
+                    {
+                        "trigger": "manual",
+                        "for": "",
+                        "action": 'create_block "x" on today',
+                    }
+                )
+            )
+        self.assertIn("for::", "; ".join(ctx.exception.errors))
+
+    def test_non_integer_items_are_rejected(self):
+        with self.assertRaises(AutomationSpecError) as ctx:
+            parse_automation_block(
+                _block(
+                    {
+                        "trigger": "manual",
+                        "for": "a,b,c",
+                        "action": 'create_block "x {{item}}" on today',
+                    }
+                )
+            )
+        self.assertIn("integers", "; ".join(ctx.exception.errors))
+
+    def test_non_ascending_comma_list_is_rejected(self):
+        with self.assertRaises(AutomationSpecError) as ctx:
+            parse_automation_block(
+                _block(
+                    {
+                        "trigger": "manual",
+                        "for": "10,5,20",
+                        "action": 'create_block "x {{item}}" on today',
+                    }
+                )
+            )
+        self.assertIn("ascending", "; ".join(ctx.exception.errors))
+
+    def test_duplicate_items_are_rejected(self):
+        with self.assertRaises(AutomationSpecError) as ctx:
+            parse_automation_block(
+                _block(
+                    {
+                        "trigger": "manual",
+                        "for": "5,5,10",
+                        "action": 'create_block "x {{item}}" on today',
+                    }
+                )
+            )
+        self.assertIn("ascending", "; ".join(ctx.exception.errors))
+
+    def test_range_with_descending_bounds_is_rejected(self):
+        with self.assertRaises(AutomationSpecError) as ctx:
+            parse_automation_block(
+                _block(
+                    {
+                        "trigger": "manual",
+                        "for": "30..5 by 5",
+                        "action": 'create_block "x {{item}}" on today',
+                    }
+                )
+            )
+        self.assertIn("ascending", "; ".join(ctx.exception.errors))
+
+    def test_range_step_must_be_at_least_one(self):
+        with self.assertRaises(AutomationSpecError) as ctx:
+            parse_automation_block(
+                _block(
+                    {
+                        "trigger": "manual",
+                        "for": "5..10 by 0",
+                        "action": 'create_block "x {{item}}" on today',
+                    }
+                )
+            )
+        self.assertIn("by", "; ".join(ctx.exception.errors))
+
+    def test_over_cap_is_rejected(self):
+        too_many = ",".join(str(n) for n in range(1, MAX_FOR_ITEMS + 3))
+        with self.assertRaises(AutomationSpecError) as ctx:
+            parse_automation_block(
+                _block(
+                    {
+                        "trigger": "manual",
+                        "for": too_many,
+                        "action": 'create_block "x {{item}}" on today',
+                    }
+                )
+            )
+        self.assertIn("cap", "; ".join(ctx.exception.errors))
+
+    def test_at_cap_is_accepted(self):
+        exactly_cap = ",".join(str(n) for n in range(1, MAX_FOR_ITEMS + 1))
+        spec = parse_automation_block(
+            _block(
+                {
+                    "trigger": "manual",
+                    "for": exactly_cap,
+                    "action": 'create_block "x {{item}}" on today',
+                }
+            )
+        )
+        self.assertEqual(len(spec.for_spec.items), MAX_FOR_ITEMS)
+
+    def test_for_and_query_together_are_rejected(self):
+        with self.assertRaises(AutomationSpecError) as ctx:
+            parse_automation_block(
+                _block(
+                    {
+                        "trigger": "manual",
+                        "for": "5,10",
+                        "query": "type:todo",
+                        "action": 'create_block "x {{item}}" on today',
+                    }
+                )
+            )
+        self.assertIn("mutually exclusive", "; ".join(ctx.exception.errors))
+
+
+class TestTokenSpecContracts(SimpleTestCase):
+    """The two token/spec validations automation_spec enforces without
+    needing the verb registry (issue #209 stories 10/11) — everything
+    else about tokens is a run-time ActionError."""
+
+    def test_block_tokens_without_query_are_rejected(self):
+        with self.assertRaises(AutomationSpecError) as ctx:
+            parse_automation_block(
+                _block(
+                    {
+                        "trigger": "manual",
+                        "action": "move_to_page {{block.tag}}",
+                    }
+                )
+            )
+        self.assertIn("query::", "; ".join(ctx.exception.errors))
+
+    def test_block_tokens_with_query_are_accepted(self):
+        spec = parse_automation_block(
+            _block(
+                {
+                    "trigger": "manual",
+                    "query": "type:todo",
+                    "action": "move_to_page {{block.tag}}",
+                }
+            )
+        )
+        self.assertEqual(spec.action.args, ("{{block.tag}}",))
+
+    def test_item_without_for_is_rejected(self):
+        with self.assertRaises(AutomationSpecError) as ctx:
+            parse_automation_block(
+                _block(
+                    {
+                        "trigger": "manual",
+                        "action": 'create_block "x {{item}}" on today',
+                    }
+                )
+            )
+        self.assertIn("for::", "; ".join(ctx.exception.errors))
+
+    def test_item_with_for_is_accepted(self):
+        spec = parse_automation_block(
+            _block(
+                {
+                    "trigger": "manual",
+                    "for": "5,10",
+                    "action": 'create_block "x {{item}}" on today',
+                }
+            )
+        )
+        self.assertIsNotNone(spec.for_spec)

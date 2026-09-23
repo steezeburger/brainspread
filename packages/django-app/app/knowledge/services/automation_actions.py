@@ -22,13 +22,26 @@ only the ``action::`` line. Verbs also declare ``requires_query`` so the
 run command can reject a query-less spec for set actions while leaving
 room for standalone actions (``apply_template``, bare ``notify``) that
 run without a result set.
+
+Parameterized actions (issue #209): action args may carry ``{{token}}``
+placeholders, resolved through the shared ``content_tokens`` module.
+``resolve_action`` and each ``ActionDef`` are unchanged; ``run_action`` is
+the map/for:: dispatcher — it decides, from the args' token content and
+the automation's ``for::`` spec, whether to call a verb's handler once
+(today's behavior, after resolving ambient tokens like ``{{today}}`` /
+``{{count}}``), once per resolved arg-group (``block_token_mode="group"``
+— the existing bulk-Command verbs, grouped so hierarchy is preserved
+exactly like an un-mapped bulk move), once per matched block
+(``block_token_mode="per_match"`` — ``create_block``), or once per
+``for::`` item. Handlers themselves never see a token — by the time one
+runs, its ``args`` are already fully resolved strings.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from django.conf import settings
 
@@ -59,15 +72,37 @@ from ..forms.schedule_block_form import ScheduleBlockForm
 from ..forms.tag_blocks_form import UntagBlocksForm
 from ..forms.update_block_form import UpdateBlockForm
 from ..models import Block
+from ..repositories.block_repository import BlockRepository
 from ..repositories.page_repository import PageRepository
+from . import content_tokens
 from .automation_spec import ActionSpec
 from .block_links import block_page_url
+from .content_tokens import TokenContext
 from .discord_webhook import post_webhook
 
 
 class ActionError(ValueError):
     """An action couldn't run — bad args, failed validation, or a missing
     capability. Recorded on the AutomationRun as the failure reason."""
+
+
+# The subset of the shared #140 token vocabulary meaningful for
+# automation action args (issue #209). Deliberately not the full
+# vocabulary: {{page.title}}, {{uuid}}, {{input:...}}, etc. have no
+# well-defined meaning across a matched-block set, so referencing one
+# here fails loudly and names only what's actually usable in this
+# consumer, rather than the full block-save/template-apply vocabulary.
+AUTOMATION_TOKEN_VOCABULARY: Tuple[str, ...] = (
+    "today",
+    "now",
+    "count",
+    "block.tag",
+    "block.content",
+    "block.uuid",
+    "block.page",
+    "block.due",
+    "item",
+)
 
 
 @dataclass(frozen=True)
@@ -85,6 +120,13 @@ class ActionContext:
 class ActionResult:
     affected: int = 0
     details: List[dict] = field(default_factory=list)
+    # Populated only for a mapped/for:: run (issue #209): one entry per
+    # resolved group / matched block / for:: item that actually executed.
+    groups: List[dict] = field(default_factory=list)
+    # Matched blocks a map couldn't act on — {{block.tag}} (after any
+    # `except:` filtering) resolved to zero or multiple candidates —
+    # recorded with a reason instead of aborting the whole run.
+    skipped: List[dict] = field(default_factory=list)
 
 
 ActionHandler = Callable[["ActionContext", List[Block], Tuple[str, ...]], ActionResult]
@@ -97,6 +139,15 @@ class ActionDef:
     # Set actions consume the automation's query result; standalone
     # actions (future: apply_template, bare notify) run without one.
     requires_query: bool = True
+    # How this verb handles {{block.*}} tokens in its args (issue #209):
+    # "group" — the existing bulk Command runs once per resolved
+    # arg-tuple, matched blocks grouped so hierarchy is preserved
+    # (move_to_daily / move_to_page / set_type / tag / untag / set_due /
+    # set_property); "per_match" — the handler runs once per matched
+    # block, independent of every other match (create_block); "none" —
+    # this verb doesn't support per-block tokens at all (notify,
+    # apply_template — a {{block.*}} in their args is a run-time error).
+    block_token_mode: str = "group"
 
 
 def resolve_action(verb: str) -> ActionDef:
@@ -111,14 +162,39 @@ def resolve_action(verb: str) -> ActionDef:
     return action_def
 
 
+def action_requires_query(action_def: ActionDef, args: Tuple[str, ...]) -> bool:
+    """Whether ``args`` (as written, before resolution) need a query::.
+
+    Static for every verb except ``create_block``, whose requirement is
+    decided by token presence rather than a fixed flag (issue #209 story
+    9/10): plain ``create_block`` runs standalone, but
+    ``create_block "..." on today tagged {{block.tag}}`` needs a matched
+    block per creation."""
+    if action_def.requires_query:
+        return True
+    if action_def.block_token_mode == "per_match":
+        return _has_block_tokens(args)
+    return False
+
+
 def run_action(
-    action: ActionSpec, ctx: ActionContext, blocks: List[Block]
+    action: ActionSpec,
+    ctx: ActionContext,
+    blocks: List[Block],
+    *,
+    token_context: TokenContext,
+    for_items: Optional[Tuple[str, ...]] = None,
 ) -> ActionResult:
-    """Run ``action`` over the matched ``blocks``.
+    """Run ``action``, resolving any ``{{token}}`` in its args first.
 
     Raises ``ActionError`` (before touching any block) when the verb is
-    unknown or its capability isn't granted, so a misconfigured automation
-    fails cleanly instead of half-applying."""
+    unknown, its capability isn't granted, its args reference a token
+    outside ``AUTOMATION_TOKEN_VOCABULARY``, or it doesn't support the
+    tokens it was given — so a misconfigured automation fails cleanly
+    instead of half-applying or writing a literal ``{{...}}`` into the
+    graph. Dispatches to plain / grouped-map / per-match / for::
+    execution depending on the args' tokens and ``for_items``; see the
+    module docstring."""
     action_def = resolve_action(action.verb)
     if action_def.capability not in ctx.allow:
         raise ActionError(
@@ -126,10 +202,240 @@ def run_action(
             f"`allow::` list (add `{action_def.capability}`)"
         )
 
+    _validate_automation_tokens(action.args)
+
+    if for_items is not None:
+        return _run_for_each_item(
+            action_def, ctx, action.args, for_items, token_context
+        )
+
+    if _has_block_tokens(action.args):
+        if action_def.block_token_mode == "none":
+            raise ActionError(
+                f"`{action.verb}` doesn't support `{{{{block.*}}}}` tokens"
+            )
+        if not blocks:
+            return ActionResult()
+        if action_def.block_token_mode == "per_match":
+            return _run_per_match(action_def, ctx, blocks, action.args, token_context)
+        return _run_grouped(action_def, ctx, blocks, action.args, token_context)
+
     if action_def.requires_query and not blocks:
         return ActionResult()
 
-    return action_def.handler(ctx, blocks, action.args)
+    resolved_args = _resolve_ambient_args(action.args, token_context)
+    return action_def.handler(ctx, blocks, resolved_args)
+
+
+def _validate_automation_tokens(args: Tuple[str, ...]) -> None:
+    for arg in args:
+        for name in content_tokens.token_names(arg):
+            if name not in AUTOMATION_TOKEN_VOCABULARY:
+                raise ActionError(
+                    f"unknown token `{{{{{name}}}}}` in action args — "
+                    f"available tokens: {', '.join(AUTOMATION_TOKEN_VOCABULARY)}"
+                )
+
+
+def _has_block_tokens(args: Tuple[str, ...]) -> bool:
+    return any(
+        name.startswith("block.")
+        for arg in args
+        for name in content_tokens.token_names(arg)
+    )
+
+
+def _resolve_ambient_args(
+    args: Tuple[str, ...], token_context: TokenContext
+) -> Tuple[str, ...]:
+    try:
+        return tuple(
+            content_tokens.resolve_content_tokens(arg, token_context) for arg in args
+        )
+    except content_tokens.TokenError as exc:
+        raise ActionError(str(exc)) from exc
+
+
+def _block_token_context(block: Block) -> content_tokens.BlockTokenContext:
+    text = block.first_content_line()
+    prefix = STATE_PREFIXES.get(block.block_type)
+    if (
+        prefix
+        and text[: len(prefix)].upper() == prefix
+        and (len(text) == len(prefix) or text[len(prefix)] in " \t")
+    ):
+        text = text[len(prefix) :].lstrip()
+    return content_tokens.BlockTokenContext(
+        tag_candidates=tuple(block.get_tag_names()),
+        content=text,
+        uuid=str(block.uuid),
+        page=block.page.title,
+        due=block._due_local_date() or "",
+    )
+
+
+def _resolve_block_args(
+    args: Tuple[str, ...], block: Block, token_context: TokenContext
+) -> Tuple[str, ...]:
+    """Resolve ``args`` against one matched block's token scope.
+
+    Raises ``content_tokens.BlockTokenAmbiguousError`` as-is (callers
+    catch it to skip just this block) and wraps every other
+    ``TokenError`` in ``ActionError`` (aborts the whole run)."""
+    token_context.block = _block_token_context(block)
+    try:
+        return tuple(
+            content_tokens.resolve_content_tokens(arg, token_context) for arg in args
+        )
+    except content_tokens.BlockTokenAmbiguousError:
+        raise
+    except content_tokens.TokenError as exc:
+        raise ActionError(str(exc)) from exc
+
+
+def _partition_matched_blocks(
+    blocks: List[Block],
+) -> Tuple[List[Block], Dict[int, List[Block]]]:
+    """Split matched blocks into "top" blocks (no matched ancestor) and,
+    per top block's pk, every matched block riding along in its subtree
+    (itself plus matched descendants) — the same descendant-rides-with-
+    ancestor rule ``BulkMoveBlocksCommand``/``BulkMoveBlocksToPageCommand``
+    already apply, reused here so a mapped action groups by the
+    ancestor's resolved args and never independently re-groups a child
+    away from a matched parent (issue #209 story 15)."""
+    by_pk = {b.pk: b for b in blocks}
+    descendant_pks: Set[int] = set()
+    for block in blocks:
+        descendant_pks.update(
+            d.pk for d in BlockRepository.get_block_descendants(block)
+        )
+    top_blocks = [b for b in blocks if b.pk not in descendant_pks]
+    top_blocks.sort(key=lambda b: (b.page_id, b.order, str(b.uuid)))
+
+    subtree_by_top: Dict[int, List[Block]] = {}
+    for top in top_blocks:
+        subtree_pks = {d.pk for d in BlockRepository.get_block_descendants(top)}
+        subtree_by_top[top.pk] = [top] + [
+            b for pk, b in by_pk.items() if pk in subtree_pks
+        ]
+    return top_blocks, subtree_by_top
+
+
+def _run_grouped(
+    action_def: ActionDef,
+    ctx: ActionContext,
+    blocks: List[Block],
+    args: Tuple[str, ...],
+    token_context: TokenContext,
+) -> ActionResult:
+    top_blocks, subtree_by_top = _partition_matched_blocks(blocks)
+
+    resolved_groups: Dict[Tuple[str, ...], List[Block]] = {}
+    group_order: List[Tuple[str, ...]] = []
+    skipped: List[dict] = []
+    for top in top_blocks:
+        try:
+            resolved = _resolve_block_args(args, top, token_context)
+        except content_tokens.BlockTokenAmbiguousError as exc:
+            skipped.append({"block_uuid": str(top.uuid), "reason": str(exc)})
+            continue
+        if resolved not in resolved_groups:
+            resolved_groups[resolved] = []
+            group_order.append(resolved)
+        resolved_groups[resolved].extend(subtree_by_top[top.pk])
+    token_context.block = None
+
+    affected = 0
+    details: List[dict] = []
+    groups: List[dict] = []
+    for resolved in group_order:
+        group_blocks = resolved_groups[resolved]
+        entry = {"args": list(resolved), "count": len(group_blocks)}
+        try:
+            result = action_def.handler(ctx, group_blocks, resolved)
+        except ActionError as exc:
+            # One group's failure (e.g. a resolved target page that's a
+            # template) doesn't abort the run — it's recorded here while
+            # every other group still gets a chance to complete (story 14).
+            entry.update(affected=0, error=str(exc))
+        else:
+            affected += result.affected
+            details.extend(result.details)
+            entry["affected"] = result.affected
+        groups.append(entry)
+
+    return ActionResult(
+        affected=affected, details=details, groups=groups, skipped=skipped
+    )
+
+
+def _run_per_match(
+    action_def: ActionDef,
+    ctx: ActionContext,
+    blocks: List[Block],
+    args: Tuple[str, ...],
+    token_context: TokenContext,
+) -> ActionResult:
+    affected = 0
+    details: List[dict] = []
+    groups: List[dict] = []
+    skipped: List[dict] = []
+    for block in blocks:
+        try:
+            resolved = _resolve_block_args(args, block, token_context)
+        except content_tokens.BlockTokenAmbiguousError as exc:
+            skipped.append({"block_uuid": str(block.uuid), "reason": str(exc)})
+            continue
+        entry = {"args": list(resolved), "count": 1}
+        try:
+            result = action_def.handler(ctx, [], resolved)
+        except ActionError as exc:
+            entry.update(affected=0, error=str(exc))
+        else:
+            affected += result.affected
+            details.extend(result.details)
+            entry["affected"] = result.affected
+        groups.append(entry)
+    token_context.block = None
+
+    return ActionResult(
+        affected=affected, details=details, groups=groups, skipped=skipped
+    )
+
+
+def _run_for_each_item(
+    action_def: ActionDef,
+    ctx: ActionContext,
+    args: Tuple[str, ...],
+    items: Tuple[str, ...],
+    token_context: TokenContext,
+) -> ActionResult:
+    affected = 0
+    details: List[dict] = []
+    groups: List[dict] = []
+    for item in items:
+        token_context.item = item
+        try:
+            resolved = tuple(
+                content_tokens.resolve_content_tokens(arg, token_context)
+                for arg in args
+            )
+        except content_tokens.TokenError as exc:
+            token_context.item = None
+            raise ActionError(str(exc)) from exc
+        entry = {"args": list(resolved), "count": 1}
+        try:
+            result = action_def.handler(ctx, [], resolved)
+        except ActionError as exc:
+            entry.update(affected=0, error=str(exc))
+        else:
+            affected += result.affected
+            details.extend(result.details)
+            entry["affected"] = result.affected
+        groups.append(entry)
+    token_context.item = None
+
+    return ActionResult(affected=affected, details=details, groups=groups)
 
 
 def _move_to_daily(
@@ -878,10 +1184,21 @@ COMMAND_ACTIONS: Dict[str, ActionDef] = {
     "set_due": ActionDef(handler=_set_due, capability="set_due"),
     "set_property": ActionDef(handler=_set_property, capability="set_property"),
     "create_block": ActionDef(
-        handler=_create_block, capability="create_block", requires_query=False
+        handler=_create_block,
+        capability="create_block",
+        requires_query=False,
+        block_token_mode="per_match",
     ),
-    "notify": ActionDef(handler=_notify, capability="notify", requires_query=False),
+    "notify": ActionDef(
+        handler=_notify,
+        capability="notify",
+        requires_query=False,
+        block_token_mode="none",
+    ),
     "apply_template": ActionDef(
-        handler=_apply_template, capability="apply_template", requires_query=False
+        handler=_apply_template,
+        capability="apply_template",
+        requires_query=False,
+        block_token_mode="none",
     ),
 }
