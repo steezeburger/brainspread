@@ -48,6 +48,23 @@ contain built-ins (``{{current_time}} #food-log``) and other custom
 variables. That nested pass is the only re-scan: a *built-in's* value is
 still never re-scanned. Self and mutual references raise ``TokenError``
 naming the cycle, and nesting is capped at ``MAX_CUSTOM_TOKEN_DEPTH``.
+
+Automation action args (issue #209) reuse this same module rather than a
+second parser: ``{{count}}`` (bare — the automation's matched-block
+count, distinct from the existing ``{{count:<query>}}`` arg form) and a
+per-block family — ``{{block.tag}}``, ``{{block.content}}``,
+``{{block.uuid}}``, ``{{block.page}}``, ``{{block.due}}`` — resolved
+against ``TokenContext.block`` (a ``BlockTokenContext``), one matched
+block at a time. ``{{item}}`` resolves against ``TokenContext.item`` for
+``for::`` iteration. ``{{block.tag}}`` collapses to a single tag only
+when the block carries exactly one candidate after any ``|except:...``
+filtering; zero or multiple candidates raise ``BlockTokenAmbiguousError``
+(a ``TokenError`` subclass) so a caller mapping an action over many
+blocks can catch it and skip just that block instead of failing the
+whole run. The automation consumer additionally restricts which of this
+module's tokens it accepts (see ``automation_actions.AUTOMATION_TOKEN_VOCABULARY``)
+since most of the #140 vocabulary (``page.*``, ``uuid``, ``input``, …)
+has no well-defined meaning across a matched-block set.
 """
 
 from __future__ import annotations
@@ -85,7 +102,14 @@ TOKEN_VOCABULARY: tuple = (
     "uuid",
     "cursor",
     "input:<label>",
+    "count",
     "count:<query>",
+    "block.tag",
+    "block.content",
+    "block.uuid",
+    "block.page",
+    "block.due",
+    "item",
 )
 
 FILTER_VOCABULARY: tuple = (
@@ -93,12 +117,22 @@ FILTER_VOCABULARY: tuple = (
     "time",
     "format:<strftime>",
     "name:<label>",
+    "except:<slug>,...",
 )
 
-# Base tokens that take a `:arg`. Their arg is everything after the
-# first colon (count queries legitimately contain colons and spaces,
+# Base tokens that always take a `:arg`. Their arg is everything after
+# the first colon (count queries legitimately contain colons and spaces,
 # e.g. {{count:type:todo and completed is null}}).
-_ARG_TOKENS = frozenset({"input", "count"})
+_ARG_TOKENS = frozenset({"input"})
+
+# Base tokens whose `:arg` is optional — bare {{count}} reads
+# TokenContext.match_count (issue #209's ambient match count);
+# {{count:<query>}} keeps running the injected count_query callable.
+_OPTIONAL_ARG_TOKENS = frozenset({"count"})
+
+_BLOCK_TOKEN_NAMES = frozenset(
+    {"block.tag", "block.content", "block.uuid", "block.page", "block.due"}
+)
 
 # Bare names a custom variable may not take ("input:<label>" → "input").
 BUILTIN_TOKEN_NAMES = frozenset(entry.split(":", 1)[0] for entry in TOKEN_VOCABULARY)
@@ -121,6 +155,15 @@ class TokenError(ValueError):
         self.token = token
 
 
+class BlockTokenAmbiguousError(TokenError):
+    """``{{block.tag}}`` (after any ``|except:...`` filtering) didn't
+    resolve to exactly one candidate tag. Distinct from a plain
+    ``TokenError`` so a mapped-action caller (issue #209) can catch this
+    specific case and skip just the offending block, while every other
+    ``TokenError`` (an unknown token, a bad filter) still aborts the
+    whole run."""
+
+
 @dataclass
 class PageTokenContext:
     title: str
@@ -135,6 +178,23 @@ class UserTokenContext:
     email: str
     timezone: str
     time_format: str = "24h"
+
+
+@dataclass
+class BlockTokenContext:
+    """Plain-value snapshot of one matched block, for the ``block.*``
+    token family (issue #209). Built by the Django-aware caller —
+    this module stays free of model imports. ``tag_candidates`` is the
+    block's own tag slugs, unfiltered; the ``except:`` filter narrows
+    them at resolve time. ``content`` is the first content line with
+    any state-keyword prefix (``TODO ``/``DONE ``/…) already stripped.
+    ``due`` is an ISO date, or ``""`` when the block has none."""
+
+    tag_candidates: Tuple[str, ...]
+    content: str
+    uuid: str
+    page: str
+    due: str
 
 
 @dataclass
@@ -158,6 +218,19 @@ class TokenContext:
     named_uuids: Dict[str, str] = field(default_factory=dict)
     # The user's custom variables: lowercase name → raw expansion text.
     custom_tokens: Mapping[str, str] = field(default_factory=dict)
+    # Ambient match count for bare {{count}} (issue #209) — the
+    # automation's matched-block total, resolved once per run. None
+    # where there's no such count (e.g. block save, template apply).
+    match_count: Optional[int] = None
+    # The current `for::` iteration value, or None outside a for::
+    # iteration — {{item}} reads this.
+    item: Optional[str] = None
+    # The block currently being resolved for, or None when no per-block
+    # scope is active — the block.* tokens read this. A caller mapping
+    # an action over many matched blocks mutates this between blocks;
+    # everything else on the context (now/today/named_uuids/...) stays
+    # shared across the whole run.
+    block: Optional[BlockTokenContext] = None
 
 
 # Escape first so `\{{` never parses as a token; token bodies stay on
@@ -251,6 +324,15 @@ def find_custom_token_cycle(
     return walk(name, [name])
 
 
+def token_names(text: str) -> List[str]:
+    """Base token names (lowercased, filters stripped) referenced in
+    ``text``, in order of appearance, escaped spans skipped — e.g.
+    ``["block.tag", "today"]``. Lets a caller detect which tokens are
+    referenced without resolving them (the automation map/``for::``
+    contract checks in issue #209)."""
+    return [name for name, _ in _token_bases(text)]
+
+
 def _token_bases(text: str) -> Iterator[Tuple[str, str]]:
     """(lowercased name, stripped arg) of each unescaped token in ``text``."""
     if not text or "{{" not in text:
@@ -278,7 +360,7 @@ def _resolve_token(body: str, context: TokenContext, stack: Tuple[str, ...]) -> 
             raise TokenError(
                 f"`{raw}` needs an argument, e.g. `{{{{{name}:...}}}}`", raw
             )
-    elif colon:
+    elif name not in _OPTIONAL_ARG_TOKENS and colon:
         raise TokenError(f"token `{name}` takes no argument (in `{raw}`)", raw)
 
     # A named uuid never draws a fresh id — the `name` filter supplies
@@ -294,6 +376,20 @@ def _resolve_token(body: str, context: TokenContext, stack: Tuple[str, ...]) -> 
     for segment in filters:
         fname, _, farg = segment.partition(":")
         value = _apply_filter(fname.strip().lower(), farg, value, name, context, raw)
+
+    if name == "block.tag":
+        # `except:` (if any) has already narrowed the candidate list —
+        # this is the "fully explicit, nothing implicit" rule from the
+        # issue: exactly one candidate, or the block is skipped upstream.
+        candidates = value if isinstance(value, list) else [value]
+        if len(candidates) != 1:
+            found = ", ".join(candidates) if candidates else "(none)"
+            raise BlockTokenAmbiguousError(
+                f"`{raw}` needs exactly one tag after filtering — "
+                f"found {len(candidates)}: {found}",
+                raw,
+            )
+        value = candidates[0]
 
     return _to_text(value, context)
 
@@ -345,12 +441,39 @@ def _base_value(
             raise TokenError(f"no value provided for `{raw}`", raw)
         return context.inputs[arg]
     if name == "count":
+        if not arg:
+            if context.match_count is None:
+                raise TokenError(
+                    f"`{raw}` needs an argument, e.g. `{{{{count:...}}}}` — "
+                    "or use bare `{{count}}` where a match count is available",
+                    raw,
+                )
+            return context.match_count
         if context.count_query is None:
             raise TokenError(f"`{raw}` is not available here", raw)
         try:
             return context.count_query(arg)
         except ValueError as exc:
             raise TokenError(f"`{raw}`: {exc}", raw) from exc
+    if name == "item":
+        if context.item is None:
+            raise TokenError(f"`{raw}` only resolves inside `for::` iteration", raw)
+        return context.item
+    if name in _BLOCK_TOKEN_NAMES:
+        if context.block is None:
+            raise TokenError(
+                f"`{raw}` only resolves for a matched block — it needs a " "`query::`",
+                raw,
+            )
+        if name == "block.tag":
+            return list(context.block.tag_candidates)
+        if name == "block.content":
+            return context.block.content
+        if name == "block.uuid":
+            return context.block.uuid
+        if name == "block.page":
+            return context.block.page
+        return context.block.due
     if name in context.custom_tokens:
         return _expand_custom_token(name, context, raw, stack)
 
@@ -396,6 +519,17 @@ def _apply_filter(
         if label not in context.named_uuids:
             context.named_uuids[label] = context.uuid_factory()
         return context.named_uuids[label]
+    if fname == "except":
+        if base_name != "block.tag":
+            raise TokenError(
+                f"filter `except` only applies to `block.tag` (in `{raw}`)", raw
+            )
+        excluded = {slug.strip() for slug in farg.split(",") if slug.strip()}
+        if not excluded:
+            raise TokenError(
+                f"filter `except` needs at least one tag slug (in `{raw}`)", raw
+            )
+        return [candidate for candidate in value if candidate not in excluded]
     if fname == "date":
         if isinstance(value, datetime):
             return value.date()

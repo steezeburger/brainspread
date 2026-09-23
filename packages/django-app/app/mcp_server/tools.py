@@ -120,29 +120,18 @@ def _date_arg(user: User, value: Any, *, field: str) -> str | None:
 
 
 def _resolve_tag_pages(user: User, tags: list[str]) -> list[str]:
-    """Resolve a list of tag slugs into page UUIDs.
-
-    Strict-by-default: every tag must already exist as a page (matched
-    by slug). Auto-creating tag pages on tag operations is a typo
-    magnet, so we surface "tag 'wrok' not found" instead.
-    """
+    """Resolve a list of tag slugs into page UUIDs, auto-creating any
+    that don't already exist — the same auto-vivify behavior typing a
+    #hashtag into content already gets (SyncBlockTagsCommand)."""
     if not isinstance(tags, list) or not tags:
         raise ToolError("tags must be a non-empty list of slugs")
     page_uuids: list[str] = []
-    missing: list[str] = []
     for raw in tags:
         slug = str(raw or "").strip().lstrip("#")
         if not slug:
             raise ToolError("tags must not contain empty values")
-        page = PageRepository.get_by_slug(slug, user=user)
-        if page is None:
-            missing.append(slug)
-        else:
-            page_uuids.append(str(page.uuid))
-    if missing:
-        raise ToolError(
-            f"tag(s) not found: {', '.join(missing)} — create the page(s) first"
-        )
+        page = PageRepository.get_or_create_by_slug(user, slug)
+        page_uuids.append(str(page.uuid))
     return page_uuids
 
 

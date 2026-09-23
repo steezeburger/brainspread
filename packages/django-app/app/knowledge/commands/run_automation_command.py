@@ -15,6 +15,7 @@ from ..services.automation_spec import (
     AutomationSpecError,
     parse_automation_block,
 )
+from ..services.token_context import build_automation_token_context
 from ..services.view_execution import resolve_and_run_view, run_filter
 
 logger = logging.getLogger(__name__)
@@ -93,12 +94,17 @@ class RunAutomationCommand(AbstractBaseCommand):
         except automation_actions.ActionError as exc:
             return self._finish(run, AutomationRun.STATUS_FAILED, error=str(exc))
 
-        if action_def.requires_query and spec.query is None:
+        if (
+            automation_actions.action_requires_query(action_def, spec.action.args)
+            and spec.query is None
+        ):
             return self._finish(
                 run,
                 AutomationRun.STATUS_FAILED,
                 error=(
-                    f"action `{spec.action.verb}` requires a " "`query:: view:<slug>`"
+                    f"action `{spec.action.verb}` requires a `query::` (either "
+                    "its verb always needs a matched-block set, or its args "
+                    "use `{{block.*}}` tokens)"
                 ),
             )
 
@@ -139,10 +145,23 @@ class RunAutomationCommand(AbstractBaseCommand):
         ctx = automation_actions.ActionContext(
             user=user, allow=effective_allow, has_query=spec.query is not None
         )
+        # {{count}} is the matched-block total for a query-based run;
+        # there's no comparable single number for a for:: run, so it
+        # stays unavailable there (bare {{count}} fails loudly).
+        token_context = build_automation_token_context(
+            user, match_count=len(blocks) if spec.query is not None else None
+        )
+        for_items = spec.for_spec.items if spec.for_spec is not None else None
 
         try:
             with transaction.atomic():
-                action_result = automation_actions.run_action(spec.action, ctx, blocks)
+                action_result = automation_actions.run_action(
+                    spec.action,
+                    ctx,
+                    blocks,
+                    token_context=token_context,
+                    for_items=for_items,
+                )
         except automation_actions.ActionError as exc:
             return self._finish(run, AutomationRun.STATUS_FAILED, error=str(exc))
 
@@ -154,6 +173,8 @@ class RunAutomationCommand(AbstractBaseCommand):
                 "affected": action_result.affected,
                 "action": spec.action.verb,
                 "truncated": truncated,
+                "groups": action_result.groups,
+                "skipped": action_result.skipped,
             },
         )
 

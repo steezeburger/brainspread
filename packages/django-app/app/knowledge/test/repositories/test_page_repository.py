@@ -245,3 +245,47 @@ class TestPageRepository(TestCase):
 
         self.assertIn(old.id, purgeable_ids)
         self.assertNotIn(recent.id, purgeable_ids)
+
+
+class TestGetOrCreateByTitle(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+
+    def test_creates_a_page_when_nothing_matches(self):
+        page = PageRepository.get_or_create_by_title(
+            self.user, "Automation Definitions"
+        )
+
+        self.assertEqual(page.title, "Automation Definitions")
+        self.assertEqual(page.slug, "automation-definitions")
+        self.assertTrue(page.is_published)
+
+    def test_returns_the_existing_page_instead_of_duplicating(self):
+        existing = PageFactory(user=self.user, title="Archive", slug="archive")
+
+        page = PageRepository.get_or_create_by_title(self.user, "Archive")
+
+        self.assertEqual(page.pk, existing.pk)
+        self.assertEqual(Page.objects.filter(user=self.user, slug="archive").count(), 1)
+
+
+class TestGetOrCreateBySlug(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+
+    def test_creates_a_page_with_a_humanized_title(self):
+        page = PageRepository.get_or_create_by_slug(self.user, "needs-review")
+
+        self.assertEqual(page.slug, "needs-review")
+        self.assertEqual(page.title, "Needs Review")
+        self.assertTrue(page.is_published)
+
+    def test_returns_the_existing_page_instead_of_duplicating(self):
+        existing = PageFactory(user=self.user, title="Sticky", slug="sticky")
+
+        page = PageRepository.get_or_create_by_slug(self.user, "sticky")
+
+        self.assertEqual(page.pk, existing.pk)
+        self.assertEqual(Page.objects.filter(user=self.user, slug="sticky").count(), 1)

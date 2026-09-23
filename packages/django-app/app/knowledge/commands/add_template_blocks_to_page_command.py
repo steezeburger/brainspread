@@ -10,6 +10,7 @@ from ..forms.sync_block_tags_form import SyncBlockTagsForm
 from ..forms.touch_page_form import TouchPageForm
 from ..models import Block, PageData
 from ..repositories import BlockRepository, CustomVariableRepository
+from ..services.automation_spec import is_automation_content
 from ..services.content_tokens import (
     TokenError,
     find_input_tokens,
@@ -115,10 +116,14 @@ class AddTemplateBlocksToPageCommand(AbstractBaseCommand):
         """Resolve {{tokens}} on the cloned blocks. Shares one context
         across the apply so named uuids wire blocks together; re-syncs
         tags and re-extracts properties on any block whose content
-        changed (a resolved value may carry a #tag or a key:: value)."""
+        changed (a resolved value may carry a #tag or a key:: value).
+        Automation definitions are skipped (see is_automation_content) —
+        their {{...}} stay dormant until the automation itself runs."""
         context = build_token_context(user, target_page, inputs=inputs)
         for block in created:
             if not block.content or block.block_type == "code":
+                continue
+            if is_automation_content(block.content, target_page.slug):
                 continue
             try:
                 resolved = resolve_content_tokens(block.content, context)

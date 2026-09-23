@@ -297,6 +297,19 @@ class TestTemplateApplyTokens(TestCase):
         self.assertEqual(block.content, "task #urgent")
         self.assertIn("urgent", [p.slug for p in block.pages.all()])
 
+    def test_automation_tokens_stay_dormant_through_apply(self):
+        template = self._template(
+            "Ping sweep #automation\ntrigger:: manual\nfor:: 5,10,15\n"
+            'action:: create_block "ping {{item}}" on today'
+        )
+        target = PageFactory(user=self.user, page_type="page")
+
+        result = self._apply(template, target)
+
+        self.assertEqual(result["added"], 1)
+        contents = self._target_contents(target)
+        self.assertIn("{{item}}", contents[0])
+
     def test_unknown_token_in_template_fails_the_apply(self):
         template = self._template("hello {{blorp}}")
         target = PageFactory(user=self.user, page_type="page")

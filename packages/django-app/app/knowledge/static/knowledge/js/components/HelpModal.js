@@ -246,15 +246,15 @@ window.HelpModal = {
                   <td>frozen count of a query, e.g. <code class="help-syntax">{{count:type:todo and completed is null}}</code>. same query language as an automation's <code class="help-syntax">query::</code></td>
                 </tr>
                 <tr>
-                  <td><code class="help-syntax">&lt;your name&gt;</code></td>
-                  <td>your own variables, defined in settings &rarr; variables. an expansion can use other variables and built-ins, e.g. <code class="help-syntax">food_log</code> &rarr; <code class="help-syntax">{{current_time}} #food-log</code>. a variable that refers back to itself is rejected</td>
+                  <td><code class="help-syntax">&lt;name&gt;</code></td>
+                  <td>your own variables, defined in settings &rarr; variables — lowercase letters, digits, and underscores only (no spaces). an expansion can use other variables and built-ins, e.g. <code class="help-syntax">food_log</code> &rarr; <code class="help-syntax">{{current_time}} #food-log</code>. a variable that refers back to itself is rejected</td>
                 </tr>
               </tbody>
             </table>
             <p class="help-hint">filters chain with <code class="help-syntax">|</code>, jinja-style: <code class="help-syntax">{{now|time}}</code> and <code class="help-syntax">{{now|date}}</code> keep just that half, <code class="help-syntax">{{today|format:%A}}</code> takes any strftime pattern, and <code class="help-syntax">{{uuid|name:&lt;label&gt;}}</code> labels an id. variables inside a template stay dormant until the template is applied. write <code class="help-syntax">\\{{</code> for a literal <code class="help-syntax">{{</code>. an unknown variable or a broken count query is rejected when the block saves, and the error names the full vocabulary.</p>
           </div>
 
-          <div class="help-section">
+          <div class="help-section" v-pre>
             <h3>automations</h3>
             <p class="help-hint">any block tagged <span class="inline-tag">#automation</span> (or living on the <code class="help-syntax">automation</code> page) is a live automation, configured with <code class="help-syntax">key:: value</code> lines. example — unfinished work moves itself onto today's daily every morning:</p>
             <table class="help-table">
@@ -274,6 +274,18 @@ window.HelpModal = {
                 <tr>
                   <td><code class="help-syntax">action:: move_to_daily today</code></td>
                   <td>what it does (one verb): <code class="help-syntax">move_to_daily</code>, <code class="help-syntax">move_to_page "ref"</code>, <code class="help-syntax">set_type done</code>, <code class="help-syntax">tag</code>/<code class="help-syntax">untag &lt;slug&gt;</code>, <code class="help-syntax">set_due &lt;date&gt; [HH:MM] [remind [date] HH:MM]…</code> (<code class="help-syntax">none</code> clears), <code class="help-syntax">set_property key value</code>, <code class="help-syntax">create_block "…" on &lt;date|page&gt; [as type] [tagged slug…] [with k=v…] [due …] [remind …]</code>, <code class="help-syntax">notify "…"</code> (discord; silent when nothing matches), <code class="help-syntax">apply_template "…" to today</code></td>
+                </tr>
+                <tr>
+                  <td><code class="help-syntax">{{today}}</code> <code class="help-syntax">{{now}}</code> <code class="help-syntax">{{count}}</code></td>
+                  <td>tokens in action args, frozen once per run — <code class="help-syntax">{{count}}</code> is the matched-block total, e.g. <code class="help-syntax">notify "{{count}} overdue"</code></td>
+                </tr>
+                <tr>
+                  <td><code class="help-syntax">{{block.tag}}</code> <code class="help-syntax">{{block.content}}</code> <code class="help-syntax">{{block.uuid}}</code> <code class="help-syntax">{{block.page}}</code> <code class="help-syntax">{{block.due}}</code></td>
+                  <td>per-block tokens (need a <code class="help-syntax">query::</code>) — the action maps over each matched block, grouping by resolved args, e.g. <code class="help-syntax">move_to_page {{block.tag}}</code> files each block onto the page it's tagged with. bare <code class="help-syntax">{{block.tag}}</code> needs exactly one tag; <code class="help-syntax">{{block.tag|except:slug,…}}</code> excludes tags first. a block left with zero or multiple candidates is skipped, not failed</td>
+                </tr>
+                <tr>
+                  <td><code class="help-syntax">for:: 5,10,15</code> / <code class="help-syntax">5..30 by 5</code></td>
+                  <td>iterate a literal list instead of a query, binding <code class="help-syntax">{{item}}</code> — one definition fans out into a whole family, e.g. <code class="help-syntax">create_block "nudge {{item}}m" on today with trigger="schedule every {{item}}m" …</code>. integers, ascending, max 50 items; mutually exclusive with <code class="help-syntax">query::</code></td>
                 </tr>
                 <tr>
                   <td><code class="help-syntax">enabled:: false</code></td>

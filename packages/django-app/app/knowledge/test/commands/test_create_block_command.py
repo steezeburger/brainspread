@@ -430,6 +430,22 @@ class TestCreateBlockTokenExpansion(TestCase):
         block = self._create("standup notes {{today}}", page=template)
         self.assertEqual(block.content, "standup notes {{today}}")
 
+    def test_should_keep_tokens_dormant_for_automation_hashtag(self):
+        block = self._create(
+            "Ping sweep #automation\ntrigger:: manual\nfor:: 5,10,15\n"
+            'action:: create_block "ping {{item}}" on today'
+        )
+        self.assertIn("{{item}}", block.content)
+
+    def test_should_keep_tokens_dormant_on_automations_page(self):
+        automations_page = PageFactory(
+            user=self.user, slug="automation", title="Automations"
+        )
+        block = self._create(
+            'action:: create_block "{{block.tag}}" on today', page=automations_page
+        )
+        self.assertIn("{{block.tag}}", block.content)
+
     def test_should_skip_expansion_for_code_blocks(self):
         block = self._create("render({{today}})", block_type="code")
         self.assertEqual(block.content, "render({{today}})")
