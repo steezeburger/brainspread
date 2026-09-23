@@ -53,6 +53,35 @@ def build_token_context(
     )
 
 
+def build_automation_token_context(
+    user, *, match_count: Optional[int] = None
+) -> TokenContext:
+    """Ambient context for resolving an automation's action args (issue
+    #209): ``{{today}}`` / ``{{now}}`` / bare ``{{count}}`` — resolved
+    once per run, before any per-block or per-item scope is entered.
+
+    No real page is in scope for an automation run (matched blocks can
+    span many pages), and the automation consumer's restricted vocabulary
+    (``automation_actions.AUTOMATION_TOKEN_VOCABULARY``) never reads
+    ``page.*``/``user.*``/``uuid``/``input``/``count:<query>`` anyway, so
+    ``page`` is a neutral placeholder and ``count_query``/``inputs`` stay
+    unset — those tokens fail loudly (per the vocabulary check) rather
+    than silently resolving to something meaningless.
+    """
+    now = timezone.now().astimezone(user.tz())
+    return TokenContext(
+        now=now,
+        today=now.date(),
+        user=UserTokenContext(
+            email=user.email,
+            timezone=user.timezone or "UTC",
+            time_format=user.time_format or "24h",
+        ),
+        page=PageTokenContext(title="", slug="", uuid="", date=None, url=""),
+        match_count=match_count,
+    )
+
+
 class _LazyCustomVariables(Mapping[str, str]):
     """Loads the user's custom variables on first lookup, so a save
     whose content has no ``{{`` never pays for the query."""

@@ -650,7 +650,7 @@ class MCPEndpointTestCase(TestCase):
         self.assertFalse(response.json()["result"]["isError"])
         self.assertIn(tag_page, block.pages.all())
 
-    def test_tag_block_errors_on_missing_tag(self):
+    def test_tag_block_creates_missing_tag_page(self):
         page = PageFactory(user=self.user)
         block = BlockFactory(user=self.user, page=page, content="task")
         response = self.client.post(
@@ -662,10 +662,8 @@ class MCPEndpointTestCase(TestCase):
             format="json",
         )
         body = response.json()
-        self.assertTrue(body["result"]["isError"])
-        self.assertIn("doesnt-exist", body["result"]["content"][0]["text"])
-        # Nothing got tagged.
-        self.assertEqual(block.pages.count(), 0)
+        self.assertFalse(body["result"]["isError"], body)
+        self.assertIn("doesnt-exist", [p.slug for p in block.pages.all()])
 
     def test_untag_block_removes_tag(self):
         page = PageFactory(user=self.user)

@@ -9,6 +9,7 @@ from knowledge.commands import RunAutomationCommand
 from knowledge.forms.run_automation_form import RunAutomationForm
 from knowledge.models import AutomationRun, Block, Reminder
 from knowledge.repositories import AutomationRunRepository, SavedViewRepository
+from knowledge.services.discord_webhook import DiscordDeliveryResult
 from knowledge.services.due_dates import start_of_local_day
 
 from ..helpers import BlockFactory, PageFactory, UserFactory
@@ -395,17 +396,20 @@ class TestRunAutomationCommand(TestCase):
         self.assertEqual(child.page, target)
         self.assertEqual(child.parent, parent)
 
-    def test_move_to_page_rejects_missing_and_template_targets(self):
+    def test_move_to_page_creates_missing_target_and_rejects_templates(self):
         PageFactory(user=self.user, title="Pack", slug="pack-tpl", page_type="template")
         source = PageFactory(user=self.user, title="Notes", slug="notes-mtp3")
-        BlockFactory(user=self.user, page=source, block_type="todo", content="TODO x")
+        block = BlockFactory(
+            user=self.user, page=source, block_type="todo", content="TODO x"
+        )
 
         missing = self._automation(
             trigger="manual", query="type:todo", action='move_to_page "nope"'
         )
         result = self._run(missing)
-        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
-        self.assertIn("not found", result["last_error"])
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        block.refresh_from_db()
+        self.assertEqual(block.page.title, "nope")
 
         into_template = self._automation(
             trigger="manual", query="type:todo", action='move_to_page "Pack"'
@@ -608,16 +612,16 @@ class TestSmallVerbActions(TestCase):
         self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
         self.assertIn("automation block itself", result["last_error"])
 
-    def test_tag_missing_page_fails_instead_of_creating(self):
-        self._todo()
+    def test_tag_creates_missing_tag_page(self):
+        target = self._todo()
         automation = self._automation(
             trigger="manual", query="type:todo", action="tag no-such-tag"
         )
 
         result = self._run(automation)
 
-        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
-        self.assertIn("no-such-tag", result["last_error"])
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        self.assertIn("no-such-tag", target.get_tag_names())
 
     # -- set_due ------------------------------------------------------------
 
@@ -850,7 +854,7 @@ class TestSmallVerbActions(TestCase):
         self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
         self.assertIn("key=value", result["last_error"])
 
-    def test_create_block_tagged_missing_page_fails(self):
+    def test_create_block_tagged_creates_missing_tag_page(self):
         automation = self._automation(
             trigger="manual",
             action='create_block "x" on today tagged no-such-tag',
@@ -858,8 +862,9 @@ class TestSmallVerbActions(TestCase):
 
         result = self._run(automation)
 
-        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
-        self.assertIn("no-such-tag", result["last_error"])
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        created = Block.objects.get(user=self.user, content__startswith="x")
+        self.assertIn("no-such-tag", created.get_tag_names())
 
     def test_untag_preserves_done_type_and_completed_at(self):
         # Regression: content rewrites go through UpdateBlockCommand, whose
@@ -1130,3 +1135,427 @@ class TestDueRemindClauses(TestCase):
 
         self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
         self.assertIn("remind", result["last_error"])
+
+
+class TestParameterizedActions(TestCase):
+    """Tokens, grouped map execution, and `for::` iteration (issue #209).
+    Asserts external behavior only — end state of blocks/pages and the
+    returned run-result dict — never handler internals or grouping order,
+    per the issue's testing decisions."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+
+    def _automation(self, **props):
+        page = PageFactory(
+            user=self.user,
+            title="Automations",
+            slug=f"automations-{uuid_lib.uuid4().hex[:8]}",
+        )
+        return BlockFactory(
+            user=self.user,
+            page=page,
+            content="My automation #automation",
+            properties=props,
+        )
+
+    def _run(self, automation_block, trigger="manual"):
+        form = RunAutomationForm(
+            {
+                "user": self.user,
+                "automation_block": automation_block.uuid,
+                "trigger": trigger,
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return RunAutomationCommand(form).execute()
+
+    def _todo(self, content="TODO ship it", **kwargs):
+        page = kwargs.pop(
+            "page",
+            PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}"),
+        )
+        return BlockFactory(
+            user=self.user, page=page, block_type="todo", content=content, **kwargs
+        )
+
+    # -- grouped map: move_to_page {{block.tag}} -----------------------------
+
+    def test_grouped_move_to_page_by_block_tag_with_mixed_and_ambiguous_tags(self):
+        groceries = PageFactory(user=self.user, title="Groceries", slug="groceries")
+        urgent = PageFactory(user=self.user, title="Urgent", slug="urgent")
+        source = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+
+        milk = self._todo(content="TODO milk", page=source)
+        milk.pages.add(groceries)
+        bread = self._todo(content="TODO bread", page=source)
+        bread.pages.add(groceries)
+        call_mom = self._todo(content="TODO call mom", page=source)
+        call_mom.pages.add(urgent)
+        no_tags = self._todo(content="TODO mystery", page=source)
+        two_tags = self._todo(content="TODO multi", page=source)
+        two_tags.pages.add(groceries)
+        two_tags.pages.add(urgent)
+
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action="move_to_page {{block.tag}}",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        milk.refresh_from_db()
+        bread.refresh_from_db()
+        call_mom.refresh_from_db()
+        no_tags.refresh_from_db()
+        two_tags.refresh_from_db()
+        self.assertEqual(milk.page, groceries)
+        self.assertEqual(bread.page, groceries)
+        self.assertEqual(call_mom.page, urgent)
+        # Ambiguous (zero or multiple candidate tags) blocks are skipped,
+        # left untouched, while the unambiguous groups still proceed.
+        self.assertEqual(no_tags.page, source)
+        self.assertEqual(two_tags.page, source)
+
+        skipped_uuids = {s["block_uuid"] for s in result["result"]["skipped"]}
+        self.assertEqual(skipped_uuids, {str(no_tags.uuid), str(two_tags.uuid)})
+        groups = result["result"]["groups"]
+        self.assertEqual(len(groups), 2)
+        self.assertEqual(sum(g["count"] for g in groups), 3)
+        # No hierarchy in this fixture — every matched block is its own
+        # top block, so affected counts all three individually.
+        self.assertEqual(result["result"]["affected"], 3)
+
+    def test_except_filter_disambiguates_the_braindumps_sweep(self):
+        groceries = PageFactory(user=self.user, title="Groceries", slug="groceries")
+        source = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        # The canonical braindumps sweep: every braindump block also
+        # carries #braindumps and #automation alongside its real
+        # destination tag — `except:` strips those before the
+        # exactly-one check.
+        block = self._todo(content="TODO milk", page=source)
+        block.pages.add(groceries)
+        braindumps = PageFactory(user=self.user, title="Braindumps", slug="braindumps")
+        automation_tag = PageFactory(
+            user=self.user, title="Automation", slug="automation"
+        )
+        block.pages.add(braindumps)
+        block.pages.add(automation_tag)
+
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action="move_to_page {{block.tag|except:braindumps,automation}}",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        block.refresh_from_db()
+        self.assertEqual(block.page, groceries)
+        self.assertEqual(result["result"]["skipped"], [])
+
+    def test_grouped_map_keeps_child_riding_with_matched_ancestors_group(self):
+        # Hierarchy preservation (story 15): the child's OWN tag differs
+        # from its parent's, but it must still ride along with the
+        # parent's resolved group, not be independently re-grouped.
+        groceries = PageFactory(user=self.user, title="Groceries", slug="groceries")
+        urgent = PageFactory(user=self.user, title="Urgent", slug="urgent")
+        source = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        parent = self._todo(content="TODO parent", page=source)
+        parent.pages.add(groceries)
+        child = BlockFactory(
+            user=self.user,
+            page=source,
+            parent=parent,
+            block_type="todo",
+            content="TODO child",
+        )
+        child.pages.add(urgent)
+
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action="move_to_page {{block.tag}}",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        parent.refresh_from_db()
+        child.refresh_from_db()
+        self.assertEqual(parent.page, groceries)
+        self.assertEqual(child.page, groceries)
+        self.assertEqual(child.parent, parent)
+        self.assertEqual(result["result"]["skipped"], [])
+
+    def test_one_failing_group_is_recorded_while_others_complete(self):
+        # Story 14: a group whose resolved target is a template page
+        # fails that group only — other groups still complete, and the
+        # run itself still succeeds (partial progress, visibly recorded).
+        groceries = PageFactory(user=self.user, title="Groceries", slug="groceries")
+        pack_template = PageFactory(
+            user=self.user, title="Pack", slug="pack", page_type="template"
+        )
+        source = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        good = self._todo(content="TODO milk", page=source)
+        good.pages.add(groceries)
+        bad = self._todo(content="TODO template thing", page=source)
+        bad.pages.add(pack_template)
+
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action="move_to_page {{block.tag}}",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        good.refresh_from_db()
+        bad.refresh_from_db()
+        self.assertEqual(good.page, groceries)
+        self.assertEqual(bad.page, source)  # untouched — its group failed
+
+        groups = result["result"]["groups"]
+        self.assertEqual(len(groups), 2)
+        failed = [g for g in groups if g.get("error")]
+        succeeded = [g for g in groups if not g.get("error")]
+        self.assertEqual(len(failed), 1)
+        self.assertEqual(len(succeeded), 1)
+        self.assertIn("template", failed[0]["error"])
+        self.assertEqual(result["result"]["affected"], 1)
+
+    def test_grouped_map_respects_cap_with_truncated_flag(self):
+        groceries = PageFactory(user=self.user, title="Groceries", slug="groceries")
+        urgent = PageFactory(user=self.user, title="Urgent", slug="urgent")
+        source = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        for i in range(3):
+            block = self._todo(content=f"TODO {i}", page=source)
+            block.pages.add(groceries if i % 2 == 0 else urgent)
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action="move_to_page {{block.tag}}",
+        )
+
+        with patch("knowledge.commands.run_automation_command.MAX_ACTION_BLOCKS", 2):
+            result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        self.assertEqual(result["result"]["matched"], 2)
+        self.assertTrue(result["result"]["truncated"])
+
+    # -- per-match: create_block {{block.*}} ---------------------------------
+
+    def test_create_block_per_match_one_per_matched_block(self):
+        inbox = PageFactory(user=self.user, title="Inbox", slug="inbox")
+        source = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        self._todo(content="TODO milk", page=source)
+        self._todo(content="TODO bread", page=source)
+
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action='create_block "Review: {{block.content}}" on Inbox',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        self.assertEqual(result["result"]["affected"], 2)
+        contents = set(
+            Block.objects.filter(page=inbox).values_list("content", flat=True)
+        )
+        self.assertEqual(contents, {"Review: milk", "Review: bread"})
+        self.assertEqual(len(result["result"]["groups"]), 2)
+
+    def test_create_block_per_match_skips_ambiguous_blocks(self):
+        tag_page = PageFactory(user=self.user, title="Groceries", slug="groceries")
+        inbox = PageFactory(user=self.user, title="Inbox", slug="inbox")
+        source = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        tagged = self._todo(content="TODO milk", page=source)
+        tagged.pages.add(tag_page)
+        untagged = self._todo(content="TODO mystery", page=source)
+
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action='create_block "Filed under {{block.tag}}" on Inbox',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        self.assertEqual(result["result"]["affected"], 1)
+        self.assertEqual(len(result["result"]["skipped"]), 1)
+        self.assertEqual(
+            result["result"]["skipped"][0]["block_uuid"], str(untagged.uuid)
+        )
+        self.assertTrue(
+            Block.objects.filter(page=inbox, content="Filed under groceries").exists()
+        )
+
+    def test_create_block_per_match_requires_query(self):
+        automation = self._automation(
+            trigger="manual",
+            action='create_block "Review: {{block.content}}" on today',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("query::", result["last_error"])
+
+    # -- for:: fan-out --------------------------------------------------------
+
+    def test_for_fanout_creates_one_block_per_item(self):
+        inbox = PageFactory(user=self.user, title="Inbox", slug="inbox")
+        automation = self._automation(
+            trigger="manual",
+            **{"for": "5,10,15"},
+            action='create_block "Nudge every {{item}}m" on Inbox',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        contents = set(
+            Block.objects.filter(page=inbox).values_list("content", flat=True)
+        )
+        self.assertEqual(
+            contents,
+            {"Nudge every 5m", "Nudge every 10m", "Nudge every 15m"},
+        )
+        self.assertEqual(len(result["result"]["groups"]), 3)
+        self.assertEqual(result["result"]["affected"], 3)
+
+    def test_for_fanout_range_form(self):
+        inbox = PageFactory(user=self.user, title="Inbox", slug="inbox")
+        automation = self._automation(
+            trigger="manual",
+            **{"for": "5..15 by 5"},
+            action='create_block "Nudge every {{item}}m" on Inbox',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        contents = set(
+            Block.objects.filter(page=inbox).values_list("content", flat=True)
+        )
+        self.assertEqual(
+            contents,
+            {"Nudge every 5m", "Nudge every 10m", "Nudge every 15m"},
+        )
+
+    def test_for_fanout_create_block_spawns_automation_family(self):
+        # Further Notes: for:: + create_block ... with trigger=... can
+        # spawn a family of live automations from one definition.
+        inbox = PageFactory(user=self.user, title="Inbox", slug="inbox")
+        action = (
+            'create_block "Nudge every {{item}}m" on Inbox '
+            'with trigger="schedule every {{item}}m" query="type:doing" '
+            'action="notify still going"'
+        )
+        automation = self._automation(
+            trigger="manual", **{"for": "5,10"}, action=action
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        created = Block.objects.filter(page=inbox).order_by("content")
+        self.assertEqual(created.count(), 2)
+        triggers = sorted(b.properties.get("trigger") for b in created)
+        self.assertEqual(triggers, ["schedule every 10m", "schedule every 5m"])
+        queries = {b.properties.get("query") for b in created}
+        self.assertEqual(queries, {"type:doing"})
+
+    # -- {{count}} / {{today}} ambient tokens ---------------------------------
+
+    def test_notify_includes_ambient_match_count(self):
+        self.user.discord_webhook_url = "https://discord.example/webhook"
+        self.user.save()
+        source = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        for i in range(3):
+            self._todo(content=f"TODO {i}", page=source)
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action='notify "{{count}} items overdue"',
+        )
+
+        captured = {}
+
+        def _capture(url, content="", embeds=None, timeout=10.0):
+            captured["embeds"] = embeds
+            return DiscordDeliveryResult(True, "")
+
+        with patch("knowledge.services.automation_actions.post_webhook", _capture):
+            result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        self.assertEqual(captured["embeds"][0]["title"], "3 items overdue")
+
+    def test_set_property_stamps_today_across_a_sweep(self):
+        source = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        target = self._todo(content="TODO ship it", page=source)
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action="set_property moved_on {{today}}",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        target.refresh_from_db()
+        self.assertEqual(
+            target.properties.get("moved_on"), self.user.today().isoformat()
+        )
+
+    # -- failure modes --------------------------------------------------------
+
+    def test_unknown_token_fails_the_run_and_lists_vocabulary(self):
+        self._todo()
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action="tag {{blck.tag}}",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("blck.tag", result["last_error"])
+        self.assertIn("block.tag", result["last_error"])
+
+    def test_verb_without_block_token_support_fails_at_run_time(self):
+        self.user.discord_webhook_url = "https://discord.example/webhook"
+        self.user.save()
+        self._todo()
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action='notify "{{block.tag}}"',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("doesn't support", result["last_error"])
+
+    def test_block_tokens_without_query_fail_at_parse_time(self):
+        automation = self._automation(
+            trigger="manual",
+            action="move_to_page {{block.tag}}",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("query::", result["last_error"])

@@ -8,6 +8,8 @@ from knowledge.services.content_tokens import (
     FILTER_VOCABULARY,
     MAX_CUSTOM_TOKEN_DEPTH,
     TOKEN_VOCABULARY,
+    BlockTokenAmbiguousError,
+    BlockTokenContext,
     PageTokenContext,
     TokenContext,
     TokenError,
@@ -15,6 +17,7 @@ from knowledge.services.content_tokens import (
     find_custom_token_cycle,
     find_input_tokens,
     resolve_content_tokens,
+    token_names,
 )
 
 
@@ -26,6 +29,9 @@ def make_context(
     count_query=None,
     page_date: Optional[date] = None,
     custom_tokens=None,
+    match_count=None,
+    item=None,
+    block: Optional[BlockTokenContext] = None,
 ) -> TokenContext:
     now = now or datetime(2026, 8, 21, 14, 32)
     uuid_counter = iter(range(1, 100))
@@ -48,6 +54,22 @@ def make_context(
         count_query=count_query,
         uuid_factory=lambda: f"uuid-{next(uuid_counter)}",
         custom_tokens=custom_tokens or {},
+        match_count=match_count,
+        item=item,
+        block=block,
+    )
+
+
+def make_block(
+    *,
+    tags=(),
+    content="",
+    uuid="block-uuid-1",
+    page="Inbox",
+    due="",
+) -> BlockTokenContext:
+    return BlockTokenContext(
+        tag_candidates=tuple(tags), content=content, uuid=uuid, page=page, due=due
     )
 
 
@@ -402,3 +424,147 @@ class TestCustomVariables(SimpleTestCase):
         self.assertIn("input", BUILTIN_TOKEN_NAMES)
         self.assertIn("page.title", BUILTIN_TOKEN_NAMES)
         self.assertIn("current_time", BUILTIN_TOKEN_NAMES)
+
+
+class TestAmbientMatchCount(SimpleTestCase):
+    """Bare {{count}} (issue #209) — the automation's matched-block
+    total, distinct from the existing {{count:<query>}} arg form."""
+
+    def test_bare_count_reads_match_count(self):
+        ctx = make_context(match_count=7)
+        self.assertEqual(resolve_content_tokens("{{count}} left", ctx), "7 left")
+
+    def test_bare_count_without_match_count_fails(self):
+        with self.assertRaises(TokenError):
+            resolve_content_tokens("{{count}}", make_context())
+
+    def test_count_with_query_arg_still_uses_count_query(self):
+        # match_count set (ambient) and an explicit :<query> arg both
+        # present — the arg form still wins, unaffected by match_count.
+        ctx = make_context(match_count=99, count_query=lambda q: 3 if q == "x" else 0)
+        self.assertEqual(resolve_content_tokens("{{count:x}}", ctx), "3")
+
+    def test_count_arg_without_count_query_fails(self):
+        with self.assertRaises(TokenError):
+            resolve_content_tokens("{{count:x}}", make_context(match_count=5))
+
+
+class TestItemToken(SimpleTestCase):
+    """{{item}} (issue #209) — bound during `for::` iteration."""
+
+    def test_item_resolves_from_context(self):
+        self.assertEqual(
+            resolve_content_tokens("n={{item}}", make_context(item="10")), "n=10"
+        )
+
+    def test_item_without_for_iteration_fails(self):
+        with self.assertRaises(TokenError) as cm:
+            resolve_content_tokens("{{item}}", make_context())
+        self.assertIn("for::", str(cm.exception))
+
+
+class TestBlockTokens(SimpleTestCase):
+    """{{block.*}} (issue #209) — resolved against TokenContext.block,
+    one matched block at a time."""
+
+    def test_block_tag_resolves_when_exactly_one_candidate(self):
+        ctx = make_context(block=make_block(tags=["groceries"]))
+        self.assertEqual(resolve_content_tokens("{{block.tag}}", ctx), "groceries")
+
+    def test_block_content_strips_state_prefix_already(self):
+        # BlockTokenContext.content arrives pre-stripped (the Django-aware
+        # caller does the stripping) — the resolver just passes it through.
+        ctx = make_context(block=make_block(content="ship it"))
+        self.assertEqual(resolve_content_tokens("{{block.content}}", ctx), "ship it")
+
+    def test_block_uuid_and_page(self):
+        ctx = make_context(block=make_block(uuid="abc-123", page="Groceries"))
+        self.assertEqual(
+            resolve_content_tokens("{{block.uuid}} / {{block.page}}", ctx),
+            "abc-123 / Groceries",
+        )
+
+    def test_block_due_resolves_or_empty(self):
+        with_due = make_context(block=make_block(due="2026-09-01"))
+        without_due = make_context(block=make_block(due=""))
+        self.assertEqual(
+            resolve_content_tokens("{{block.due}}", with_due), "2026-09-01"
+        )
+        self.assertEqual(resolve_content_tokens("d:{{block.due}}", without_due), "d:")
+
+    def test_block_tokens_without_block_scope_fail(self):
+        for token in (
+            "{{block.tag}}",
+            "{{block.content}}",
+            "{{block.uuid}}",
+            "{{block.page}}",
+            "{{block.due}}",
+        ):
+            with self.assertRaises(TokenError, msg=token):
+                resolve_content_tokens(token, make_context())
+
+    def test_bare_block_tag_with_zero_candidates_is_ambiguous(self):
+        ctx = make_context(block=make_block(tags=[]))
+        with self.assertRaises(BlockTokenAmbiguousError) as cm:
+            resolve_content_tokens("{{block.tag}}", ctx)
+        self.assertIn("found 0", str(cm.exception))
+
+    def test_bare_block_tag_with_multiple_candidates_is_ambiguous(self):
+        ctx = make_context(block=make_block(tags=["groceries", "urgent"]))
+        with self.assertRaises(BlockTokenAmbiguousError) as cm:
+            resolve_content_tokens("{{block.tag}}", ctx)
+        self.assertIn("found 2", str(cm.exception))
+
+    def test_ambiguous_error_is_a_token_error_subclass(self):
+        self.assertTrue(issubclass(BlockTokenAmbiguousError, TokenError))
+
+
+class TestBlockTagExceptFilter(SimpleTestCase):
+    def test_except_narrows_to_exactly_one(self):
+        ctx = make_context(
+            block=make_block(tags=["braindumps", "automation", "groceries"])
+        )
+        self.assertEqual(
+            resolve_content_tokens("{{block.tag|except:braindumps,automation}}", ctx),
+            "groceries",
+        )
+
+    def test_except_leaving_zero_is_still_ambiguous(self):
+        ctx = make_context(block=make_block(tags=["braindumps"]))
+        with self.assertRaises(BlockTokenAmbiguousError):
+            resolve_content_tokens("{{block.tag|except:braindumps}}", ctx)
+
+    def test_except_leaving_multiple_is_still_ambiguous(self):
+        ctx = make_context(block=make_block(tags=["a", "b", "c"]))
+        with self.assertRaises(BlockTokenAmbiguousError):
+            resolve_content_tokens("{{block.tag|except:a}}", ctx)
+
+    def test_except_only_applies_to_block_tag(self):
+        with self.assertRaises(TokenError):
+            resolve_content_tokens("{{today|except:x}}", make_context())
+
+    def test_except_needs_at_least_one_slug(self):
+        ctx = make_context(block=make_block(tags=["a"]))
+        with self.assertRaises(TokenError):
+            resolve_content_tokens("{{block.tag|except:}}", ctx)
+
+    def test_bare_block_tag_has_no_builtin_exclusions(self):
+        # Bare {{block.tag}} excludes nothing by default — not even
+        # "automation" — so a block tagged only #automation still
+        # resolves to exactly that one candidate.
+        ctx = make_context(block=make_block(tags=["automation"]))
+        self.assertEqual(resolve_content_tokens("{{block.tag}}", ctx), "automation")
+
+
+class TestTokenNames(SimpleTestCase):
+    def test_token_names_lists_base_names_in_order(self):
+        self.assertEqual(
+            token_names("{{today}} {{block.tag|except:x}} {{item}}"),
+            ["today", "block.tag", "item"],
+        )
+
+    def test_token_names_skips_escaped_tokens(self):
+        self.assertEqual(token_names("\\{{today}} {{now}}"), ["now"])
+
+    def test_token_names_empty_for_plain_text(self):
+        self.assertEqual(token_names("no tokens here"), [])
