@@ -867,6 +867,88 @@ class BlockRepository(BaseRepository):
         return clone
 
     @classmethod
+    def _descendant_ids_including_deleted(cls, block: Block) -> List[int]:
+        """Every descendant id of `block`, walked level by level, active
+        or not. Used by restore_subtree — a delete cascade leaves the
+        whole subtree inactive, so the active-only default queryset
+        can't see it to bring it back."""
+        ids: List[int] = []
+        frontier = [block.pk]
+        while frontier:
+            children = list(
+                cls.model.objects.filter(parent_id__in=frontier).values_list(
+                    "id", flat=True
+                )
+            )
+            ids.extend(children)
+            frontier = children
+        return ids
+
+    @classmethod
+    def soft_delete_subtree(cls, block: Block) -> int:
+        """Soft-delete `block` and every currently-active descendant —
+        the cascade a single block delete needs (parent delete doesn't
+        touch children on its own; see SoftDeleteTimestampMixin)."""
+        ids = [block.pk] + [d.pk for d in cls.get_block_descendants(block)]
+        return cls.model.objects.filter(pk__in=ids).delete()
+
+    @classmethod
+    def restore_subtree(cls, block: Block) -> int:
+        """Restore `block` and its full descendant subtree, regardless of
+        which of them are currently inactive."""
+        ids = [block.pk] + cls._descendant_ids_including_deleted(block)
+        return cls.model.objects.filter(pk__in=ids).undelete()
+
+    @classmethod
+    def soft_delete_page_blocks(cls, page: Page) -> int:
+        """Soft-delete every currently-active block on `page` — the
+        cascade an archived page needs so its blocks drop out of every
+        block query (search, saved views, backlinks, due/overdue) without
+        having to filter `page__is_active` at each of those call sites."""
+        return cls.model.objects.filter(page=page, is_active=True).delete()
+
+    @classmethod
+    def restore_page_blocks(cls, page: Page) -> int:
+        """Restore every currently-inactive block on `page` — the
+        counterpart cascade for restoring an archived page."""
+        return cls.model.objects.filter(page=page, is_active=False).undelete()
+
+    @classmethod
+    def get_deleted_queryset(cls) -> QuerySet:
+        """All soft-deleted blocks, unscoped by user — a form-field
+        queryset counterpart to get_queryset(); callers still enforce
+        per-user ownership themselves (see RestoreBlockForm.clean_block)."""
+        return cls.model.objects.deleted()
+
+    @classmethod
+    def get_deleted_by_uuid(cls, uuid: str, user) -> Optional[Block]:
+        """Get a soft-deleted block by UUID, scoped to `user` — the read
+        side of the restore flow. Bypasses the active-only default
+        queryset on purpose."""
+        try:
+            return cls.model.objects.deleted().get(uuid=uuid, user=user)
+        except cls.model.DoesNotExist:
+            return None
+
+    @classmethod
+    def get_deleted_blocks(cls, user, limit: int = 50) -> QuerySet:
+        """Trash view: the user's soft-deleted blocks, most-recently-deleted
+        first. Includes blocks deleted individually and blocks that
+        dropped out via a page archive."""
+        return (
+            cls.model.objects.deleted()
+            .filter(user=user)
+            .select_related("page")
+            .order_by("-deleted_at")[:limit]
+        )
+
+    @classmethod
+    def get_purgeable(cls, cutoff) -> QuerySet:
+        """Soft-deleted blocks past the retention cutoff — the purge
+        job's read side. Unscoped by user, a maintenance sweep."""
+        return cls.model.objects.deleted().filter(deleted_at__lt=cutoff)
+
+    @classmethod
     def move_blocks_to_page(cls, blocks: List[Block], target_page: Page) -> bool:
         """Move blocks to target page and update their order.
 

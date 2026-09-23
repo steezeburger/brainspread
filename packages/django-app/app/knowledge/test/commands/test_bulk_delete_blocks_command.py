@@ -2,10 +2,14 @@ from django.test import TestCase
 
 from knowledge.commands import BulkDeleteBlocksCommand
 from knowledge.forms import BulkDeleteBlocksForm
-from knowledge.models import Block
+from knowledge.repositories import BlockRepository
 from web_archives.models import WebArchive
 
 from ..helpers import BlockFactory, PageFactory, UserFactory
+
+
+def _is_active(uuid) -> bool:
+    return BlockRepository.get_queryset().filter(uuid=uuid).exists()
 
 
 class TestBulkDeleteBlocksCommand(TestCase):
@@ -30,10 +34,10 @@ class TestBulkDeleteBlocksCommand(TestCase):
         result = BulkDeleteBlocksCommand(form).execute()
 
         self.assertEqual(result["deleted_count"], 2)
-        self.assertFalse(Block.objects.filter(uuid=b1.uuid).exists())
-        self.assertFalse(Block.objects.filter(uuid=b2.uuid).exists())
+        self.assertFalse(_is_active(b1.uuid))
+        self.assertFalse(_is_active(b2.uuid))
         # Untouched
-        self.assertTrue(Block.objects.filter(uuid=b3.uuid).exists())
+        self.assertTrue(_is_active(b3.uuid))
 
     def test_should_skip_descendants_when_ancestor_is_also_in_selection(self):
         # Selecting both parent and child should result in a single delegated
@@ -53,10 +57,11 @@ class TestBulkDeleteBlocksCommand(TestCase):
 
         result = BulkDeleteBlocksCommand(form).execute()
 
-        # Only the parent root was explicitly deleted; child cascaded.
+        # Only the parent root was explicitly deleted; child's subtree
+        # soft-delete cascade takes it too.
         self.assertEqual(result["deleted_count"], 1)
-        self.assertFalse(Block.objects.filter(uuid=parent.uuid).exists())
-        self.assertFalse(Block.objects.filter(uuid=child.uuid).exists())
+        self.assertFalse(_is_active(parent.uuid))
+        self.assertFalse(_is_active(child.uuid))
 
     def test_should_soft_delete_attached_web_archives(self):
         # Bulk delete must use the same archive-cascade path as the per-block
@@ -77,7 +82,6 @@ class TestBulkDeleteBlocksCommand(TestCase):
 
         archive.refresh_from_db()
         self.assertFalse(archive.is_active)
-        self.assertIsNone(archive.block_id)
         self.assertEqual(archive.title, "Example")
 
     def test_should_silently_skip_blocks_that_belong_to_another_user(self):
@@ -99,8 +103,8 @@ class TestBulkDeleteBlocksCommand(TestCase):
         # Only mine was eligible
         self.assertEqual(result["deleted_count"], 1)
         self.assertEqual(result["skipped_count"], 1)
-        self.assertFalse(Block.objects.filter(uuid=mine.uuid).exists())
-        self.assertTrue(Block.objects.filter(uuid=theirs.uuid).exists())
+        self.assertFalse(_is_active(mine.uuid))
+        self.assertTrue(_is_active(theirs.uuid))
 
     def test_should_reject_an_empty_blocks_list(self):
         form = BulkDeleteBlocksForm({"user": self.user.id, "blocks": []})

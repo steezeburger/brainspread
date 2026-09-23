@@ -6,6 +6,7 @@ from django.conf import settings
 from django.db import models
 
 from common.models.crud_timestamps_mixin import CRUDTimestampsMixin
+from common.models.soft_delete_timestamp_mixin import SoftDeleteTimestampMixin
 from common.models.uuid_mixin import UUIDModelMixin
 from knowledge.services.due_dates import combine_local_to_utc
 
@@ -15,10 +16,19 @@ if TYPE_CHECKING:
     from .page import Page
 
 
-class Block(UUIDModelMixin, CRUDTimestampsMixin):
+class Block(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
     """
     Everything is a block. Blocks can contain text, media, or any other content.
     They can be nested hierarchically and have various types and properties.
+
+    Soft-deleted: block.delete() flips is_active/deleted_at instead of
+    removing the row. Deleting/restoring a block cascades to its
+    descendant subtree (see BlockRepository.soft_delete_subtree /
+    restore_subtree) and archiving/restoring a Page cascades to every
+    block on that page (see BlockRepository.soft_delete_page_blocks /
+    restore_page_blocks) so blocks on a deleted page disappear from
+    block queries even though the block rows themselves aren't touched
+    beyond the is_active flag.
     """
 
     user = models.ForeignKey(

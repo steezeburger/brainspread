@@ -286,6 +286,50 @@ class PageRepository(BaseRepository):
         )
 
     @classmethod
+    def get_by_share_token(cls, share_token: str) -> Optional[Page]:
+        """Get a page by its public share token, active pages only — an
+        archived page's share link stops resolving immediately, same as
+        flipping share_mode back to private."""
+        try:
+            return cls.get_queryset().get(share_token=share_token)
+        except cls.model.DoesNotExist:
+            return None
+
+    @classmethod
+    def get_deleted_queryset(cls) -> QuerySet:
+        """All soft-deleted pages, unscoped by user — a form-field
+        queryset counterpart to get_queryset(); callers still enforce
+        per-user ownership themselves (see RestorePageForm.clean_page)."""
+        return cls.model.objects.deleted()
+
+    @classmethod
+    def get_deleted_by_uuid(cls, uuid: str, user) -> Optional[Page]:
+        """Get a soft-deleted page by UUID, scoped to `user` — the read
+        side of the restore flow. Bypasses the active-only default
+        queryset on purpose."""
+        try:
+            return cls.model.objects.deleted().get(uuid=uuid, user=user)
+        except cls.model.DoesNotExist:
+            return None
+
+    @classmethod
+    def get_deleted_pages(cls, user, limit: int = 50) -> QuerySet:
+        """Trash view: the user's soft-deleted pages, most-recently-deleted
+        first."""
+        return (
+            cls.model.objects.deleted()
+            .filter(user=user)
+            .order_by("-deleted_at")[:limit]
+        )
+
+    @classmethod
+    def get_purgeable(cls, cutoff) -> QuerySet:
+        """Soft-deleted pages past the retention cutoff — the purge job's
+        read side. Unscoped by user; it's a maintenance sweep across
+        everyone, mirroring get_pages_for_order_repair."""
+        return cls.model.objects.deleted().filter(deleted_at__lt=cutoff)
+
+    @classmethod
     def get_template_by_title(cls, user, title: str) -> Optional[Page]:
         """The user's template page matching this reference — title first,
         slug fallback, both case-insensitive (mirrors get_by_title_or_slug,

@@ -78,6 +78,16 @@ window.LeftNav = {
     } catch (_) {
       // ignore localStorage failures
     }
+    let trashExpanded = false;
+    try {
+      const savedTrashExpanded =
+        typeof window !== "undefined" && window.localStorage
+          ? window.localStorage.getItem("brainspread.leftNavTrashExpanded")
+          : null;
+      if (savedTrashExpanded === "1") trashExpanded = true;
+    } catch (_) {
+      // ignore localStorage failures
+    }
     return {
       // Current day-of-month, drawn inside the today nav icon so the
       // glyph reads as "today" at a glance (instead of the generic
@@ -120,6 +130,15 @@ window.LeftNav = {
       templatesLoading: false,
       templatesError: null,
       templatesExpanded,
+      // Trash (issue #122) — soft-deleted pages/blocks with a restore
+      // action. Loaded lazily on first expand rather than in mounted(),
+      // since it's an infrequently-opened section.
+      trash: { pages: [], blocks: [] },
+      trashLoaded: false,
+      trashLoading: false,
+      trashError: null,
+      trashExpanded,
+      restoringUuids: [],
     };
   },
 
@@ -444,6 +463,92 @@ window.LeftNav = {
         this.templatesError = error.message || "failed to load templates";
       } finally {
         this.templatesLoading = false;
+      }
+    },
+
+    toggleTrash() {
+      this.trashExpanded = !this.trashExpanded;
+      try {
+        if (typeof window !== "undefined" && window.localStorage) {
+          window.localStorage.setItem(
+            "brainspread.leftNavTrashExpanded",
+            this.trashExpanded ? "1" : "0"
+          );
+        }
+      } catch (_) {
+        // localStorage can throw in private mode; toggle still works.
+      }
+      if (this.trashExpanded && !this.trashLoaded) {
+        this.loadTrash();
+      }
+    },
+
+    async loadTrash() {
+      this.trashLoading = true;
+      this.trashError = null;
+      try {
+        const result = await window.apiService.getTrash();
+        if (result.success) {
+          this.trash = {
+            pages: result.data?.pages || [],
+            blocks: result.data?.blocks || [],
+          };
+          this.trashLoaded = true;
+        } else {
+          this.trashError = "failed to load trash";
+        }
+      } catch (error) {
+        console.error("error loading trash:", error);
+        this.trashError = error.message || "failed to load trash";
+      } finally {
+        this.trashLoading = false;
+      }
+    },
+
+    async onRestorePage(event, page) {
+      if (event) event.preventDefault();
+      if (this.restoringUuids.includes(page.uuid)) return;
+      this.restoringUuids.push(page.uuid);
+      try {
+        const result = await window.apiService.restorePage(page.uuid);
+        if (result.success) {
+          this.trash.pages = this.trash.pages.filter(
+            (p) => p.uuid !== page.uuid
+          );
+          document.dispatchEvent(new CustomEvent("favorites:changed"));
+        } else {
+          this.trashError = "failed to restore page";
+        }
+      } catch (error) {
+        console.error("error restoring page:", error);
+        this.trashError = error.message || "failed to restore page";
+      } finally {
+        this.restoringUuids = this.restoringUuids.filter(
+          (u) => u !== page.uuid
+        );
+      }
+    },
+
+    async onRestoreBlock(event, block) {
+      if (event) event.preventDefault();
+      if (this.restoringUuids.includes(block.uuid)) return;
+      this.restoringUuids.push(block.uuid);
+      try {
+        const result = await window.apiService.restoreBlock(block.uuid);
+        if (result.success) {
+          this.trash.blocks = this.trash.blocks.filter(
+            (b) => b.uuid !== block.uuid
+          );
+        } else {
+          this.trashError = "failed to restore block";
+        }
+      } catch (error) {
+        console.error("error restoring block:", error);
+        this.trashError = error.message || "failed to restore block";
+      } finally {
+        this.restoringUuids = this.restoringUuids.filter(
+          (u) => u !== block.uuid
+        );
       }
     },
 
@@ -1315,6 +1420,86 @@ window.LeftNav = {
                   >→</a>
                 </div>
               </div>
+            </div>
+          </section>
+
+          <!-- Trash (collapsible). Issue #122: soft-deleted pages/blocks
+               with a restore action, most-recently-deleted first. -->
+          <section class="leftnav-section leftnav-trash" aria-label="Trash">
+            <button
+              type="button"
+              class="leftnav-section-toggle"
+              @click="toggleTrash"
+              :aria-expanded="trashExpanded"
+            >
+              <span class="leftnav-chevron" :class="{ open: trashExpanded }" aria-hidden="true">▸</span>
+              <span>trash</span>
+              <span v-if="trash.pages.length + trash.blocks.length" class="leftnav-section-count">{{ trash.pages.length + trash.blocks.length }}</span>
+            </button>
+
+            <div v-if="trashExpanded" class="leftnav-trash-body">
+              <div v-if="trashLoading" class="sidebar-loading">
+                Loading...
+              </div>
+              <div v-else-if="trashError" class="sidebar-error">
+                {{ trashError }}
+              </div>
+              <div
+                v-else-if="!trash.pages.length && !trash.blocks.length"
+                class="leftnav-empty"
+              >
+                Trash is empty. Deleted pages and blocks show up here.
+              </div>
+              <template v-else>
+                <div v-if="trash.pages.length" class="leftnav-trash-subheading">
+                  pages
+                </div>
+                <div v-if="trash.pages.length" class="leftnav-trash-list">
+                  <div
+                    v-for="page in trash.pages"
+                    :key="page.uuid"
+                    class="leftnav-trash-row"
+                  >
+                    <span class="leftnav-trash-label" :title="page.title">
+                      {{ formatPageTitle(page) }}
+                      <span class="leftnav-trash-meta">{{ formatDate(page.deleted_at) }}</span>
+                    </span>
+                    <button
+                      type="button"
+                      class="leftnav-trash-restore"
+                      :disabled="restoringUuids.includes(page.uuid)"
+                      @click="onRestorePage($event, page)"
+                      title="Restore this page"
+                    >restore</button>
+                  </div>
+                </div>
+
+                <div v-if="trash.blocks.length" class="leftnav-trash-subheading">
+                  blocks
+                </div>
+                <div v-if="trash.blocks.length" class="leftnav-trash-list">
+                  <div
+                    v-for="block in trash.blocks"
+                    :key="block.uuid"
+                    class="leftnav-trash-row"
+                  >
+                    <span
+                      class="leftnav-trash-label"
+                      :title="block.content"
+                    >
+                      {{ truncateContent(block.content || '(empty block)', 40) }}
+                      <span class="leftnav-trash-meta">{{ formatDate(block.deleted_at) }}</span>
+                    </span>
+                    <button
+                      type="button"
+                      class="leftnav-trash-restore"
+                      :disabled="restoringUuids.includes(block.uuid)"
+                      @click="onRestoreBlock($event, block)"
+                      title="Restore this block"
+                    >restore</button>
+                  </div>
+                </div>
+              </template>
             </div>
           </section>
 
