@@ -1,10 +1,13 @@
 from django.contrib import admin
 from django.db.models import QuerySet
 from django.http import HttpRequest
+from django.urls import reverse
+from django.utils.html import format_html
 
 from .commands.normalize_block_order_command import NormalizeBlockOrderCommand
 from .forms.normalize_block_order_form import NormalizeBlockOrderForm
 from .models import AutomationRun, Block, Page, Reminder, ReminderAction
+from .repositories import BlockRepository
 
 
 @admin.register(Page)
@@ -235,7 +238,7 @@ class AutomationRunAdmin(admin.ModelAdmin):
 
     list_display = (
         "short_uuid",
-        "automation_block_uuid",
+        "automation_block_link",
         "user",
         "trigger",
         "status",
@@ -249,7 +252,7 @@ class AutomationRunAdmin(admin.ModelAdmin):
         "id",
         "uuid",
         "user",
-        "automation_block_uuid",
+        "automation_block_link",
         "trigger",
         "status",
         "started_at",
@@ -268,6 +271,17 @@ class AutomationRunAdmin(admin.ModelAdmin):
         return (
             (obj.last_error[:80] + "…") if len(obj.last_error) > 80 else obj.last_error
         )
+
+    @admin.display(description="automation block")
+    def automation_block_link(self, obj: AutomationRun) -> str:
+        """`automation_block_uuid` is a soft reference (no FK — the
+        definition block may since be deleted), so resolve it by hand
+        and fall back to the bare uuid when nothing matches."""
+        block = BlockRepository.get_by_uuid(obj.automation_block_uuid)
+        if block is None:
+            return obj.automation_block_uuid
+        url = reverse("admin:knowledge_block_change", args=[block.pk])
+        return format_html('<a href="{}">{}</a>', url, obj.automation_block_uuid)
 
     def has_add_permission(self, request) -> bool:
         return False
