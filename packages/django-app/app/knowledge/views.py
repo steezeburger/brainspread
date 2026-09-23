@@ -22,10 +22,12 @@ from knowledge.commands import (
     BulkScheduleCommand,
     ConsumeReminderActionCommand,
     CreateBlockCommand,
+    CreateCustomVariableCommand,
     CreatePageCommand,
     CreatePageEmbeddedViewCommand,
     CreateSavedViewCommand,
     DeleteBlockCommand,
+    DeleteCustomVariableCommand,
     DeletePageCommand,
     DeletePageEmbeddedViewCommand,
     DeleteSavedViewCommand,
@@ -39,6 +41,7 @@ from knowledge.commands import (
     GetSavedViewCommand,
     GetTagContentCommand,
     GetUserPagesCommand,
+    ListCustomVariablesCommand,
     ListSavedViewsCommand,
     ListTemplatesCommand,
     MoveBlockToDailyCommand,
@@ -60,6 +63,7 @@ from knowledge.commands import (
     SharePageCommand,
     ToggleBlockTodoCommand,
     UpdateBlockCommand,
+    UpdateCustomVariableCommand,
     UpdatePageCommand,
     UpdatePageEmbeddedViewCommand,
     UpdateSavedViewCommand,
@@ -86,10 +90,12 @@ from knowledge.forms import (
     BulkScheduleForm,
     ConsumeReminderActionForm,
     CreateBlockForm,
+    CreateCustomVariableForm,
     CreatePageEmbeddedViewForm,
     CreatePageForm,
     CreateSavedViewForm,
     DeleteBlockForm,
+    DeleteCustomVariableForm,
     DeletePageEmbeddedViewForm,
     DeletePageForm,
     DeleteSavedViewForm,
@@ -103,6 +109,7 @@ from knowledge.forms import (
     GetSavedViewForm,
     GetTagContentForm,
     GetUserPagesForm,
+    ListCustomVariablesForm,
     ListSavedViewsForm,
     ListTemplatesForm,
     MoveBlockToDailyForm,
@@ -124,6 +131,7 @@ from knowledge.forms import (
     SharePageForm,
     ToggleBlockTodoForm,
     UpdateBlockForm,
+    UpdateCustomVariableForm,
     UpdatePageEmbeddedViewForm,
     UpdatePageForm,
     UpdateSavedViewForm,
@@ -2309,3 +2317,82 @@ def reorder_page_embedded_views(request):
     except ValidationError as exc:
         return _embed_response(False, errors={"non_field_errors": [str(exc)]})
     return _embed_response(True, data={"embeds": [e.to_dict() for e in embeds]})
+
+
+# ---------------------------------------------------------------------------
+# Custom variables (issue #228) — user-defined {{name}} content tokens.
+# ---------------------------------------------------------------------------
+
+
+def _custom_variable_response(success, data=None, errors=None, http_status=None):
+    response = {"success": success, "data": data, "errors": errors}
+    if http_status is None:
+        http_status = status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST
+    return Response(response, status=http_status)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def list_custom_variables(request):
+    form = ListCustomVariablesForm({"user": request.user.id})
+    if not form.is_valid():
+        return _custom_variable_response(False, errors=form.errors)
+    variables = ListCustomVariablesCommand(form).execute()
+    return _custom_variable_response(
+        True, data={"variables": [v.to_dict() for v in variables]}
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def create_custom_variable(request):
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = CreateCustomVariableForm(data)
+    if not form.is_valid():
+        return _custom_variable_response(False, errors=form.errors)
+    try:
+        variable = CreateCustomVariableCommand(form).execute()
+    except ValidationError as exc:
+        return _custom_variable_response(
+            False, errors={"non_field_errors": exc.messages}
+        )
+    return _custom_variable_response(
+        True, data=variable.to_dict(), http_status=status.HTTP_201_CREATED
+    )
+
+
+@api_view(["PUT"])
+@permission_classes([IsAuthenticated])
+def update_custom_variable(request):
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = UpdateCustomVariableForm(data)
+    if not form.is_valid():
+        return _custom_variable_response(False, errors=form.errors)
+    try:
+        variable = UpdateCustomVariableCommand(form).execute()
+    except ValidationError as exc:
+        return _custom_variable_response(
+            False, errors={"non_field_errors": exc.messages}
+        )
+    return _custom_variable_response(True, data=variable.to_dict())
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_custom_variable(request):
+    data = request.data.copy() if request.data else request.query_params.copy()
+    data["user"] = request.user.id
+    form = DeleteCustomVariableForm(data)
+    if not form.is_valid():
+        return _custom_variable_response(False, errors=form.errors)
+    try:
+        DeleteCustomVariableCommand(form).execute()
+    except ValidationError as exc:
+        return _custom_variable_response(
+            False,
+            errors={"non_field_errors": exc.messages},
+            http_status=status.HTTP_404_NOT_FOUND,
+        )
+    return _custom_variable_response(True, data={"deleted": True})

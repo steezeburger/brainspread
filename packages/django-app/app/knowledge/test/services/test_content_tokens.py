@@ -4,12 +4,15 @@ from typing import Optional
 from django.test import SimpleTestCase
 
 from knowledge.services.content_tokens import (
+    BUILTIN_TOKEN_NAMES,
     FILTER_VOCABULARY,
+    MAX_CUSTOM_TOKEN_DEPTH,
     TOKEN_VOCABULARY,
     PageTokenContext,
     TokenContext,
     TokenError,
     UserTokenContext,
+    find_custom_token_cycle,
     find_input_tokens,
     resolve_content_tokens,
 )
@@ -22,6 +25,7 @@ def make_context(
     inputs=None,
     count_query=None,
     page_date: Optional[date] = None,
+    custom_tokens=None,
 ) -> TokenContext:
     now = now or datetime(2026, 8, 21, 14, 32)
     uuid_counter = iter(range(1, 100))
@@ -43,6 +47,7 @@ def make_context(
         inputs=inputs,
         count_query=count_query,
         uuid_factory=lambda: f"uuid-{next(uuid_counter)}",
+        custom_tokens=custom_tokens or {},
     )
 
 
@@ -290,3 +295,110 @@ class TestErrorsAndEscaping(SimpleTestCase):
 
     def test_empty_content_passes_through(self):
         self.assertEqual(resolve_content_tokens("", make_context()), "")
+
+
+class TestCustomVariables(SimpleTestCase):
+    """User-defined tokens (issue #228): recursive, cycle-safe expansion."""
+
+    def test_plain_custom_variable_expands(self):
+        ctx = make_context(custom_tokens={"stack": "sabroxy, tongkat"})
+        self.assertEqual(
+            resolve_content_tokens("took {{stack}}", ctx), "took sabroxy, tongkat"
+        )
+
+    def test_builtin_inside_custom_variable_resolves(self):
+        ctx = make_context(
+            custom_tokens={"time_and_food_log": "{{current_time}} #food-log"}
+        )
+        self.assertEqual(
+            resolve_content_tokens("{{time_and_food_log}} eggs", ctx),
+            "14:32 #food-log eggs",
+        )
+
+    def test_custom_variable_inside_custom_variable_resolves(self):
+        ctx = make_context(
+            custom_tokens={
+                "stack": "sabroxy, tongkat, omegaTAU",
+                "daily_mood_stack_log": "{{stack}} @ {{current_time}} #supplements",
+            }
+        )
+        self.assertEqual(
+            resolve_content_tokens("{{daily_mood_stack_log}}", ctx),
+            "sabroxy, tongkat, omegaTAU @ 14:32 #supplements",
+        )
+
+    def test_name_is_case_insensitive(self):
+        ctx = make_context(custom_tokens={"stack": "x"})
+        self.assertEqual(resolve_content_tokens("{{ Stack }}", ctx), "x")
+
+    def test_escaped_braces_in_expansion_stay_literal(self):
+        ctx = make_context(custom_tokens={"lit": "\\{{today}}"})
+        self.assertEqual(resolve_content_tokens("{{lit}}", ctx), "{{today}}")
+
+    def test_builtin_wins_over_same_named_custom_variable(self):
+        ctx = make_context(custom_tokens={"today": "shadowed"})
+        self.assertEqual(resolve_content_tokens("{{today}}", ctx), "2026-08-21")
+
+    def test_self_reference_raises_naming_cycle(self):
+        ctx = make_context(custom_tokens={"a": "x {{a}}"})
+        with self.assertRaises(TokenError) as cm:
+            resolve_content_tokens("{{a}}", ctx)
+        self.assertIn("a → a", str(cm.exception))
+
+    def test_mutual_reference_raises_naming_cycle(self):
+        ctx = make_context(custom_tokens={"a": "{{b}}", "b": "{{a}}"})
+        with self.assertRaises(TokenError) as cm:
+            resolve_content_tokens("start {{a}}", ctx)
+        self.assertIn("a → b → a", str(cm.exception))
+
+    def test_cycle_entered_mid_chain_names_only_the_loop(self):
+        ctx = make_context(custom_tokens={"top": "{{a}}", "a": "{{b}}", "b": "{{a}}"})
+        with self.assertRaises(TokenError) as cm:
+            resolve_content_tokens("{{top}}", ctx)
+        self.assertIn("cycle: a → b → a", str(cm.exception))
+
+    def test_depth_cap_stops_long_acyclic_chains(self):
+        depth = MAX_CUSTOM_TOKEN_DEPTH + 1
+        tokens = {f"v{i}": f"{{{{v{i + 1}}}}}" for i in range(depth)}
+        tokens[f"v{depth}"] = "end"
+        with self.assertRaises(TokenError) as cm:
+            resolve_content_tokens("{{v0}}", make_context(custom_tokens=tokens))
+        self.assertIn("nested more than", str(cm.exception))
+
+    def test_chain_at_depth_cap_resolves(self):
+        depth = MAX_CUSTOM_TOKEN_DEPTH - 1
+        tokens = {f"v{i}": f"{{{{v{i + 1}}}}}" for i in range(depth)}
+        tokens[f"v{depth}"] = "end"
+        self.assertEqual(
+            resolve_content_tokens("{{v0}}", make_context(custom_tokens=tokens)),
+            "end",
+        )
+
+    def test_unknown_token_error_lists_custom_variables(self):
+        ctx = make_context(custom_tokens={"stack": "x"})
+        with self.assertRaises(TokenError) as cm:
+            resolve_content_tokens("{{nope}}", ctx)
+        self.assertIn("your variables: stack", str(cm.exception))
+
+    def test_unknown_token_inside_expansion_fails_loudly(self):
+        ctx = make_context(custom_tokens={"broken": "{{nope}}"})
+        with self.assertRaises(TokenError):
+            resolve_content_tokens("{{broken}}", ctx)
+
+    def test_find_input_tokens_looks_inside_custom_variables(self):
+        tokens = {"ask": "{{input:Mood}}", "loop": "{{loop}} {{input:Loop}}"}
+        self.assertEqual(
+            find_input_tokens("{{input:Title}} {{ask}} {{loop}}", tokens),
+            ["Title", "Mood", "Loop"],
+        )
+
+    def test_find_custom_token_cycle(self):
+        tokens = {"a": "{{b}}", "b": "{{c}} {{today}}", "c": "{{a}}", "d": "{{a}}"}
+        self.assertEqual(find_custom_token_cycle("a", tokens), ["a", "b", "c", "a"])
+        self.assertIsNone(find_custom_token_cycle("d", tokens))
+        self.assertIsNone(find_custom_token_cycle("x", {"x": "{{today}}"}))
+
+    def test_builtin_names_are_bare(self):
+        self.assertIn("input", BUILTIN_TOKEN_NAMES)
+        self.assertIn("page.title", BUILTIN_TOKEN_NAMES)
+        self.assertIn("current_time", BUILTIN_TOKEN_NAMES)

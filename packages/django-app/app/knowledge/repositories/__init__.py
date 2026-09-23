@@ -1,5 +1,6 @@
 from .automation_run_repository import AutomationRunRepository
 from .block_repository import BlockRepository
+from .custom_variable_repository import CustomVariableRepository
 from .page_embedded_view_repository import PageEmbeddedViewRepository
 from .page_repository import PageRepository
 from .reminder_repository import ReminderRepository

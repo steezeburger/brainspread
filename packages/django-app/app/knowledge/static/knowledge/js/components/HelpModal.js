@@ -245,6 +245,10 @@ window.HelpModal = {
                   <td><code class="help-syntax">count:&lt;query&gt;</code></td>
                   <td>frozen count of a query, e.g. <code class="help-syntax">{{count:type:todo and completed is null}}</code>. same query language as an automation's <code class="help-syntax">query::</code></td>
                 </tr>
+                <tr>
+                  <td><code class="help-syntax">&lt;your name&gt;</code></td>
+                  <td>your own variables, defined in settings &rarr; variables. an expansion can use other variables and built-ins, e.g. <code class="help-syntax">food_log</code> &rarr; <code class="help-syntax">{{current_time}} #food-log</code>. a variable that refers back to itself is rejected</td>
+                </tr>
               </tbody>
             </table>
             <p class="help-hint">filters chain with <code class="help-syntax">|</code>, jinja-style: <code class="help-syntax">{{now|time}}</code> and <code class="help-syntax">{{now|date}}</code> keep just that half, <code class="help-syntax">{{today|format:%A}}</code> takes any strftime pattern, and <code class="help-syntax">{{uuid|name:&lt;label&gt;}}</code> labels an id. variables inside a template stay dormant until the template is applied. write <code class="help-syntax">\\{{</code> for a literal <code class="help-syntax">{{</code>. an unknown variable or a broken count query is rejected when the block saves, and the error names the full vocabulary.</p>
