@@ -254,7 +254,7 @@ window.HelpModal = {
             <p class="help-hint">filters chain with <code class="help-syntax">|</code>, jinja-style: <code class="help-syntax">{{now|time}}</code> and <code class="help-syntax">{{now|date}}</code> keep just that half, <code class="help-syntax">{{today|format:%A}}</code> takes any strftime pattern, and <code class="help-syntax">{{uuid|name:&lt;label&gt;}}</code> labels an id. variables inside a template stay dormant until the template is applied. write <code class="help-syntax">\\{{</code> for a literal <code class="help-syntax">{{</code>. an unknown variable or a broken count query is rejected when the block saves, and the error names the full vocabulary.</p>
           </div>
 
-          <div class="help-section">
+          <div class="help-section" v-pre>
             <h3>automations</h3>
             <p class="help-hint">any block tagged <span class="inline-tag">#automation</span> (or living on the <code class="help-syntax">automation</code> page) is a live automation, configured with <code class="help-syntax">key:: value</code> lines. example — unfinished work moves itself onto today's daily every morning:</p>
             <table class="help-table">
