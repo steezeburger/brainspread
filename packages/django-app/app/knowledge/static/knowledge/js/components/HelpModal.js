@@ -246,8 +246,8 @@ window.HelpModal = {
                   <td>frozen count of a query, e.g. <code class="help-syntax">{{count:type:todo and completed is null}}</code>. same query language as an automation's <code class="help-syntax">query::</code></td>
                 </tr>
                 <tr>
-                  <td><code class="help-syntax">&lt;your name&gt;</code></td>
-                  <td>your own variables, defined in settings &rarr; variables. an expansion can use other variables and built-ins, e.g. <code class="help-syntax">food_log</code> &rarr; <code class="help-syntax">{{current_time}} #food-log</code>. a variable that refers back to itself is rejected</td>
+                  <td><code class="help-syntax">&lt;name&gt;</code></td>
+                  <td>your own variables, defined in settings &rarr; variables — lowercase letters, digits, and underscores only (no spaces). an expansion can use other variables and built-ins, e.g. <code class="help-syntax">food_log</code> &rarr; <code class="help-syntax">{{current_time}} #food-log</code>. a variable that refers back to itself is rejected</td>
                 </tr>
               </tbody>
             </table>
