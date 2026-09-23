@@ -31,6 +31,19 @@ Recognized props (slice 1 — schedule + manual triggers, command actions):
   required) for the ``prompt`` action, where it bounds which write tools
   the LLM may use.
 - ``enabled::`` ``true`` (default) | ``false``
+- ``for::``     ``<n>,<n>,...`` | ``<n>..<m> by <k>`` (issue #209) — a
+  literal iteration source for a standalone action, binding ``{{item}}``.
+  Integers, ascending, max ``MAX_FOR_ITEMS``. Mutually exclusive with
+  ``query::`` — an automation has exactly one iteration source (the
+  query's matched blocks, or ``for::``'s literal items), never both.
+
+Action args may carry ``{{token}}`` placeholders (issue #209), resolved
+by ``services.content_tokens`` / ``services.automation_actions`` at run
+time — this module only enforces the two token/spec contracts that don't
+need the verb registry: ``{{block.*}}`` tokens require ``query::``, and
+``for::``/``query::`` can't both be set. Everything else about tokens
+(unknown names, ``{{item}}`` used outside ``for::``, which verbs accept
+``{{block.*}}``) is a run-time ``ActionError``, not a parse error.
 """
 
 from __future__ import annotations
@@ -42,6 +55,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from django.utils.text import slugify
 
+from .content_tokens import token_names
 from .query_dsl import QueryDSLError, compile_inline_query
 
 if TYPE_CHECKING:
@@ -49,6 +63,29 @@ if TYPE_CHECKING:
 
 # Slug of the tag that marks a block as an automation definition.
 AUTOMATION_TAG_SLUG = "automation"
+
+_AUTOMATION_HASHTAG_RE = re.compile(r"(?<!\\)#automation\b")
+
+
+def is_automation_content(content: str, page_slug: str) -> bool:
+    """True when ``content`` on a page slugged ``page_slug`` would enroll
+    as an ``#automation`` definition block — mirrors
+    ``BlockRepository._automation_blocks_qs``'s discovery predicate (the
+    ``#automation`` hashtag, or living on the seeded "Automations" page).
+
+    Content-token resolution (issue #140) skips these blocks: a `key::
+    value` line like ``action:: create_block "{{item}}" ...`` carries the
+    automation token vocabulary (issue #209), which
+    ``automation_actions.run_action`` resolves at run time — often
+    against a context (a matched block, a `for::` item) that doesn't
+    exist yet at save time. Eagerly resolving it there raised on every
+    save of an automation using ``{{item}}``/``{{block.*}}``, and would
+    silently freeze ``{{today}}``/``{{now}}`` to authoring time instead
+    of each run's own."""
+    if page_slug == AUTOMATION_TAG_SLUG:
+        return True
+    return bool(_AUTOMATION_HASHTAG_RE.search(content or ""))
+
 
 TRIGGER_SCHEDULE = "schedule"
 TRIGGER_MANUAL = "manual"
@@ -128,6 +165,24 @@ class ActionSpec:
     raw: str
 
 
+# Cap on `for::`'s item count — a typo'd range (`for:: 1..100000 by 1`)
+# can't fan a standalone action out unbounded (mirrors MAX_ACTION_BLOCKS
+# for the query side of iteration).
+MAX_FOR_ITEMS = 50
+
+_FOR_RANGE_RE = re.compile(r"^(\d+)\s*\.\.\s*(\d+)\s+by\s+(\d+)$")
+
+
+@dataclass(frozen=True)
+class ForSpec:
+    """A ``for::`` iteration source (issue #209): a literal, ordered list
+    of string items binding ``{{item}}`` — the standalone-action
+    counterpart to a query's matched blocks."""
+
+    items: Tuple[str, ...]
+    raw: str
+
+
 @dataclass(frozen=True)
 class AutomationSpec:
     block_uuid: str
@@ -141,6 +196,7 @@ class AutomationSpec:
     allow: Optional[frozenset]
     enabled: bool
     query: Optional[QuerySpec] = None
+    for_spec: Optional[ForSpec] = None
 
 
 def parse_automation_block(block: "Block") -> AutomationSpec:
@@ -157,8 +213,24 @@ def parse_automation_block(block: "Block") -> AutomationSpec:
     trigger = _parse_trigger(_prop_str(props, "trigger"), errors)
     query = _parse_query(_prop_str(props, "query"), errors)
     action = _parse_action(_prop_str(props, "action"), errors)
+    for_spec = _parse_for(_prop_str(props, "for"), errors) if "for" in props else None
     allow = _parse_allow(_prop_str(props, "allow")) if "allow" in props else None
     enabled = _parse_bool(_prop_str(props, "enabled", "true"))
+
+    if action is not None:
+        arg_tokens = [name for arg in action.args for name in token_names(arg)]
+        if any(name.startswith("block.") for name in arg_tokens) and query is None:
+            errors.append(
+                "action args use `{{block.*}}` tokens, which require a `query::`"
+            )
+        if "item" in arg_tokens and for_spec is None:
+            errors.append("`{{item}}` requires a `for::` directive")
+
+    if for_spec is not None and query is not None:
+        errors.append(
+            "`for::` and `query::` are mutually exclusive — an automation "
+            "has one iteration source"
+        )
 
     if errors:
         raise AutomationSpecError(errors)
@@ -172,6 +244,7 @@ def parse_automation_block(block: "Block") -> AutomationSpec:
         allow=allow,
         enabled=enabled,
         query=query,
+        for_spec=for_spec,
     )
 
 
@@ -309,6 +382,48 @@ def _parse_query(raw: str, errors: List[str]) -> Optional[QuerySpec]:
         errors.append(f"bad query: {exc}")
         return None
     return QuerySpec(kind=QUERY_INLINE, filter_spec=filter_spec)
+
+
+def _parse_for(raw: str, errors: List[str]) -> Optional[ForSpec]:
+    raw = (raw or "").strip()
+    if not raw:
+        errors.append("`for::` needs items, e.g. `for:: 5,10,15` or `for:: 5..30 by 5`")
+        return None
+
+    match = _FOR_RANGE_RE.match(raw)
+    if match:
+        start, end, step = (int(match.group(i)) for i in (1, 2, 3))
+        if step < 1:
+            errors.append("`for::` range step (`by`) must be at least 1")
+            return None
+        if start > end:
+            errors.append("`for::` range must be ascending (start <= end)")
+            return None
+        items = [str(n) for n in range(start, end + 1, step)]
+    else:
+        parts = [p.strip() for p in raw.split(",")]
+        if any(not p for p in parts):
+            errors.append("`for::` has an empty item in the comma-separated list")
+            return None
+        try:
+            values = [int(p) for p in parts]
+        except ValueError:
+            errors.append(
+                "`for::` items must be integers — a comma list (`5,10,15`) "
+                "or a range (`5..30 by 5`)"
+            )
+            return None
+        if values != sorted(values) or len(set(values)) != len(values):
+            errors.append("`for::` items must be strictly ascending")
+            return None
+        items = parts
+
+    if len(items) > MAX_FOR_ITEMS:
+        errors.append(
+            f"`for::` produces {len(items)} items, over the {MAX_FOR_ITEMS} cap"
+        )
+        return None
+    return ForSpec(items=tuple(items), raw=raw)
 
 
 def _parse_action(raw: str, errors: List[str]) -> Optional[ActionSpec]:
