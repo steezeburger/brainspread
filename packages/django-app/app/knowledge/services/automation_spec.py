@@ -64,6 +64,29 @@ if TYPE_CHECKING:
 # Slug of the tag that marks a block as an automation definition.
 AUTOMATION_TAG_SLUG = "automation"
 
+_AUTOMATION_HASHTAG_RE = re.compile(r"(?<!\\)#automation\b")
+
+
+def is_automation_content(content: str, page_slug: str) -> bool:
+    """True when ``content`` on a page slugged ``page_slug`` would enroll
+    as an ``#automation`` definition block — mirrors
+    ``BlockRepository._automation_blocks_qs``'s discovery predicate (the
+    ``#automation`` hashtag, or living on the seeded "Automations" page).
+
+    Content-token resolution (issue #140) skips these blocks: a `key::
+    value` line like ``action:: create_block "{{item}}" ...`` carries the
+    automation token vocabulary (issue #209), which
+    ``automation_actions.run_action`` resolves at run time — often
+    against a context (a matched block, a `for::` item) that doesn't
+    exist yet at save time. Eagerly resolving it there raised on every
+    save of an automation using ``{{item}}``/``{{block.*}}``, and would
+    silently freeze ``{{today}}``/``{{now}}`` to authoring time instead
+    of each run's own."""
+    if page_slug == AUTOMATION_TAG_SLUG:
+        return True
+    return bool(_AUTOMATION_HASHTAG_RE.search(content or ""))
+
+
 TRIGGER_SCHEDULE = "schedule"
 TRIGGER_MANUAL = "manual"
 

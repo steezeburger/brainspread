@@ -13,6 +13,7 @@ from knowledge.services.automation_spec import (
     TRIGGER_MANUAL,
     TRIGGER_SCHEDULE,
     AutomationSpecError,
+    is_automation_content,
     parse_automation_block,
 )
 
@@ -469,3 +470,25 @@ class TestTokenSpecContracts(SimpleTestCase):
             )
         )
         self.assertIsNotNone(spec.for_spec)
+
+
+class TestIsAutomationContent(SimpleTestCase):
+    """Content-token resolution (issue #140) must skip automation
+    definitions — their {{...}} are the automation vocabulary, resolved
+    at run time by automation_actions, not at save time (issue #209)."""
+
+    def test_hashtag_marks_content_as_automation(self):
+        self.assertTrue(
+            is_automation_content("Ping sweep #automation\ntrigger:: manual", "daily")
+        )
+
+    def test_automations_page_marks_content_as_automation_without_hashtag(self):
+        self.assertTrue(is_automation_content("trigger:: manual", "automation"))
+
+    def test_plain_content_is_not_automation(self):
+        self.assertFalse(is_automation_content("standup notes {{today}}", "daily"))
+
+    def test_escaped_hashtag_does_not_count(self):
+        self.assertFalse(
+            is_automation_content(r"write \#automation literally", "daily")
+        )

@@ -9,6 +9,7 @@ from ..forms.sync_block_tags_form import SyncBlockTagsForm
 from ..forms.touch_page_form import TouchPageForm
 from ..models import Block
 from ..repositories import BlockRepository
+from ..services.automation_spec import is_automation_content
 from ..services.content_tokens import TokenError, resolve_content_tokens
 from ..services.token_context import build_token_context
 from .sync_block_tags_command import SyncBlockTagsCommand
@@ -48,9 +49,16 @@ class CreateBlockCommand(AbstractBaseCommand):
         created_via = self.form.cleaned_data.get("created_via") or Block.CREATED_VIA_WEB
 
         # Resolve {{tokens}} at save — snapshot semantics (issue #140).
-        # Skipped on template pages (tokens stay dormant until apply)
-        # and for code blocks (their content is code, not prose).
-        if content and block_type != "code" and page.page_type != "template":
+        # Skipped on template pages (tokens stay dormant until apply),
+        # for code blocks (their content is code, not prose), and for
+        # automation definitions (their {{...}} are the automation token
+        # vocabulary, resolved at run time — see is_automation_content).
+        if (
+            content
+            and block_type != "code"
+            and page.page_type != "template"
+            and not is_automation_content(content, page.slug)
+        ):
             try:
                 content = resolve_content_tokens(
                     content, build_token_context(user, page)

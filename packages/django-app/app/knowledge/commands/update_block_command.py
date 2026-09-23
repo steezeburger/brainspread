@@ -9,6 +9,7 @@ from ..forms.touch_page_form import TouchPageForm
 from ..forms.update_block_form import UpdateBlockForm
 from ..models import Block
 from ..repositories import BlockRepository
+from ..services.automation_spec import is_automation_content
 from ..services.content_tokens import TokenError, resolve_content_tokens
 from ..services.token_context import build_token_context
 from .set_block_type_command import SetBlockTypeCommand
@@ -92,7 +93,8 @@ class UpdateBlockCommand(AbstractBaseCommand):
 
         # Resolve {{tokens}} in the incoming content — snapshot
         # semantics (issue #140). Skipped on template pages (tokens
-        # stay dormant until apply) and for code blocks; an explicitly
+        # stay dormant until apply), for code blocks, and for automation
+        # definitions (see is_automation_content); an explicitly
         # submitted block_type decides code-ness for this save, the
         # stored type otherwise.
         effective_type = (
@@ -104,6 +106,9 @@ class UpdateBlockCommand(AbstractBaseCommand):
             self.form.cleaned_data.get("content")
             and effective_type != "code"
             and block.page.page_type != "template"
+            and not is_automation_content(
+                self.form.cleaned_data["content"], block.page.slug
+            )
         ):
             try:
                 self.form.cleaned_data["content"] = resolve_content_tokens(

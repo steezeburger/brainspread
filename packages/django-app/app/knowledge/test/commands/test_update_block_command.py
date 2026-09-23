@@ -859,6 +859,23 @@ class TestUpdateBlockTokenExpansion(TestCase):
         updated = self._update(block, "render({{today}})")
         self.assertEqual(updated.content, "render({{today}})")
 
+    def test_should_keep_tokens_dormant_for_automation_hashtag(self):
+        block = BlockFactory(page=self.page, user=self.user, content="plain")
+        updated = self._update(
+            block,
+            "Ping sweep #automation\ntrigger:: manual\nfor:: 5,10,15\n"
+            'action:: create_block "ping {{item}}" on today',
+        )
+        self.assertIn("{{item}}", updated.content)
+
+    def test_should_keep_tokens_dormant_on_automations_page(self):
+        automations_page = PageFactory(
+            user=self.user, slug="automation", title="Automations"
+        )
+        block = BlockFactory(page=automations_page, user=self.user, content="plain")
+        updated = self._update(block, 'action:: create_block "{{block.tag}}" on today')
+        self.assertIn("{{block.tag}}", updated.content)
+
     def test_unknown_token_rejects_the_save(self):
         block = BlockFactory(page=self.page, user=self.user, content="before")
         with self.assertRaises(ValidationError) as caught:
