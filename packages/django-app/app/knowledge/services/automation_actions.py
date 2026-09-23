@@ -504,6 +504,9 @@ _WIKI_REF_RE = re.compile(r"^\[\[(.+)\]\]$")
 
 
 def _resolve_target_page(ctx: ActionContext, args: Tuple[str, ...], verb: str):
+    """Resolve a page reference, auto-creating it (by title) when
+    nothing matches — the same auto-vivify behavior typing a #hashtag
+    into content already gets for tag pages."""
     if not args:
         raise ActionError(f'`{verb}` needs a target page, e.g. {verb} "groceries"')
     raw = " ".join(args).strip()
@@ -511,9 +514,9 @@ def _resolve_target_page(ctx: ActionContext, args: Tuple[str, ...], verb: str):
     ref = (m.group(1) if m else raw).strip()
     if not ref:
         raise ActionError(f"`{verb}` needs a non-empty page reference")
-    page = PageRepository.get_by_title_or_slug(ctx.user, ref)
-    if page is None:
-        raise ActionError(f"page `{ref}` not found")
+    page = PageRepository.get_by_title_or_slug(
+        ctx.user, ref
+    ) or PageRepository.get_or_create_by_title(ctx.user, ref)
     if page.page_type == "template":
         raise ActionError(
             f"`{ref}` is a template — moving blocks into a template would "
@@ -670,13 +673,12 @@ def _apply_template(
 def _resolve_tag_slugs(
     ctx: ActionContext, args: Tuple[str, ...], verb: str
 ) -> List[str]:
-    """Validate tag-slug args, strict-by-default: every slug must already
-    exist as a page (a missing one fails the run rather than being
-    silently created — the same typo guard the MCP tag tools use)."""
+    """Validate tag-slug args, auto-creating any that don't already
+    exist as a page — the same auto-vivify behavior typing a #hashtag
+    into content already gets (SyncBlockTagsCommand)."""
     if not args:
         raise ActionError(f"`{verb}` needs at least one tag slug, e.g. `{verb} sticky`")
     slugs: List[str] = []
-    missing: List[str] = []
     for raw in args:
         slug = raw.strip()
         if slug.startswith("#"):
@@ -688,14 +690,8 @@ def _resolve_tag_slugs(
             )
         if not slug:
             raise ActionError(f"`{verb}` got an empty tag slug")
-        if PageRepository.get_by_slug(slug, user=ctx.user) is None:
-            missing.append(slug)
-        else:
-            slugs.append(slug)
-    if missing:
-        raise ActionError(
-            f"tag page(s) not found: {', '.join(missing)} — create the page(s) first"
-        )
+        PageRepository.get_or_create_by_slug(ctx.user, slug)
+        slugs.append(slug)
     return slugs
 
 

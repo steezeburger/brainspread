@@ -2,6 +2,7 @@ from datetime import date
 from typing import Any, Dict, Optional
 
 from django.db.models import Count, F, Q, QuerySet
+from django.utils.text import slugify
 
 from common.repositories.base_repository import BaseRepository
 
@@ -127,6 +128,35 @@ class PageRepository(BaseRepository):
         return cls.get_by_title(user, query) or (
             cls.get_queryset().filter(user=user, slug__iexact=query).first()
         )
+
+    @classmethod
+    def get_or_create_by_title(cls, user, title: str) -> Page:
+        """Get or create a page by title, slugified the same way
+        CreatePageCommand does. Used where a reference should behave as
+        if the user had typed "New Page" with this exact title the
+        moment nothing matched — e.g. an automation's `on <page>`
+        target, which auto-creates the same way typing a #hashtag
+        auto-creates its tag page."""
+        page, _ = cls.model.objects.get_or_create(
+            user=user,
+            slug=slugify(title)[:200] or "page",
+            defaults={"title": title, "is_published": True},
+        )
+        return page
+
+    @classmethod
+    def get_or_create_by_slug(cls, user, slug: str) -> Page:
+        """Get or create a page by slug, humanizing the title the same
+        way typing a #hashtag into content does (see
+        SyncBlockTagsCommand._get_or_create_tag_page). Used where a
+        bare tag slug should auto-vivify — e.g. an automation's
+        `tagged <slug>` clause."""
+        page, _ = cls.model.objects.get_or_create(
+            user=user,
+            slug=slug,
+            defaults={"title": slug.replace("-", " ").title(), "is_published": True},
+        )
+        return page
 
     @classmethod
     def search_by_title(cls, user, query: str) -> QuerySet:

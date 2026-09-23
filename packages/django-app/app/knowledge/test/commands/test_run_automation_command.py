@@ -396,17 +396,20 @@ class TestRunAutomationCommand(TestCase):
         self.assertEqual(child.page, target)
         self.assertEqual(child.parent, parent)
 
-    def test_move_to_page_rejects_missing_and_template_targets(self):
+    def test_move_to_page_creates_missing_target_and_rejects_templates(self):
         PageFactory(user=self.user, title="Pack", slug="pack-tpl", page_type="template")
         source = PageFactory(user=self.user, title="Notes", slug="notes-mtp3")
-        BlockFactory(user=self.user, page=source, block_type="todo", content="TODO x")
+        block = BlockFactory(
+            user=self.user, page=source, block_type="todo", content="TODO x"
+        )
 
         missing = self._automation(
             trigger="manual", query="type:todo", action='move_to_page "nope"'
         )
         result = self._run(missing)
-        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
-        self.assertIn("not found", result["last_error"])
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        block.refresh_from_db()
+        self.assertEqual(block.page.title, "nope")
 
         into_template = self._automation(
             trigger="manual", query="type:todo", action='move_to_page "Pack"'
@@ -609,16 +612,16 @@ class TestSmallVerbActions(TestCase):
         self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
         self.assertIn("automation block itself", result["last_error"])
 
-    def test_tag_missing_page_fails_instead_of_creating(self):
-        self._todo()
+    def test_tag_creates_missing_tag_page(self):
+        target = self._todo()
         automation = self._automation(
             trigger="manual", query="type:todo", action="tag no-such-tag"
         )
 
         result = self._run(automation)
 
-        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
-        self.assertIn("no-such-tag", result["last_error"])
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        self.assertIn("no-such-tag", target.get_tag_names())
 
     # -- set_due ------------------------------------------------------------
 
@@ -851,7 +854,7 @@ class TestSmallVerbActions(TestCase):
         self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
         self.assertIn("key=value", result["last_error"])
 
-    def test_create_block_tagged_missing_page_fails(self):
+    def test_create_block_tagged_creates_missing_tag_page(self):
         automation = self._automation(
             trigger="manual",
             action='create_block "x" on today tagged no-such-tag',
@@ -859,8 +862,9 @@ class TestSmallVerbActions(TestCase):
 
         result = self._run(automation)
 
-        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
-        self.assertIn("no-such-tag", result["last_error"])
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        created = Block.objects.get(user=self.user, content__startswith="x")
+        self.assertIn("no-such-tag", created.get_tag_names())
 
     def test_untag_preserves_done_type_and_completed_at(self):
         # Regression: content rewrites go through UpdateBlockCommand, whose
