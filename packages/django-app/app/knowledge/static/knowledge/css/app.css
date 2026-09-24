@@ -3119,77 +3119,6 @@ kbd {
   color: var(--text-primary);
 }
 
-/* Trash list (issue #122). Same row shape as Templates, but the
-   secondary action is a text "restore" button instead of an edit
-   link — restoring is destructive-adjacent enough to want a label,
-   not just a glyph. */
-.leftnav-trash-body {
-  display: flex;
-  flex-direction: column;
-  padding: 0 0 0.1rem;
-}
-
-.leftnav-trash-subheading {
-  padding: 0.2rem 0.55rem 0.1rem;
-  color: var(--text-muted);
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.leftnav-trash-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.leftnav-trash-row {
-  display: flex;
-  align-items: center;
-  gap: 0;
-}
-
-.leftnav-trash-label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 0.15rem 0.55rem;
-  font-size: 0.8rem;
-  color: var(--text-primary);
-}
-
-.leftnav-trash-meta {
-  margin-left: 0.35rem;
-  color: var(--text-muted);
-  font-size: 0.7rem;
-}
-
-.leftnav-trash-restore {
-  flex-shrink: 0;
-  margin-right: 0.2rem;
-  padding: 0.1rem 0.4rem;
-  font-family: inherit;
-  font-size: 0.7rem;
-  background: var(--bg-primary);
-  color: var(--text-muted);
-  border: 1px solid var(--border-primary);
-  border-radius: 0;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 80ms linear;
-}
-
-.leftnav-trash-row:hover .leftnav-trash-restore,
-.leftnav-trash-restore:focus-visible {
-  opacity: 1;
-}
-
-.leftnav-trash-restore:hover {
-  background: var(--hover-bg);
-  color: var(--text-primary);
-}
-
 .leftnav-recent {
   flex: 1;
   min-height: 0;
@@ -9132,6 +9061,74 @@ a.hashtag-mention:hover,
   margin-top: 1rem;
 }
 
+/* Trash tab (issue #122) — reuses the pages-list-page shell (header,
+   type-filter tabs) but swaps the content area for two grouped lists
+   (pages, blocks) since Trash holds both. */
+.pages-list-trash-section {
+  margin-bottom: 1.5rem;
+}
+
+.pages-list-trash-heading {
+  margin: 0 0 0.4rem;
+  padding: 0 0.1rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pages-list-trash-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.9rem;
+}
+
+.pages-list-trash-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.pages-list-trash-meta {
+  margin-left: 0.6rem;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pages-list-trash-restore {
+  flex: none;
+  padding: 0.25rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.75rem;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 80ms linear;
+}
+
+.pages-list-trash-row:hover .pages-list-trash-restore,
+.pages-list-trash-restore:focus-visible {
+  opacity: 1;
+}
+
+.pages-list-trash-restore:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.pages-list-trash-restore:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 @media (max-width: 768px) {
   .pages-list-page,
   .templates-page {
@@ -9158,7 +9155,7 @@ a.hashtag-mention:hover,
   .block-collapse-toggle,
   .block-code-copy,
   .leftnav-template-edit,
-  .leftnav-trash-restore {
+  .pages-list-trash-restore {
     opacity: 1;
   }
 
