@@ -36,6 +36,11 @@ const PagesListPage = {
       // gets its own data bucket instead of reusing `pages`).
       trash: { pages: [], blocks: [] },
       restoringUuids: [],
+      // Separate from `error` on purpose: `error` gates the whole
+      // loading/error/content v-else-if chain, so reusing it for a
+      // single failed restore would blank out the rest of the trash
+      // list behind the message instead of just flagging that one row.
+      restoreError: null,
     };
   },
 
@@ -138,6 +143,7 @@ const PagesListPage = {
     async reload() {
       this.loading = true;
       this.error = null;
+      this.restoreError = null;
       const seq = ++this.requestSeq;
       try {
         if (this.typeFilter === "trash") {
@@ -191,9 +197,29 @@ const PagesListPage = {
         : content;
     },
 
+    // Pulls the first message out of a DRF-style {field: [messages]}
+    // errors object — restore can fail with a specific, useful reason
+    // (e.g. "this block's page is also in Trash — restore the page
+    // first"), attached to whichever field's clean_*() raised it, not
+    // always non_field_errors. Falls back to a generic message when
+    // the response carries nothing usable.
+    firstErrorMessage(result, fallback) {
+      const errors = result && result.errors;
+      if (errors && typeof errors === "object") {
+        for (const key of Object.keys(errors)) {
+          const messages = errors[key];
+          if (Array.isArray(messages) && messages.length) {
+            return messages[0];
+          }
+        }
+      }
+      return fallback;
+    },
+
     async onRestorePage(page) {
       if (this.restoringUuids.includes(page.uuid)) return;
       this.restoringUuids.push(page.uuid);
+      this.restoreError = null;
       try {
         const result = await window.apiService.restorePage(page.uuid);
         if (result.success) {
@@ -202,11 +228,14 @@ const PagesListPage = {
           );
           document.dispatchEvent(new CustomEvent("favorites:changed"));
         } else {
-          this.error = "failed to restore page";
+          this.restoreError = this.firstErrorMessage(
+            result,
+            "failed to restore page"
+          );
         }
       } catch (err) {
         console.error("failed to restore page:", err);
-        this.error = "failed to restore page";
+        this.restoreError = "failed to restore page";
       } finally {
         this.restoringUuids = this.restoringUuids.filter(
           (u) => u !== page.uuid
@@ -217,6 +246,7 @@ const PagesListPage = {
     async onRestoreBlock(block) {
       if (this.restoringUuids.includes(block.uuid)) return;
       this.restoringUuids.push(block.uuid);
+      this.restoreError = null;
       try {
         const result = await window.apiService.restoreBlock(block.uuid);
         if (result.success) {
@@ -224,11 +254,14 @@ const PagesListPage = {
             (b) => b.uuid !== block.uuid
           );
         } else {
-          this.error = "failed to restore block";
+          this.restoreError = this.firstErrorMessage(
+            result,
+            "failed to restore block"
+          );
         }
       } catch (err) {
         console.error("failed to restore block:", err);
-        this.error = "failed to restore block";
+        this.restoreError = "failed to restore block";
       } finally {
         this.restoringUuids = this.restoringUuids.filter(
           (u) => u !== block.uuid
@@ -330,6 +363,15 @@ const PagesListPage = {
       <div v-else-if="error" class="form-error">{{ error }}</div>
 
       <template v-else-if="typeFilter === 'trash'">
+        <div v-if="restoreError" class="form-error pages-list-trash-error">
+          {{ restoreError }}
+          <button
+            type="button"
+            class="pages-list-trash-error-dismiss"
+            @click="restoreError = null"
+            aria-label="Dismiss"
+          >×</button>
+        </div>
         <div v-if="!trash.pages.length && !trash.blocks.length" class="empty-state">
           Trash is empty. Deleted pages and blocks show up here for 30 days.
         </div>
