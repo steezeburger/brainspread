@@ -188,6 +188,14 @@ window.LeftNav = {
     // delete-template dispatch this so the sidebar list stays fresh.
     this.handleTemplatesChanged = () => this.loadTemplates();
     document.addEventListener("templates:changed", this.handleTemplatesChanged);
+    // Trash (issue #122): deleting a page/block anywhere in the app
+    // dispatches this so the Trash section — and its count badge —
+    // stays fresh even while collapsed. Unlike the other sections here,
+    // Trash is loaded lazily (only once the user first expands it), so
+    // without this listener a delete made after that first peek would
+    // never show up without a full page reload.
+    this.handleTrashChanged = () => this.loadTrash();
+    document.addEventListener("trash:changed", this.handleTrashChanged);
     // Close the nav when the user clicks outside it on mobile only.
     // On desktop the rail and panel sit in their own real-estate column
     // and never overlap content, so an outside click shouldn't dismiss
@@ -230,6 +238,9 @@ window.LeftNav = {
         "templates:changed",
         this.handleTemplatesChanged
       );
+    }
+    if (this.handleTrashChanged) {
+      document.removeEventListener("trash:changed", this.handleTrashChanged);
     }
     this.detachOutsideClickHandler();
     if (this.handleViewportResize) {
