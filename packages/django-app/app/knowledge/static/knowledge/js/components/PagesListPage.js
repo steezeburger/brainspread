@@ -202,9 +202,20 @@ const PagesListPage = {
     // (e.g. "this block's page is also in Trash — restore the page
     // first"), attached to whichever field's clean_*() raised it, not
     // always non_field_errors. Falls back to a generic message when
-    // the response carries nothing usable.
-    firstErrorMessage(result, fallback) {
-      const errors = result && result.errors;
+    // nothing usable is found.
+    //
+    // apiService.request() throws for any non-2xx response (the
+    // restore endpoints return 400 on a form validation failure), so
+    // the real error body never reaches here as a resolved `result` —
+    // it only shows up as `err.payload` on the thrown Error. Accepts
+    // either shape: a `{errors}`-bearing result/response, or the
+    // thrown error itself (read via its `.payload`).
+    firstErrorMessage(resultOrError, fallback) {
+      const errors =
+        (resultOrError && resultOrError.errors) ||
+        (resultOrError &&
+          resultOrError.payload &&
+          resultOrError.payload.errors);
       if (errors && typeof errors === "object") {
         for (const key of Object.keys(errors)) {
           const messages = errors[key];
@@ -235,7 +246,10 @@ const PagesListPage = {
         }
       } catch (err) {
         console.error("failed to restore page:", err);
-        this.restoreError = "failed to restore page";
+        this.restoreError = this.firstErrorMessage(
+          err,
+          err?.message || "failed to restore page"
+        );
       } finally {
         this.restoringUuids = this.restoringUuids.filter(
           (u) => u !== page.uuid
@@ -261,7 +275,10 @@ const PagesListPage = {
         }
       } catch (err) {
         console.error("failed to restore block:", err);
-        this.restoreError = "failed to restore block";
+        this.restoreError = this.firstErrorMessage(
+          err,
+          err?.message || "failed to restore block"
+        );
       } finally {
         this.restoringUuids = this.restoringUuids.filter(
           (u) => u !== block.uuid
