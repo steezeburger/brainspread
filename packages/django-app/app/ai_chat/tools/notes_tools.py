@@ -610,6 +610,43 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
         },
     },
     {
+        "name": "archive_page",
+        "description": (
+            "Soft-delete a page: the page and every block on it move to"
+            " the user's Trash (restorable within the retention window)"
+            " rather than being destroyed outright. Every call pauses"
+            " for explicit user approval before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "page_uuid": {
+                    "type": "string",
+                    "description": "UUID of the page to archive.",
+                },
+            },
+            "required": ["page_uuid"],
+        },
+    },
+    {
+        "name": "restore_page",
+        "description": (
+            "Restore a page (and its blocks) out of the Trash — undoes"
+            " archive_page. Every call pauses for explicit user approval"
+            " before execution."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "page_uuid": {
+                    "type": "string",
+                    "description": "UUID of the soft-deleted page to restore.",
+                },
+            },
+            "required": ["page_uuid"],
+        },
+    },
+    {
         "name": "create_block",
         "description": (
             "Create a new block on a page. Use after confirming the"

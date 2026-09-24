@@ -1256,7 +1256,8 @@ const Page = {
 
       const confirmed = await window.appModals.confirm({
         title: "delete block?",
-        message: "this will also delete any child blocks and cannot be undone.",
+        message:
+          "this will also delete any child blocks. You can restore it from Trash within 30 days.",
         confirmLabel: "delete",
         destructive: true,
       });
@@ -1277,6 +1278,11 @@ const Page = {
           // Notify embeds that may still be displaying this block —
           // their saved view re-run will drop the now-gone row.
           this.broadcastBlockChanged(block.uuid);
+          // The LeftNav Trash section caches its list after the first
+          // expand and has no other way to know a delete just happened
+          // elsewhere in the app — refetch it so a freshly-deleted block
+          // actually shows up there.
+          document.dispatchEvent(new CustomEvent("trash:changed"));
           // Silent: swap in the fresh tree without flashing the whole
           // page through the "Loading..." state.
           await this.loadPage({ silent: true });
@@ -3293,7 +3299,7 @@ const Page = {
       const confirmed = await window.appModals.confirm({
         title: `delete "${this.page.title}"?`,
         message:
-          "this will also delete all direct blocks and cannot be undone.",
+          "this will also delete all blocks on the page. You can restore it from Trash within 30 days.",
         confirmLabel: "delete",
         destructive: true,
       });
@@ -4549,7 +4555,8 @@ const Page = {
       const plural = uuids.length === 1 ? "" : "s";
       const confirmed = await window.appModals.confirm({
         title: `delete ${uuids.length} block${plural}?`,
-        message: "this also deletes any child blocks and cannot be undone.",
+        message:
+          "this also deletes any child blocks. You can restore them from Trash within 30 days.",
         confirmLabel: "delete",
         destructive: true,
       });
@@ -4565,6 +4572,9 @@ const Page = {
           `deleted ${count} block${count === 1 ? "" : "s"}`,
           "success"
         );
+        // See deleteBlock() — LeftNav's Trash section only refetches on
+        // this event, not on its own.
+        document.dispatchEvent(new CustomEvent("trash:changed"));
         this.clearBlockSelection();
         await this.loadPage({ silent: true });
       } catch (error) {

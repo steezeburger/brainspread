@@ -16,9 +16,13 @@ class WebArchive(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
     flip to `ready` or `failed`.
 
     Soft-deleted: when the anchor block is deleted we soft-delete the
-    archive row (via DeleteBlockCommand -> SoftDeleteWebArchiveCommand)
-    and null out the block FK so the Asset bytes stay on disk for a
-    future library / restore view.
+    archive row too (via DeleteBlockCommand -> SoftDeleteWebArchiveCommand)
+    so the Asset bytes stay on disk for a future library / restore view.
+    Block is itself soft-deleted (issue #122) rather than hard-deleted, so
+    the FK here isn't nulled by on_delete=SET_NULL on the common path —
+    it only fires if a block is ever force-deleted for real. Restoring a
+    block does not currently restore its archive; the archive stays
+    soft-deleted until a dedicated restore surface exists.
     """
 
     STATUS_CHOICES = [
@@ -34,9 +38,10 @@ class WebArchive(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
         related_name="web_archives",
     )
     # One archive per Block while the block exists. When the block is
-    # deleted, SoftDeleteWebArchiveCommand marks the archive inactive and
-    # Django sets block to NULL via on_delete=SET_NULL - the archive
-    # survives for history even though the anchor block is gone.
+    # deleted, SoftDeleteWebArchiveCommand marks the archive inactive.
+    # The FK keeps pointing at the (now soft-deleted) block — see the
+    # class docstring — and only gets nulled by on_delete=SET_NULL on a
+    # real force-delete.
     block = models.OneToOneField(
         "knowledge.Block",
         on_delete=models.SET_NULL,

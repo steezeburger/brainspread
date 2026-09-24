@@ -143,6 +143,24 @@ class ApiService {
     });
   }
 
+  async getTrash() {
+    return await this.request("/knowledge/api/trash/");
+  }
+
+  async restorePage(pageUuid) {
+    return await this.request("/knowledge/api/trash/pages/restore/", {
+      method: "POST",
+      body: JSON.stringify({ page: pageUuid }),
+    });
+  }
+
+  async restoreBlock(blockUuid) {
+    return await this.request("/knowledge/api/trash/blocks/restore/", {
+      method: "POST",
+      body: JSON.stringify({ block: blockUuid }),
+    });
+  }
+
   async setPageShareMode(pageUuid, shareMode) {
     return await this.request("/knowledge/api/pages/share/", {
       method: "POST",

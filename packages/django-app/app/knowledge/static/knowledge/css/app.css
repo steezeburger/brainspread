@@ -9061,6 +9061,100 @@ a.hashtag-mention:hover,
   margin-top: 1rem;
 }
 
+/* Trash tab (issue #122) — reuses the pages-list-page shell (header,
+   type-filter tabs) but swaps the content area for two grouped lists
+   (pages, blocks) since Trash holds both. */
+.pages-list-trash-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-primary);
+}
+
+.pages-list-trash-error-dismiss {
+  flex: none;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.25rem;
+}
+
+.pages-list-trash-error-dismiss:hover {
+  color: var(--text-primary);
+}
+
+.pages-list-trash-section {
+  margin-bottom: 1.5rem;
+}
+
+.pages-list-trash-heading {
+  margin: 0 0 0.4rem;
+  padding: 0 0.1rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pages-list-trash-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.9rem;
+}
+
+.pages-list-trash-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.pages-list-trash-meta {
+  margin-left: 0.6rem;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pages-list-trash-restore {
+  flex: none;
+  padding: 0.25rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.75rem;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 0;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 80ms linear;
+}
+
+.pages-list-trash-row:hover .pages-list-trash-restore,
+.pages-list-trash-restore:focus-visible {
+  opacity: 1;
+}
+
+.pages-list-trash-restore:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.pages-list-trash-restore:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 @media (max-width: 768px) {
   .pages-list-page,
   .templates-page {
@@ -9086,7 +9180,8 @@ a.hashtag-mention:hover,
 @media (hover: none) and (pointer: coarse) {
   .block-collapse-toggle,
   .block-code-copy,
-  .leftnav-template-edit {
+  .leftnav-template-edit,
+  .pages-list-trash-restore {
     opacity: 1;
   }
 
