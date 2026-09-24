@@ -147,7 +147,12 @@ class TestPageRepository(TestCase):
         result = PageRepository.delete_by_uuid(str(page.uuid), user=self.user)
 
         self.assertTrue(result)
-        self.assertFalse(Page.objects.filter(uuid=page.uuid).exists())
+        # Soft-deleted: row survives, but drops out of the active queryset.
+        self.assertFalse(PageRepository.get_queryset().filter(uuid=page.uuid).exists())
+        self.assertTrue(Page.objects.filter(uuid=page.uuid).exists())
+        page.refresh_from_db()
+        self.assertFalse(page.is_active)
+        self.assertIsNotNone(page.deleted_at)
 
     def test_should_not_delete_other_users_page(self):
         page = PageFactory(user=self.user)
@@ -194,6 +199,52 @@ class TestPageRepository(TestCase):
         self.assertIn(str(page_with_blocks.uuid), uuids)
         self.assertIn(str(whiteboard_page.uuid), uuids)
         self.assertNotIn(str(empty_regular_page.uuid), uuids)
+
+    def test_get_by_share_token_excludes_archived_pages(self):
+        page = PageFactory(user=self.user, share_token="tok", share_mode="link")
+
+        self.assertEqual(
+            str(PageRepository.get_by_share_token("tok").uuid), str(page.uuid)
+        )
+
+        page.delete()
+
+        self.assertIsNone(PageRepository.get_by_share_token("tok"))
+
+    def test_get_deleted_pages_ordered_most_recent_first(self):
+        older = PageFactory(user=self.user)
+        older.delete()
+        newer = PageFactory(user=self.user)
+        newer.delete()
+        still_active = PageFactory(user=self.user)
+
+        result = list(PageRepository.get_deleted_pages(self.user))
+
+        self.assertEqual(
+            [str(p.uuid) for p in result], [str(newer.uuid), str(older.uuid)]
+        )
+        self.assertNotIn(str(still_active.uuid), [str(p.uuid) for p in result])
+
+    def test_get_purgeable_filters_by_cutoff(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        old = PageFactory(user=self.user)
+        old.delete()
+        Page.objects.filter(pk=old.pk).update(
+            deleted_at=timezone.now() - timedelta(days=45)
+        )
+        recent = PageFactory(user=self.user)
+        recent.delete()
+
+        cutoff = timezone.now() - timedelta(days=30)
+        purgeable_ids = list(
+            PageRepository.get_purgeable(cutoff).values_list("id", flat=True)
+        )
+
+        self.assertIn(old.id, purgeable_ids)
+        self.assertNotIn(recent.id, purgeable_ids)
 
 
 class TestGetOrCreateByTitle(TestCase):

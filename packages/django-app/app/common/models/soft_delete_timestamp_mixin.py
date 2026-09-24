@@ -16,7 +16,7 @@ class SoftDeleteTimestampMixin(models.Model):
     `deleted_at` will be set to the current time at time of deletion.
     """
 
-    deleted_at = models.DateTimeField(db_index=True, null=True)
+    deleted_at = models.DateTimeField(db_index=True, null=True, blank=True)
     is_active = models.BooleanField(
         _("active"), db_index=True, default=True, help_text=is_active_help_text
     )

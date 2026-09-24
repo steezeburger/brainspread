@@ -45,6 +45,7 @@ from knowledge.commands import (
     ListCustomVariablesCommand,
     ListSavedViewsCommand,
     ListTemplatesCommand,
+    ListTrashCommand,
     MoveBlockToDailyCommand,
     MoveBlockToPageCommand,
     MoveUndoneTodosCommand,
@@ -52,7 +53,9 @@ from knowledge.commands import (
     ReorderBlocksCommand,
     ReorderFavoritedPagesCommand,
     ReorderPageEmbeddedViewsCommand,
+    RestoreBlockCommand,
     RestoreBlockRevisionCommand,
+    RestorePageCommand,
     RunAutomationCommand,
     RunSavedViewCommand,
     ScheduleBlockCommand,
@@ -81,6 +84,7 @@ from knowledge.commands.bulk_move_blocks_to_page_command import (
 from knowledge.commands.get_graph_data_command import GraphData
 from knowledge.commands.get_historical_data_command import HistoricalData
 from knowledge.commands.get_tag_content_command import TagContentData
+from knowledge.commands.list_trash_command import TrashData
 from knowledge.commands.move_block_to_daily_command import MoveBlockToDailyData
 from knowledge.commands.move_block_to_page_command import MoveBlockToPageData
 from knowledge.commands.move_undone_todos_command import MoveUndoneTodosData
@@ -115,6 +119,7 @@ from knowledge.forms import (
     ListCustomVariablesForm,
     ListSavedViewsForm,
     ListTemplatesForm,
+    ListTrashForm,
     MoveBlockToDailyForm,
     MoveBlockToPageForm,
     MoveUndoneTodosForm,
@@ -122,7 +127,9 @@ from knowledge.forms import (
     ReorderBlocksForm,
     ReorderFavoritedPagesForm,
     ReorderPageEmbeddedViewsForm,
+    RestoreBlockForm,
     RestoreBlockRevisionForm,
+    RestorePageForm,
     RunAutomationForm,
     RunSavedViewForm,
     ScheduleBlockForm,
@@ -140,9 +147,9 @@ from knowledge.forms import (
     UpdatePageForm,
     UpdateSavedViewForm,
 )
-from knowledge.models import BlockData, BlockRevisionData, Page, PageData, PagesData
+from knowledge.models import BlockData, BlockRevisionData, PageData, PagesData
 from knowledge.models.page import PageWithBlocksData
-from knowledge.repositories import BlockRepository, SavedViewRepository
+from knowledge.repositories import BlockRepository, PageRepository, SavedViewRepository
 
 
 # API Response Types with specific data types
@@ -167,6 +174,12 @@ class BlockResponse(TypedDict):
 class DeleteResponse(TypedDict):
     success: bool
     data: Optional[Dict[str, str]]
+    errors: Optional[Dict[str, List[str]]]
+
+
+class TrashResponse(TypedDict):
+    success: bool
+    data: Optional[TrashData]
     errors: Optional[Dict[str, List[str]]]
 
 
@@ -429,9 +442,8 @@ def public_page(request, share_token: str):
     share_token to a Page only if its current share_mode is "link" —
     flipping back to private breaks all outstanding links immediately.
     """
-    try:
-        page = Page.objects.get(share_token=share_token)
-    except Page.DoesNotExist:
+    page = PageRepository.get_by_share_token(share_token)
+    if page is None:
         raise Http404("Shared page not found")
 
     if not page.is_publicly_viewable:
@@ -483,9 +495,8 @@ def public_asset(request, share_token: str, asset_uuid: str):
          malicious viewer from substituting an unrelated asset_uuid into
          the URL to read other content the owner hasn't actually shared.
     """
-    try:
-        page = Page.objects.get(share_token=share_token)
-    except Page.DoesNotExist:
+    page = PageRepository.get_by_share_token(share_token)
+    if page is None:
         raise Http404("Shared asset not found")
 
     if not page.is_publicly_viewable:
@@ -884,6 +895,128 @@ def delete_page(request):
                 "errors": None,
             }
 
+            return Response(response)
+        else:
+            response: DeleteResponse = {
+                "success": False,
+                "data": None,
+                "errors": form.errors,
+            }
+            return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+    except ValidationError as e:
+        response: DeleteResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        response: DeleteResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_trash(request):
+    """API endpoint to list the user's soft-deleted pages and blocks."""
+    try:
+        data = request.query_params.copy()
+        data["user"] = request.user.id
+        form = ListTrashForm(data)
+
+        if form.is_valid():
+            command = ListTrashCommand(form)
+            result = command.execute()
+
+            response: TrashResponse = {
+                "success": True,
+                "data": result,
+                "errors": None,
+            }
+            return Response(response)
+        else:
+            response: TrashResponse = {
+                "success": False,
+                "data": None,
+                "errors": form.errors,
+            }
+            return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        response: TrashResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def restore_page(request):
+    """API endpoint to restore a soft-deleted page (and its blocks)."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = RestorePageForm(data)
+
+        if form.is_valid():
+            RestorePageCommand(form).execute()
+
+            response: DeleteResponse = {
+                "success": True,
+                "data": {"message": "Page restored successfully"},
+                "errors": None,
+            }
+            return Response(response)
+        else:
+            response: DeleteResponse = {
+                "success": False,
+                "data": None,
+                "errors": form.errors,
+            }
+            return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+    except ValidationError as e:
+        response: DeleteResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        response: DeleteResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def restore_block(request):
+    """API endpoint to restore a soft-deleted block (and its subtree)."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = RestoreBlockForm(data)
+
+        if form.is_valid():
+            RestoreBlockCommand(form).execute()
+
+            response: DeleteResponse = {
+                "success": True,
+                "data": {"message": "Block restored successfully"},
+                "errors": None,
+            }
             return Response(response)
         else:
             response: DeleteResponse = {

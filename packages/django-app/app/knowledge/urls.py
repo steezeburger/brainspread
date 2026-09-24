@@ -116,6 +116,10 @@ urlpatterns = [
     ),
     path("api/pages/delete/", views.delete_page, name="delete_page"),
     path("api/pages/list/", views.get_pages, name="list_pages"),
+    # Trash (issue #122) — soft-deleted pages/blocks + restore actions.
+    path("api/trash/", views.get_trash, name="get_trash"),
+    path("api/trash/pages/restore/", views.restore_page, name="restore_page"),
+    path("api/trash/blocks/restore/", views.restore_block, name="restore_block"),
     path("api/pages/search/", views.search_pages, name="search_pages"),
     # Page templates (issue #106) — templates live as Pages with
     # page_type='template'; ``duplicate`` powers both "Save as template"

@@ -59,3 +59,176 @@ class TestGetReferencedBlocks(TestCase):
 
         result = BlockRepository.get_referenced_blocks(self.tag_page)
         self.assertEqual([b.id for b in result], [child.id])
+
+    def test_excludes_a_soft_deleted_tagged_block(self):
+        block = BlockFactory(user=self.user, page=self.source)
+        block.pages.add(self.tag_page)
+        block.delete()
+
+        result = BlockRepository.get_referenced_blocks(self.tag_page)
+        self.assertEqual(result, [])
+
+
+class TestSearchByContentExcludesDeleted(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+        cls.page = PageFactory(user=cls.user)
+
+    def test_soft_deleted_blocks_drop_out_of_search(self):
+        BlockFactory(user=self.user, page=self.page, content="find me please")
+        gone = BlockFactory(
+            user=self.user, page=self.page, content="find me too, but deleted"
+        )
+        gone.delete()
+
+        results = list(BlockRepository.search_by_content(self.user, "find me"))
+
+        self.assertEqual(len(results), 1)
+        self.assertNotIn(gone.id, [b.id for b in results])
+
+
+class TestSoftDeleteCascades(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+        cls.page = PageFactory(user=cls.user)
+
+    def test_soft_delete_subtree_only_touches_active_descendants(self):
+        root = BlockFactory(user=self.user, page=self.page)
+        child = BlockFactory(user=self.user, page=self.page, parent=root)
+        already_gone = BlockFactory(user=self.user, page=self.page, parent=root)
+        already_gone.delete()
+        other_deleted_at = already_gone.deleted_at
+
+        BlockRepository.soft_delete_subtree(root)
+
+        root.refresh_from_db()
+        child.refresh_from_db()
+        already_gone.refresh_from_db()
+        self.assertFalse(root.is_active)
+        self.assertFalse(child.is_active)
+        # Untouched — keeps its original deleted_at rather than being
+        # re-stamped by the cascade.
+        self.assertEqual(already_gone.deleted_at, other_deleted_at)
+
+    def test_restore_subtree_restores_the_whole_tree_regardless_of_state(self):
+        root = BlockFactory(user=self.user, page=self.page)
+        child = BlockFactory(user=self.user, page=self.page, parent=root)
+        grandchild = BlockFactory(user=self.user, page=self.page, parent=child)
+        BlockRepository.soft_delete_subtree(root)
+
+        BlockRepository.restore_subtree(root)
+
+        for b in (root, child, grandchild):
+            b.refresh_from_db()
+            self.assertTrue(b.is_active)
+            self.assertIsNone(b.deleted_at)
+
+    def test_restore_ancestors_restores_only_the_inactive_chain(self):
+        root = BlockFactory(user=self.user, page=self.page, content="root")
+        child = BlockFactory(
+            user=self.user, page=self.page, parent=root, content="child"
+        )
+        grandchild = BlockFactory(
+            user=self.user, page=self.page, parent=child, content="grandchild"
+        )
+        sibling = BlockFactory(
+            user=self.user, page=self.page, parent=root, content="sibling"
+        )
+        BlockRepository.soft_delete_subtree(root)
+
+        restored = BlockRepository.restore_ancestors(grandchild)
+
+        self.assertEqual(restored, 2)  # root + child, not grandchild itself
+        root.refresh_from_db()
+        child.refresh_from_db()
+        grandchild.refresh_from_db()
+        sibling.refresh_from_db()
+        self.assertTrue(root.is_active)
+        self.assertTrue(child.is_active)
+        self.assertFalse(grandchild.is_active)  # restore_ancestors doesn't touch it
+        self.assertFalse(sibling.is_active)  # unrelated sibling left alone
+
+    def test_restore_ancestors_is_a_noop_when_parent_already_active(self):
+        root = BlockFactory(user=self.user, page=self.page)
+        child = BlockFactory(user=self.user, page=self.page, parent=root)
+
+        restored = BlockRepository.restore_ancestors(child)
+
+        self.assertEqual(restored, 0)
+
+    def test_restore_ancestors_stops_at_the_first_active_ancestor(self):
+        from knowledge.models import Block
+
+        root = BlockFactory(user=self.user, page=self.page, content="root")
+        child = BlockFactory(
+            user=self.user, page=self.page, parent=root, content="child"
+        )
+        grandchild = BlockFactory(
+            user=self.user, page=self.page, parent=child, content="grandchild"
+        )
+        BlockRepository.soft_delete_subtree(root)
+        # Root already restored independently (not via restore_subtree,
+        # which would cascade to child/grandchild too) — only child
+        # should still need restoring.
+        Block.objects.filter(pk=root.pk).update(is_active=True, deleted_at=None)
+        child.refresh_from_db()
+        self.assertFalse(child.is_active)
+
+        restored = BlockRepository.restore_ancestors(grandchild)
+
+        self.assertEqual(restored, 1)
+        child.refresh_from_db()
+        self.assertTrue(child.is_active)
+
+    def test_soft_delete_and_restore_page_blocks(self):
+        on_page = BlockFactory(user=self.user, page=self.page)
+        other_page = PageFactory(user=self.user)
+        elsewhere = BlockFactory(user=self.user, page=other_page)
+
+        count = BlockRepository.soft_delete_page_blocks(self.page)
+        self.assertEqual(count, 1)
+        on_page.refresh_from_db()
+        elsewhere.refresh_from_db()
+        self.assertFalse(on_page.is_active)
+        self.assertTrue(elsewhere.is_active)
+
+        restored = BlockRepository.restore_page_blocks(self.page)
+        self.assertEqual(restored, 1)
+        on_page.refresh_from_db()
+        self.assertTrue(on_page.is_active)
+
+    def test_get_deleted_by_uuid_scoped_to_user(self):
+        block = BlockFactory(user=self.user, page=self.page)
+        block.delete()
+        other = UserFactory()
+
+        self.assertEqual(
+            BlockRepository.get_deleted_by_uuid(str(block.uuid), self.user).id,
+            block.id,
+        )
+        self.assertIsNone(BlockRepository.get_deleted_by_uuid(str(block.uuid), other))
+
+    def test_get_purgeable_filters_by_cutoff(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from knowledge.models import Block
+
+        old = BlockFactory(user=self.user, page=self.page)
+        old.delete()
+        Block.objects.filter(pk=old.pk).update(
+            deleted_at=timezone.now() - timedelta(days=45)
+        )
+        recent = BlockFactory(user=self.user, page=self.page)
+        recent.delete()
+
+        cutoff = timezone.now() - timedelta(days=30)
+        purgeable_ids = list(
+            BlockRepository.get_purgeable(cutoff).values_list("id", flat=True)
+        )
+
+        self.assertIn(old.id, purgeable_ids)
+        self.assertNotIn(recent.id, purgeable_ids)

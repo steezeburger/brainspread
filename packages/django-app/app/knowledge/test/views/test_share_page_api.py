@@ -72,6 +72,18 @@ class PublicPageViewTestCase(TestCase):
         response = client.get("/knowledge/share/does-not-exist/")
         self.assertEqual(response.status_code, 404)
 
+    def test_public_view_404s_when_page_is_archived(self):
+        # A soft-deleted (archived) page's share link must stop resolving
+        # immediately, same as flipping share_mode back to private.
+        self.page.share_token = "archived-token"
+        self.page.share_mode = "link"
+        self.page.save()
+        self.page.delete()
+
+        client = Client()
+        response = client.get(f"/knowledge/share/{self.page.share_token}/")
+        self.assertEqual(response.status_code, 404)
+
     def test_public_view_404s_when_page_is_private(self):
         # Token may exist (e.g. previously shared then revoked) but the
         # current mode is private, so the URL must stop resolving.

@@ -43,6 +43,7 @@ from knowledge.commands.create_page_embedded_view_command import (
     CreatePageEmbeddedViewCommand,
 )
 from knowledge.commands.create_saved_view_command import CreateSavedViewCommand
+from knowledge.commands.delete_page_command import DeletePageCommand
 from knowledge.commands.delete_page_embedded_view_command import (
     DeletePageEmbeddedViewCommand,
 )
@@ -71,6 +72,7 @@ from knowledge.commands.list_pending_reminders_command import (
 from knowledge.commands.list_saved_views_command import ListSavedViewsCommand
 from knowledge.commands.list_scheduled_blocks_command import ListScheduledBlocksCommand
 from knowledge.commands.move_block_to_daily_command import MoveBlockToDailyCommand
+from knowledge.commands.restore_page_command import RestorePageCommand
 from knowledge.commands.run_automation_command import RunAutomationCommand
 from knowledge.commands.run_query_command import RunQueryCommand
 from knowledge.commands.run_saved_view_command import RunSavedViewCommand
@@ -99,6 +101,7 @@ from knowledge.forms.create_saved_view_form import CreateSavedViewForm
 from knowledge.forms.delete_page_embedded_view_form import (
     DeletePageEmbeddedViewForm,
 )
+from knowledge.forms.delete_page_form import DeletePageForm
 from knowledge.forms.delete_saved_view_form import DeleteSavedViewForm
 from knowledge.forms.duplicate_saved_view_form import DuplicateSavedViewForm
 from knowledge.forms.find_stale_todos_form import FindStaleTodosForm
@@ -118,6 +121,7 @@ from knowledge.forms.list_pending_reminders_form import ListPendingRemindersForm
 from knowledge.forms.list_saved_views_form import ListSavedViewsForm
 from knowledge.forms.list_scheduled_blocks_form import ListScheduledBlocksForm
 from knowledge.forms.move_block_to_daily_form import MoveBlockToDailyForm
+from knowledge.forms.restore_page_form import RestorePageForm
 from knowledge.forms.run_automation_form import RunAutomationForm
 from knowledge.forms.run_query_form import RunQueryForm
 from knowledge.forms.run_saved_view_form import RunSavedViewForm
@@ -559,6 +563,40 @@ def _create_page(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
             "page_type": page.page_type,
         },
         "affected_page_uuids": [str(page.uuid)],
+    }
+
+
+def _archive_page(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
+    page_uuid = (args.get("page_uuid") or "").strip()
+    if not page_uuid:
+        return {"error": "page_uuid is required"}
+
+    form = DeletePageForm({"user": ctx.user.id, "page": page_uuid})
+    if not form.is_valid():
+        return {"error": _first_form_error(form)}
+
+    DeletePageCommand(form).execute()
+    return {
+        "archived": True,
+        "page_uuid": page_uuid,
+        "affected_page_uuids": [page_uuid],
+    }
+
+
+def _restore_page(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
+    page_uuid = (args.get("page_uuid") or "").strip()
+    if not page_uuid:
+        return {"error": "page_uuid is required"}
+
+    form = RestorePageForm({"user": ctx.user.id, "page": page_uuid})
+    if not form.is_valid():
+        return {"error": _first_form_error(form)}
+
+    RestorePageCommand(form).execute()
+    return {
+        "restored": True,
+        "page_uuid": page_uuid,
+        "affected_page_uuids": [page_uuid],
     }
 
 
@@ -1356,6 +1394,8 @@ READ_HANDLERS = {
 
 WRITE_HANDLERS = {
     "create_page": _create_page,
+    "archive_page": _archive_page,
+    "restore_page": _restore_page,
     "create_block": _create_block,
     "edit_block": _edit_block,
     "reorder_blocks": _reorder_blocks,

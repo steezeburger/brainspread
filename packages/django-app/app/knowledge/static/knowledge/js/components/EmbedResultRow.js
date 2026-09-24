@@ -378,7 +378,8 @@ window.EmbedResultRow = {
     async actionDelete(b) {
       const confirmed = await (window.appModals?.confirm?.({
         title: "delete block?",
-        message: "this will also delete any child blocks and cannot be undone.",
+        message:
+          "this will also delete any child blocks. You can restore it from Trash within 30 days.",
         confirmLabel: "delete",
         destructive: true,
       }) ?? Promise.resolve(window.confirm("Delete this block?")));
@@ -388,6 +389,9 @@ window.EmbedResultRow = {
         if (!r || !r.success) {
           throw new Error(r?.errors?.non_field_errors?.[0] || "delete failed");
         }
+        // See Page.js's deleteBlock() — LeftNav's Trash section only
+        // refetches on this event, not on its own.
+        document.dispatchEvent(new CustomEvent("trash:changed"));
         await this.notifyChanged(b.uuid);
       } catch (err) {
         console.error("deleteBlock failed:", err);

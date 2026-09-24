@@ -10,6 +10,7 @@ from core.models import User
 
 from ..forms.get_graph_data_form import GetGraphDataForm
 from ..models import Block, Page
+from ..repositories import BlockRepository, PageRepository
 
 
 class GraphNode(TypedDict):
@@ -47,8 +48,10 @@ class GetGraphDataCommand(AbstractBaseCommand):
             True if include_orphans_raw is None else bool(include_orphans_raw)
         )
 
-        pages_qs = Page.objects.filter(user=user).annotate(
-            block_count=Count("blocks", distinct=True)
+        pages_qs = (
+            PageRepository.get_queryset()
+            .filter(user=user)
+            .annotate(block_count=Count("blocks", distinct=True))
         )
         if not include_daily:
             pages_qs = pages_qs.exclude(page_type="daily")
@@ -99,9 +102,9 @@ class GetGraphDataCommand(AbstractBaseCommand):
     ) -> None:
         """Edges from Block.pages M2M (hashtag-based references)."""
         through = Block.pages.through
-        rows = through.objects.filter(block__user=user).values_list(
-            "block__page__uuid", "page__uuid"
-        )
+        rows = through.objects.filter(
+            block__user=user, block__is_active=True
+        ).values_list("block__page__uuid", "page__uuid")
         for source_uuid, target_uuid in rows:
             source = str(source_uuid)
             target = str(target_uuid)
@@ -123,9 +126,9 @@ class GetGraphDataCommand(AbstractBaseCommand):
         which tag was listed first in the block.
         """
         through = Block.pages.through
-        rows = through.objects.filter(block__user=user).values_list(
-            "block_id", "page__uuid"
-        )
+        rows = through.objects.filter(
+            block__user=user, block__is_active=True
+        ).values_list("block_id", "page__uuid")
         block_tags: Dict[int, List[str]] = defaultdict(list)
         for block_id, page_uuid in rows:
             tag_uuid = str(page_uuid)
@@ -154,7 +157,8 @@ class GetGraphDataCommand(AbstractBaseCommand):
 
         pattern = re.compile(r"\[\[([^\[\]\n]+?)\]\]")
         blocks = (
-            Block.objects.filter(user=user)
+            BlockRepository.get_queryset()
+            .filter(user=user)
             .exclude(content="")
             .values("page__uuid", "content")
         )

@@ -6,6 +6,7 @@ from django.conf import settings
 from django.db import models
 
 from common.models.crud_timestamps_mixin import CRUDTimestampsMixin
+from common.models.soft_delete_timestamp_mixin import SoftDeleteTimestampMixin
 from common.models.uuid_mixin import UUIDModelMixin
 from knowledge.models import BlockData
 
@@ -25,10 +26,16 @@ def generate_share_token() -> str:
     return secrets.token_urlsafe(16)
 
 
-class Page(UUIDModelMixin, CRUDTimestampsMixin):
+class Page(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
     """
     A page is simply a container/namespace for blocks.
     Pages can be daily notes, regular pages, or any other type of content collection.
+
+    Soft-deleted: page.delete() (via SoftDeleteTimestampMixin) flips
+    is_active/deleted_at instead of removing the row, so a deleted page
+    can be restored from the Trash view. ArchivePageCommand additionally
+    soft-deletes the page's own blocks so they drop out of block queries
+    too — see knowledge.commands.delete_page_command.
     """
 
     user = models.ForeignKey(
@@ -110,11 +117,13 @@ class Page(UUIDModelMixin, CRUDTimestampsMixin):
         Content links only - the page's *backlinks* are these plus every
         block that tags it, which GetBacklinksCommand unions together.
         """
-        from .block import Block
+        from knowledge.repositories.block_repository import BlockRepository
 
         pattern = r"\[\[" + re.escape(self.title) + r"\]\]"
-        return Block.objects.filter(content__iregex=pattern, user=self.user).exclude(
-            page=self
+        return (
+            BlockRepository.get_queryset()
+            .filter(content__iregex=pattern, user=self.user)
+            .exclude(page=self)
         )
 
     def get_tag_blocks(self):

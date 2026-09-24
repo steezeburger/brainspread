@@ -4,6 +4,7 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.get_backlinks_form import GetBacklinksForm
 from ..models import Block, Page
+from ..repositories import BlockRepository
 
 CONTENT_PREVIEW_LEN = 160
 
@@ -30,11 +31,16 @@ class GetBacklinksCommand(AbstractBaseCommand):
         # Union by id then re-fetch ordered + bounded so we don't blow
         # the limit on either source alone.
         content_ids = list(page.get_content_backlinks().values_list("id", flat=True))
-        tag_ids = list(page.tagged_blocks.values_list("id", flat=True))
+        tag_ids = list(
+            BlockRepository.get_queryset()
+            .filter(pages=page)
+            .values_list("id", flat=True)
+        )
         all_ids = list(set(content_ids + tag_ids))
 
         blocks: List[Block] = list(
-            Block.objects.filter(id__in=all_ids)
+            BlockRepository.get_queryset()
+            .filter(id__in=all_ids)
             .select_related("page")
             .order_by("-modified_at")[:limit]
         )
