@@ -194,7 +194,13 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
 
     def get_children(self):
         """Get direct children blocks"""
-        return self.children.all().order_by("order")
+        # self.children is the raw reverse FK manager — it doesn't apply
+        # the is_active filter BaseRepository.get_queryset() gives every
+        # other Block query, so an unfiltered .all() here kept rendering
+        # soft-deleted nested blocks in the page tree after their delete
+        # request succeeded (they only ever disappeared if they were a
+        # root block, fetched via BlockRepository.get_root_blocks()).
+        return self.children.filter(is_active=True).order_by("order")
 
     def get_descendants(self):
         """Get all descendant blocks recursively"""
