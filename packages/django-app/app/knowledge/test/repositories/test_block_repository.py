@@ -125,6 +125,63 @@ class TestSoftDeleteCascades(TestCase):
             self.assertTrue(b.is_active)
             self.assertIsNone(b.deleted_at)
 
+    def test_restore_ancestors_restores_only_the_inactive_chain(self):
+        root = BlockFactory(user=self.user, page=self.page, content="root")
+        child = BlockFactory(
+            user=self.user, page=self.page, parent=root, content="child"
+        )
+        grandchild = BlockFactory(
+            user=self.user, page=self.page, parent=child, content="grandchild"
+        )
+        sibling = BlockFactory(
+            user=self.user, page=self.page, parent=root, content="sibling"
+        )
+        BlockRepository.soft_delete_subtree(root)
+
+        restored = BlockRepository.restore_ancestors(grandchild)
+
+        self.assertEqual(restored, 2)  # root + child, not grandchild itself
+        root.refresh_from_db()
+        child.refresh_from_db()
+        grandchild.refresh_from_db()
+        sibling.refresh_from_db()
+        self.assertTrue(root.is_active)
+        self.assertTrue(child.is_active)
+        self.assertFalse(grandchild.is_active)  # restore_ancestors doesn't touch it
+        self.assertFalse(sibling.is_active)  # unrelated sibling left alone
+
+    def test_restore_ancestors_is_a_noop_when_parent_already_active(self):
+        root = BlockFactory(user=self.user, page=self.page)
+        child = BlockFactory(user=self.user, page=self.page, parent=root)
+
+        restored = BlockRepository.restore_ancestors(child)
+
+        self.assertEqual(restored, 0)
+
+    def test_restore_ancestors_stops_at_the_first_active_ancestor(self):
+        from knowledge.models import Block
+
+        root = BlockFactory(user=self.user, page=self.page, content="root")
+        child = BlockFactory(
+            user=self.user, page=self.page, parent=root, content="child"
+        )
+        grandchild = BlockFactory(
+            user=self.user, page=self.page, parent=child, content="grandchild"
+        )
+        BlockRepository.soft_delete_subtree(root)
+        # Root already restored independently (not via restore_subtree,
+        # which would cascade to child/grandchild too) — only child
+        # should still need restoring.
+        Block.objects.filter(pk=root.pk).update(is_active=True, deleted_at=None)
+        child.refresh_from_db()
+        self.assertFalse(child.is_active)
+
+        restored = BlockRepository.restore_ancestors(grandchild)
+
+        self.assertEqual(restored, 1)
+        child.refresh_from_db()
+        self.assertTrue(child.is_active)
+
     def test_soft_delete_and_restore_page_blocks(self):
         on_page = BlockFactory(user=self.user, page=self.page)
         other_page = PageFactory(user=self.user)

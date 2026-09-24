@@ -900,6 +900,38 @@ class BlockRepository(BaseRepository):
         return cls.model.objects.filter(pk__in=ids).undelete()
 
     @classmethod
+    def _inactive_ancestor_ids(cls, block: Block) -> List[int]:
+        """The direct chain of currently-inactive ancestors above `block`
+        — immediate parent upward, stopping at the first active ancestor
+        (or the root). Restoring only this chain (not those ancestors'
+        other children) is the minimal fix-up that keeps a restored block
+        from being orphaned: active but structurally unreachable because
+        the page tree walk never gets past an inactive parent."""
+        ids: List[int] = []
+        parent_id = block.parent_id
+        while parent_id is not None:
+            row = (
+                cls.model.objects.filter(pk=parent_id)
+                .values("id", "parent_id", "is_active")
+                .first()
+            )
+            if row is None or row["is_active"]:
+                break
+            ids.append(row["id"])
+            parent_id = row["parent_id"]
+        return ids
+
+    @classmethod
+    def restore_ancestors(cls, block: Block) -> int:
+        """Restore just the inactive ancestor chain above `block` — see
+        _inactive_ancestor_ids. A no-op when the parent (if any) is
+        already active."""
+        ids = cls._inactive_ancestor_ids(block)
+        if not ids:
+            return 0
+        return cls.model.objects.filter(pk__in=ids).undelete()
+
+    @classmethod
     def soft_delete_page_blocks(cls, page: Page) -> int:
         """Soft-delete every currently-active block on `page` — the
         cascade an archived page needs so its blocks drop out of every
