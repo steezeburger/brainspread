@@ -43,7 +43,9 @@ window.HistoryModal = {
       this.loading = true;
       this.error = null;
       try {
-        const result = await window.apiService.getBlockRevisions(this.block.uuid);
+        const result = await window.apiService.getBlockRevisions(
+          this.block.uuid
+        );
         this.revisions = result.success ? result.data || [] : [];
         if (!result.success) {
           this.error = "failed to load history";

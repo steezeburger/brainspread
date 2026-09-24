@@ -349,7 +349,9 @@ class ApiService {
    */
   async getBlockRevisions(blockUuid) {
     const params = new URLSearchParams({ block: blockUuid });
-    return await this.request(`/knowledge/api/blocks/revisions/?${params.toString()}`);
+    return await this.request(
+      `/knowledge/api/blocks/revisions/?${params.toString()}`
+    );
   }
 
   /**
