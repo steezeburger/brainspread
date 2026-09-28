@@ -10,6 +10,7 @@ from ..forms.touch_page_form import TouchPageForm
 from ..models import Block
 from ..repositories import BlockRepository
 from ..services.automation_spec import is_automation_content
+from ..services.block_properties import extract_properties_from_content
 from ..services.content_tokens import TokenError, resolve_content_tokens
 from ..services.token_context import build_token_context
 from .sync_block_tags_command import SyncBlockTagsCommand
@@ -113,7 +114,11 @@ class CreateBlockCommand(AbstractBaseCommand):
         # Extract and set properties from content (business logic)
         # Skip for code blocks — `key::value` inside code shouldn't be parsed.
         if block.content and block.block_type != "code":
-            block.extract_properties_from_content()
+            properties = extract_properties_from_content(
+                block.content, block.properties
+            )
+            if properties != block.properties:
+                BlockRepository.update_properties(block, properties)
 
         # Bump the page's modified_at so it sorts to the top of the recent
         # pages list — adding a block counts as activity on the page.

@@ -6,7 +6,7 @@ from django.utils.text import slugify
 
 from common.repositories.base_repository import BaseRepository
 
-from ..models import Page
+from ..models import Block, Page
 
 
 class PageRepository(BaseRepository):
@@ -23,6 +23,18 @@ class PageRepository(BaseRepository):
             return queryset.get(uuid=uuid)
         except cls.model.DoesNotExist:
             return None
+
+    @classmethod
+    def get_tags_for_block(cls, block: Block) -> QuerySet:
+        """Pages `block` is tagged with, excluding the page it belongs
+        to and daily notes (daily-note tags aren't shown as hashtag
+        chips)."""
+        return (
+            cls.get_queryset()
+            .filter(tagged_blocks=block)
+            .exclude(uuid=block.page.uuid)
+            .exclude(page_type="daily")
+        )
 
     @classmethod
     def get_pages_for_order_repair(cls, page_date: Optional[str] = None) -> QuerySet:

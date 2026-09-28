@@ -328,7 +328,7 @@ def _get_page(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     page, direct, refs, _embeds = GetPageWithBlocksCommand(form).execute()
     return {
         "page": page.to_dict(),
-        "direct_blocks": [b.to_dict_with_children() for b in direct],
+        "direct_blocks": [BlockRepository.get_tree_dict(b) for b in direct],
         "referenced_blocks": [b.to_dict(include_page_context=True) for b in refs],
     }
 
@@ -866,7 +866,7 @@ REGISTRY = ToolRegistry(
                     "due_date": {
                         "type": "string",
                         "description": (
-                            "ISO YYYY-MM-DD or relative token, or empty to" " clear."
+                            "ISO YYYY-MM-DD or relative token, or empty to clear."
                         ),
                     },
                     "due_time": {
@@ -918,8 +918,7 @@ REGISTRY = ToolRegistry(
         Tool(
             name="untag_block",
             description=(
-                "Remove one or more tags from a block. Same slug format as"
-                " tag_block."
+                "Remove one or more tags from a block. Same slug format as tag_block."
             ),
             input_schema={
                 "type": "object",

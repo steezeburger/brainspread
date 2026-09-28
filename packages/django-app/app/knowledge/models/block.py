@@ -1,4 +1,3 @@
-import re
 from datetime import time
 from typing import TYPE_CHECKING, Optional, TypedDict
 
@@ -192,28 +191,6 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
             if local.time() != time.min:
                 self.due_at = combine_local_to_utc(local.date(), time.min, tz)
 
-    def get_children(self):
-        """Get direct active children blocks.
-
-        Routes through BlockRepository rather than the raw `children`
-        reverse-FK manager so a soft-deleted child never appears in a
-        parent's serialized tree (to_dict_with_children / get_descendants
-        both build on this) — imported locally to avoid a
-        models<->repositories import cycle (repositories import models
-        at module scope).
-        """
-        from knowledge.repositories import BlockRepository
-
-        return BlockRepository.get_child_blocks(self)
-
-    def get_descendants(self):
-        """Get all descendant blocks recursively"""
-        descendants = []
-        for child in self.get_children():
-            descendants.append(child)
-            descendants.extend(child.get_descendants())
-        return descendants
-
     def get_depth(self):
         """Get the depth/level of this block in the hierarchy"""
         depth = 0
@@ -222,83 +199,6 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
             depth += 1
             current = current.parent
         return depth
-
-    # Property keys that are managed by the UI (the resize handle and
-    # the "show as raw" / "reset size" entries in the block context
-    # menu) rather than by the user typing `key:: value` into block
-    # content. Kept out of the content-driven property sync below so a
-    # routine block edit doesn't clobber them — see
-    # `extract_properties_from_content`.
-    _UI_MANAGED_PROPERTY_KEYS = frozenset({"size", "render"})
-
-    def extract_properties_from_content(self):
-        """Extract key:: value properties from content and sync with properties field"""
-        if not self.content:
-            return {}
-
-        extracted_properties = {}
-
-        # First: Handle line-start properties (can have multi-word values)
-        line_pattern = r"^([a-zA-Z0-9_-]+)::\s*(.+)$"
-        for line in self.content.split("\n"):
-            match = re.match(line_pattern, line.strip())
-            if match:
-                key, value = match.groups()
-                # For line-start properties, strip out any inline properties from the value
-                # Split value and take only until the first inline property
-                value_words = value.split()
-                clean_value_words = []
-                for word in value_words:
-                    if "::" in word and re.match(r"^[a-zA-Z0-9_-]+::", word):
-                        break  # Stop at first inline property
-                    clean_value_words.append(word)
-                if clean_value_words:
-                    extracted_properties[key] = " ".join(clean_value_words)
-
-        # Second: Handle inline properties (single word values)
-        inline_pattern = r"([a-zA-Z0-9_-]+)::\s*([^\s]+)"
-        for line in self.content.split("\n"):
-            # Find all inline properties in each line
-            matches = re.findall(inline_pattern, line)
-            for key, value in matches:
-                # Only add if not already found as line-start property
-                if key not in extracted_properties:
-                    extracted_properties[key] = value.strip()
-
-        # Merge with UI-managed keys preserved. Replacing the whole dict
-        # would nuke `size` (image resize handle) and `render` ("show as
-        # raw" toggle) on every content edit, which previously made both
-        # features look broken in practice — drag to resize, then type
-        # anywhere in the block, and the persisted width vanishes on the
-        # next page load.
-        current = self.properties or {}
-        preserved = {
-            k: current[k] for k in self._UI_MANAGED_PROPERTY_KEYS if k in current
-        }
-        merged = {**extracted_properties, **preserved}
-
-        if merged != self.properties:
-            self.properties = merged
-            self.save(update_fields=["properties"])
-
-        return extracted_properties
-
-    def get_property(self, key, default=None):
-        """Get a specific property value"""
-        return self.properties.get(key, default)
-
-    def set_property(self, key, value):
-        """Set a property value"""
-        if not self.properties:
-            self.properties = {}
-        self.properties[key] = value
-        self.save(update_fields=["properties"])
-
-    def remove_property(self, key):
-        """Remove a property"""
-        if self.properties and key in self.properties:
-            del self.properties[key]
-            self.save(update_fields=["properties"])
 
     def get_media_info(self):
         """Get media information for this block"""
@@ -321,7 +221,16 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
 
     def get_tags(self):
         """Get all pages this block is tagged with (excludes the page it belongs to and daily notes)"""
-        return self.pages.exclude(uuid=self.page.uuid).exclude(page_type="daily")
+        # Routes through PageRepository rather than the raw `pages` M2M
+        # manager so an archived tag page never appears as a chip (same
+        # category of bug as #122's nested-block leak). Imported locally
+        # to avoid a models<->repositories cycle — unlike get_children(),
+        # this one can't just be deleted: to_dict() calls it directly at
+        # serialization time, and to_dict() living on the model is an
+        # established pattern across every model in this codebase.
+        from knowledge.repositories import PageRepository
+
+        return PageRepository.get_tags_for_block(self)
 
     def get_tag_names(self):
         """Get tag names (uses slug format without # prefix)"""
@@ -480,17 +389,6 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
             "pending_reminder_date": first_reminder["date"] if first_reminder else None,
             "pending_reminder_time": first_reminder["time"] if first_reminder else None,
         }
-
-    def to_dict_with_children(self, include_page_context: bool = False) -> "BlockData":
-        """Convert block to dict with nested children"""
-        block_data = self.to_dict(include_page_context=include_page_context)
-        children = []
-        for child in self.get_children():
-            children.append(
-                child.to_dict_with_children(include_page_context=include_page_context)
-            )
-        block_data["children"] = children
-        return block_data
 
 
 class BlockTagData(TypedDict):

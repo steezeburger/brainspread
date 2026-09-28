@@ -7,6 +7,7 @@ from django.test import TestCase
 from knowledge.commands.create_block_command import CreateBlockCommand
 from knowledge.commands.update_block_command import UpdateBlockCommand
 from knowledge.forms import CreateBlockForm, UpdateBlockForm
+from knowledge.repositories import BlockRepository
 from knowledge.test.helpers import PageFactory, UserFactory
 
 User = get_user_model()
@@ -68,7 +69,7 @@ class TestNestedBlocks(TestCase):
         self.assertEqual(child_block.get_depth(), 1)
 
         # Verify parent-child relationship
-        children = parent_block.get_children()
+        children = BlockRepository.get_child_blocks(parent_block)
         self.assertEqual(len(children), 1)
         self.assertEqual(children[0], child_block)
 
@@ -121,7 +122,7 @@ class TestNestedBlocks(TestCase):
         self.assertIsNone(root_block.parent)
 
         # Verify descendants
-        all_descendants = root_block.get_descendants()
+        all_descendants = BlockRepository.get_block_descendants(root_block)
         self.assertEqual(len(all_descendants), 2)
         self.assertIn(child_block, all_descendants)
         self.assertIn(grandchild_block, all_descendants)
@@ -165,8 +166,8 @@ class TestNestedBlocks(TestCase):
 
         # Verify initial state
         self.assertEqual(child.parent, parent1)
-        self.assertEqual(len(parent1.get_children()), 1)
-        self.assertEqual(len(parent2.get_children()), 0)
+        self.assertEqual(len(BlockRepository.get_child_blocks(parent1)), 1)
+        self.assertEqual(len(BlockRepository.get_child_blocks(parent2)), 0)
 
         # Move child to parent2
         form_data = {
@@ -186,8 +187,8 @@ class TestNestedBlocks(TestCase):
 
         # Verify updated state
         self.assertEqual(child.parent, parent2)
-        self.assertEqual(len(parent1.get_children()), 0)
-        self.assertEqual(len(parent2.get_children()), 1)
+        self.assertEqual(len(BlockRepository.get_child_blocks(parent1)), 0)
+        self.assertEqual(len(BlockRepository.get_child_blocks(parent2)), 1)
 
     def test_should_move_block_to_root_level(self):
         """Test moving a child block to root level"""
@@ -236,7 +237,7 @@ class TestNestedBlocks(TestCase):
         # Verify updated state
         self.assertIsNone(child.parent)
         self.assertEqual(child.get_depth(), 0)
-        self.assertEqual(len(parent.get_children()), 0)
+        self.assertEqual(len(BlockRepository.get_child_blocks(parent)), 0)
 
     def test_should_preserve_order_within_parent(self):
         """Test that block order is preserved within parent context"""
@@ -290,7 +291,7 @@ class TestNestedBlocks(TestCase):
         child3 = child3_command.execute()
 
         # Verify order
-        children = parent.get_children()
+        children = BlockRepository.get_child_blocks(parent)
         self.assertEqual(len(children), 3)
         self.assertEqual(children[0], child1)
         self.assertEqual(children[1], child2)

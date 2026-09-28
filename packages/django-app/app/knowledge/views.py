@@ -382,7 +382,8 @@ def _serialize_block_tree(block, share_token: str) -> dict:
         ),
         "asset_is_image": asset_file_type == "image",
         "children": [
-            _serialize_block_tree(child, share_token) for child in block.get_children()
+            _serialize_block_tree(child, share_token)
+            for child in BlockRepository.get_child_blocks(block)
         ],
     }
 
@@ -423,7 +424,8 @@ def _serialize_referenced_block(block, share_token: str) -> dict:
             source.date.isoformat() if source and source.date else None
         ),
         "children": [
-            _serialize_block_tree(child, share_token) for child in block.get_children()
+            _serialize_block_tree(child, share_token)
+            for child in BlockRepository.get_child_blocks(block)
         ],
     }
 
@@ -609,12 +611,12 @@ def get_tag_content(request, tag_name):
         # Format the response data
         direct_blocks_data = []
         for block in result["direct_blocks"]:
-            direct_blocks_data.append(block.to_dict_with_children())
+            direct_blocks_data.append(BlockRepository.get_tree_dict(block))
 
         referenced_blocks_data = []
         for block in result["referenced_blocks"]:
             referenced_blocks_data.append(
-                block.to_dict_with_children(include_page_context=True)
+                BlockRepository.get_tree_dict(block, include_page_context=True)
             )
 
         pages_data = []
@@ -1099,10 +1101,10 @@ def get_page_with_blocks(request):
             page_with_blocks_data = PageWithBlocksData(
                 page=page.to_dict(),
                 direct_blocks=[
-                    block.to_dict_with_children() for block in direct_blocks
+                    BlockRepository.get_tree_dict(block) for block in direct_blocks
                 ],
                 referenced_blocks=[
-                    block.to_dict_with_children(include_page_context=True)
+                    BlockRepository.get_tree_dict(block, include_page_context=True)
                     for block in referenced_blocks
                 ],
                 embedded_views=[embed.to_dict() for embed in embedded_views],
@@ -1304,7 +1306,7 @@ def duplicate_block(request):
 
             response: BlockResponse = {
                 "success": True,
-                "data": clone.to_dict_with_children(),
+                "data": BlockRepository.get_tree_dict(clone),
                 "errors": None,
             }
 

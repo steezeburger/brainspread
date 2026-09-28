@@ -1,3 +1,4 @@
+import re
 from datetime import date, datetime, timedelta
 from operator import attrgetter
 from typing import Any, Dict, Iterable, List, Optional
@@ -122,6 +123,20 @@ class BlockRepository(BaseRepository):
         return [b for b in tagged if not has_tagged_ancestor(b.id)]
 
     @classmethod
+    def get_content_backlinks(cls, page: Page) -> QuerySet:
+        """Blocks whose content carries a `[[Title]]` link to ``page``.
+
+        Content links only - a page's *backlinks* are these plus every
+        block that tags it, which GetBacklinksCommand unions together.
+        """
+        pattern = r"\[\[" + re.escape(page.title) + r"\]\]"
+        return (
+            cls.get_queryset()
+            .filter(content__iregex=pattern, user=page.user)
+            .exclude(page=page)
+        )
+
+    @classmethod
     def get_child_blocks(cls, parent_block: Block) -> QuerySet:
         """Get direct children of a block"""
         return cls.get_queryset().filter(parent=parent_block).order_by("order")
@@ -137,6 +152,30 @@ class BlockRepository(BaseRepository):
             descendants.extend(cls.get_block_descendants(child))
 
         return descendants
+
+    @classmethod
+    def update_properties(cls, block: Block, properties: dict) -> Block:
+        """Persist `block.properties` — the single write path for the
+        content-driven `key:: value` sync (see
+        knowledge.services.block_properties.extract_properties_from_content)."""
+        block.properties = properties
+        block.save(update_fields=["properties"])
+        return block
+
+    @classmethod
+    def get_tree_dict(cls, block: Block, include_page_context: bool = False) -> dict:
+        """Serialize ``block`` plus its active descendant subtree as a
+        nested dict, recursing through get_child_blocks() so a
+        soft-deleted child never appears in the tree (see #122 follow-up
+        — the model-level to_dict_with_children() this replaced went
+        through the raw, unfiltered `children` reverse-FK manager
+        instead)."""
+        data = block.to_dict(include_page_context=include_page_context)
+        data["children"] = [
+            cls.get_tree_dict(child, include_page_context=include_page_context)
+            for child in cls.get_child_blocks(block)
+        ]
+        return data
 
     @classmethod
     def get_blocks_by_type(cls, user, block_type: str) -> QuerySet:

@@ -4,6 +4,7 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.cancel_reminder_form import CancelReminderForm
 from ..models import Block, Reminder
+from ..repositories import ReminderRepository
 
 
 class CancelReminderCommand(AbstractBaseCommand):
@@ -26,7 +27,7 @@ class CancelReminderCommand(AbstractBaseCommand):
             return {"error": "block has no pending reminder to cancel"}
 
         for reminder in pending:
-            reminder.cancel()
+            ReminderRepository.cancel(reminder)
         return {
             "cancelled": True,
             "cancelled_count": len(pending),

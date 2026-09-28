@@ -1,4 +1,3 @@
-import re
 import secrets
 from typing import List, Optional, TypedDict
 
@@ -110,28 +109,6 @@ class Page(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
     def get_tag_format(self) -> str:
         """Generate hashtag format from slug for tag matching: 'my-page' -> '#my-page'"""
         return f"#{self.slug}"
-
-    def get_content_backlinks(self):
-        """Blocks whose content carries a `[[Title]]` link to this page.
-
-        Content links only - the page's *backlinks* are these plus every
-        block that tags it, which GetBacklinksCommand unions together.
-        """
-        # Imported locally to avoid a models<->repositories import cycle
-        # (repositories import models at module scope) — see
-        # Block.get_children() for the same pattern.
-        from knowledge.repositories.block_repository import BlockRepository
-
-        pattern = r"\[\[" + re.escape(self.title) + r"\]\]"
-        return (
-            BlockRepository.get_queryset()
-            .filter(content__iregex=pattern, user=self.user)
-            .exclude(page=self)
-        )
-
-    def get_tag_blocks(self):
-        """Get all blocks that are tagged with this page"""
-        return self.tagged_blocks.all()
 
     @property
     def is_publicly_viewable(self) -> bool:

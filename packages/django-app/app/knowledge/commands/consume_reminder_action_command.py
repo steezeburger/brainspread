@@ -10,6 +10,7 @@ from ..forms.consume_reminder_action_form import ConsumeReminderActionForm
 from ..forms.move_block_to_daily_form import MoveBlockToDailyForm
 from ..forms.set_block_type_form import SetBlockTypeForm
 from ..models import Block, Reminder, ReminderAction
+from ..repositories import ReminderActionRepository
 from ..services.due_dates import combine_local_to_utc
 from .move_block_to_daily_command import MoveBlockToDailyCommand
 from .set_block_type_command import SetBlockTypeCommand
@@ -82,7 +83,7 @@ class ConsumeReminderActionCommand(AbstractBaseCommand):
             # later, but report the no-op so the view can render
             # something honest.
             with transaction.atomic():
-                action_row.mark_used(now=now)
+                ReminderActionRepository.mark_used(action_row, now=now)
             return _result(
                 "block_completed",
                 action=action_row.action,
@@ -93,7 +94,7 @@ class ConsumeReminderActionCommand(AbstractBaseCommand):
 
         with transaction.atomic():
             self._apply_action(action_row.action, block, reminder, now)
-            action_row.mark_used(now=now)
+            ReminderActionRepository.mark_used(action_row, now=now)
 
         return _result(
             "executed",
