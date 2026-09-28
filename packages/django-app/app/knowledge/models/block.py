@@ -193,8 +193,18 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
                 self.due_at = combine_local_to_utc(local.date(), time.min, tz)
 
     def get_children(self):
-        """Get direct children blocks"""
-        return self.children.all().order_by("order")
+        """Get direct active children blocks.
+
+        Routes through BlockRepository rather than the raw `children`
+        reverse-FK manager so a soft-deleted child never appears in a
+        parent's serialized tree (to_dict_with_children / get_descendants
+        both build on this) — imported locally to avoid a
+        models<->repositories import cycle (repositories import models
+        at module scope).
+        """
+        from knowledge.repositories import BlockRepository
+
+        return BlockRepository.get_child_blocks(self)
 
     def get_descendants(self):
         """Get all descendant blocks recursively"""

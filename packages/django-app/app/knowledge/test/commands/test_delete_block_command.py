@@ -118,6 +118,42 @@ class TestDeleteBlockCommand(TestCase):
         self.assertFalse(block.is_active)
         self.assertEqual(WebArchive.objects.count(), 0)
 
+    def test_deleted_child_drops_out_of_parents_serialized_tree(self):
+        # Regression for a bug reported live after #122 shipped: deleting
+        # a nested block "worked" server-side but the block kept
+        # rendering after refresh, and deleting it again failed with a
+        # not-found error. Root cause was Block.get_children() reading
+        # the raw `children` reverse-FK manager (unfiltered by
+        # is_active) instead of routing through BlockRepository, so a
+        # soft-deleted child still showed up in its parent's
+        # to_dict_with_children() output even though the second delete
+        # attempt correctly couldn't find it via the repository-scoped
+        # queryset.
+        root = BlockFactory(user=self.user, page=self.page, content="root")
+        child = BlockFactory(
+            user=self.user, page=self.page, parent=root, content="child"
+        )
+        surviving_sibling = BlockFactory(
+            user=self.user, page=self.page, parent=root, content="sibling"
+        )
+
+        form = DeleteBlockForm({"user": self.user.id, "block": child.uuid})
+        self.assertTrue(form.is_valid(), form.errors)
+        DeleteBlockCommand(form).execute()
+
+        root.refresh_from_db()
+        child_uuids = [str(b.uuid) for b in root.get_children()]
+        self.assertNotIn(str(child.uuid), child_uuids)
+        self.assertIn(str(surviving_sibling.uuid), child_uuids)
+
+        descendant_uuids = [str(b.uuid) for b in root.get_descendants()]
+        self.assertNotIn(str(child.uuid), descendant_uuids)
+
+        tree = root.to_dict_with_children()
+        rendered_uuids = [c["uuid"] for c in tree["children"]]
+        self.assertNotIn(str(child.uuid), rendered_uuids)
+        self.assertIn(str(surviving_sibling.uuid), rendered_uuids)
+
     def test_still_exists_via_unfiltered_manager(self):
         # Sanity check that soft-delete never touches the raw row count —
         # only the active-only repository queryset excludes it.
