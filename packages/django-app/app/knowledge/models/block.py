@@ -219,18 +219,26 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
         lines = (self.content or "").strip().splitlines()
         return lines[0] if lines else ""
 
-    def get_tags(self):
-        """Get all pages this block is tagged with (excludes the page it belongs to and daily notes)"""
-        # Routes through PageRepository rather than the raw `pages` M2M
-        # manager so an archived tag page never appears as a chip (same
-        # category of bug as #122's nested-block leak). Imported locally
-        # to avoid a models<->repositories cycle — unlike get_children(),
-        # this one can't just be deleted: to_dict() calls it directly at
-        # serialization time, and to_dict() living on the model is an
-        # established pattern across every model in this codebase.
-        from knowledge.repositories import PageRepository
-
-        return PageRepository.get_tags_for_block(self)
+    def get_tags(self) -> list:
+        """Pages this block is tagged with, excluding the page it belongs
+        to and daily notes (daily-note tags aren't shown as hashtag
+        chips). Filters in Python over ``self.pages.all()`` so a
+        ``prefetch_related("pages")`` cache is used instead of bypassed —
+        same pattern as get_pending_reminders(). Also drops an archived
+        tag page: ``self.pages`` isn't filtered by is_active (only
+        BaseRepository.get_queryset() applies that), so an unfiltered
+        `.all()` would otherwise leak an archived page back in as a
+        chip — the same category of bug as #122's nested-block leak.
+        Compares by ``page_id`` rather than ``.uuid`` — a page assigned
+        in-memory (e.g. straight from a factory or a just-created Page,
+        never round-tripped through the DB) holds `.uuid` as a plain
+        str, which never compares equal to the UUID object a fresh
+        query returns for the same row."""
+        return [
+            page
+            for page in self.pages.all()
+            if page.is_active and page.id != self.page_id and page.page_type != "daily"
+        ]
 
     def get_tag_names(self):
         """Get tag names (uses slug format without # prefix)"""

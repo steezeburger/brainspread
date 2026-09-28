@@ -55,7 +55,7 @@ class BlockRepository(BaseRepository):
             cls.get_queryset()
             .filter(page=page, parent=None)
             .select_related("user")
-            .prefetch_related("reminders")
+            .prefetch_related("reminders", "pages")
             .order_by("order")
         )
 
@@ -82,7 +82,7 @@ class BlockRepository(BaseRepository):
             .filter(pages=page)
             .exclude(page=page)
             .select_related("user", "page", "asset")
-            .prefetch_related("reminders")
+            .prefetch_related("reminders", "pages")
         )
         if order_by:
             qs = qs.order_by(*order_by)
@@ -671,7 +671,7 @@ class BlockRepository(BaseRepository):
         qs = (
             cls._compiled_base_queryset(user, compiled)
             .select_related("page", "user")
-            .prefetch_related("reminders")
+            .prefetch_related("reminders", "pages")
         )
         if compiled.order_by:
             qs = qs.order_by(*compiled.order_by)
