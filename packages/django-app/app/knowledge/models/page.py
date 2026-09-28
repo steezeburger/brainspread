@@ -117,6 +117,9 @@ class Page(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
         Content links only - the page's *backlinks* are these plus every
         block that tags it, which GetBacklinksCommand unions together.
         """
+        # Imported locally to avoid a models<->repositories import cycle
+        # (repositories import models at module scope) — see
+        # Block.get_children() for the same pattern.
         from knowledge.repositories.block_repository import BlockRepository
 
         pattern = r"\[\[" + re.escape(self.title) + r"\]\]"

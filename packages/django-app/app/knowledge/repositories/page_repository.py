@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Any, Dict, Optional
 
-from django.db.models import Count, F, Q, QuerySet
+from django.db.models import Count, F, Max, Q, QuerySet
 from django.utils.text import slugify
 
 from common.repositories.base_repository import BaseRepository
@@ -269,8 +269,6 @@ class PageRepository(BaseRepository):
     def next_favorite_position(cls, user) -> int:
         """Return the next-highest favorite_position for newly favorited
         pages so they land at the bottom of the Favorites list."""
-        from django.db.models import Max
-
         result = (
             cls.get_queryset()
             .filter(user=user, favorited=True)

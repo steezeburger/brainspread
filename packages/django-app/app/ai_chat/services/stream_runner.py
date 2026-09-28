@@ -332,6 +332,10 @@ def follow_message(message_uuid: str) -> Iterator[Dict[str, Any]]:
                 "error": "Stream ended with an error.",
             }
         else:
+            # Lazy import — `ai_chat.commands.__init__` pulls in
+            # stream_send_message_command, which imports this module at
+            # its top level; a top-level import here of anything under
+            # `ai_chat.commands` closes that loop back on itself.
             from ..commands.send_message_command import SendMessageCommand
 
             yield {

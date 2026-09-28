@@ -2,6 +2,7 @@ import re
 from typing import Dict, List, Optional, TypedDict
 from urllib.parse import urlparse
 
+from django.conf import settings
 from django.contrib.staticfiles import finders
 from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse
@@ -1981,8 +1982,6 @@ def _block_link_for_result(result) -> str:
     `_page_link` behavior) and when the result lacks a block — e.g.
     the token didn't resolve.
     """
-    from django.conf import settings
-
     site_url = settings.SITE_URL or ""
     if not site_url.startswith(("http://", "https://")):
         return ""

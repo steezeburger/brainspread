@@ -7,7 +7,7 @@ from typing import Callable, Optional
 from urllib.parse import unquote, urlparse
 
 from django.core.files.base import ContentFile
-from django.db import transaction
+from django.db import connection, transaction
 from django.utils import timezone
 
 from assets.models import Asset, file_type_from_mime
@@ -87,8 +87,6 @@ def _run_capture_threadsafe(archive_uuid, fetcher: Callable) -> None:
     thread) and must swallow exceptions - there's no one to log them to
     otherwise.
     """
-    from django.db import connection
-
     try:
         _run_capture(archive_uuid, fetcher=fetcher)
     except Exception as exc:  # noqa: BLE001 - last line of defence in worker
