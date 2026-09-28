@@ -3,6 +3,7 @@ from django.test import TestCase
 from knowledge.commands.create_block_command import CreateBlockCommand
 from knowledge.commands.update_block_command import UpdateBlockCommand
 from knowledge.forms import CreateBlockForm, UpdateBlockForm
+from knowledge.repositories import BlockRepository
 from knowledge.test.helpers import PageFactory, UserFactory
 
 
@@ -167,16 +168,16 @@ class TestNestedBlocksIntegration(TestCase):
         grandchild = grandchild_cmd.execute()
 
         # Test get_children
-        root_children = root.get_children()
+        root_children = BlockRepository.get_child_blocks(root)
         self.assertEqual(len(root_children), 1)
         self.assertEqual(root_children[0], child)
 
-        child_children = child.get_children()
+        child_children = BlockRepository.get_child_blocks(child)
         self.assertEqual(len(child_children), 1)
         self.assertEqual(child_children[0], grandchild)
 
         # Test get_descendants
-        root_descendants = root.get_descendants()
+        root_descendants = BlockRepository.get_block_descendants(root)
         self.assertEqual(len(root_descendants), 2)
         self.assertIn(child, root_descendants)
         self.assertIn(grandchild, root_descendants)
@@ -234,7 +235,7 @@ class TestNestedBlocksIntegration(TestCase):
         child3 = child3_cmd.execute()
 
         # Verify order
-        children = parent.get_children()
+        children = BlockRepository.get_child_blocks(parent)
         self.assertEqual(len(children), 3)
         self.assertEqual(children[0], child1)
         self.assertEqual(children[1], child2)

@@ -10,6 +10,7 @@ from ..forms.update_block_form import UpdateBlockForm
 from ..models import Block, BlockRevision
 from ..repositories import BlockRepository, BlockRevisionRepository
 from ..services.automation_spec import is_automation_content
+from ..services.block_properties import extract_properties_from_content
 from ..services.content_tokens import TokenError, resolve_content_tokens
 from ..services.token_context import build_token_context
 from .set_block_type_command import SetBlockTypeCommand
@@ -205,7 +206,11 @@ class UpdateBlockCommand(AbstractBaseCommand):
         # Extract and set properties from content if content was updated (business logic)
         # Skip for code blocks — `key::value` inside code shouldn't be parsed.
         if content_updated and block.content and block.block_type != "code":
-            block.extract_properties_from_content()
+            properties = extract_properties_from_content(
+                block.content, block.properties
+            )
+            if properties != block.properties:
+                BlockRepository.update_properties(block, properties)
 
         # Bump the page's modified_at so the recent-pages sidebar reflects
         # this edit even though only the block row changed.

@@ -138,6 +138,7 @@ from knowledge.repositories.page_embedded_view_repository import (
     PageEmbeddedViewRepository,
 )
 from knowledge.repositories.page_repository import PageRepository
+from knowledge.services import query_engine
 
 # ---- Read handlers (thin form -> command wrappers) ----
 
@@ -455,10 +456,6 @@ def _run_saved_view(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
         # Draft path — compile + execute without saving. Mirrors what
         # RunSavedViewCommand does internally so the LLM can dry-run
         # before proposing a save.
-        from django.core.exceptions import ValidationError
-
-        from knowledge.services import query_engine
-
         if not isinstance(inline_filter, dict):
             return {"error": "filter must be an object"}
         if sort is not None and not isinstance(sort, list):
@@ -1178,8 +1175,6 @@ def _bulk_snooze(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _create_saved_view(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
-    from django.core.exceptions import ValidationError
-
     form_data: Dict[str, Any] = {
         "user": ctx.user.id,
         "name": (args.get("name") or "").strip(),
@@ -1202,8 +1197,6 @@ def _create_saved_view(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]
 
 
 def _update_saved_view(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
-    from django.core.exceptions import ValidationError
-
     view_uuid = (args.get("uuid") or "").strip()
     if not view_uuid:
         return {"error": "uuid is required"}
@@ -1230,8 +1223,6 @@ def _update_saved_view(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]
 
 
 def _delete_saved_view(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
-    from django.core.exceptions import ValidationError
-
     view_uuid = (args.get("uuid") or "").strip()
     if not view_uuid:
         return {"error": "uuid is required"}
@@ -1246,8 +1237,6 @@ def _delete_saved_view(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]
 
 
 def _duplicate_saved_view(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
-    from django.core.exceptions import ValidationError
-
     view_uuid = (args.get("uuid") or "").strip()
     if not view_uuid:
         return {"error": "uuid is required"}
@@ -1269,8 +1258,6 @@ def _duplicate_saved_view(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, A
 
 
 def _embed_view_on_page(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
-    from django.core.exceptions import ValidationError
-
     page_uuid = (args.get("page_uuid") or "").strip()
     view_uuid = (args.get("saved_view_uuid") or "").strip()
     if not page_uuid or not view_uuid:
@@ -1292,8 +1279,6 @@ def _embed_view_on_page(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any
 
 
 def _delete_page_embed(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
-    from django.core.exceptions import ValidationError
-
     embed_uuid = (args.get("embed_uuid") or "").strip()
     if not embed_uuid:
         return {"error": "embed_uuid is required"}

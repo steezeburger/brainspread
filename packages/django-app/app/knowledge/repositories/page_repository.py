@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Any, Dict, Optional
 
-from django.db.models import Count, F, Q, QuerySet
+from django.db.models import Count, F, Max, Q, QuerySet
 from django.utils.text import slugify
 
 from common.repositories.base_repository import BaseRepository
@@ -249,7 +249,7 @@ class PageRepository(BaseRepository):
         return (
             cls.get_queryset()
             .filter(user=user)
-            .annotate(block_count=Count("blocks"))
+            .annotate(block_count=Count("blocks", filter=Q(blocks__is_active=True)))
             .filter(Q(block_count__gt=0) | Q(page_type="whiteboard"))
             .order_by("-modified_at")[:limit]
         )
@@ -269,8 +269,6 @@ class PageRepository(BaseRepository):
     def next_favorite_position(cls, user) -> int:
         """Return the next-highest favorite_position for newly favorited
         pages so they land at the bottom of the Favorites list."""
-        from django.db.models import Max
-
         result = (
             cls.get_queryset()
             .filter(user=user, favorited=True)

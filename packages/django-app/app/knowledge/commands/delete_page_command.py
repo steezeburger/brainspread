@@ -1,3 +1,5 @@
+from django.db import transaction
+
 from common.commands.abstract_base_command import AbstractBaseCommand
 from knowledge.repositories.block_repository import BlockRepository
 
@@ -23,6 +25,7 @@ class DeletePageCommand(AbstractBaseCommand):
         super().execute()  # This validates the form
 
         page = self.form.cleaned_data["page"]
-        BlockRepository.soft_delete_page_blocks(page)
-        page.delete()
+        with transaction.atomic():
+            BlockRepository.soft_delete_page_blocks(page)
+            page.delete()
         return True

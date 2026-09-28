@@ -1,7 +1,6 @@
 from typing import Optional, TypedDict
 
 from django.db import models
-from django.utils import timezone
 
 from common.models.crud_timestamps_mixin import CRUDTimestampsMixin
 from common.models.uuid_mixin import UUIDModelMixin
@@ -64,16 +63,6 @@ class Reminder(UUIDModelMixin, CRUDTimestampsMixin):
 
     def __str__(self):
         return f"Reminder({self.uuid}) {self.channel} @ {self.fire_at}"
-
-    def cancel(self) -> "Reminder":
-        """Mark this reminder cancelled. Sets sent_at alongside status so
-        the block-level pending-reminder lookup (which keys off
-        sent_at IS NULL) treats it as no-longer-pending."""
-        now = timezone.now()
-        self.status = self.STATUS_CANCELLED
-        self.sent_at = now
-        self.save(update_fields=["status", "sent_at", "modified_at"])
-        return self
 
     def to_dict(self) -> "ReminderData":
         return {

@@ -2,8 +2,8 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 from knowledge.forms.delete_block_form import DeleteBlockForm
 from knowledge.forms.touch_page_form import TouchPageForm
 from knowledge.repositories.block_repository import BlockRepository
-from web_archives.commands import SoftDeleteWebArchiveCommand
-from web_archives.forms import SoftDeleteWebArchiveForm
+from web_archives.commands import SoftDeleteWebArchivesForBlocksCommand
+from web_archives.forms import SoftDeleteWebArchivesForBlocksForm
 
 from .touch_page_command import TouchPageCommand
 
@@ -24,14 +24,14 @@ class DeleteBlockCommand(AbstractBaseCommand):
         # The whole subtree soft-deletes together, so clean up the archive
         # of every member (not just the root) the same way a single-block
         # delete always has — see web_archives.WebArchive for the
-        # durability contract.
+        # durability contract. One bulk lookup/update rather than a
+        # query per member, since most members have no archive at all.
         subtree = [block] + BlockRepository.get_block_descendants(block)
-        for member in subtree:
-            archive_form = SoftDeleteWebArchiveForm(
-                {"user": user.id, "block": str(member.uuid)}
-            )
-            if archive_form.is_valid():
-                SoftDeleteWebArchiveCommand(archive_form).execute()
+        archive_form = SoftDeleteWebArchivesForBlocksForm(
+            {"user": user.id, "block_uuids": [str(member.uuid) for member in subtree]}
+        )
+        if archive_form.is_valid():
+            SoftDeleteWebArchivesForBlocksCommand(archive_form).execute()
 
         # Capture the page reference before the delete — afterwards
         # block.page would still resolve from the unsaved instance, but we

@@ -50,7 +50,7 @@ from typing import Any, Callable, Dict, List
 from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
-from knowledge.models import Block
+from knowledge.models import Block, Page
 from knowledge.services.due_dates import combine_local_to_utc, start_of_local_day
 
 # ---------------------------------------------------------------------------
@@ -558,10 +558,7 @@ def _content_contains_q(value: Any, user, context_date: "date | None" = None) ->
 
 
 # Pulled from Page.page_type choices; refresh if the model gains new types.
-# Resolved lazily to avoid an import cycle at module load.
 def _page_types() -> "set[str]":
-    from knowledge.models import Page
-
     return {choice[0] for choice in Page._meta.get_field("page_type").choices}
 
 

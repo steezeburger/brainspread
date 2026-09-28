@@ -1,4 +1,3 @@
-import re
 from datetime import time
 from typing import TYPE_CHECKING, Optional, TypedDict
 
@@ -192,24 +191,6 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
             if local.time() != time.min:
                 self.due_at = combine_local_to_utc(local.date(), time.min, tz)
 
-    def get_children(self):
-        """Get direct children blocks"""
-        # self.children is the raw reverse FK manager — it doesn't apply
-        # the is_active filter BaseRepository.get_queryset() gives every
-        # other Block query, so an unfiltered .all() here kept rendering
-        # soft-deleted nested blocks in the page tree after their delete
-        # request succeeded (they only ever disappeared if they were a
-        # root block, fetched via BlockRepository.get_root_blocks()).
-        return self.children.filter(is_active=True).order_by("order")
-
-    def get_descendants(self):
-        """Get all descendant blocks recursively"""
-        descendants = []
-        for child in self.get_children():
-            descendants.append(child)
-            descendants.extend(child.get_descendants())
-        return descendants
-
     def get_depth(self):
         """Get the depth/level of this block in the hierarchy"""
         depth = 0
@@ -218,83 +199,6 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
             depth += 1
             current = current.parent
         return depth
-
-    # Property keys that are managed by the UI (the resize handle and
-    # the "show as raw" / "reset size" entries in the block context
-    # menu) rather than by the user typing `key:: value` into block
-    # content. Kept out of the content-driven property sync below so a
-    # routine block edit doesn't clobber them — see
-    # `extract_properties_from_content`.
-    _UI_MANAGED_PROPERTY_KEYS = frozenset({"size", "render"})
-
-    def extract_properties_from_content(self):
-        """Extract key:: value properties from content and sync with properties field"""
-        if not self.content:
-            return {}
-
-        extracted_properties = {}
-
-        # First: Handle line-start properties (can have multi-word values)
-        line_pattern = r"^([a-zA-Z0-9_-]+)::\s*(.+)$"
-        for line in self.content.split("\n"):
-            match = re.match(line_pattern, line.strip())
-            if match:
-                key, value = match.groups()
-                # For line-start properties, strip out any inline properties from the value
-                # Split value and take only until the first inline property
-                value_words = value.split()
-                clean_value_words = []
-                for word in value_words:
-                    if "::" in word and re.match(r"^[a-zA-Z0-9_-]+::", word):
-                        break  # Stop at first inline property
-                    clean_value_words.append(word)
-                if clean_value_words:
-                    extracted_properties[key] = " ".join(clean_value_words)
-
-        # Second: Handle inline properties (single word values)
-        inline_pattern = r"([a-zA-Z0-9_-]+)::\s*([^\s]+)"
-        for line in self.content.split("\n"):
-            # Find all inline properties in each line
-            matches = re.findall(inline_pattern, line)
-            for key, value in matches:
-                # Only add if not already found as line-start property
-                if key not in extracted_properties:
-                    extracted_properties[key] = value.strip()
-
-        # Merge with UI-managed keys preserved. Replacing the whole dict
-        # would nuke `size` (image resize handle) and `render` ("show as
-        # raw" toggle) on every content edit, which previously made both
-        # features look broken in practice — drag to resize, then type
-        # anywhere in the block, and the persisted width vanishes on the
-        # next page load.
-        current = self.properties or {}
-        preserved = {
-            k: current[k] for k in self._UI_MANAGED_PROPERTY_KEYS if k in current
-        }
-        merged = {**extracted_properties, **preserved}
-
-        if merged != self.properties:
-            self.properties = merged
-            self.save(update_fields=["properties"])
-
-        return extracted_properties
-
-    def get_property(self, key, default=None):
-        """Get a specific property value"""
-        return self.properties.get(key, default)
-
-    def set_property(self, key, value):
-        """Set a property value"""
-        if not self.properties:
-            self.properties = {}
-        self.properties[key] = value
-        self.save(update_fields=["properties"])
-
-    def remove_property(self, key):
-        """Remove a property"""
-        if self.properties and key in self.properties:
-            del self.properties[key]
-            self.save(update_fields=["properties"])
 
     def get_media_info(self):
         """Get media information for this block"""
@@ -315,9 +219,26 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
         lines = (self.content or "").strip().splitlines()
         return lines[0] if lines else ""
 
-    def get_tags(self):
-        """Get all pages this block is tagged with (excludes the page it belongs to and daily notes)"""
-        return self.pages.exclude(uuid=self.page.uuid).exclude(page_type="daily")
+    def get_tags(self) -> list:
+        """Pages this block is tagged with, excluding the page it belongs
+        to and daily notes (daily-note tags aren't shown as hashtag
+        chips). Filters in Python over ``self.pages.all()`` so a
+        ``prefetch_related("pages")`` cache is used instead of bypassed —
+        same pattern as get_pending_reminders(). Also drops an archived
+        tag page: ``self.pages`` isn't filtered by is_active (only
+        BaseRepository.get_queryset() applies that), so an unfiltered
+        `.all()` would otherwise leak an archived page back in as a
+        chip — the same category of bug as #122's nested-block leak.
+        Compares by ``page_id`` rather than ``.uuid`` — a page assigned
+        in-memory (e.g. straight from a factory or a just-created Page,
+        never round-tripped through the DB) holds `.uuid` as a plain
+        str, which never compares equal to the UUID object a fresh
+        query returns for the same row."""
+        return [
+            page
+            for page in self.pages.all()
+            if page.is_active and page.id != self.page_id and page.page_type != "daily"
+        ]
 
     def get_tag_names(self):
         """Get tag names (uses slug format without # prefix)"""
@@ -476,17 +397,6 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
             "pending_reminder_date": first_reminder["date"] if first_reminder else None,
             "pending_reminder_time": first_reminder["time"] if first_reminder else None,
         }
-
-    def to_dict_with_children(self, include_page_context: bool = False) -> "BlockData":
-        """Convert block to dict with nested children"""
-        block_data = self.to_dict(include_page_context=include_page_context)
-        children = []
-        for child in self.get_children():
-            children.append(
-                child.to_dict_with_children(include_page_context=include_page_context)
-            )
-        block_data["children"] = children
-        return block_data
 
 
 class BlockTagData(TypedDict):
