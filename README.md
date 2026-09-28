@@ -152,13 +152,18 @@ It's a small surface, 16 tools covering pages, blocks, todos, search,
 scheduling, and tagging, each a thin wrapper over the same commands the UI
 uses.
 
-Auth is the same token the web app gets when you log in (visible in the
-Django admin under Auth Tokens):
+Auth uses MCP access tokens, which you create under settings → mcp. Make one
+per machine or Claude instance. They keep working when you log out of the
+web app, can be revoked one at a time, and can optionally expire. The
+settings page gives you the full command after you create a token:
 
 ```bash
 claude mcp add --transport http brainspread http://localhost:8001/api/mcp/ \
-  --header "Authorization: Token YOUR_TOKEN"
+  --header "Authorization: Bearer bsmcp_..."
 ```
+
+The old `Authorization: Token <web-app token>` header still works, but that
+token is deleted whenever you log out of the web app.
 
 ### The in-app chat
 

@@ -104,10 +104,14 @@ class ApiService {
     try {
       await this.request("/api/auth/logout/", { method: "POST" });
     } finally {
-      this.token = null;
-      localStorage.removeItem("authToken");
-      localStorage.removeItem("user");
+      this.clearAuth();
     }
+  }
+
+  clearAuth() {
+    this.token = null;
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("user");
   }
 
   async me() {
@@ -950,6 +954,28 @@ class ApiService {
   // an <img src> or <a href>.
   assetServeUrl(uuid) {
     return `${this.baseURL}/api/assets/${uuid}/`;
+  }
+
+  // ---- MCP access tokens ------------------------------------------------
+
+  async listMcpAccessTokens() {
+    return await this.request("/api/auth/mcp-tokens/");
+  }
+
+  async createMcpAccessToken(name, expiresInDays = null) {
+    const body = { name };
+    if (expiresInDays) body.expires_in_days = expiresInDays;
+    return await this.request("/api/auth/mcp-tokens/create/", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  async revokeMcpAccessToken(tokenUuid) {
+    return await this.request("/api/auth/mcp-tokens/revoke/", {
+      method: "POST",
+      body: JSON.stringify({ token_uuid: tokenUuid }),
+    });
   }
 
   // ---- Custom variables (issue #228) -----------------------------------

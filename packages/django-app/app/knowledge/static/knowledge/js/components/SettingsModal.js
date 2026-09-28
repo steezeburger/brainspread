@@ -40,6 +40,17 @@ window.SettingsModal = {
       editVariableExpansion: "",
       variableError: "",
       variableBusy: false,
+      // MCP access tokens — one per machine / Claude instance.
+      mcpTokens: [],
+      mcpTokensLoaded: false,
+      loadingMcpTokens: false,
+      newMcpTokenName: "",
+      newMcpTokenExpiresInDays: "",
+      // Plaintext key of the token just created; only shown once.
+      createdMcpKey: "",
+      createdMcpKeyCopied: false,
+      mcpTokenError: "",
+      mcpTokenBusy: false,
       commonTimezones: [
         "UTC",
         "America/New_York",
@@ -113,6 +124,7 @@ window.SettingsModal = {
     },
     currentTab(newTab) {
       if (newTab === "variables") this.loadCustomVariables();
+      if (newTab === "mcp") this.loadMcpTokens();
     },
     isOpen: {
       async handler(newValue) {
@@ -120,7 +132,10 @@ window.SettingsModal = {
           this.currentTab = this.activeTab || "general";
           this.editingVariableUuid = null;
           this.variableError = "";
+          this.createdMcpKey = "";
+          this.mcpTokenError = "";
           if (this.currentTab === "variables") this.loadCustomVariables();
+          if (this.currentTab === "mcp") this.loadMcpTokens();
           await this.loadAISettings();
           this.$nextTick(() => {
             const firstFocusable = this.$el?.querySelector(
@@ -140,6 +155,18 @@ window.SettingsModal = {
   },
 
   computed: {
+    mcpEndpointUrl() {
+      return `${window.location.origin}/api/mcp/`;
+    },
+
+    mcpAddCommand() {
+      const key = this.createdMcpKey || "YOUR_KEY";
+      return (
+        `claude mcp add --transport http brainspread ${this.mcpEndpointUrl} ` +
+        `--header "Authorization: Bearer ${key}"`
+      );
+    },
+
     themes() {
       // Sourced from app.js so prod / staging stay in sync with the
       // theme-cycling shortcuts and the spotlight theme list.
@@ -605,6 +632,98 @@ window.SettingsModal = {
       }
     },
 
+    async loadMcpTokens() {
+      if (this.loadingMcpTokens || this.mcpTokensLoaded) return;
+      this.loadingMcpTokens = true;
+      try {
+        const result = await window.apiService.listMcpAccessTokens();
+        this.mcpTokens = result?.data?.tokens || [];
+        this.mcpTokensLoaded = true;
+      } catch (error) {
+        this.mcpTokenError = "failed to load tokens";
+      } finally {
+        this.loadingMcpTokens = false;
+      }
+    },
+
+    async createMcpToken() {
+      if (this.mcpTokenBusy) return;
+      this.mcpTokenBusy = true;
+      this.mcpTokenError = "";
+      try {
+        const days = parseInt(this.newMcpTokenExpiresInDays, 10) || null;
+        const result = await window.apiService.createMcpAccessToken(
+          this.newMcpTokenName.trim(),
+          days
+        );
+        this.mcpTokens = [result.data.token, ...this.mcpTokens];
+        this.createdMcpKey = result.data.key;
+        this.createdMcpKeyCopied = false;
+        this.newMcpTokenName = "";
+        this.newMcpTokenExpiresInDays = "";
+      } catch (error) {
+        const errors = error?.payload?.errors || {};
+        this.mcpTokenError =
+          Object.values(errors).flat()[0] ||
+          error?.message ||
+          "failed to create token";
+      } finally {
+        this.mcpTokenBusy = false;
+      }
+    },
+
+    async revokeMcpToken(token) {
+      if (this.mcpTokenBusy) return;
+      const message = `revoke "${token.name}"? any mcp client using it stops working immediately.`;
+      const confirmed = window.appModals
+        ? await window.appModals.confirm({
+            title: "revoke token?",
+            message,
+            confirmLabel: "revoke",
+            destructive: true,
+          })
+        : window.confirm(message);
+      if (!confirmed) return;
+      this.mcpTokenBusy = true;
+      this.mcpTokenError = "";
+      try {
+        await window.apiService.revokeMcpAccessToken(token.uuid);
+        this.mcpTokens = this.mcpTokens.filter((t) => t.uuid !== token.uuid);
+      } catch (error) {
+        this.mcpTokenError = error?.message || "failed to revoke token";
+      } finally {
+        this.mcpTokenBusy = false;
+      }
+    },
+
+    async copyMcpAddCommand() {
+      const text = this.mcpAddCommand;
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+          this.createdMcpKeyCopied = true;
+          return;
+        }
+      } catch (error) {
+        console.warn("clipboard API failed, falling back:", error);
+      }
+      // Non-HTTPS deploys: select the textarea and try execCommand, and
+      // leave it selected so Cmd/Ctrl+C works if that fails too.
+      const input = this.$refs.mcpAddCommandInput;
+      if (!input) return;
+      input.focus();
+      input.select();
+      try {
+        this.createdMcpKeyCopied = document.execCommand("copy");
+      } catch (_) {
+        this.createdMcpKeyCopied = false;
+      }
+    },
+
+    formatMcpTokenDate(iso) {
+      return iso ? new Date(iso).toLocaleDateString() : "never";
+    },
+
     tokenLabel(name) {
       return `{{${name}}}`;
     },
@@ -653,6 +772,13 @@ window.SettingsModal = {
             type="button"
           >
             variables
+          </button>
+          <button
+            :class="{ active: currentTab === 'mcp' }"
+            @click="switchTab('mcp')"
+            type="button"
+          >
+            mcp
           </button>
         </div>
 
@@ -932,6 +1058,125 @@ window.SettingsModal = {
           </div>
         </div>
 
+        <div v-if="currentTab === 'mcp'" class="tab-content">
+          <div class="settings-section">
+            <h3>mcp access tokens</h3>
+            <p class="settings-hint">
+              create one token per machine or claude instance. tokens keep
+              working when you log out of the web app, and you can revoke
+              each one on its own.
+            </p>
+
+            <p v-if="mcpTokenError" class="custom-variable-error" role="alert">
+              {{ mcpTokenError }}
+            </p>
+
+            <div v-if="createdMcpKey" class="mcp-token-created">
+              <p class="settings-hint">
+                copy this now. the key won't be shown again.
+              </p>
+              <textarea
+                ref="mcpAddCommandInput"
+                class="form-control mcp-token-command"
+                :value="mcpAddCommand"
+                readonly
+                rows="3"
+                aria-label="claude mcp add command"
+                spellcheck="false"
+                @focus="$event.target.select()"
+              ></textarea>
+              <div class="custom-variable-actions">
+                <button
+                  type="button"
+                  class="btn btn-primary btn-compact"
+                  @click="copyMcpAddCommand"
+                >
+                  {{ createdMcpKeyCopied ? 'copied' : 'copy command' }}
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-outline btn-compact"
+                  @click="createdMcpKey = ''"
+                >
+                  done
+                </button>
+              </div>
+            </div>
+
+            <div v-if="loadingMcpTokens" class="loading">loading tokens...</div>
+            <p
+              v-else-if="mcpTokensLoaded && !mcpTokens.length"
+              class="settings-hint"
+            >
+              no tokens yet.
+            </p>
+            <ul v-else class="custom-variable-list">
+              <li
+                v-for="token in mcpTokens"
+                :key="token.uuid"
+                class="mcp-token-row"
+              >
+                <div class="mcp-token-info">
+                  <span class="mcp-token-name">{{ token.name }}</span>
+                  <code class="mcp-token-prefix">{{ token.key_prefix }}…</code>
+                  <span class="mcp-token-meta">
+                    last used {{ formatMcpTokenDate(token.last_used_at) }}
+                    &middot;
+                    <span v-if="token.is_expired" class="mcp-token-expired">expired</span>
+                    <template v-else>
+                      expires {{ formatMcpTokenDate(token.expires_at) }}
+                    </template>
+                  </span>
+                </div>
+                <div class="custom-variable-actions">
+                  <button
+                    type="button"
+                    class="btn btn-danger btn-compact"
+                    :disabled="mcpTokenBusy"
+                    @click="revokeMcpToken(token)"
+                  >
+                    revoke
+                  </button>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <div class="settings-section">
+            <h3>new token</h3>
+            <form class="mcp-token-form" @submit.prevent="createMcpToken">
+              <input
+                type="text"
+                v-model="newMcpTokenName"
+                class="form-control custom-variable-name-input"
+                placeholder="name, e.g. work laptop"
+                aria-label="new token name"
+                maxlength="100"
+                autocomplete="off"
+              />
+              <select
+                v-model="newMcpTokenExpiresInDays"
+                class="form-control custom-variable-name-input"
+                aria-label="expires"
+              >
+                <option value="">never expires</option>
+                <option value="30">expires in 30 days</option>
+                <option value="90">expires in 90 days</option>
+                <option value="365">expires in 1 year</option>
+              </select>
+              <div class="custom-variable-actions">
+                <button
+                  type="submit"
+                  class="btn btn-primary btn-compact"
+                  :disabled="mcpTokenBusy || !newMcpTokenName.trim()"
+                >
+                  create
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
         <div class="modal-actions">
           <button
             class="btn btn-outline"
@@ -939,10 +1184,10 @@ window.SettingsModal = {
             :disabled="isUpdating"
             type="button"
           >
-            {{ currentTab === 'variables' ? 'close' : 'cancel' }}
+            {{ ['variables', 'mcp'].includes(currentTab) ? 'close' : 'cancel' }}
           </button>
           <button
-            v-if="currentTab !== 'variables'"
+            v-if="!['variables', 'mcp'].includes(currentTab)"
             class="btn btn-primary"
             @click="saveSettings"
             :disabled="isUpdating"
