@@ -249,7 +249,7 @@ class PageRepository(BaseRepository):
         return (
             cls.get_queryset()
             .filter(user=user)
-            .annotate(block_count=Count("blocks"))
+            .annotate(block_count=Count("blocks", filter=Q(blocks__is_active=True)))
             .filter(Q(block_count__gt=0) | Q(page_type="whiteboard"))
             .order_by("-modified_at")[:limit]
         )

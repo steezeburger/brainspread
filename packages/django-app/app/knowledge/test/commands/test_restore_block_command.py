@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.test import TestCase
 
 from knowledge.commands import (
@@ -141,3 +143,29 @@ class TestRestoreBlockCommand(TestCase):
         # for — restoring the target's ancestor chain must not bring it
         # back too.
         self.assertFalse(sibling.is_active)
+
+    def test_rolls_back_ancestor_restore_if_the_subtree_restore_step_fails(self):
+        # restore_ancestors() and restore_subtree() must commit or fail
+        # together — otherwise a mid-cascade error leaves an ancestor
+        # active while the block that was actually asked for stays
+        # archived.
+        root = BlockFactory(user=self.user, page=self.page, content="root")
+        child = BlockFactory(
+            user=self.user, page=self.page, parent=root, content="child"
+        )
+        self._delete_block(root)
+
+        form = RestoreBlockForm({"user": self.user.id, "block": child.uuid})
+        self.assertTrue(form.is_valid(), form.errors)
+
+        with patch(
+            "knowledge.repositories.block_repository.BlockRepository.restore_subtree",
+            side_effect=RuntimeError("boom"),
+        ):
+            with self.assertRaises(RuntimeError):
+                RestoreBlockCommand(form).execute()
+
+        root.refresh_from_db()
+        child.refresh_from_db()
+        self.assertFalse(root.is_active)
+        self.assertFalse(child.is_active)

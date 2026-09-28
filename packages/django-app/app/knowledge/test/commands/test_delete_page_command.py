@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.test import TestCase
 
 from knowledge.commands import DeletePageCommand
@@ -63,3 +65,24 @@ class TestDeletePageCommand(TestCase):
 
         block.refresh_from_db()
         self.assertEqual(block.deleted_at, original_deleted_at)
+
+    def test_rolls_back_block_cascade_if_the_page_delete_step_fails(self):
+        # The block cascade and the page's own delete must commit or
+        # fail together — otherwise a mid-cascade error leaves blocks
+        # archived under a page that's still showing as active.
+        page = PageFactory(user=self.user)
+        block = BlockFactory(user=self.user, page=page)
+
+        form = DeletePageForm({"user": self.user.id, "page": page.uuid})
+        self.assertTrue(form.is_valid(), form.errors)
+
+        with patch(
+            "knowledge.models.page.Page.delete", side_effect=RuntimeError("boom")
+        ):
+            with self.assertRaises(RuntimeError):
+                DeletePageCommand(form).execute()
+
+        page.refresh_from_db()
+        block.refresh_from_db()
+        self.assertTrue(page.is_active)
+        self.assertTrue(block.is_active)

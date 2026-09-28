@@ -1,4 +1,6 @@
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 
 from knowledge.commands import DeleteBlockCommand
 from knowledge.forms import DeleteBlockForm
@@ -105,6 +107,36 @@ class TestDeleteBlockCommand(TestCase):
         child_archive.refresh_from_db()
         self.assertFalse(root_archive.is_active)
         self.assertFalse(child_archive.is_active)
+
+    def test_archive_cleanup_is_a_single_bulk_operation(self):
+        # Regression for an N+1: the cleanup used to do a form-validation
+        # query plus a WebArchiveRepository lookup per subtree member
+        # (almost none of which have an archive). Isolate just the
+        # archive-cleanup queries from DeleteBlockCommand's other work
+        # (descendant lookup, the subtree soft-delete itself, touching
+        # the page) by asserting the WebArchive table is only ever
+        # touched twice regardless of subtree size: one bulk UPDATE
+        # ... WHERE block_id IN (...), no SELECT beforehand since the
+        # UPDATE's WHERE clause does the filtering.
+        root = BlockFactory(user=self.user, page=self.page, content="root")
+        parent = root
+        for i in range(20):
+            parent = BlockFactory(
+                user=self.user, page=self.page, parent=parent, content=f"n{i}"
+            )
+        WebArchive.objects.create(
+            user=self.user, block=root, source_url="https://example.com/root"
+        )
+
+        form = DeleteBlockForm({"user": self.user.id, "block": root.uuid})
+        self.assertTrue(form.is_valid())
+        with CaptureQueriesContext(connection) as ctx:
+            DeleteBlockCommand(form).execute()
+
+        web_archive_queries = [
+            q for q in ctx.captured_queries if "web_archives" in q["sql"]
+        ]
+        self.assertEqual(len(web_archive_queries), 1)
 
     def test_is_a_noop_when_block_has_no_archive(self):
         block = BlockFactory(user=self.user, page=self.page)
