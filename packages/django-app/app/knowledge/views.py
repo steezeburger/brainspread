@@ -2,6 +2,7 @@ import re
 from typing import Dict, List, Optional, TypedDict
 from urllib.parse import urlparse
 
+from django.conf import settings
 from django.contrib.staticfiles import finders
 from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse
@@ -381,7 +382,8 @@ def _serialize_block_tree(block, share_token: str) -> dict:
         ),
         "asset_is_image": asset_file_type == "image",
         "children": [
-            _serialize_block_tree(child, share_token) for child in block.get_children()
+            _serialize_block_tree(child, share_token)
+            for child in BlockRepository.get_child_blocks(block)
         ],
     }
 
@@ -422,7 +424,8 @@ def _serialize_referenced_block(block, share_token: str) -> dict:
             source.date.isoformat() if source and source.date else None
         ),
         "children": [
-            _serialize_block_tree(child, share_token) for child in block.get_children()
+            _serialize_block_tree(child, share_token)
+            for child in BlockRepository.get_child_blocks(block)
         ],
     }
 
@@ -608,12 +611,12 @@ def get_tag_content(request, tag_name):
         # Format the response data
         direct_blocks_data = []
         for block in result["direct_blocks"]:
-            direct_blocks_data.append(block.to_dict_with_children())
+            direct_blocks_data.append(BlockRepository.get_tree_dict(block))
 
         referenced_blocks_data = []
         for block in result["referenced_blocks"]:
             referenced_blocks_data.append(
-                block.to_dict_with_children(include_page_context=True)
+                BlockRepository.get_tree_dict(block, include_page_context=True)
             )
 
         pages_data = []
@@ -1098,10 +1101,10 @@ def get_page_with_blocks(request):
             page_with_blocks_data = PageWithBlocksData(
                 page=page.to_dict(),
                 direct_blocks=[
-                    block.to_dict_with_children() for block in direct_blocks
+                    BlockRepository.get_tree_dict(block) for block in direct_blocks
                 ],
                 referenced_blocks=[
-                    block.to_dict_with_children(include_page_context=True)
+                    BlockRepository.get_tree_dict(block, include_page_context=True)
                     for block in referenced_blocks
                 ],
                 embedded_views=[embed.to_dict() for embed in embedded_views],
@@ -1303,7 +1306,7 @@ def duplicate_block(request):
 
             response: BlockResponse = {
                 "success": True,
-                "data": clone.to_dict_with_children(),
+                "data": BlockRepository.get_tree_dict(clone),
                 "errors": None,
             }
 
@@ -1981,8 +1984,6 @@ def _block_link_for_result(result) -> str:
     `_page_link` behavior) and when the result lacks a block — e.g.
     the token didn't resolve.
     """
-    from django.conf import settings
-
     site_url = settings.SITE_URL or ""
     if not site_url.startswith(("http://", "https://")):
         return ""

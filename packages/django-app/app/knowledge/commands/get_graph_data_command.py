@@ -3,7 +3,7 @@ from collections import defaultdict
 from itertools import combinations
 from typing import Dict, List, Tuple, TypedDict
 
-from django.db.models import Count
+from django.db.models import Count, Q
 
 from common.commands.abstract_base_command import AbstractBaseCommand
 from core.models import User
@@ -51,7 +51,11 @@ class GetGraphDataCommand(AbstractBaseCommand):
         pages_qs = (
             PageRepository.get_queryset()
             .filter(user=user)
-            .annotate(block_count=Count("blocks", distinct=True))
+            .annotate(
+                block_count=Count(
+                    "blocks", filter=Q(blocks__is_active=True), distinct=True
+                )
+            )
         )
         if not include_daily:
             pages_qs = pages_qs.exclude(page_type="daily")

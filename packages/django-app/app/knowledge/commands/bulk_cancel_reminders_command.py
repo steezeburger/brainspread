@@ -5,7 +5,7 @@ from django.db import transaction
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.bulk_cancel_reminders_form import BulkCancelRemindersForm
-from ..repositories import BlockRepository
+from ..repositories import BlockRepository, ReminderRepository
 
 
 class BulkCancelRemindersCommand(AbstractBaseCommand):
@@ -39,7 +39,7 @@ class BulkCancelRemindersCommand(AbstractBaseCommand):
                     no_reminder.append(block_uuid)
                     continue
                 for reminder in pending:
-                    reminder.cancel()
+                    ReminderRepository.cancel(reminder)
                 cancelled_count += len(pending)
                 if block.page is not None:
                     affected_page_uuids.add(str(block.page.uuid))

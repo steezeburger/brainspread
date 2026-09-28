@@ -69,6 +69,26 @@ class TestGetReferencedBlocks(TestCase):
         self.assertEqual(result, [])
 
 
+class TestPagesPrefetch(TestCase):
+    """get_root_blocks() / get_referenced_blocks() / run_compiled_query()
+    all prefetch `pages` so Block.get_tags() (called by to_dict() to
+    serialize a block's tag chips) reads the cache instead of issuing
+    one query per block — mirrors the existing `reminders` prefetch.
+    Without it, rendering a page tree does an extra tags query per
+    block on the page."""
+
+    def test_get_root_blocks_prefetches_pages(self):
+        user = UserFactory()
+        page = PageFactory(user=user)
+        tag_page = PageFactory(user=user, title="Tag", slug="tag")
+        block = BlockFactory(user=user, page=page)
+        block.pages.add(tag_page)
+
+        roots = list(BlockRepository.get_root_blocks(page))
+        with self.assertNumQueries(0):
+            list(roots[0].pages.all())
+
+
 class TestSearchByContentExcludesDeleted(TestCase):
     @classmethod
     def setUpTestData(cls):

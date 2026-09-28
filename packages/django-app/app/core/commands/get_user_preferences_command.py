@@ -1,5 +1,6 @@
 from typing import Any, Dict
 
+from ai_chat.models import UserAISettings
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms import GetUserPreferencesForm
@@ -20,10 +21,6 @@ class GetUserPreferencesCommand(AbstractBaseCommand):
         super().execute()
 
         user = self.form.cleaned_data["user"]
-
-        # Avoid eager imports at module load — UserAISettings lives in
-        # ai_chat which would otherwise create a core <-> ai_chat cycle.
-        from ai_chat.models import UserAISettings
 
         try:
             ai_settings = UserAISettings.objects.select_related("preferred_model").get(

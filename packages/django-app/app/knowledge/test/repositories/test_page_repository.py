@@ -200,6 +200,19 @@ class TestPageRepository(TestCase):
         self.assertIn(str(whiteboard_page.uuid), uuids)
         self.assertNotIn(str(empty_regular_page.uuid), uuids)
 
+    def test_get_recent_pages_excludes_a_page_whose_only_block_was_deleted(self):
+        # block_count must be scoped to active blocks — otherwise a page
+        # emptied via Trash still reads as "has content" since the
+        # block's row survives soft-delete (is_active=False), just no
+        # longer live.
+        page = PageFactory(user=self.user, title="Now Empty")
+        block = BlockFactory(user=self.user, page=page)
+        block.delete()
+
+        pages = list(PageRepository.get_recent_pages(self.user))
+
+        self.assertNotIn(str(page.uuid), {str(p.uuid) for p in pages})
+
     def test_get_by_share_token_excludes_archived_pages(self):
         page = PageFactory(user=self.user, share_token="tok", share_mode="link")
 

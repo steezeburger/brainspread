@@ -3,5 +3,6 @@ from .block_repository import BlockRepository
 from .custom_variable_repository import CustomVariableRepository
 from .page_embedded_view_repository import PageEmbeddedViewRepository
 from .page_repository import PageRepository
+from .reminder_action_repository import ReminderActionRepository
 from .reminder_repository import ReminderRepository
 from .saved_view_repository import SavedViewRepository

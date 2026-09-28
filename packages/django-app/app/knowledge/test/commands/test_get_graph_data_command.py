@@ -197,3 +197,21 @@ class TestGetGraphDataCommand(TestCase):
         self.assertEqual(result["edges"], [])
         uuids = {n["uuid"] for n in result["nodes"]}
         self.assertSetEqual(uuids, {str(page_a.uuid), str(page_b.uuid)})
+
+    def test_block_count_excludes_soft_deleted_blocks(self):
+        # block_count sizes the node in GraphView.js — it must not count
+        # a block that's been soft-deleted (its row survives with
+        # is_active=False), or an emptied page still renders as if it
+        # has content.
+        page = PageFactory(user=self.user, title="Alpha", slug="alpha")
+        surviving = BlockFactory(user=self.user, page=page)
+        deleted = BlockFactory(user=self.user, page=page)
+        deleted.delete()
+
+        form = self._build_form()
+        result = GetGraphDataCommand(form).execute()
+
+        node = next(n for n in result["nodes"] if n["uuid"] == str(page.uuid))
+        self.assertEqual(node["block_count"], 1)
+        self.assertTrue(surviving.is_active)
+        self.assertFalse(deleted.is_active)
