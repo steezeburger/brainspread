@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from ai_chat.services.ai_service_factory import AIServiceFactory, AIServiceFactoryError
 from ai_chat.services.base_ai_service import AIServiceError
+from ai_chat.services.message_serializer import serialize_chat_message
 from ai_chat.tools.notes_tool_executor import NotesToolExecutor
 from ai_chat.tools.notes_tools import anthropic_notes_tools, openai_notes_tools
 from ai_chat.tools.web_search import WebSearchTools
@@ -152,7 +153,7 @@ class SendMessageCommand(AbstractBaseCommand):
             return {
                 "response": result.content,
                 "session_id": str(session.uuid),
-                "message": self._serialize_message(assistant_message, ai_model),
+                "message": serialize_chat_message(assistant_message, ai_model),
             }
 
         except (AIServiceError, AIServiceFactoryError) as e:
@@ -180,41 +181,6 @@ class SendMessageCommand(AbstractBaseCommand):
             raise SendMessageCommandError(
                 f"An unexpected error occurred: {str(e)}"
             ) from e
-
-    @staticmethod
-    def _serialize_message(message, ai_model) -> Dict[str, Any]:
-        # getattr-with-default keeps this resilient to test mocks that
-        # don't pre-configure attachments (which is a new field).
-        attachments = getattr(message, "attachments", None)
-        if not isinstance(attachments, list):
-            attachments = []
-        return {
-            "uuid": str(message.uuid),
-            "role": message.role,
-            "content": message.content,
-            "thinking": message.thinking or None,
-            "created_at": message.created_at.isoformat(),
-            "tool_events": list(message.tool_events or []),
-            "attachments": list(attachments),
-            # Default to "complete" so legacy callers that don't set the
-            # field on a mock still serialize a meaningful status.
-            "status": getattr(message, "status", "complete"),
-            "usage": {
-                "input_tokens": message.input_tokens,
-                "output_tokens": message.output_tokens,
-                "cache_creation_input_tokens": message.cache_creation_input_tokens,
-                "cache_read_input_tokens": message.cache_read_input_tokens,
-            },
-            "ai_model": (
-                {
-                    "name": ai_model.name,
-                    "display_name": ai_model.display_name,
-                    "provider": ai_model.provider.name,
-                }
-                if ai_model
-                else None
-            ),
-        }
 
     @staticmethod
     def _serialize_attachments(assets: List[Asset]) -> List[Dict[str, Any]]:

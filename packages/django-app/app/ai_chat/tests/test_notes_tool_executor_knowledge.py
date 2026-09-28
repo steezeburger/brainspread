@@ -20,7 +20,9 @@ from ai_chat.models import (
     UserAISettings,
 )
 from ai_chat.tools.notes_tool_executor import NotesToolExecutor
+from ai_chat.tools.notes_tools import anthropic_notes_tools
 from core.test.helpers import UserFactory
+from knowledge.models import Block, Page
 from knowledge.test.helpers import BlockFactory, PageFactory
 
 
@@ -142,8 +144,6 @@ class GetRecentActivityTests(TestCase):
     def setUp(self):
         # auto_now bumps modified_at on save; freeze the values explicitly.
         now = timezone.now()
-        from knowledge.models import Block, Page
-
         Page.objects.filter(pk=self.page_old.pk).update(
             modified_at=now - timedelta(days=2)
         )
@@ -291,8 +291,6 @@ class NewToolRegistrationTests(TestCase):
             self.assertFalse(ex.requires_approval(name), name)
 
     def test_anthropic_schema_includes_new_tools(self):
-        from ai_chat.tools.notes_tools import anthropic_notes_tools
-
         names = {t["name"] for t in anthropic_notes_tools()}
         for name in (
             "get_backlinks",

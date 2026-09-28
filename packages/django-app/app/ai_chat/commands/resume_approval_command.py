@@ -13,6 +13,7 @@ from typing import Any, Dict, Iterator, List, Optional
 
 from ai_chat.services.ai_service_factory import AIServiceFactory, AIServiceFactoryError
 from ai_chat.services.base_ai_service import AIServiceError, AIUsage
+from ai_chat.services.message_serializer import serialize_chat_message
 from ai_chat.tools.notes_tool_executor import NotesToolExecutor
 from common.commands.abstract_base_command import AbstractBaseCommand
 
@@ -257,9 +258,7 @@ class ResumeApprovalCommand(AbstractBaseCommand):
         yield {
             "type": "done",
             "session_id": str(session.uuid),
-            "message": SendMessageCommand._serialize_message(
-                assistant_message, ai_model
-            ),
+            "message": serialize_chat_message(assistant_message, ai_model),
         }
 
     @staticmethod

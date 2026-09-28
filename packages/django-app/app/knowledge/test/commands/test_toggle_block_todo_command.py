@@ -3,6 +3,7 @@ import uuid
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from knowledge.commands import ToggleBlockTodoCommand
 from knowledge.forms import ToggleBlockTodoForm
@@ -352,8 +353,6 @@ class TestToggleBlockTodoCommand:
 
     def test_completed_at_cleared_when_cycling_out_of_done(self):
         """completed_at should be cleared when leaving done (done -> later)"""
-        from django.utils import timezone
-
         user = User.objects.create_user(email="test@example.com", password="password")
         page = Page.objects.create(title="Test Page", user=user)
         block = Block.objects.create(

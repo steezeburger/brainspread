@@ -21,6 +21,9 @@ import pytz
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
+from ai_chat.commands.get_chat_history_summary_command import (
+    GetChatHistorySummaryCommand,
+)
 from ai_chat.forms import GetChatHistorySummaryForm
 from core.commands.get_current_time_command import GetCurrentTimeCommand
 from core.commands.get_user_preferences_command import GetUserPreferencesCommand
@@ -346,13 +349,6 @@ def _get_recent_activity(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, An
 
 
 def _get_chat_history_summary(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
-    # Lazy import — `ai_chat.commands.__init__` pulls in
-    # ResumeApprovalCommand which in turn imports NotesToolExecutor;
-    # resolving the command class at call time avoids that cycle.
-    from ai_chat.commands.get_chat_history_summary_command import (
-        GetChatHistorySummaryCommand,
-    )
-
     form_data: Dict[str, Any] = {"user": ctx.user.id}
     if args.get("limit") is not None:
         form_data["limit"] = args["limit"]

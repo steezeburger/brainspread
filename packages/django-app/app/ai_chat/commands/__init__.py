@@ -1,9 +1,8 @@
-from .list_chat_sessions_command import ListChatSessionsCommand
-from .reorder_favorited_chat_sessions_command import (
-    ReorderFavoritedChatSessionsCommand,
-)
-from .resume_approval_command import ResumeApprovalCommand
-from .send_message_command import SendMessageCommand
-from .set_chat_session_favorited_command import SetChatSessionFavoritedCommand
-from .stream_send_message_command import StreamSendMessageCommand
-from .update_chat_session_title_command import UpdateChatSessionTitleCommand
+# Deliberately no re-exports here (unlike other apps' commands/__init__.py).
+# ResumeApprovalCommand and StreamSendMessageCommand both reach into
+# ai_chat.tools (to execute the AI-issued tool calls), and ai_chat.tools
+# reaches back into specific ai_chat.commands modules (to run the command
+# behind each tool). Re-exporting every command here would make importing
+# any single one of them eagerly import that whole cycle. Import commands
+# from their own module instead, e.g.:
+#   from ai_chat.commands.send_message_command import SendMessageCommand

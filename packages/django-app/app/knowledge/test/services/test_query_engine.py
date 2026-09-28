@@ -7,6 +7,7 @@ that would silently break under a naive single-join translator (the
 nested combinations.
 """
 
+import time
 from datetime import date, datetime
 from unittest.mock import patch
 
@@ -664,8 +665,6 @@ class SortTests(_EngineTestBase):
         ``-created_at`` (newest first). This pins the contract so the
         default doesn't drift back to ``due_at`` (which felt
         random for tag-only views that have no dates)."""
-        import time
-
         older = BlockFactory(user=self.user, page=self.page, content="older")
         time.sleep(0.01)  # auto_now_add timestamps are precise enough that
         # a tight loop can land two blocks in the same microsecond on fast

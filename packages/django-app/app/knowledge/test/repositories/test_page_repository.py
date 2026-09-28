@@ -1,7 +1,8 @@
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 from django.test import TestCase
+from django.utils import timezone
 
 from knowledge.models import Page
 from knowledge.repositories import PageRepository
@@ -239,10 +240,6 @@ class TestPageRepository(TestCase):
         self.assertNotIn(str(still_active.uuid), [str(p.uuid) for p in result])
 
     def test_get_purgeable_filters_by_cutoff(self):
-        from datetime import timedelta
-
-        from django.utils import timezone
-
         old = PageFactory(user=self.user)
         old.delete()
         Page.objects.filter(pk=old.pk).update(
