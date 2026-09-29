@@ -4,7 +4,8 @@ from typing import Any, Dict
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.snooze_block_form import SnoozeBlockForm
-from ..models import Block, Reminder
+from ..models import Block, BlockRevision, Reminder
+from ..repositories import BlockRevisionRepository
 from ..services.due_dates import shift_due_days
 
 
@@ -35,6 +36,7 @@ class SnoozeBlockCommand(AbstractBaseCommand):
             return {"error": "block has no schedule to snooze"}
 
         update_fields: list[str] = []
+        previous_snapshot = BlockRevisionRepository.snapshot(block)
 
         if block.due_at is not None and days != 0:
             block.due_at = shift_due_days(
@@ -45,6 +47,8 @@ class SnoozeBlockCommand(AbstractBaseCommand):
         if update_fields:
             update_fields.append("modified_at")
             block.save(update_fields=update_fields)
+            source = self.form.cleaned_data.get("source") or BlockRevision.SOURCE_USER
+            BlockRevisionRepository.record_if_changed(block, previous_snapshot, source)
 
         # Every pending reminder shifts by the same delta so their
         # relative spacing (e.g. a nudge series) is preserved.

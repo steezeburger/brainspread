@@ -257,9 +257,7 @@ class ResumeApprovalCommand(AbstractBaseCommand):
         yield {
             "type": "done",
             "session_id": str(session.uuid),
-            "message": SendMessageCommand._serialize_message(
-                assistant_message, ai_model
-            ),
+            "message": assistant_message.to_dict(),
         }
 
     @staticmethod

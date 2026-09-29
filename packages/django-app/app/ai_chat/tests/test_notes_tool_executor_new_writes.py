@@ -17,6 +17,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from ai_chat.tools.notes_tool_executor import NotesToolExecutor
+from ai_chat.tools.notes_tools import anthropic_notes_tools
 from core.test.helpers import UserFactory
 from knowledge.models import Block, Reminder
 from knowledge.test.helpers import BlockFactory, PageFactory, due_dt
@@ -729,8 +730,6 @@ class NewToolRegistrationTests(TestCase):
         self.assertFalse(ex.requires_approval("get_current_page"))
 
     def test_anthropic_schema_includes_new_tools(self):
-        from ai_chat.tools.notes_tools import anthropic_notes_tools
-
         names = {t["name"] for t in anthropic_notes_tools(include_writes=True)}
         for name in (
             "snooze_block",

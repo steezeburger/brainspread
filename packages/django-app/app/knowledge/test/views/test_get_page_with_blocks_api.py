@@ -87,3 +87,45 @@ class GetPageWithBlocksReferencedChildrenTestCase(TestCase):
         referenced = response.data["data"]["referenced_blocks"]
         top_level_uuids = [b["uuid"] for b in referenced]
         self.assertEqual(top_level_uuids, [str(self.parent.uuid)])
+
+
+class DeletedNestedBlockDropsFromPageApiTestCase(TestCase):
+    """End-to-end regression: deleting a nested block through the API and
+    then re-fetching the page (simulating a browser refresh) must not
+    show the deleted block. This was broken by Block.get_children()
+    reading the raw reverse FK manager, which isn't is_active-filtered —
+    only root-level blocks (fetched via BlockRepository.get_root_blocks())
+    correctly disappeared after a delete."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory(email="owner2@example.com")
+        cls.page = PageFactory(user=cls.user, title="Notes", slug="notes")
+        cls.parent = BlockFactory(user=cls.user, page=cls.page, content="parent")
+        cls.child = BlockFactory(
+            user=cls.user, page=cls.page, parent=cls.parent, content="child", order=0
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+
+    def test_deleted_nested_block_is_gone_after_refetch(self):
+        delete_response = self.client.delete(
+            "/knowledge/api/blocks/delete/",
+            {"block": str(self.child.uuid)},
+            format="json",
+        )
+        self.assertEqual(delete_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(delete_response.data["success"])
+
+        refetch = self.client.get("/knowledge/api/page/?slug=notes")
+        self.assertEqual(refetch.status_code, status.HTTP_200_OK)
+
+        direct_blocks = refetch.data["data"]["direct_blocks"]
+        parent_data = next(
+            b for b in direct_blocks if b["uuid"] == str(self.parent.uuid)
+        )
+        child_uuids = {c["uuid"] for c in parent_data["children"]}
+        self.assertNotIn(str(self.child.uuid), child_uuids)

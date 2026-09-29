@@ -7,8 +7,8 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.bulk_schedule_form import BulkScheduleForm
 from ..forms.schedule_block_form import ScheduleBlockForm
-from ..models import Block
-from ..repositories import BlockRepository
+from ..models import Block, BlockRevision
+from ..repositories import BlockRepository, BlockRevisionRepository
 from ..services.due_dates import build_due_at
 from .schedule_block_command import ScheduleBlockCommand
 
@@ -37,6 +37,7 @@ class BulkScheduleCommand(AbstractBaseCommand):
         reminders: Optional[list] = self.form.cleaned_data.get("reminders")
         reminder_time: Optional[time] = self.form.cleaned_data.get("reminder_time")
         reminder_date: Optional[date] = self.form.cleaned_data.get("reminder_date")
+        source = self.form.cleaned_data.get("source") or BlockRevision.SOURCE_USER
 
         # Route mode is decided once for the whole batch — either everyone
         # gets the same reminder set (replace semantics) or nobody does
@@ -49,6 +50,7 @@ class BulkScheduleCommand(AbstractBaseCommand):
                 new_date=new_date,
                 new_time=new_time,
                 reminders=reminders,
+                source=source,
             )
         if reminder_time is not None:
             return self._execute_with_reminders(
@@ -62,14 +64,24 @@ class BulkScheduleCommand(AbstractBaseCommand):
                         "time": reminder_time.strftime("%H:%M"),
                     }
                 ],
+                source=source,
             )
         return self._execute_date_only(
-            user=user, block_uuids=block_uuids, new_date=new_date, new_time=new_time
+            user=user,
+            block_uuids=block_uuids,
+            new_date=new_date,
+            new_time=new_time,
+            source=source,
         )
 
     @staticmethod
     def _execute_date_only(
-        *, user, block_uuids: List[str], new_date: date, new_time: Optional[time]
+        *,
+        user,
+        block_uuids: List[str],
+        new_date: date,
+        new_time: Optional[time],
+        source: str,
     ) -> Dict[str, Any]:
         updated_count = 0
         missing: List[str] = []
@@ -89,10 +101,14 @@ class BulkScheduleCommand(AbstractBaseCommand):
                 old_date = (
                     block.due_at.astimezone(user.tz()).date() if block.due_at else None
                 )
+                previous_snapshot = BlockRevisionRepository.snapshot(block)
                 block.due_at, block.due_at_has_time = build_due_at(
                     new_date, new_time, user.tz()
                 )
                 block.save(update_fields=["due_at", "due_at_has_time", "modified_at"])
+                BlockRevisionRepository.record_if_changed(
+                    block, previous_snapshot, source
+                )
 
                 if old_date is not None:
                     delta = new_date - old_date
@@ -121,6 +137,7 @@ class BulkScheduleCommand(AbstractBaseCommand):
         new_date: date,
         new_time: Optional[time],
         reminders: list,
+        source: str,
     ) -> Dict[str, Any]:
         updated_count = 0
         missing: List[str] = []
@@ -141,6 +158,7 @@ class BulkScheduleCommand(AbstractBaseCommand):
                         "due_date": new_date.isoformat(),
                         "due_time": due_time_iso,
                         "reminders": reminders,
+                        "source": source,
                     }
                 )
                 if not inner.is_valid():

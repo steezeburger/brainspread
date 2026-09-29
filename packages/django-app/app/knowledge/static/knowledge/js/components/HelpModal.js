@@ -23,6 +23,8 @@ window.HelpModal = {
   methods: {
     handleModalKeydown(event) {
       if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
         this.$emit("close");
         return;
       }

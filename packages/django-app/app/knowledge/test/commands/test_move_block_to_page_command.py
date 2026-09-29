@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from knowledge.commands import MoveBlockToPageCommand
@@ -243,8 +244,6 @@ class TestMoveBlockToPageWithTargetParent(TestCase):
         self.assertEqual(sibling.parent_id, self.target_parent.id)
 
     def test_should_reject_move_under_own_descendant(self):
-        from django.core.exceptions import ValidationError
-
         block = BlockFactory(user=self.user, page=self.source_page, content="root")
         child = BlockFactory(
             user=self.user, page=self.source_page, parent=block, content="child"

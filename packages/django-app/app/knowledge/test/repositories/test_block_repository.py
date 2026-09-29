@@ -1,5 +1,9 @@
-from django.test import TestCase
+from datetime import timedelta
 
+from django.test import TestCase
+from django.utils import timezone
+
+from knowledge.models import Block
 from knowledge.repositories import BlockRepository
 
 from ..helpers import BlockFactory, PageFactory, UserFactory
@@ -179,8 +183,6 @@ class TestSoftDeleteCascades(TestCase):
         self.assertEqual(restored, 0)
 
     def test_restore_ancestors_stops_at_the_first_active_ancestor(self):
-        from knowledge.models import Block
-
         root = BlockFactory(user=self.user, page=self.page, content="root")
         child = BlockFactory(
             user=self.user, page=self.page, parent=root, content="child"
@@ -231,12 +233,6 @@ class TestSoftDeleteCascades(TestCase):
         self.assertIsNone(BlockRepository.get_deleted_by_uuid(str(block.uuid), other))
 
     def test_get_purgeable_filters_by_cutoff(self):
-        from datetime import timedelta
-
-        from django.utils import timezone
-
-        from knowledge.models import Block
-
         old = BlockFactory(user=self.user, page=self.page)
         old.delete()
         Block.objects.filter(pk=old.pk).update(

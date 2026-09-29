@@ -511,6 +511,7 @@ window.AppModals = {
         this.onPickerConfirm();
       } else if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         this.onPickerCancel();
       }
     },
@@ -583,6 +584,7 @@ window.AppModals = {
       if (top.kind === "pickPage" || top.kind === "pickBlock") return;
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         if (top.kind === "confirm") this.onCancel();
         else if (top.kind === "prompt") this.onPromptCancel();
         else if (top.kind === "alert") this.onAlertOk();

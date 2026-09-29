@@ -7,6 +7,8 @@ from django.core.exceptions import ValidationError
 from common.forms.base_form import BaseForm
 from core.repositories import UserRepository
 
+from ..models import BlockRevision
+
 VALID_BLOCK_TYPES = (
     "bullet",
     "todo",
@@ -27,6 +29,10 @@ class BulkSetBlockTypeForm(BaseForm):
     user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
     block_uuids = forms.JSONField()
     new_type = forms.CharField()
+    # Who's making this change, for BlockRevision attribution. Omitted by
+    # the web UI (the command defaults to "user"); automation / the AI
+    # chat pass their own value explicitly.
+    source = forms.ChoiceField(choices=BlockRevision.SOURCE_CHOICES, required=False)
 
     def clean_block_uuids(self) -> List[str]:
         raw = self.cleaned_data.get("block_uuids")

@@ -32,6 +32,32 @@ class TestDeleteBlockCommand(TestCase):
         self.assertFalse(block.is_active)
         self.assertIsNotNone(block.deleted_at)
 
+    def test_deleted_nested_block_drops_out_of_the_rendered_tree(self):
+        # Regression: BlockRepository.get_tree_dict() must recurse through
+        # get_child_blocks() (is_active-filtered), not a raw reverse FK
+        # manager — otherwise a deleted non-root block keeps showing up in
+        # the page-render API even though the delete request succeeded and
+        # the row was correctly marked inactive. Root-level deletes never
+        # hit this, since BlockRepository.get_root_blocks() is filtered —
+        # only nested ones did.
+        parent = BlockFactory(user=self.user, page=self.page, content="parent")
+        child = BlockFactory(
+            user=self.user, page=self.page, parent=parent, content="child"
+        )
+        sibling = BlockFactory(
+            user=self.user, page=self.page, parent=parent, content="sibling"
+        )
+
+        form = DeleteBlockForm({"user": self.user.id, "block": child.uuid})
+        self.assertTrue(form.is_valid(), form.errors)
+        DeleteBlockCommand(form).execute()
+
+        parent.refresh_from_db()
+        rendered = BlockRepository.get_tree_dict(parent)
+        child_uuids = {c["uuid"] for c in rendered["children"]}
+        self.assertNotIn(str(child.uuid), child_uuids)
+        self.assertIn(str(sibling.uuid), child_uuids)
+
     def test_cascades_to_descendant_subtree(self):
         root = BlockFactory(user=self.user, page=self.page, content="root")
         child = BlockFactory(

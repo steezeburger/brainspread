@@ -876,9 +876,7 @@ class TestSmallVerbActions(TestCase):
         target.pages.add(sticky)
         target.block_type = "done"
         target.save()
-        from django.utils import timezone as dj_tz
-
-        stamp = dj_tz.now()
+        stamp = timezone.now()
         target.completed_at = stamp
         target.save(update_fields=["completed_at"])
 

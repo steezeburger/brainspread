@@ -323,6 +323,8 @@ window.SettingsModal = {
 
     handleModalKeydown(event) {
       if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
         this.closeModal();
         return;
       }

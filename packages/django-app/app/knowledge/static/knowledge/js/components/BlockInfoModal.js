@@ -169,6 +169,9 @@ window.BlockInfoModal = {
     onKeydown(event) {
       if (event.key === "Escape") {
         event.preventDefault();
+        // app.js and Page.js listen for Escape on document to close the
+        // left nav / chat panel; keep this keystroke scoped to the modal.
+        event.stopPropagation();
         this.$emit("close");
       }
     },

@@ -42,6 +42,7 @@ from knowledge.commands import (
     GetSavedViewCommand,
     GetTagContentCommand,
     GetUserPagesCommand,
+    ListBlockRevisionsCommand,
     ListCustomVariablesCommand,
     ListSavedViewsCommand,
     ListTemplatesCommand,
@@ -54,6 +55,7 @@ from knowledge.commands import (
     ReorderFavoritedPagesCommand,
     ReorderPageEmbeddedViewsCommand,
     RestoreBlockCommand,
+    RestoreBlockRevisionCommand,
     RestorePageCommand,
     RunAutomationCommand,
     RunSavedViewCommand,
@@ -114,6 +116,7 @@ from knowledge.forms import (
     GetSavedViewForm,
     GetTagContentForm,
     GetUserPagesForm,
+    ListBlockRevisionsForm,
     ListCustomVariablesForm,
     ListSavedViewsForm,
     ListTemplatesForm,
@@ -126,6 +129,7 @@ from knowledge.forms import (
     ReorderFavoritedPagesForm,
     ReorderPageEmbeddedViewsForm,
     RestoreBlockForm,
+    RestoreBlockRevisionForm,
     RestorePageForm,
     RunAutomationForm,
     RunSavedViewForm,
@@ -144,7 +148,7 @@ from knowledge.forms import (
     UpdatePageForm,
     UpdateSavedViewForm,
 )
-from knowledge.models import BlockData, PageData, PagesData
+from knowledge.models import BlockData, BlockRevisionData, PageData, PagesData
 from knowledge.models.page import PageWithBlocksData
 from knowledge.repositories import BlockRepository, PageRepository, SavedViewRepository
 
@@ -243,6 +247,12 @@ class BulkMoveBlocksResponse(TypedDict):
 class BulkMoveBlocksToPageResponse(TypedDict):
     success: bool
     data: Optional[BulkMoveBlocksToPageData]
+    errors: Optional[Dict[str, List[str]]]
+
+
+class ListBlockRevisionsResponse(TypedDict):
+    success: bool
+    data: Optional[List[BlockRevisionData]]
     errors: Optional[Dict[str, List[str]]]
 
 
@@ -1434,6 +1444,81 @@ def set_block_completed_at(request):
 
         if form.is_valid():
             block = SetBlockCompletedAtCommand(form).execute()
+            response: BlockResponse = {
+                "success": True,
+                "data": block.to_dict(),
+                "errors": None,
+            }
+            return Response(response)
+
+        response: BlockResponse = {
+            "success": False,
+            "data": None,
+            "errors": form.errors,
+        }
+        return Response(response, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        response: BlockResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def list_block_revisions(request):
+    """A block's revision history, newest first (issue #234)."""
+    try:
+        data = request.query_params.copy()
+        data["user"] = request.user.id
+        form = ListBlockRevisionsForm(data)
+
+        if form.is_valid():
+            revisions = ListBlockRevisionsCommand(form).execute()
+            response: ListBlockRevisionsResponse = {
+                "success": True,
+                "data": revisions,
+                "errors": None,
+            }
+            return Response(response)
+
+        response: ListBlockRevisionsResponse = {
+            "success": False,
+            "data": None,
+            "errors": form.errors,
+        }
+        return Response(response, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        response: ListBlockRevisionsResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def restore_block_revision(request):
+    """Restore a block to a past revision's field values (issue #234).
+
+    Writes the revision's values back onto the live block and records a
+    new revision for the restore itself, so history stays append-only.
+    """
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = RestoreBlockRevisionForm(data)
+
+        if form.is_valid():
+            block = RestoreBlockRevisionCommand(form).execute()
             response: BlockResponse = {
                 "success": True,
                 "data": block.to_dict(),

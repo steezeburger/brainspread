@@ -3,12 +3,14 @@ from datetime import datetime
 from datetime import timezone as dt_timezone
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
-from knowledge.commands import RunDueAutomationsCommand
+from knowledge.commands import RunAutomationCommand, RunDueAutomationsCommand
+from knowledge.forms.run_automation_form import RunAutomationForm
 from knowledge.forms.run_due_automations_form import RunDueAutomationsForm
-from knowledge.models import AutomationRun
+from knowledge.models import AutomationRun, Page
 from knowledge.repositories import AutomationRunRepository, SavedViewRepository
+from knowledge.services.discord_webhook import DiscordDeliveryResult
 
 from ..helpers import BlockFactory, PageFactory, UserFactory
 
@@ -214,9 +216,6 @@ class TestNotifyAction(TestCase):
         return block
 
     def _run_manual(self, automation):
-        from knowledge.commands import RunAutomationCommand
-        from knowledge.forms.run_automation_form import RunAutomationForm
-
         form = RunAutomationForm(
             {"user": self.user, "automation_block": automation.uuid}
         )
@@ -225,8 +224,6 @@ class TestNotifyAction(TestCase):
 
     @patch("knowledge.services.automation_actions.post_webhook")
     def test_notify_sends_one_message_listing_matches(self, mock_post):
-        from knowledge.services.discord_webhook import DiscordDeliveryResult
-
         mock_post.return_value = DiscordDeliveryResult(True, "")
         notes = PageFactory(user=self.user, title="Notes", slug="notes-n")
         BlockFactory(
@@ -265,10 +262,6 @@ class TestNotifyAction(TestCase):
 
     @patch("knowledge.services.automation_actions.post_webhook")
     def test_notify_lines_deep_link_when_site_url_configured(self, mock_post):
-        from django.test import override_settings
-
-        from knowledge.services.discord_webhook import DiscordDeliveryResult
-
         mock_post.return_value = DiscordDeliveryResult(True, "")
         notes = PageFactory(user=self.user, title="Notes", slug="notes-link")
         doing = BlockFactory(
@@ -294,8 +287,6 @@ class TestNotifyAction(TestCase):
 
     @patch("knowledge.services.automation_actions.post_webhook")
     def test_notify_without_query_sends_bare_message(self, mock_post):
-        from knowledge.services.discord_webhook import DiscordDeliveryResult
-
         mock_post.return_value = DiscordDeliveryResult(True, "")
         automation = self._automation(
             trigger="schedule weekly sun 19:00",
@@ -352,9 +343,6 @@ class TestApplyTemplateAction(TestCase):
         )
 
     def _run(self, automation):
-        from knowledge.commands import RunAutomationCommand
-        from knowledge.forms.run_automation_form import RunAutomationForm
-
         form = RunAutomationForm(
             {"user": self.user, "automation_block": automation.uuid}
         )
@@ -385,8 +373,6 @@ class TestApplyTemplateAction(TestCase):
 
         self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
         self.assertEqual(result["result"]["affected"], 2)
-
-        from knowledge.models import Page
 
         daily = Page.objects.get(
             user=self.user, page_type="daily", date=self.user.today()

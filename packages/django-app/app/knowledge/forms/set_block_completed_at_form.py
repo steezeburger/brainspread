@@ -7,7 +7,7 @@ from core.models import User
 from core.repositories import UserRepository
 
 from ..constants import COMPLETED_TODO_TYPES
-from ..models import Block
+from ..models import Block, BlockRevision
 from ..repositories import BlockRepository
 
 
@@ -31,6 +31,10 @@ class SetBlockCompletedAtForm(BaseForm):
     user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
     block = UUIDModelChoiceField(queryset=BlockRepository.get_queryset(), required=True)
     completed_at = forms.CharField(required=True)
+    # Who's making this change, for BlockRevision attribution. Omitted by
+    # the web UI (the command defaults to "user"); the AI chat / MCP
+    # tools pass their own value explicitly.
+    source = forms.ChoiceField(choices=BlockRevision.SOURCE_CHOICES, required=False)
 
     def clean_block(self) -> Block:
         block = self.cleaned_data.get("block")

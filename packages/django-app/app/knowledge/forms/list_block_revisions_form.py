@@ -5,17 +5,15 @@ from common.forms import BaseForm, UUIDModelChoiceField
 from core.models import User
 from core.repositories import UserRepository
 
-from ..models import Block, BlockRevision
+from ..models import Block
 from ..repositories import BlockRepository
 
 
-class ToggleBlockTodoForm(BaseForm):
+class ListBlockRevisionsForm(BaseForm):
+    """Inputs for listing a block's revision history, newest first."""
+
     user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
     block = UUIDModelChoiceField(queryset=BlockRepository.get_queryset(), required=True)
-    # Who's making this change, for BlockRevision attribution. Omitted by
-    # the web UI (the command defaults to "user"); the MCP tools pass
-    # their own value explicitly.
-    source = forms.ChoiceField(choices=BlockRevision.SOURCE_CHOICES, required=False)
 
     def clean_block(self) -> Block:
         block = self.cleaned_data.get("block")

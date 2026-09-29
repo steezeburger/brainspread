@@ -710,7 +710,9 @@ const GraphView = {
 
       if (event.key === "Escape") {
         // Escape narrows scope one step at a time: leave the text field,
-        // then clear the filter, then exit the graph page.
+        // then clear the filter, then exit the graph page. A sidebar that
+        // app.js already closed on this keypress counts as the step.
+        if (event.defaultPrevented) return;
         if (inTextField) {
           if (this.filterQuery) {
             this.clearFilter();

@@ -1,3 +1,5 @@
+from typing import Any, Dict
+
 from django.conf import settings
 from django.db import models
 
@@ -77,3 +79,30 @@ class ChatMessage(UUIDModelMixin, CRUDTimestampsMixin):
         ordering = ("created_at",)
         verbose_name = "Chat Message"
         verbose_name_plural = "Chat Messages"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "uuid": str(self.uuid),
+            "role": self.role,
+            "content": self.content,
+            "thinking": self.thinking or None,
+            "created_at": self.created_at.isoformat(),
+            "tool_events": list(self.tool_events or []),
+            "attachments": list(self.attachments or []),
+            "status": self.status,
+            "usage": {
+                "input_tokens": self.input_tokens,
+                "output_tokens": self.output_tokens,
+                "cache_creation_input_tokens": self.cache_creation_input_tokens,
+                "cache_read_input_tokens": self.cache_read_input_tokens,
+            },
+            "ai_model": (
+                {
+                    "name": self.ai_model.name,
+                    "display_name": self.ai_model.display_name,
+                    "provider": self.ai_model.provider.name,
+                }
+                if self.ai_model
+                else None
+            ),
+        }

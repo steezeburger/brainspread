@@ -2,7 +2,8 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.schedule_block_form import ScheduleBlockForm
 from ..forms.touch_page_form import TouchPageForm
-from ..models import Block, Reminder
+from ..models import Block, BlockRevision, Reminder
+from ..repositories import BlockRevisionRepository
 from ..services.due_dates import build_due_at, combine_local_to_utc
 from .touch_page_command import TouchPageCommand
 
@@ -30,10 +31,14 @@ class ScheduleBlockCommand(AbstractBaseCommand):
         reminder_date = self.form.cleaned_data.get("reminder_date")
         reminder_time = self.form.cleaned_data.get("reminder_time")
 
+        previous_snapshot = BlockRevisionRepository.snapshot(block)
         block.due_at, block.due_at_has_time = build_due_at(
             due_date, due_time, user.tz()
         )
         block.save(update_fields=["due_at", "due_at_has_time", "modified_at"])
+
+        source = self.form.cleaned_data.get("source") or BlockRevision.SOURCE_USER
+        BlockRevisionRepository.record_if_changed(block, previous_snapshot, source)
 
         touch_form = TouchPageForm(data={"user": user.id, "page": str(block.page.uuid)})
         if touch_form.is_valid():

@@ -1,7 +1,9 @@
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 
-from ai_chat.commands import ReorderFavoritedChatSessionsCommand
+from ai_chat.commands.reorder_favorited_chat_sessions_command import (
+    ReorderFavoritedChatSessionsCommand,
+)
 from ai_chat.forms import ReorderFavoritedChatSessionsForm
 from ai_chat.repositories import ChatSessionRepository
 from ai_chat.test.helpers import ChatSessionFactory

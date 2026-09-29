@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.utils import timezone
 
@@ -105,8 +106,6 @@ class TestRunQueryCommand(TestCase):
         self.assertIn("bad query", str(form.errors))
 
     def test_bad_raw_filter_raises_validation_error(self):
-        from django.core.exceptions import ValidationError
-
         form = RunQueryForm({"user": self.user, "filter": {"bogus_field": "x"}})
         self.assertTrue(form.is_valid(), form.errors)
         with self.assertRaises(ValidationError):

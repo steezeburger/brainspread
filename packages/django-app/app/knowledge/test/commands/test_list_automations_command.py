@@ -1,9 +1,11 @@
 from django.test import TestCase
 
+from ai_chat.tools.notes_tools import NOTES_READ_TOOLS, NOTES_WRITE_TOOLS
 from knowledge.commands import ListAutomationsCommand, RunAutomationCommand
 from knowledge.forms.list_automations_form import ListAutomationsForm
 from knowledge.forms.run_automation_form import RunAutomationForm
 from knowledge.models import AutomationRun
+from mcp_server.tools import REGISTRY
 
 from ..helpers import BlockFactory, PageFactory, UserFactory
 
@@ -124,9 +126,6 @@ class TestRunAutomationBySlug(TestCase):
 
 class TestToolRegistration(TestCase):
     def test_automation_tools_registered_on_both_surfaces(self):
-        from ai_chat.tools.notes_tools import NOTES_READ_TOOLS, NOTES_WRITE_TOOLS
-        from mcp_server.tools import REGISTRY
-
         read_names = {tool.name for tool in NOTES_READ_TOOLS}
         write_names = {tool.name for tool in NOTES_WRITE_TOOLS}
         self.assertIn("list_automations", read_names)
