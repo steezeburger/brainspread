@@ -2419,12 +2419,41 @@ const Page = {
 
       // Extract key::value properties as placeholders so later markdown
       // transforms (emphasis, URL linkification) don't touch the chip
-      // text — a value like *foo* would otherwise pick up italics.
-      // Pattern mirrors Block.extract_properties_from_content's inline
-      // form: word-boundary key, ::, single-token value.
+      // text — a value like *foo* would otherwise pick up italics, and
+      // a lone cron `*` sitting next to another one (e.g. `trigger::
+      // schedule cron 0 6 1 * *`) would otherwise get swallowed as
+      // empty emphasis (`* *` reads as an opening and closing marker
+      // around a single space).
+      //
+      // Mirrors extract_properties_from_content's two passes: a
+      // property at the start of a line may carry a multi-word value,
+      // consumed up to the next `word::` token so a second inline
+      // property on the same line still gets split out; a property
+      // appearing elsewhere on the line is single-token.
       const propertySegments = [];
       formatted = formatted.replace(
-        /\b([a-zA-Z0-9_-]+)::([^\s]+)/g,
+        /^(\s*)([a-zA-Z0-9_-]+)::\s*(.+)$/gm,
+        (match, leading, key, rest) => {
+          const words = rest.split(/\s+/);
+          let stop = words.length;
+          for (let i = 0; i < words.length; i++) {
+            if (/^[a-zA-Z0-9_-]+::/.test(words[i])) {
+              stop = i;
+              break;
+            }
+          }
+          if (stop === 0) return match;
+          const value = words.slice(0, stop).join(" ");
+          const remainder = words.slice(stop).join(" ");
+          const idx = propertySegments.length;
+          propertySegments.push({ key, value });
+          return remainder
+            ? `${leading}\x00PROP${idx}\x00 ${remainder}`
+            : `${leading}\x00PROP${idx}\x00`;
+        }
+      );
+      formatted = formatted.replace(
+        /\b([a-zA-Z0-9_-]+)::\s*([^\s]+)/g,
         (_match, key, value) => {
           const idx = propertySegments.length;
           propertySegments.push({ key, value });
