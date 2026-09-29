@@ -290,6 +290,7 @@ window.ScheduleBlockPopover = {
     handleKeydown(event) {
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         this.cancel();
       } else if (event.key === "Enter" && event.target.tagName !== "BUTTON") {
         event.preventDefault();

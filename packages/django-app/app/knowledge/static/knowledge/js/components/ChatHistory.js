@@ -201,6 +201,7 @@ const ChatHistory = {
         this.saveRename(session);
       } else if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         this.cancelRename();
       }
     },

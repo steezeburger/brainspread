@@ -1604,6 +1604,7 @@ const BlockComponent = {
       }
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         this.cancelAddEmbedTag();
         return;
       }

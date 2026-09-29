@@ -2803,6 +2803,7 @@ const Page = {
         case "Escape":
         case "Tab":
           event.preventDefault();
+          event.stopPropagation();
           this.closePageMenuAndRestoreFocus();
           break;
         case "Home":
@@ -2863,6 +2864,7 @@ const Page = {
         case "Escape":
         case "Tab":
           event.preventDefault();
+          event.stopPropagation();
           this.closePageSortMenuAndRestoreFocus();
           break;
         case "Home":
@@ -2919,6 +2921,9 @@ const Page = {
 
     handlePageGlobalKeydown(event) {
       if (event.key === "Escape") {
+        // app.js's document handler runs first and marks the event
+        // handled when it closes a sidebar; one Escape, one layer.
+        if (event.defaultPrevented) return;
         if (this.showPageSortMenu) {
           this.closePageSortMenuAndRestoreFocus();
         } else if (this.showPageMenu) {
