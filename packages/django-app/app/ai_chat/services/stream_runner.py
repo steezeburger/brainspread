@@ -19,7 +19,6 @@ from django.db import close_old_connections
 from ..models import ChatMessage
 from ..repositories import ChatMessageRepository
 from ..services.base_ai_service import AIUsage
-from ..services.message_serializer import serialize_chat_message
 
 logger = logging.getLogger(__name__)
 
@@ -336,7 +335,7 @@ def follow_message(message_uuid: str) -> Iterator[Dict[str, Any]]:
             yield {
                 "type": "done",
                 "session_id": str(msg.session.uuid),
-                "message": serialize_chat_message(msg, msg.ai_model),
+                "message": msg.to_dict(),
             }
     finally:
         close_old_connections()
