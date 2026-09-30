@@ -116,6 +116,27 @@ class User(
         ),
     )
 
+    highlight_hashtags = models.BooleanField(
+        _("highlight hashtags"),
+        default=True,
+        help_text=_(
+            "Whether #hashtags render as a highlighted, clickable chip. "
+            "When off they still link to the tag's page, just without the "
+            "pill styling — this only affects rendering."
+        ),
+    )
+
+    highlight_properties = models.BooleanField(
+        _("highlight properties"),
+        default=True,
+        help_text=_(
+            "Whether key::value block properties render as a highlighted, "
+            "clickable chip. When off they still link to the matching "
+            "saved view, just without the pill styling — this only "
+            "affects rendering."
+        ),
+    )
+
     def __str__(self):
         return self.email
 
@@ -162,6 +183,8 @@ class User(
             discord_user_id=self.discord_user_id,
             time_format=self.time_format,
             render_emoji=self.render_emoji,
+            highlight_hashtags=self.highlight_hashtags,
+            highlight_properties=self.highlight_properties,
             created_at=self.created_at.isoformat(),
         )
 
@@ -183,4 +206,6 @@ class UserData(TypedDict):
     discord_user_id: str
     time_format: str
     render_emoji: bool
+    highlight_hashtags: bool
+    highlight_properties: bool
     created_at: str

@@ -647,6 +647,54 @@ class ApiService {
     }
   }
 
+  async updateUserHighlightHashtags(highlightHashtags) {
+    try {
+      const result = await this.request(
+        "/api/auth/update-highlight-hashtags/",
+        {
+          method: "POST",
+          body: JSON.stringify({ highlight_hashtags: !!highlightHashtags }),
+        }
+      );
+      if (result.success) {
+        const currentUser = this.getCurrentUser();
+        if (currentUser) {
+          currentUser.highlight_hashtags = !!highlightHashtags;
+          localStorage.setItem("user", JSON.stringify(currentUser));
+        }
+      }
+      return result;
+    } catch (error) {
+      console.error("Failed to update hashtag highlighting setting:", error);
+      throw error;
+    }
+  }
+
+  async updateUserHighlightProperties(highlightProperties) {
+    try {
+      const result = await this.request(
+        "/api/auth/update-highlight-properties/",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            highlight_properties: !!highlightProperties,
+          }),
+        }
+      );
+      if (result.success) {
+        const currentUser = this.getCurrentUser();
+        if (currentUser) {
+          currentUser.highlight_properties = !!highlightProperties;
+          localStorage.setItem("user", JSON.stringify(currentUser));
+        }
+      }
+      return result;
+    } catch (error) {
+      console.error("Failed to update property highlighting setting:", error);
+      throw error;
+    }
+  }
+
   async updateUserTheme(newTheme) {
     try {
       const result = await this.request("/api/auth/update-theme/", {

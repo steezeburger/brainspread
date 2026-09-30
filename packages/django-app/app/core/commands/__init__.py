@@ -5,6 +5,12 @@ from core.commands.logout_command import LogoutCommand
 from core.commands.register_command import RegisterCommand
 from core.commands.update_discord_user_id_command import UpdateDiscordUserIdCommand
 from core.commands.update_discord_webhook_command import UpdateDiscordWebhookCommand
+from core.commands.update_highlight_hashtags_command import (
+    UpdateHighlightHashtagsCommand,
+)
+from core.commands.update_highlight_properties_command import (
+    UpdateHighlightPropertiesCommand,
+)
 from core.commands.update_render_emoji_command import UpdateRenderEmojiCommand
 from core.commands.update_theme_command import UpdateThemeCommand
 from core.commands.update_time_format_command import UpdateTimeFormatCommand

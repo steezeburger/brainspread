@@ -14,6 +14,8 @@ from core.commands import (
     RegisterCommand,
     UpdateDiscordUserIdCommand,
     UpdateDiscordWebhookCommand,
+    UpdateHighlightHashtagsCommand,
+    UpdateHighlightPropertiesCommand,
     UpdateRenderEmojiCommand,
     UpdateThemeCommand,
     UpdateTimeFormatCommand,
@@ -24,6 +26,8 @@ from core.forms import (
     RegisterForm,
     UpdateDiscordUserIdForm,
     UpdateDiscordWebhookForm,
+    UpdateHighlightHashtagsForm,
+    UpdateHighlightPropertiesForm,
     UpdateRenderEmojiForm,
     UpdateThemeForm,
     UpdateTimeFormatForm,
@@ -64,6 +68,14 @@ class UpdateTimeFormatResponse(TypedDict):
 
 
 class UpdateRenderEmojiResponse(TypedDict):
+    user: UserData
+
+
+class UpdateHighlightHashtagsResponse(TypedDict):
+    user: UserData
+
+
+class UpdateHighlightPropertiesResponse(TypedDict):
     user: UserData
 
 
@@ -333,6 +345,76 @@ def update_render_emoji(request):
             payload: UpdateRenderEmojiResponse = {"user": updated_user.to_user_data()}
             return Response(
                 {"success": True, "data": payload, "message": "Emoji setting updated"}
+            )
+        return Response(
+            {"success": False, "errors": form.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+def update_highlight_hashtags(request):
+    """Update whether #hashtags render as a highlighted chip."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = UpdateHighlightHashtagsForm(data)
+        if form.is_valid():
+            updated_user = UpdateHighlightHashtagsCommand(form).execute()
+            payload: UpdateHighlightHashtagsResponse = {
+                "user": updated_user.to_user_data()
+            }
+            return Response(
+                {
+                    "success": True,
+                    "data": payload,
+                    "message": "Hashtag highlighting setting updated",
+                }
+            )
+        return Response(
+            {"success": False, "errors": form.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+def update_highlight_properties(request):
+    """Update whether key::value properties render as a highlighted chip."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = UpdateHighlightPropertiesForm(data)
+        if form.is_valid():
+            updated_user = UpdateHighlightPropertiesCommand(form).execute()
+            payload: UpdateHighlightPropertiesResponse = {
+                "user": updated_user.to_user_data()
+            }
+            return Response(
+                {
+                    "success": True,
+                    "data": payload,
+                    "message": "Property highlighting setting updated",
+                }
             )
         return Response(
             {"success": False, "errors": form.errors},
