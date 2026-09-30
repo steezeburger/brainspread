@@ -192,6 +192,44 @@ window.LeftNav = {
       root: () => this.$el,
       onClose: () => this.toggleSidebar(),
     });
+    // Swipe-right-from-the-left-edge-to-open (issue #115 follow-up). The
+    // closed drawer has no full-height element of its own to listen on
+    // (just the small rail toggle button), so this one lives on
+    // `document` and self-gates to a narrow edge strip.
+    this.edgeSwipeTracker = window.brainspreadSwipe.createEdgeSwipeOpenTracker({
+      edge: "left",
+      direction: 1,
+      onOpen: () => {
+        if (!this.isOpen) this.toggleSidebar();
+      },
+    });
+    this.handleEdgeSwipeTouchStart = (event) => {
+      if (this.isOpen) return;
+      this.edgeSwipeTracker.handleTouchStart(event);
+    };
+    this.handleEdgeSwipeTouchMove = (event) => {
+      if (this.isOpen) return;
+      this.edgeSwipeTracker.handleTouchMove(event);
+    };
+    this.handleEdgeSwipeTouchEnd = (event) => {
+      if (this.isOpen) return;
+      this.edgeSwipeTracker.handleTouchEnd(event);
+    };
+    this.handleEdgeSwipeTouchCancel = () => {
+      this.edgeSwipeTracker.handleTouchCancel();
+    };
+    document.addEventListener("touchstart", this.handleEdgeSwipeTouchStart, {
+      passive: true,
+    });
+    document.addEventListener("touchmove", this.handleEdgeSwipeTouchMove, {
+      passive: true,
+    });
+    document.addEventListener("touchend", this.handleEdgeSwipeTouchEnd, {
+      passive: true,
+    });
+    document.addEventListener("touchcancel", this.handleEdgeSwipeTouchCancel, {
+      passive: true,
+    });
   },
 
   beforeUnmount() {
@@ -223,6 +261,18 @@ window.LeftNav = {
     this.detachOutsideClickHandler();
     if (this.handleViewportResize) {
       window.removeEventListener("resize", this.handleViewportResize);
+    }
+    if (this.handleEdgeSwipeTouchStart) {
+      document.removeEventListener(
+        "touchstart",
+        this.handleEdgeSwipeTouchStart
+      );
+      document.removeEventListener("touchmove", this.handleEdgeSwipeTouchMove);
+      document.removeEventListener("touchend", this.handleEdgeSwipeTouchEnd);
+      document.removeEventListener(
+        "touchcancel",
+        this.handleEdgeSwipeTouchCancel
+      );
     }
     document.documentElement.style.removeProperty("--leftnav-width");
   },
