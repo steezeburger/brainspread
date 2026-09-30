@@ -138,6 +138,12 @@ const Page = {
       // 'before' | 'after' (sibling insert) or 'child' (nest under).
       blockDrag: null,
       blockDropTarget: null,
+      // Serializes moveBlockUp/moveBlockDown (issue #176). Alt+Shift+Up/Down
+      // fires one async handler per keydown; holding the key launches many
+      // overlapping moves that interleave at their `await` points and
+      // stomp on each other's sibling `order` writes. Every move chains
+      // onto this promise via _runExclusive so only one is ever in flight.
+      _reorderMutex: Promise.resolve(),
     };
   },
 
@@ -1478,78 +1484,83 @@ const Page = {
       }
     },
 
+    // Runs `fn` only after every previously-queued `_runExclusive` call has
+    // settled, so callers race-free serialize onto a single chain. `fn`
+    // itself decides freshness (e.g. re-reading sibling positions) since it
+    // only starts once its turn arrives, not when it was scheduled.
+    _runExclusive(fn) {
+      const previous = this._reorderMutex;
+      let release;
+      this._reorderMutex = new Promise((resolve) => {
+        release = resolve;
+      });
+      return previous.then(fn).finally(() => release());
+    },
+
+    // Repositions `block` within its sibling group by `offset` (-1 = up,
+    // +1 = down) and renumbers the *whole* group to a contiguous 0..N-1
+    // sequence, persisted in one bulk reorderBlocks call. Renumbering the
+    // full group (rather than swapping two `order` values) is
+    // self-correcting: even starting from duplicated/gapped orders, the
+    // result is always contiguous and unique (issue #176). Serialized via
+    // _runExclusive so overlapping keyboard-triggered moves can't interleave.
+    _moveBlock(block, offset) {
+      return this._runExclusive(async () => {
+        const siblings = block.parent
+          ? block.parent.children
+          : this.directBlocks;
+        const currentIndex = siblings.findIndex((b) => b.uuid === block.uuid);
+        const targetIndex = currentIndex + offset;
+
+        if (
+          currentIndex < 0 ||
+          targetIndex < 0 ||
+          targetIndex >= siblings.length
+        ) {
+          return;
+        }
+
+        try {
+          // Save current content first
+          await this.updateBlock(block, block.content, true);
+
+          // Reposition in the array, then renumber every sibling
+          // contiguously from 0 so the persisted orders can never collide
+          // or gap, regardless of what state they started in.
+          siblings.splice(currentIndex, 1);
+          siblings.splice(targetIndex, 0, block);
+
+          const updates = siblings.map((sibling, index) => ({
+            uuid: sibling.uuid,
+            order: index,
+          }));
+          updates.forEach(({ order }, index) => {
+            siblings[index].order = order;
+          });
+
+          const result = await window.apiService.reorderBlocks(updates);
+
+          if (!result.success) throw new Error("reorder failed");
+
+          // The optimistic local update above is authoritative once
+          // persisted — no loadPage() reload here. Reloading mid-move used
+          // to rebuild directBlocks with fresh objects while this move was
+          // still mutating the (now-detached) old ones, and also detaches
+          // focus from the editing block.
+        } catch (error) {
+          const label = offset < 0 ? "up" : "down";
+          console.error(`failed to move block ${label}:`, error);
+          this.toastBlockError(error, `failed to move block ${label}`);
+        }
+      });
+    },
+
     async moveBlockUp(block) {
-      const siblings = block.parent ? block.parent.children : this.directBlocks;
-      const currentIndex = siblings.findIndex((b) => b.uuid === block.uuid);
-
-      // Can't move up if already at the top
-      if (currentIndex <= 0) return;
-
-      try {
-        // Save current content first
-        await this.updateBlock(block, block.content, true);
-
-        // Get the block above this one
-        const blockAbove = siblings[currentIndex - 1];
-
-        // Swap their orders
-        const tempOrder = block.order;
-        block.order = blockAbove.order;
-        blockAbove.order = tempOrder;
-
-        const result = await window.apiService.reorderBlocks([
-          { uuid: block.uuid, order: block.order },
-          { uuid: blockAbove.uuid, order: blockAbove.order },
-        ]);
-
-        if (!result.success) throw new Error("reorder failed");
-
-        // Update local state - re-sort siblings
-        siblings.sort((a, b) => a.order - b.order);
-
-        // Refresh page data without unmounting blocks (preserves focus)
-        await this.loadPage({ silent: true });
-      } catch (error) {
-        console.error("failed to move block up:", error);
-        this.toastBlockError(error, "failed to move block up");
-      }
+      await this._moveBlock(block, -1);
     },
 
     async moveBlockDown(block) {
-      const siblings = block.parent ? block.parent.children : this.directBlocks;
-      const currentIndex = siblings.findIndex((b) => b.uuid === block.uuid);
-
-      // Can't move down if already at the bottom
-      if (currentIndex >= siblings.length - 1) return;
-
-      try {
-        // Save current content first
-        await this.updateBlock(block, block.content, true);
-
-        // Get the block below this one
-        const blockBelow = siblings[currentIndex + 1];
-
-        // Swap their orders
-        const tempOrder = block.order;
-        block.order = blockBelow.order;
-        blockBelow.order = tempOrder;
-
-        const result = await window.apiService.reorderBlocks([
-          { uuid: block.uuid, order: block.order },
-          { uuid: blockBelow.uuid, order: blockBelow.order },
-        ]);
-
-        if (!result.success) throw new Error("reorder failed");
-
-        // Update local state - re-sort siblings
-        siblings.sort((a, b) => a.order - b.order);
-
-        // Refresh page data without unmounting blocks (preserves focus)
-        await this.loadPage({ silent: true });
-      } catch (error) {
-        console.error("failed to move block down:", error);
-        this.toastBlockError(error, "failed to move block down");
-      }
+      await this._moveBlock(block, 1);
     },
 
     async runAutomation(block) {

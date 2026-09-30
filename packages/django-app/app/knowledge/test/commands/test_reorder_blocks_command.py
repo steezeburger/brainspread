@@ -40,6 +40,38 @@ class TestReorderBlocksCommand(TestCase):
         self.assertEqual(self.block_b.order, 0)
         self.assertEqual(self.block_c.order, 1)
 
+    def test_full_group_renumber_heals_duplicate_and_gapped_orders(self):
+        # Regression for issue #176: the frontend move handlers now
+        # renumber the *whole* sibling group to a contiguous 0..N-1
+        # sequence on every move (instead of swapping two `order`
+        # values), specifically because a duplicate/gapped starting
+        # state must not perpetuate itself. Simulate the corrupted
+        # state observed in production (two blocks sharing an order,
+        # with a gap elsewhere) and confirm a single full-group
+        # bulk-reorder call — exactly what Page.js's _moveBlock now
+        # sends — leaves siblings contiguous and unique.
+        self.block_a.order = 0
+        self.block_a.save(update_fields=["order"])
+        self.block_b.order = 2
+        self.block_b.save(update_fields=["order"])
+        self.block_c.order = 2
+        self.block_c.save(update_fields=["order"])
+
+        self._execute(
+            [
+                {"uuid": str(self.block_b.uuid), "order": 0},
+                {"uuid": str(self.block_a.uuid), "order": 1},
+                {"uuid": str(self.block_c.uuid), "order": 2},
+            ]
+        )
+
+        self.block_a.refresh_from_db()
+        self.block_b.refresh_from_db()
+        self.block_c.refresh_from_db()
+
+        orders = sorted([self.block_a.order, self.block_b.order, self.block_c.order])
+        self.assertEqual(orders, [0, 1, 2])
+
     def test_raises_validation_error_for_another_users_block(self):
         other_user = UserFactory()
         other_block = BlockFactory(user=other_user, page=PageFactory(user=other_user))
