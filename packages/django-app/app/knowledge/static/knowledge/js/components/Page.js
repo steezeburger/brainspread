@@ -2429,11 +2429,15 @@ const Page = {
       // property at the start of a line may carry a multi-word value,
       // consumed up to the next `word::` token so a second inline
       // property on the same line still gets split out; a property
-      // appearing elsewhere on the line is single-token.
+      // appearing elsewhere on the line is single-token. `sep` is
+      // whatever whitespace (none or one-or-more spaces) followed the
+      // `::` as typed — the chip echoes it verbatim so `key::value` and
+      // `key:: value` each render the way they were written, while the
+      // key/value used for the href and data attributes stay trimmed.
       const propertySegments = [];
       formatted = formatted.replace(
-        /^(\s*)([a-zA-Z0-9_-]+)::\s*(.+)$/gm,
-        (match, leading, key, rest) => {
+        /^(\s*)([a-zA-Z0-9_-]+)::(\s*)(.+)$/gm,
+        (match, leading, key, sep, rest) => {
           const words = rest.split(/\s+/);
           let stop = words.length;
           for (let i = 0; i < words.length; i++) {
@@ -2446,17 +2450,17 @@ const Page = {
           const value = words.slice(0, stop).join(" ");
           const remainder = words.slice(stop).join(" ");
           const idx = propertySegments.length;
-          propertySegments.push({ key, value });
+          propertySegments.push({ key, value, sep });
           return remainder
             ? `${leading}\x00PROP${idx}\x00 ${remainder}`
             : `${leading}\x00PROP${idx}\x00`;
         }
       );
       formatted = formatted.replace(
-        /\b([a-zA-Z0-9_-]+)::\s*([^\s]+)/g,
-        (_match, key, value) => {
+        /\b([a-zA-Z0-9_-]+)::(\s*)([^\s]+)/g,
+        (_match, key, sep, value) => {
           const idx = propertySegments.length;
-          propertySegments.push({ key, value });
+          propertySegments.push({ key, value, sep });
           return `\x00PROP${idx}\x00`;
         }
       );
@@ -2546,9 +2550,10 @@ const Page = {
       // hashtag chip styling (.inline-tag .clickable-tag) and routes to
       // the saved-views page with prefill params so the user lands on a
       // property_eq query they can run or save.
-      propertySegments.forEach(({ key, value }, idx) => {
+      propertySegments.forEach(({ key, value, sep }, idx) => {
         const safeKey = this.escapeHtml(key);
         const safeValue = this.escapeHtml(value);
+        const safeSep = sep || "";
         const href =
           `/knowledge/views/?property_key=${encodeURIComponent(key)}` +
           `&property_value=${encodeURIComponent(value)}`;
@@ -2557,7 +2562,7 @@ const Page = {
           `href="${href}" ` +
           `data-property-key="${this.escapeAttr(key)}" ` +
           `data-property-value="${this.escapeAttr(value)}">` +
-          `${safeKey}::${safeValue}</a>`;
+          `${safeKey}::${safeSep}${safeValue}</a>`;
         formatted = formatted.split(`\x00PROP${idx}\x00`).join(replacement);
       });
 

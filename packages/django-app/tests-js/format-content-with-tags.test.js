@@ -58,8 +58,8 @@ test("a line-start property with a multi-word value becomes one chip", () => {
 
 test("a second inline property on the same line still splits out", () => {
   const html = format("Ping sweep\ntrigger:: manual\nfor:: 5,10,15");
-  assert.match(html, /data-property-key="trigger"[^>]*>trigger::manual/);
-  assert.match(html, /data-property-key="for"[^>]*>for::5,10,15/);
+  assert.match(html, /data-property-key="trigger"[^>]*>trigger:: manual/);
+  assert.match(html, /data-property-key="for"[^>]*>for:: 5,10,15/);
 });
 
 test("a line-start value stops at the next inline key:: token", () => {
@@ -106,4 +106,25 @@ test("a mid-line property needs no space after ::", () => {
   assert.match(html, /data-property-key="priority"/);
   assert.match(html, /data-property-value="high"/);
   assert.match(html, /buy milk/);
+});
+
+// The chip's visible text echoes whatever whitespace (none, or a
+// space) followed `::` as typed, rather than always normalizing to
+// one or the other — `data-property-key`/`-value` stay trimmed either
+// way since those drive navigation, not display.
+test("the chip preserves a space after :: when one was typed", () => {
+  const html = format("priority:: high");
+  assert.match(html, />priority:: high</);
+  assert.doesNotMatch(html, />priority::high</);
+});
+
+test("the chip preserves no space after :: when none was typed", () => {
+  const html = format("priority::high");
+  assert.match(html, />priority::high</);
+  assert.doesNotMatch(html, />priority:: high</);
+});
+
+test("a line-start multi-word value keeps its space after ::", () => {
+  const html = format("trigger:: schedule cron 0 6 1 * *");
+  assert.match(html, />trigger:: schedule cron 0 6 1 \* \*</);
 });
