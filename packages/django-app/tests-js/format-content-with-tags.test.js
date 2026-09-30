@@ -81,3 +81,29 @@ test("plain emphasis still renders", () => {
   assert.match(format("this is *italic* text"), /markdown-italic">italic</);
   assert.match(format("this is **bold** text"), /markdown-bold">bold</);
 });
+
+// `key::value` with no space after `::` is accepted alongside the
+// `key:: value` form throughout — both patterns' `::\s*` treats the
+// space as optional, so this is existing behavior, not new parsing.
+// These tests just make that explicit instead of leaving it implicit
+// in the regex.
+test("a line-start single-word property needs no space after ::", () => {
+  const html = format("priority::high");
+  assert.match(html, /data-property-key="priority"/);
+  assert.match(html, /data-property-value="high"/);
+  assert.match(html, />priority::high</);
+});
+
+test("a line-start multi-word property needs no space after ::", () => {
+  const html = format("trigger::schedule cron 0 6 1 * *");
+  assert.match(html, /data-property-key="trigger"/);
+  assert.match(html, /data-property-value="schedule cron 0 6 1 \* \*"/);
+  assert.doesNotMatch(html, /markdown-italic/);
+});
+
+test("a mid-line property needs no space after ::", () => {
+  const html = format("buy milk priority::high");
+  assert.match(html, /data-property-key="priority"/);
+  assert.match(html, /data-property-value="high"/);
+  assert.match(html, /buy milk/);
+});
