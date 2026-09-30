@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Callable, List, Optional
 
 from django.db import transaction
 from django.utils import timezone
@@ -8,7 +8,7 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.run_automation_form import RunAutomationForm
 from ..models import AutomationRun, AutomationRunData, Block
-from ..repositories import AutomationRunRepository
+from ..repositories import AutomationRunRepository, BlockRepository
 from ..services import automation_actions, query_engine
 from ..services.automation_spec import (
     QUERY_VIEW,
@@ -90,21 +90,28 @@ class RunAutomationCommand(AbstractBaseCommand):
             )
 
         try:
-            action_def = automation_actions.resolve_action(spec.action.verb)
+            action_defs = [
+                automation_actions.resolve_action(step.verb)
+                for step in spec.action.steps
+            ]
         except automation_actions.ActionError as exc:
             return self._finish(run, AutomationRun.STATUS_FAILED, error=str(exc))
 
-        if (
-            automation_actions.action_requires_query(action_def, spec.action.args)
-            and spec.query is None
-        ):
+        # requires_query is the OR over the chain's steps (issue #225): a
+        # chain containing even one set verb (or a per-match verb whose
+        # args carry {{block.*}} tokens) needs a query::.
+        requires_query = any(
+            automation_actions.action_requires_query(action_def, step.args)
+            for action_def, step in zip(action_defs, spec.action.steps)
+        )
+        if requires_query and spec.query is None:
             return self._finish(
                 run,
                 AutomationRun.STATUS_FAILED,
                 error=(
-                    f"action `{spec.action.verb}` requires a `query::` (either "
-                    "its verb always needs a matched-block set, or its args "
-                    "use `{{block.*}}` tokens)"
+                    f"action `{spec.action.raw}` requires a `query::` (either "
+                    "one of its verbs always needs a matched-block set, or "
+                    "its args use `{{block.*}}` tokens)"
                 ),
             )
 
@@ -136,12 +143,27 @@ class RunAutomationCommand(AbstractBaseCommand):
                 )
 
         # `allow::` omitted = the action line itself is the authorization:
-        # grant exactly the declared verb. An explicit list is honored as
-        # written (it narrows/extends, and stays mandatory for the future
-        # prompt action, where the LLM picks tools at runtime).
+        # grant every verb the chain declares. An explicit list is honored
+        # as written (it narrows/extends, and stays mandatory for the
+        # future prompt action, where the LLM picks tools at runtime).
         effective_allow = (
-            spec.allow if spec.allow is not None else frozenset({action_def.capability})
+            spec.allow
+            if spec.allow is not None
+            else frozenset(action_def.capability for action_def in action_defs)
         )
+        # Every step is capability-checked before any step runs, so a
+        # chain can't half-execute because a later step wasn't granted.
+        for step, action_def in zip(spec.action.steps, action_defs):
+            if action_def.capability not in effective_allow:
+                return self._finish(
+                    run,
+                    AutomationRun.STATUS_FAILED,
+                    error=(
+                        f"action `{step.verb}` is not in the automation's "
+                        f"`allow::` list (add `{action_def.capability}`)"
+                    ),
+                )
+
         ctx = automation_actions.ActionContext(
             user=user, allow=effective_allow, has_query=spec.query is not None
         )
@@ -153,30 +175,73 @@ class RunAutomationCommand(AbstractBaseCommand):
         )
         for_items = spec.for_spec.items if spec.for_spec is not None else None
 
+        # The matched-block UUID set is fixed once, up front, for the
+        # whole chain (issue #225) — a step never re-queries. Between
+        # steps the same UUIDs are re-fetched so a later step never reads
+        # a stale in-memory copy of content an earlier step rewrote.
+        matched_uuids = [str(block.uuid) for block in blocks]
+        current_blocks = blocks
+        steps_result: List[dict] = []
+        pending_sends: List[Callable[[], None]] = []
+        total_affected = 0
+        all_groups: List[dict] = []
+        all_skipped: List[dict] = []
+
         try:
             with transaction.atomic():
-                action_result = automation_actions.run_action(
-                    spec.action,
-                    ctx,
-                    blocks,
-                    token_context=token_context,
-                    for_items=for_items,
-                )
+                for index, (step, action_def) in enumerate(
+                    zip(spec.action.steps, action_defs)
+                ):
+                    if index > 0 and spec.query is not None:
+                        current_blocks = BlockRepository.get_by_uuids(
+                            matched_uuids, user=user
+                        )
+                    step_result = automation_actions.run_action(
+                        step,
+                        ctx,
+                        current_blocks,
+                        token_context=token_context,
+                        for_items=for_items,
+                    )
+                    if action_def.external:
+                        pending_sends.extend(step_result.deferred)
+                    total_affected += step_result.affected
+                    all_groups.extend(step_result.groups)
+                    all_skipped.extend(step_result.skipped)
+                    steps_result.append(
+                        {
+                            "verb": step.verb,
+                            "affected": step_result.affected,
+                            "groups": step_result.groups,
+                            "skipped": step_result.skipped,
+                        }
+                    )
         except automation_actions.ActionError as exc:
             return self._finish(run, AutomationRun.STATUS_FAILED, error=str(exc))
 
-        return self._finish(
-            run,
-            AutomationRun.STATUS_SUCCEEDED,
-            result={
-                "matched": len(blocks),
-                "affected": action_result.affected,
-                "action": spec.action.verb,
-                "truncated": truncated,
-                "groups": action_result.groups,
-                "skipped": action_result.skipped,
-            },
-        )
+        result = {
+            "matched": len(blocks),
+            "affected": total_affected,
+            "action": spec.action.raw,
+            "truncated": truncated,
+            "groups": all_groups,
+            "skipped": all_skipped,
+            "steps": steps_result,
+        }
+
+        # External steps (notify now, http later) run only after the DB
+        # transaction above has committed, in chain order. A delivery
+        # failure here marks the run failed but leaves the DB changes —
+        # already committed — in place, and skips any sends still queued.
+        for send in pending_sends:
+            try:
+                send()
+            except automation_actions.ActionError as exc:
+                return self._finish(
+                    run, AutomationRun.STATUS_FAILED, error=str(exc), result=result
+                )
+
+        return self._finish(run, AutomationRun.STATUS_SUCCEEDED, result=result)
 
     def _finish(
         self,

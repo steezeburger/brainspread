@@ -41,8 +41,10 @@ class TestParseAutomationBlock(SimpleTestCase):
         self.assertEqual(spec.trigger.schedule.hour, 6)
         self.assertEqual(spec.trigger.schedule.minute, 0)
         self.assertEqual(spec.query.view_slug, "sticky-todos")
-        self.assertEqual(spec.action.verb, "move_to_daily")
-        self.assertEqual(spec.action.args, ("today",))
+        self.assertEqual(len(spec.action.steps), 1)
+        self.assertEqual(spec.action.steps[0].verb, "move_to_daily")
+        self.assertEqual(spec.action.steps[0].args, ("today",))
+        self.assertEqual(spec.action.raw, "move_to_daily today")
         self.assertIn("move_to_daily", spec.allow)
         self.assertTrue(spec.enabled)
 
@@ -108,8 +110,8 @@ class TestParseAutomationBlock(SimpleTestCase):
                 }
             )
         )
-        self.assertEqual(spec.action.verb, "prompt")
-        self.assertEqual(spec.action.args, ("add a child block with macros",))
+        self.assertEqual(spec.action.steps[0].verb, "prompt")
+        self.assertEqual(spec.action.steps[0].args, ("add a child block with macros",))
 
     def test_enabled_defaults_true_and_false_is_honored(self):
         default_on = parse_automation_block(
@@ -235,14 +237,14 @@ class TestParseAutomationBlock(SimpleTestCase):
         spec = parse_automation_block(
             _block({"trigger": "manual", "action": 'notify "still on this?" today'})
         )
-        self.assertEqual(spec.action.verb, "notify")
-        self.assertEqual(spec.action.args, ("still on this?", "today"))
+        self.assertEqual(spec.action.steps[0].verb, "notify")
+        self.assertEqual(spec.action.steps[0].args, ("still on this?", "today"))
 
     def test_multiple_quoted_args_stay_separate(self):
         spec = parse_automation_block(
             _block({"trigger": "manual", "action": 'prompt "a b" "c d"'})
         )
-        self.assertEqual(spec.action.args, ("a b", "c d"))
+        self.assertEqual(spec.action.steps[0].args, ("a b", "c d"))
 
     def test_unbalanced_quotes_are_a_spec_error(self):
         with self.assertRaises(AutomationSpecError) as ctx:
@@ -250,6 +252,140 @@ class TestParseAutomationBlock(SimpleTestCase):
                 _block({"trigger": "manual", "action": 'notify "oops'})
             )
         self.assertIn("unbalanced", "; ".join(ctx.exception.errors))
+
+
+class TestActionChains(SimpleTestCase):
+    """`then`-separated action chains (issue #225): one or more verbs on
+    a single `action::` line, run in order over the same matched set."""
+
+    def test_no_then_compiles_to_one_step_chain(self):
+        spec = parse_automation_block(
+            _block({"trigger": "manual", "action": "set_type done"})
+        )
+        self.assertEqual(len(spec.action.steps), 1)
+        self.assertEqual(spec.action.steps[0].verb, "set_type")
+        self.assertEqual(spec.action.raw, "set_type done")
+
+    def test_then_splits_into_ordered_steps(self):
+        spec = parse_automation_block(
+            _block(
+                {
+                    "trigger": "manual",
+                    "action": (
+                        'apply_template "weekly routine template" to today '
+                        'then notify "Weekly routine is on your daily"'
+                    ),
+                }
+            )
+        )
+        self.assertEqual(len(spec.action.steps), 2)
+        first, second = spec.action.steps
+        self.assertEqual(first.verb, "apply_template")
+        self.assertEqual(first.args, ("weekly routine template", "to", "today"))
+        self.assertEqual(second.verb, "notify")
+        self.assertEqual(second.args, ("Weekly routine is on your daily",))
+        self.assertEqual(
+            spec.action.raw,
+            'apply_template "weekly routine template" to today then '
+            'notify "Weekly routine is on your daily"',
+        )
+
+    def test_quoted_then_does_not_split_the_chain(self):
+        spec = parse_automation_block(
+            _block(
+                {
+                    "trigger": "manual",
+                    "action": 'notify "still on this then that?"',
+                }
+            )
+        )
+        self.assertEqual(len(spec.action.steps), 1)
+        self.assertEqual(spec.action.steps[0].args, ("still on this then that?",))
+
+    def test_three_step_chain_preserves_order(self):
+        spec = parse_automation_block(
+            _block(
+                {
+                    "trigger": "manual",
+                    "action": "tag reviewed then set_type done then notify hi",
+                }
+            )
+        )
+        verbs = [step.verb for step in spec.action.steps]
+        self.assertEqual(verbs, ["tag", "set_type", "notify"])
+
+    def test_an_unrelated_earlier_error_does_not_suppress_action_validation(self):
+        # A bad trigger:: mustn't short-circuit the action chain's own
+        # validation — both problems are reported together, not just
+        # whichever prop happened to be parsed first.
+        with self.assertRaises(AutomationSpecError) as ctx:
+            parse_automation_block(
+                _block(
+                    {
+                        "trigger": "telepathy",
+                        "action": "move_to_page {{block.tag}}",
+                    }
+                )
+            )
+        joined = "; ".join(ctx.exception.errors)
+        self.assertIn("telepathy", joined)
+        self.assertIn("query::", joined)
+
+    def test_empty_step_around_then_is_rejected(self):
+        with self.assertRaises(AutomationSpecError) as ctx:
+            parse_automation_block(
+                _block({"trigger": "manual", "action": "set_type done then"})
+            )
+        self.assertIn("empty step", "; ".join(ctx.exception.errors))
+
+    def test_leading_then_is_rejected(self):
+        with self.assertRaises(AutomationSpecError) as ctx:
+            parse_automation_block(
+                _block({"trigger": "manual", "action": "then set_type done"})
+            )
+        self.assertIn("empty step", "; ".join(ctx.exception.errors))
+
+    def test_for_with_multi_step_chain_is_rejected(self):
+        with self.assertRaises(AutomationSpecError) as ctx:
+            parse_automation_block(
+                _block(
+                    {
+                        "trigger": "manual",
+                        "for": "5,10",
+                        "action": (
+                            'create_block "x {{item}}" on today '
+                            'then notify "made x {{item}}"'
+                        ),
+                    }
+                )
+            )
+        joined = "; ".join(ctx.exception.errors)
+        self.assertIn("for::", joined)
+        self.assertIn("multi-step", joined)
+
+    def test_for_with_one_step_chain_is_accepted(self):
+        spec = parse_automation_block(
+            _block(
+                {
+                    "trigger": "manual",
+                    "for": "5,10",
+                    "action": 'create_block "x {{item}}" on today',
+                }
+            )
+        )
+        self.assertEqual(len(spec.action.steps), 1)
+
+    def test_block_tokens_anywhere_in_chain_require_query(self):
+        with self.assertRaises(AutomationSpecError) as ctx:
+            parse_automation_block(
+                _block(
+                    {
+                        "trigger": "manual",
+                        "action": "tag reviewed then move_to_page {{block.tag}}",
+                    }
+                )
+            )
+        self.assertIn("query::", "; ".join(ctx.exception.errors))
 
 
 class TestForDirective(SimpleTestCase):
@@ -445,7 +581,7 @@ class TestTokenSpecContracts(SimpleTestCase):
                 }
             )
         )
-        self.assertEqual(spec.action.args, ("{{block.tag}}",))
+        self.assertEqual(spec.action.steps[0].args, ("{{block.tag}}",))
 
     def test_item_without_for_is_rejected(self):
         with self.assertRaises(AutomationSpecError) as ctx:

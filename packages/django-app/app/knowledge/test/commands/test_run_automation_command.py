@@ -1557,3 +1557,207 @@ class TestParameterizedActions(TestCase):
 
         self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
         self.assertIn("query::", result["last_error"])
+
+
+class TestActionChains(TestCase):
+    """Sequential `then`-separated verbs on one `action::` line (issue
+    #225): steps run in order over the same matched set, DB steps share
+    one transaction, and external (notify) steps send only once that
+    transaction has committed."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+
+    def _automation(self, **props):
+        page = PageFactory(
+            user=self.user,
+            title="Automations",
+            slug=f"automations-{uuid_lib.uuid4().hex[:8]}",
+        )
+        return BlockFactory(
+            user=self.user,
+            page=page,
+            content="My automation #automation",
+            properties=props,
+        )
+
+    def _run(self, automation_block, trigger="manual"):
+        form = RunAutomationForm(
+            {
+                "user": self.user,
+                "automation_block": automation_block.uuid,
+                "trigger": trigger,
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return RunAutomationCommand(form).execute()
+
+    def _todo(self, content="TODO ship it", **kwargs):
+        page = kwargs.pop(
+            "page",
+            PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}"),
+        )
+        return BlockFactory(
+            user=self.user, page=page, block_type="todo", content=content, **kwargs
+        )
+
+    def test_two_db_steps_run_in_order_and_affected_sums_across_steps(self):
+        target = self._todo()
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action="tag reviewed then set_type done",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        target.refresh_from_db()
+        self.assertIn("reviewed", target.get_tag_names())
+        self.assertEqual(target.block_type, "done")
+        self.assertEqual(result["result"]["affected"], 2)
+        self.assertEqual(result["result"]["action"], "tag reviewed then set_type done")
+        steps = result["result"]["steps"]
+        self.assertEqual([s["verb"] for s in steps], ["tag", "set_type"])
+        self.assertEqual([s["affected"] for s in steps], [1, 1])
+
+    def test_omitted_allow_grants_every_verb_in_the_chain(self):
+        # No allow:: at all — both steps' verbs are the authorization.
+        target = self._todo()
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action="tag reviewed then set_type done",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        target.refresh_from_db()
+        self.assertEqual(target.block_type, "done")
+
+    def test_chain_fails_when_any_step_verb_is_not_in_an_explicit_allow_list(self):
+        target = self._todo()
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action="tag reviewed then set_type done",
+            allow="tag",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("set_type", result["last_error"])
+        self.assertIn("allow", result["last_error"])
+        target.refresh_from_db()
+        # Neither step ran — capability is checked before any step runs.
+        self.assertNotIn("reviewed", target.get_tag_names())
+        self.assertEqual(target.block_type, "todo")
+
+    def test_failing_step_rolls_back_earlier_db_step_and_stops_the_chain(self):
+        PageFactory(
+            user=self.user, title="Pack", slug="pack-chain", page_type="template"
+        )
+        target = self._todo()
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action='set_type done then move_to_page "Pack"',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("template", result["last_error"])
+        target.refresh_from_db()
+        # The whole chain is one transaction — the first step's write is
+        # rolled back along with the second step's failure.
+        self.assertEqual(target.block_type, "todo")
+
+    def test_failing_step_prevents_a_later_notify_from_ever_sending(self):
+        PageFactory(
+            user=self.user, title="Pack", slug="pack-notify", page_type="template"
+        )
+        self.user.discord_webhook_url = "https://discord.example/webhook"
+        self.user.save()
+        self._todo()
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action='move_to_page "Pack" then notify "should never send"',
+        )
+
+        sent = []
+        with patch(
+            "knowledge.services.automation_actions.post_webhook",
+            lambda *a, **k: sent.append(1) or DiscordDeliveryResult(True, ""),
+        ):
+            result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("template", result["last_error"])
+        self.assertEqual(sent, [])
+
+    def test_notify_step_only_sends_after_the_db_steps_commit(self):
+        self.user.discord_webhook_url = "https://discord.example/webhook"
+        self.user.save()
+        target = self._todo()
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action='set_type done then notify "shipped"',
+        )
+
+        captured = {}
+
+        def _capture(url, content="", embeds=None, timeout=10.0):
+            captured["embeds"] = embeds
+            target.refresh_from_db()
+            # By the time the message is actually sent, the DB step's
+            # write has already been committed.
+            captured["block_type_at_send_time"] = target.block_type
+            return DiscordDeliveryResult(True, "")
+
+        with patch("knowledge.services.automation_actions.post_webhook", _capture):
+            result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        self.assertEqual(captured["embeds"][0]["title"], "shipped")
+        self.assertEqual(captured["block_type_at_send_time"], "done")
+
+    def test_send_failure_after_commit_fails_the_run_but_keeps_db_changes(self):
+        self.user.discord_webhook_url = "https://discord.example/webhook"
+        self.user.save()
+        target = self._todo()
+        automation = self._automation(
+            trigger="manual",
+            query="type:todo",
+            action='set_type done then notify "shipped"',
+        )
+
+        with patch(
+            "knowledge.services.automation_actions.post_webhook",
+            lambda *a, **k: DiscordDeliveryResult(False, "discord is down"),
+        ):
+            result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("delivery failed", result["last_error"])
+        target.refresh_from_db()
+        # The DB step already committed before the send was attempted —
+        # a delivery failure doesn't roll it back.
+        self.assertEqual(target.block_type, "done")
+
+    def test_for_directive_with_multi_step_chain_fails_the_run(self):
+        automation = self._automation(
+            trigger="manual",
+            **{"for": "5,10"},
+            action='create_block "x {{item}}" on today then notify "done {{item}}"',
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("multi-step", result["last_error"])

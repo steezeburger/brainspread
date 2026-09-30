@@ -127,6 +127,11 @@ class ActionResult:
     # `except:` filtering) resolved to zero or multiple candidates —
     # recorded with a reason instead of aborting the whole run.
     skipped: List[dict] = field(default_factory=list)
+    # An external verb's (issue #225) real side effect, deferred until the
+    # chain's DB transaction commits — thunks take no args, do the I/O,
+    # and raise ActionError on delivery failure. Empty for every DB verb,
+    # whose handler has already done its work by the time it returns.
+    deferred: List[Callable[[], None]] = field(default_factory=list)
 
 
 ActionHandler = Callable[["ActionContext", List[Block], Tuple[str, ...]], ActionResult]
@@ -148,6 +153,13 @@ class ActionDef:
     # this verb doesn't support per-block tokens at all (notify,
     # apply_template — a {{block.*}} in their args is a run-time error).
     block_token_mode: str = "group"
+    # True for a verb whose real work is an external side effect (notify
+    # now, http later — issue #225): the run command executes every DB
+    # step inside one transaction, then runs external steps' deferred
+    # thunks in chain order only after that transaction commits, so a
+    # Discord hiccup can't roll back an already-succeeded DB step, and a
+    # step never fires for blocks a later failure ends up rolling back.
+    external: bool = False
 
 
 def resolve_action(verb: str) -> ActionDef:
@@ -413,6 +425,7 @@ def _run_for_each_item(
     affected = 0
     details: List[dict] = []
     groups: List[dict] = []
+    deferred: List[Callable[[], None]] = []
     for item in items:
         token_context.item = item
         try:
@@ -431,11 +444,14 @@ def _run_for_each_item(
         else:
             affected += result.affected
             details.extend(result.details)
+            deferred.extend(result.deferred)
             entry["affected"] = result.affected
         groups.append(entry)
     token_context.item = None
 
-    return ActionResult(affected=affected, details=details, groups=groups)
+    return ActionResult(
+        affected=affected, details=details, groups=groups, deferred=deferred
+    )
 
 
 def _move_to_daily(
@@ -583,7 +599,15 @@ def _notify(
     """Dual-mode Discord nudge. With a query: one message listing the
     matched blocks — and silence when nothing matches, which is what makes
     a `type:doing` nudge self-stopping. Without a query: the bare message
-    (e.g. `trash night`)."""
+    (e.g. `trash night`).
+
+    ``notify`` is an external action (issue #225): everything here is
+    validation and message-building, which stays synchronous so a bad
+    config still fails the run before any DB step commits. The actual
+    Discord POST is returned as a ``deferred`` thunk — the run command
+    calls it only after the chain's transaction commits, so a delivery
+    failure never rolls back DB work that already succeeded, and nothing
+    is sent for blocks a later step in the chain ends up rolling back."""
     if not args or not args[0].strip():
         raise ActionError('`notify` needs a message, e.g. notify "still on this?"')
     message = args[0].strip()
@@ -608,13 +632,16 @@ def _notify(
         embed["description"] = "\n".join(lines)
 
     content = f"<@{ctx.user.discord_user_id}>" if ctx.user.discord_user_id else ""
-    result = post_webhook(url, content, embeds=[embed])
-    if not result.ok:
-        raise ActionError(f"notify delivery failed: {result.error}")
+
+    def _send() -> None:
+        result = post_webhook(url, content, embeds=[embed])
+        if not result.ok:
+            raise ActionError(f"notify delivery failed: {result.error}")
 
     return ActionResult(
         affected=len(blocks) if ctx.has_query else 1,
         details=[{"sent": True, "blocks": len(blocks)}],
+        deferred=[_send],
     )
 
 
@@ -1199,6 +1226,7 @@ COMMAND_ACTIONS: Dict[str, ActionDef] = {
         capability="notify",
         requires_query=False,
         block_token_mode="none",
+        external=True,
     ),
     "apply_template": ActionDef(
         handler=_apply_template,

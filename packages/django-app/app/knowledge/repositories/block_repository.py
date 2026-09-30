@@ -39,6 +39,24 @@ class BlockRepository(BaseRepository):
             return None
 
     @classmethod
+    def get_by_uuids(cls, uuids: List[str], user=None) -> List[Block]:
+        """Re-fetch blocks by UUID, in the order given.
+
+        Used between an automation action chain's steps (issue #225) so
+        a step never reads a stale in-memory copy of content an earlier
+        step rewrote (``tag``/``untag``/``set_property`` all rewrite
+        ``content``). A UUID an earlier step removed from existence
+        (there's no such verb today) is silently dropped rather than
+        raising."""
+        if not uuids:
+            return []
+        queryset = cls.get_queryset().filter(uuid__in=uuids)
+        if user is not None:
+            queryset = queryset.filter(user=user)
+        by_uuid = {str(block.uuid): block for block in queryset}
+        return [by_uuid[uuid] for uuid in uuids if uuid in by_uuid]
+
+    @classmethod
     def get_page_blocks(cls, page: Page, include_children: bool = True) -> QuerySet:
         """Get blocks for a page"""
         queryset = cls.get_queryset().filter(page=page)

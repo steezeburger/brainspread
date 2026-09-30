@@ -275,7 +275,7 @@ window.HelpModal = {
                 </tr>
                 <tr>
                   <td><code class="help-syntax">action:: move_to_daily today</code></td>
-                  <td>what it does (one verb): <code class="help-syntax">move_to_daily</code>, <code class="help-syntax">move_to_page "ref"</code>, <code class="help-syntax">set_type done</code>, <code class="help-syntax">tag</code>/<code class="help-syntax">untag &lt;slug&gt;</code>, <code class="help-syntax">set_due &lt;date&gt; [HH:MM] [remind [date] HH:MM]…</code> (<code class="help-syntax">none</code> clears), <code class="help-syntax">set_property key value</code>, <code class="help-syntax">create_block "…" on &lt;date|page&gt; [as type] [tagged slug…] [with k=v…] [due …] [remind …]</code>, <code class="help-syntax">notify "…"</code> (discord; silent when nothing matches), <code class="help-syntax">apply_template "…" to today</code></td>
+                  <td>what it does: <code class="help-syntax">move_to_daily</code>, <code class="help-syntax">move_to_page "ref"</code>, <code class="help-syntax">set_type done</code>, <code class="help-syntax">tag</code>/<code class="help-syntax">untag &lt;slug&gt;</code>, <code class="help-syntax">set_due &lt;date&gt; [HH:MM] [remind [date] HH:MM]…</code> (<code class="help-syntax">none</code> clears), <code class="help-syntax">set_property key value</code>, <code class="help-syntax">create_block "…" on &lt;date|page&gt; [as type] [tagged slug…] [with k=v…] [due …] [remind …]</code>, <code class="help-syntax">notify "…"</code> (discord; silent when nothing matches), <code class="help-syntax">apply_template "…" to today</code>. chain steps with <code class="help-syntax">then</code>, e.g. <code class="help-syntax">apply_template "weekly routine" to today then notify "routine is on your daily"</code> — steps run in order sharing the same matched blocks, and a failed step stops the rest (external steps like <code class="help-syntax">notify</code> only fire once the earlier steps' writes have committed)</td>
                 </tr>
                 <tr>
                   <td><code class="help-syntax">{{today}}</code> <code class="help-syntax">{{now}}</code> <code class="help-syntax">{{count}}</code></td>
@@ -291,7 +291,7 @@ window.HelpModal = {
                 </tr>
                 <tr>
                   <td><code class="help-syntax">enabled:: false</code></td>
-                  <td>pause ambient runs; an explicit manual run still works (with confirmation). <code class="help-syntax">allow::</code> is optional — omitted grants exactly the declared verb</td>
+                  <td>pause ambient runs; an explicit manual run still works (with confirmation). <code class="help-syntax">allow::</code> is optional — omitted grants every verb in the <code class="help-syntax">action::</code> chain</td>
                 </tr>
               </tbody>
             </table>

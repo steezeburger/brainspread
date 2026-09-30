@@ -22,8 +22,9 @@ Recognized props (slice 1 — schedule + manual triggers, command actions):
   ``every <N>m|<N>h`` | ``cron <expr>`` (raw escape hatch)
 - ``query::``   ``view:<saved-view-slug>`` (optional for ``manual``; the
   action decides whether it needs a result set)
-- ``action::``  ``<verb> <args...>`` — verbs are validated by the action
-  registry, not here
+- ``action::``  ``<verb> <args...> [then <verb> <args...>]…`` (issue #225)
+  — one or more steps run in order, sharing the same matched-block set;
+  verbs are validated by the action registry, not here
 - ``allow::``   comma/space separated capability list (tool/verb names the
   run may execute without interactive approval). OPTIONAL for command
   actions: omitted means "exactly the declared verb" — the action line
@@ -165,6 +166,18 @@ class ActionSpec:
     raw: str
 
 
+@dataclass(frozen=True)
+class ActionChainSpec:
+    """One or more ``ActionSpec`` steps, separated by a bare ``then`` on
+    the ``action::`` line (issue #225). A line with no ``then`` compiles
+    to a one-step chain, so ``.raw`` is always the whole ``action::``
+    line — existing single-verb consumers (``list_automations_command``)
+    that read ``action.raw`` keep working unchanged."""
+
+    steps: Tuple[ActionSpec, ...]
+    raw: str
+
+
 # Cap on `for::`'s item count — a typo'd range (`for:: 1..100000 by 1`)
 # can't fan a standalone action out unbounded (mirrors MAX_ACTION_BLOCKS
 # for the query side of iteration).
@@ -189,10 +202,10 @@ class AutomationSpec:
     name: str
     slug: str
     trigger: TriggerSpec
-    action: ActionSpec
+    action: ActionChainSpec
     # None = the `allow::` prop was omitted entirely; the runner then grants
-    # exactly the declared verb. An explicit (even empty) list is honored
-    # as written.
+    # every verb declared in the chain. An explicit (even empty) list is
+    # honored as written.
     allow: Optional[frozenset]
     enabled: bool
     query: Optional[QuerySpec] = None
@@ -218,13 +231,23 @@ def parse_automation_block(block: "Block") -> AutomationSpec:
     enabled = _parse_bool(_prop_str(props, "enabled", "true"))
 
     if action is not None:
-        arg_tokens = [name for arg in action.args for name in token_names(arg)]
+        arg_tokens = [
+            name
+            for step in action.steps
+            for arg in step.args
+            for name in token_names(arg)
+        ]
         if any(name.startswith("block.") for name in arg_tokens) and query is None:
             errors.append(
                 "action args use `{{block.*}}` tokens, which require a `query::`"
             )
         if "item" in arg_tokens and for_spec is None:
             errors.append("`{{item}}` requires a `for::` directive")
+        if for_spec is not None and len(action.steps) > 1:
+            errors.append(
+                "`for::` doesn't support a multi-step action chain "
+                "(`then`) — use a single verb"
+            )
 
     if for_spec is not None and query is not None:
         errors.append(
@@ -426,16 +449,56 @@ def _parse_for(raw: str, errors: List[str]) -> Optional[ForSpec]:
     return ForSpec(items=tuple(items), raw=raw)
 
 
-def _parse_action(raw: str, errors: List[str]) -> Optional[ActionSpec]:
+def _parse_action(raw: str, errors: List[str]) -> Optional[ActionChainSpec]:
     raw = (raw or "").strip()
     if not raw:
         errors.append("missing `action::`")
         return None
-    parts = raw.split(maxsplit=1)
-    verb = parts[0].lower()
-    rest = parts[1].strip() if len(parts) > 1 else ""
-    args = _split_args(rest, errors)
-    return ActionSpec(verb=verb, args=tuple(args), raw=raw)
+
+    segments = _split_chain_segments(raw, errors)
+    if segments is None:
+        return None
+    if any(not segment.strip() for segment in segments):
+        errors.append(
+            "`action::` has an empty step around `then` — expected "
+            "`<verb> [args] then <verb> [args]`"
+        )
+        return None
+
+    steps: List[ActionSpec] = []
+    for segment in segments:
+        segment = segment.strip()
+        parts = segment.split(maxsplit=1)
+        verb = parts[0].lower()
+        rest = parts[1].strip() if len(parts) > 1 else ""
+        args = _split_args(rest, errors)
+        steps.append(ActionSpec(verb=verb, args=tuple(args), raw=segment))
+
+    return ActionChainSpec(steps=tuple(steps), raw=raw)
+
+
+def _split_chain_segments(raw: str, errors: List[str]) -> Optional[List[str]]:
+    """Tokenize ``raw`` with quotes preserved and split on bare ``then``
+    tokens, so a quoted ``"...then..."`` never breaks a chain in two.
+    Splitting can't happen after ``shlex.split`` (posix mode), which
+    strips quotes and makes a quoted ``"then"`` indistinguishable from a
+    bare one."""
+    try:
+        lexer = shlex.shlex(raw, posix=False)
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+    except ValueError:
+        errors.append(f"unbalanced quotes in action args: `{raw}`")
+        return None
+
+    segments: List[List[str]] = [[]]
+    for token in tokens:
+        if token == "then":
+            segments.append([])
+        else:
+            segments[-1].append(token)
+    return [" ".join(segment) for segment in segments]
 
 
 def _split_args(rest: str, errors: List[str]) -> List[str]:
