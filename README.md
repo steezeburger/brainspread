@@ -74,8 +74,8 @@ matching block:
 ```
 - #automation Nudge stale open todos
 trigger:: daily 9:00
-query:: type:todo and tag:priority and due < today
-action:: notify "{{count}} p1 todos are overdue"
+query:: type:todo and prop:priority=high and due < today
+action:: notify "{{count}} high-priority todos are overdue"
 enabled:: true
 ```
 
@@ -227,8 +227,6 @@ There's also a chat panel next to your notes, with persistent history,
 bring-your-own-key support for Anthropic/OpenAI/Google, web search, and a
 bigger toolset with an approval gate on writes. Good for quick stuff like
 "what did I get done this week?" without leaving the app.
-
-![The chat panel mid-conversation, running a query tool against the graph](docs/images/screenshot6.png)
 
 ### Odds and ends
 

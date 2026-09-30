@@ -1545,17 +1545,17 @@ kbd {
 .inline-tag {
   background-color: var(--tag-bg);
   color: var(--tag-text);
-  padding: 0.1rem 0.3rem;
+  /* Vertical padding kept small (rather than growing line-height) so
+     the chip's own box stays shorter than the line's leading — on
+     multiline content where a chip sits at the start of every line (a
+     multi-property automation definition: trigger::/query::/action::),
+     that leaves a visible gap between stacked chips instead of their
+     backgrounds touching, without changing line spacing for ordinary
+     text. */
+  padding: 0.02rem 0.3rem;
   font-weight: normal;
   border: 1px solid var(--tag-bg);
   text-decoration: none;
-  /* Vertical padding/border on an inline element doesn't grow the line
-     box — on multiline content where a chip sits at the start of every
-     line (a multi-property automation definition: trigger::/query::/
-     action::), adjacent chips' backgrounds visually touch with no gap.
-     A taller line-height on the chip itself grows just its own line's
-     box, adding breathing room without touching normal prose lines. */
-  line-height: 1.9;
 }
 
 /* More specific selector for inline tags in block content */
@@ -1600,9 +1600,8 @@ kbd {
 .inline-property-value {
   background-color: var(--hover-bg-light);
   color: var(--text-secondary);
-  padding: 0.1rem 0.3rem;
-  /* See .inline-tag's line-height comment — same fix, same reason. */
-  line-height: 1.9;
+  /* See .inline-tag's padding comment — same fix, same reason. */
+  padding: 0.02rem 0.3rem;
 }
 
 /* Tag page styling */
