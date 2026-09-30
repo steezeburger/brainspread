@@ -14,6 +14,16 @@ const AVAILABLE_THEMES = [
 // renders after) can use the same list as the spotlight theme picker.
 window.AVAILABLE_THEMES = AVAILABLE_THEMES;
 
+// The DRF auth token is shared by every device and by MCP (issue #250), so
+// checkAuth() must only call the backend logout endpoint (which deletes
+// that token) when a /me/ failure is a confirmed-invalid-token response.
+// A network error, a 5xx, or anything else that isn't a definite 401 gets
+// a local-only "logged out" UI instead, leaving the shared token intact.
+function isConfirmedInvalidToken(error) {
+  return !!error && error.status === 401;
+}
+window.isConfirmedInvalidToken = isConfirmedInvalidToken;
+
 // Global Vue app for knowledge base
 const KnowledgeApp = createApp({
   data() {
@@ -205,11 +215,15 @@ const KnowledgeApp = createApp({
             this.isAuthenticated = true;
             this.currentView = "journal";
           } else {
-            this.handleLogout();
+            this.handleLocalLogout();
           }
         } catch (error) {
           console.error("Auth check failed:", error);
-          this.handleLogout();
+          if (isConfirmedInvalidToken(error)) {
+            this.handleLogout();
+          } else {
+            this.handleLocalLogout();
+          }
         }
       } else {
         this.currentView = "login";
@@ -236,10 +250,18 @@ const KnowledgeApp = createApp({
       } catch (error) {
         console.error("Logout error:", error);
       } finally {
-        this.user = null;
-        this.isAuthenticated = false;
-        this.currentView = "login";
+        this.handleLocalLogout();
       }
+    },
+
+    // Resets local auth UI state only - does NOT call the backend logout
+    // endpoint, so the shared DRF token (and every other device's/MCP's
+    // session) is left untouched. Use this for failures that aren't a
+    // confirmed invalid token.
+    handleLocalLogout() {
+      this.user = null;
+      this.isAuthenticated = false;
+      this.currentView = "login";
     },
 
     requestLogout() {
