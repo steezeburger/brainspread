@@ -12,6 +12,7 @@
 //   save-completed-at — { iso } user saved a corrected completion time
 window.BlockInfoModal = {
   name: "BlockInfoModal",
+  mixins: [window.brainspreadEscapeCaptureMixin || {}],
   props: {
     isOpen: { type: Boolean, default: false },
     block: { type: Object, default: null },
@@ -76,13 +77,9 @@ window.BlockInfoModal = {
         this.uuidCopied = false;
         this.cancelEditCompleted();
         this.$nextTick(() => this.$refs.closeBtn?.focus());
-        document.addEventListener("keydown", this.onKeydown, true);
-      } else {
-        document.removeEventListener("keydown", this.onKeydown, true);
-        if (this.uuidCopyTimer) {
-          clearTimeout(this.uuidCopyTimer);
-          this.uuidCopyTimer = null;
-        }
+      } else if (this.uuidCopyTimer) {
+        clearTimeout(this.uuidCopyTimer);
+        this.uuidCopyTimer = null;
       }
     },
     // Parent reassigns the block object after a successful save; drop out
@@ -91,10 +88,14 @@ window.BlockInfoModal = {
       this.cancelEditCompleted();
     },
   },
-  beforeUnmount() {
-    document.removeEventListener("keydown", this.onKeydown, true);
-  },
   methods: {
+    escapeCaptureFlag() {
+      return "isOpen";
+    },
+    escapeCaptureHandlerName() {
+      return "onKeydown";
+    },
+
     // datetime-local wants "YYYY-MM-DDTHH:MM" in local wall-clock time.
     toDatetimeLocal(value) {
       if (!value) return "";
@@ -173,15 +174,13 @@ window.BlockInfoModal = {
     onBackdropClick(event) {
       if (event.target === event.currentTarget) this.$emit("close");
     },
-    // Bound on `document` in the capture phase (see the isOpen watcher)
-    // rather than left as a template @keydown on the backdrop — that
-    // only fires when focus happens to sit inside it, and clicking a
-    // plain, non-focusable part of the modal blurs focus without
-    // moving it back in, silently breaking Escape. Capture-phase on
-    // `document` is focus-independent and runs before app.js's
-    // bubble-phase Escape handler, which closes the left nav / chat
-    // panel — stopPropagation here keeps this keystroke scoped to the
-    // modal instead.
+    // Called for every keydown while open, bound directly on `document`
+    // in the capture phase (see brainspreadEscapeCaptureMixin in
+    // services/escape-capture.js) rather than left as a template
+    // @keydown on the backdrop — that only fires when focus happens to
+    // sit inside it, and clicking a plain, non-focusable part of the
+    // modal blurs focus without moving it back in, silently breaking
+    // Escape.
     onKeydown(event) {
       if (event.key === "Escape") {
         event.preventDefault();

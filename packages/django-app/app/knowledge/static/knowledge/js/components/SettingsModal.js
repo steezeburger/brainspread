@@ -1,5 +1,7 @@
 // Settings Modal Component
 window.SettingsModal = {
+  mixins: [window.brainspreadEscapeCaptureMixin || {}],
+
   props: {
     isOpen: {
       type: Boolean,
@@ -140,13 +142,6 @@ window.SettingsModal = {
             );
             if (firstFocusable) firstFocusable.focus();
           });
-          document.addEventListener("keydown", this.handleModalKeydown, true);
-        } else {
-          document.removeEventListener(
-            "keydown",
-            this.handleModalKeydown,
-            true
-          );
         }
       },
     },
@@ -155,12 +150,7 @@ window.SettingsModal = {
   async mounted() {
     if (this.isOpen) {
       await this.loadAISettings();
-      document.addEventListener("keydown", this.handleModalKeydown, true);
     }
-  },
-
-  beforeUnmount() {
-    document.removeEventListener("keydown", this.handleModalKeydown, true);
   },
 
   computed: {
@@ -408,16 +398,20 @@ window.SettingsModal = {
       }
     },
 
-    // Bound on `document` in the capture phase (see the isOpen watcher
-    // and mounted()) rather than left as a template @keydown on the
-    // modal's own root — that only fires when focus happens to sit
-    // inside the modal, and clicking a plain, non-focusable part of it
-    // (a heading, a settings-section label) blurs focus without moving
-    // it back in, silently breaking Escape and letting it fall through
-    // to app.js's document-level handler, which closes whatever
-    // sidebar is open behind the modal instead. Capture-phase on
-    // `document` is focus-independent and guaranteed to run before
-    // that bubble-phase listener.
+    escapeCaptureFlag() {
+      return "isOpen";
+    },
+    escapeCaptureHandlerName() {
+      return "handleModalKeydown";
+    },
+
+    // Called for every keydown while open, bound directly on `document`
+    // in the capture phase (see brainspreadEscapeCaptureMixin in
+    // services/escape-capture.js) rather than left as a template
+    // @keydown on the modal's own root — that only fires when focus
+    // happens to sit inside the modal, and clicking a plain,
+    // non-focusable part of it (a heading, a settings-section label)
+    // blurs focus without moving it back in, silently breaking Escape.
     handleModalKeydown(event) {
       if (event.key === "Escape") {
         event.preventDefault();

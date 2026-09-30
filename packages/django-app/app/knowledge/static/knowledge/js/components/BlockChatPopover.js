@@ -16,7 +16,10 @@
 //   close — user dismissed (Esc, backdrop, "done" button)
 
 window.BlockChatPopover = {
-  mixins: [window.brainspreadEmojiRenderMixin || {}],
+  mixins: [
+    window.brainspreadEmojiRenderMixin || {},
+    window.brainspreadEscapeCaptureMixin || {},
+  ],
   name: "BlockChatPopover",
   props: {
     isOpen: { type: Boolean, default: false },
@@ -92,11 +95,6 @@ window.BlockChatPopover = {
   watch: {
     isOpen: {
       handler(open) {
-        if (open) {
-          document.addEventListener("keydown", this.handleKeydown, true);
-        } else {
-          document.removeEventListener("keydown", this.handleKeydown, true);
-        }
         if (!open) return;
         // Each open is a fresh chat — toss any prior turn so the popover
         // doesn't visually leak between two unrelated blocks.
@@ -132,10 +130,14 @@ window.BlockChatPopover = {
       deep: true,
     },
   },
-  beforeUnmount() {
-    document.removeEventListener("keydown", this.handleKeydown, true);
-  },
   methods: {
+    escapeCaptureFlag() {
+      return "isOpen";
+    },
+    escapeCaptureHandlerName() {
+      return "handleKeydown";
+    },
+
     loadPref(key, defaultValue) {
       const saved = localStorage.getItem(key);
       if (saved === null) return defaultValue;
@@ -623,15 +625,13 @@ window.BlockChatPopover = {
       }
       return order.map((id) => byId[id]);
     },
-    // Bound on `document` in the capture phase (see the isOpen watcher)
-    // rather than left as a template @keydown on the backdrop — that
-    // only fires when focus happens to sit inside it, and clicking a
-    // plain, non-focusable part of the popover blurs focus without
-    // moving it back in, silently breaking Escape. Capture-phase on
-    // `document` is focus-independent and runs before app.js's
-    // bubble-phase Escape handler, which closes the left nav / chat
-    // panel — stopPropagation here keeps this keystroke scoped to the
-    // popover instead.
+    // Called for every keydown while open, bound directly on `document`
+    // in the capture phase (see brainspreadEscapeCaptureMixin in
+    // services/escape-capture.js) rather than left as a template
+    // @keydown on the backdrop — that only fires when focus happens to
+    // sit inside it, and clicking a plain, non-focusable part of the
+    // popover blurs focus without moving it back in, silently breaking
+    // Escape.
     handleKeydown(event) {
       if (event.key === "Escape") {
         event.preventDefault();

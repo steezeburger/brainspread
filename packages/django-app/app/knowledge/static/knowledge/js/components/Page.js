@@ -32,7 +32,10 @@ const PAGE_SORT_LABELS = Object.fromEntries(
 const PAGE_SORT_STORAGE_PREFIX = "bs:page-sort:";
 
 const Page = {
-  mixins: [window.brainspreadEmojiRenderMixin || {}],
+  mixins: [
+    window.brainspreadEmojiRenderMixin || {},
+    window.brainspreadEscapeCaptureMixin || {},
+  ],
   components: {
     BlockComponent: window.BlockComponent || {},
     Whiteboard: window.Whiteboard || {},
@@ -400,7 +403,6 @@ const Page = {
     window.removeEventListener("focus", this.handleWindowFocus);
     document.removeEventListener("keydown", this.handlePageGlobalKeydown);
     document.removeEventListener("keydown", this.handleSelectionKeydown);
-    document.removeEventListener("keydown", this.handleShareModalKeydown, true);
     document.removeEventListener("copy", this.handleSelectionCopy);
     document.removeEventListener(
       "spotlight:new-block",
@@ -3093,15 +3095,21 @@ const Page = {
       this.shareModalOpen = true;
       this.shareLinkCopied = false;
       this.closePageMenu();
-      // Capture-phase + stopPropagation so Escape closes this modal
-      // instead of falling through to app.js's sidebar-closing handler
-      // once focus has drifted off an input inside the modal — same
-      // fix as AppModals/HelpModal/etc. Bubble-phase @keydown bindings
-      // only fire while a descendant of the bound element is focused,
-      // which breaks the moment the user clicks the modal background.
-      document.addEventListener("keydown", this.handleShareModalKeydown, true);
     },
 
+    escapeCaptureFlag() {
+      return "shareModalOpen";
+    },
+    escapeCaptureHandlerName() {
+      return "handleShareModalKeydown";
+    },
+
+    // Called for every keydown while the share modal is open, bound
+    // directly on `document` in the capture phase (see
+    // brainspreadEscapeCaptureMixin in services/escape-capture.js)
+    // rather than a template @keydown on the modal's own root — that
+    // only fires while a descendant of the bound element is focused,
+    // which breaks the moment the user clicks the modal background.
     handleShareModalKeydown(event) {
       if (event.key !== "Escape") return;
       event.preventDefault();
@@ -3324,11 +3332,6 @@ const Page = {
       this.shareModalOpen = false;
       this.shareSavingMode = null;
       this.shareLinkCopied = false;
-      document.removeEventListener(
-        "keydown",
-        this.handleShareModalKeydown,
-        true
-      );
     },
 
     async setShareMode(mode) {

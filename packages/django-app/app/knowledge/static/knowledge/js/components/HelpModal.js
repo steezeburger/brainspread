@@ -1,5 +1,7 @@
 // Help Modal Component
 window.HelpModal = {
+  mixins: [window.brainspreadEscapeCaptureMixin || {}],
+
   props: {
     isOpen: {
       type: Boolean,
@@ -16,27 +18,25 @@ window.HelpModal = {
           const body = this.$refs.modalBody;
           if (body) body.focus();
         });
-        document.addEventListener("keydown", this.handleModalKeydown, true);
-      } else {
-        document.removeEventListener("keydown", this.handleModalKeydown, true);
       }
     },
   },
 
-  beforeUnmount() {
-    document.removeEventListener("keydown", this.handleModalKeydown, true);
-  },
-
   methods: {
-    // Bound on `document` in the capture phase (see the watcher above)
-    // rather than left as a template @keydown on the modal's own root —
-    // that only fires when focus happens to sit inside the modal, and
-    // clicking a plain, non-focusable part of it (a heading, a table
-    // cell) blurs focus without moving it back in, silently breaking
-    // Escape and letting it fall through to app.js's document-level
-    // handler, which closes whatever sidebar is open behind the modal
-    // instead. Capture-phase on `document` is focus-independent and
-    // guaranteed to run before that bubble-phase listener.
+    escapeCaptureFlag() {
+      return "isOpen";
+    },
+    escapeCaptureHandlerName() {
+      return "handleModalKeydown";
+    },
+
+    // Called for every keydown while open (see
+    // brainspreadEscapeCaptureMixin in services/escape-capture.js) —
+    // bound directly on `document` in the capture phase rather than
+    // left as a template @keydown on the modal's own root, which only
+    // fires when focus happens to sit inside the modal, and clicking a
+    // plain, non-focusable part of it (a heading, a table cell) blurs
+    // focus without moving it back in, silently breaking Escape.
     handleModalKeydown(event) {
       if (event.key === "Escape") {
         event.preventDefault();

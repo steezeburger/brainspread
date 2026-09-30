@@ -58,6 +58,7 @@ window.suggestedPagesFromBlockTags = function (blocks) {
 
 window.AppModals = {
   name: "AppModals",
+  mixins: [window.brainspreadEscapeCaptureMixin || {}],
 
   data() {
     return {
@@ -93,11 +94,6 @@ window.AppModals = {
 
   watch: {
     active(next, prev) {
-      if (next && !prev) {
-        this._bindDocumentKeydown();
-      } else if (!next && prev) {
-        this._unbindDocumentKeydown();
-      }
       if (next && next.kind === "prompt") {
         this.promptValue = next.opts.defaultValue || "";
         this.$nextTick(() => {
@@ -161,10 +157,16 @@ window.AppModals = {
     if (window.appModals && window.appModals.confirm === this.confirm) {
       delete window.appModals;
     }
-    this._unbindDocumentKeydown();
   },
 
   methods: {
+    escapeCaptureFlag() {
+      return "active";
+    },
+    escapeCaptureHandlerName() {
+      return "onKeydown";
+    },
+
     confirm(opts) {
       const normalized =
         typeof opts === "string" ? { message: opts } : opts || {};
@@ -570,23 +572,6 @@ window.AppModals = {
       this.finish(undefined);
     },
 
-    // The backdrop's own @keydown only fires when focus happens to sit
-    // somewhere inside it. Clicking a plain, non-focusable part of the
-    // dialog (a heading, a message paragraph) blurs focus without
-    // moving it back into the backdrop, so that listener silently
-    // stops firing — and the keystroke falls through to app.js's
-    // document-level Escape handler, which closes whatever sidebar is
-    // open behind the modal instead. Binding the same handler directly
-    // on `document` in the capture phase makes it focus-independent
-    // and guarantees it runs before app.js's bubble-phase listener.
-    _bindDocumentKeydown() {
-      document.addEventListener("keydown", this.onKeydown, true);
-    },
-
-    _unbindDocumentKeydown() {
-      document.removeEventListener("keydown", this.onKeydown, true);
-    },
-
     onBackdropClick() {
       const top = this.active;
       if (!top) return;
@@ -606,7 +591,8 @@ window.AppModals = {
       // handlers below would otherwise fight Enter-to-pick. Escape has
       // no such conflict, so it's still handled here — this is what
       // lets Escape cancel a picker even when focus has drifted off
-      // the search input (see the comment on _bindDocumentKeydown).
+      // the search input (onKeydown itself is wired up via
+      // brainspreadEscapeCaptureMixin, see services/escape-capture.js).
       if (top.kind === "pickPage" || top.kind === "pickBlock") {
         if (event.key === "Escape") {
           event.preventDefault();

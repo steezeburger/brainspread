@@ -95,6 +95,7 @@ function deriveOffset(scheduledFor, pendingDate) {
 
 window.ScheduleBlockPopover = {
   name: "ScheduleBlockPopover",
+  mixins: [window.brainspreadEscapeCaptureMixin || {}],
   props: {
     isOpen: { type: Boolean, default: false },
     initialDate: { type: String, default: "" },
@@ -167,11 +168,6 @@ window.ScheduleBlockPopover = {
   watch: {
     isOpen: {
       handler(open) {
-        if (open) {
-          document.addEventListener("keydown", this.handleKeydown, true);
-        } else {
-          document.removeEventListener("keydown", this.handleKeydown, true);
-        }
         if (!open) return;
         // Anchor relative-time chips and past-chunk filtering to the
         // moment the popover was opened so they don't drift while
@@ -208,10 +204,14 @@ window.ScheduleBlockPopover = {
       immediate: true,
     },
   },
-  beforeUnmount() {
-    document.removeEventListener("keydown", this.handleKeydown, true);
-  },
   methods: {
+    escapeCaptureFlag() {
+      return "isOpen";
+    },
+    escapeCaptureHandlerName() {
+      return "handleKeydown";
+    },
+
     onDueTimeToggle() {
       // Seed a sensible default so enabling the time doesn't leave the
       // input empty (an empty time would submit as all-day).
@@ -295,15 +295,13 @@ window.ScheduleBlockPopover = {
     handleBackdropClick(event) {
       if (event.target === event.currentTarget) this.cancel();
     },
-    // Bound on `document` in the capture phase (see the isOpen watcher)
-    // rather than left as a template @keydown on the backdrop — that
-    // only fires when focus happens to sit inside it, and clicking a
-    // plain, non-focusable part of the popover blurs focus without
-    // moving it back in, silently breaking Escape. Capture-phase on
-    // `document` is focus-independent and runs before app.js's
-    // bubble-phase Escape handler, which closes the left nav / chat
-    // panel — stopPropagation here keeps this keystroke scoped to the
-    // popover instead.
+    // Called for every keydown while open, bound directly on `document`
+    // in the capture phase (see brainspreadEscapeCaptureMixin in
+    // services/escape-capture.js) rather than left as a template
+    // @keydown on the backdrop — that only fires when focus happens to
+    // sit inside it, and clicking a plain, non-focusable part of the
+    // popover blurs focus without moving it back in, silently breaking
+    // Escape.
     handleKeydown(event) {
       if (event.key === "Escape") {
         event.preventDefault();
