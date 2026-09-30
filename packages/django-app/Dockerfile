@@ -14,6 +14,11 @@ COPY pyproject.toml /code
 COPY uv.lock /code
 RUN uv sync --frozen
 
+# Playwright fallback for JS-rendered pages + full-page screenshots (#68)
+# needs its own browser binary. --with-deps also installs the apt
+# packages Chromium needs at runtime that this slim base image lacks.
+RUN uv run playwright install --with-deps chromium
+
 # install application into container
 COPY . /code
 

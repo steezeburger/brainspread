@@ -16,9 +16,14 @@ from knowledge.models import Block
 
 from ..forms.capture_web_archive_form import CaptureWebArchiveForm
 from ..models import WebArchive
-from ..pipeline import extract_readable, fetch_url
+from ..pipeline import capture_with_browser, extract_readable, fetch_url
 
 logger = logging.getLogger(__name__)
+
+# Below this many characters of extracted plain text, treat the httpx-fetched
+# HTML as "near-empty" - almost certainly a JS-rendered shell rather than a
+# real failure of the extractor - and retry via a real (headless) browser.
+NEAR_EMPTY_TEXT_THRESHOLD = 200
 
 
 class CaptureWebArchiveCommand(AbstractBaseCommand):
@@ -37,11 +42,13 @@ class CaptureWebArchiveCommand(AbstractBaseCommand):
         form: CaptureWebArchiveForm,
         run_async: bool = True,
         fetcher: Optional[Callable] = None,
+        browser_fetcher: Optional[Callable] = None,
     ) -> None:
         self.form = form
         self.run_async = run_async
         # Injected so tests can mock network fetches without patching imports.
         self._fetcher = fetcher or fetch_url
+        self._browser_fetcher = browser_fetcher or capture_with_browser
 
     def execute(self) -> WebArchive:
         super().execute()
@@ -70,32 +77,38 @@ class CaptureWebArchiveCommand(AbstractBaseCommand):
         if self.run_async:
             thread = threading.Thread(
                 target=_run_capture_threadsafe,
-                args=(archive.uuid, self._fetcher),
+                args=(archive.uuid, self._fetcher, self._browser_fetcher),
                 daemon=True,
             )
             thread.start()
         else:
-            _run_capture(archive.uuid, fetcher=self._fetcher)
+            _run_capture(
+                archive.uuid,
+                fetcher=self._fetcher,
+                browser_fetcher=self._browser_fetcher,
+            )
             archive.refresh_from_db()
 
         return archive
 
 
-def _run_capture_threadsafe(archive_uuid, fetcher: Callable) -> None:
+def _run_capture_threadsafe(
+    archive_uuid, fetcher: Callable, browser_fetcher: Callable
+) -> None:
     """
     Thread entrypoint. Needs its own DB connection (Django opens one per
     thread) and must swallow exceptions - there's no one to log them to
     otherwise.
     """
     try:
-        _run_capture(archive_uuid, fetcher=fetcher)
+        _run_capture(archive_uuid, fetcher=fetcher, browser_fetcher=browser_fetcher)
     except Exception as exc:  # noqa: BLE001 - last line of defence in worker
         logger.exception("web archive capture crashed: %s", exc)
     finally:
         connection.close()
 
 
-def _run_capture(archive_uuid, fetcher: Callable) -> None:
+def _run_capture(archive_uuid, fetcher: Callable, browser_fetcher: Callable) -> None:
     archive = WebArchive.objects.filter(uuid=archive_uuid).first()
     if archive is None:
         return
@@ -112,12 +125,12 @@ def _run_capture(archive_uuid, fetcher: Callable) -> None:
         return
 
     if fetched.is_html_like:
-        _capture_html(archive, fetched)
+        _capture_html(archive, fetched, browser_fetcher)
     else:
         _capture_binary(archive, fetched)
 
 
-def _capture_html(archive: WebArchive, fetched) -> None:
+def _capture_html(archive: WebArchive, fetched, browser_fetcher: Callable) -> None:
     try:
         extracted = extract_readable(fetched.html, final_url=fetched.final_url)
     except Exception as exc:  # noqa: BLE001 - extractor is best-effort
@@ -126,6 +139,36 @@ def _capture_html(archive: WebArchive, fetched) -> None:
             failure_reason=f"extract failed: {exc}"[:2000],
         )
         return
+
+    canonical_url = extracted.canonical_url or fetched.final_url
+    screenshot_bytes = b""
+
+    if len(extracted.plain_text.strip()) < NEAR_EMPTY_TEXT_THRESHOLD:
+        # Near-empty body from a plain HTTP fetch usually means a
+        # JS-rendered page rather than a genuinely empty one - re-fetch
+        # through a headless browser and re-extract from the post-JS DOM.
+        try:
+            rendered = browser_fetcher(archive.source_url)
+        except Exception as exc:  # noqa: BLE001 - browser fallback is best-effort
+            logger.warning(
+                "browser fallback failed for %s: %s", archive.source_url, exc
+            )
+        else:
+            screenshot_bytes = rendered.screenshot_bytes
+            try:
+                rendered_extracted = extract_readable(
+                    rendered.html, final_url=rendered.final_url or fetched.final_url
+                )
+            except Exception as exc:  # noqa: BLE001 - extractor is best-effort
+                logger.warning(
+                    "post-JS extraction failed for %s: %s", archive.source_url, exc
+                )
+            else:
+                if len(rendered_extracted.plain_text.strip()) > len(
+                    extracted.plain_text.strip()
+                ):
+                    extracted = rendered_extracted
+                    canonical_url = extracted.canonical_url or rendered.final_url
 
     with transaction.atomic():
         archive = WebArchive.objects.select_for_update().get(pk=archive.pk)
@@ -146,6 +189,18 @@ def _capture_html(archive: WebArchive, fetched) -> None:
             mime_type=fetched.content_type or "text/html; charset=utf-8",
             filename=f"{archive.uuid}.raw.html",
         )
+        screenshot_asset = (
+            _store_asset(
+                user=archive.user,
+                asset_type=Asset.ASSET_TYPE_WEB_ARCHIVE_SCREENSHOT,
+                source_url=archive.source_url,
+                content_bytes=screenshot_bytes,
+                mime_type="image/png",
+                filename=f"{archive.uuid}.screenshot.png",
+            )
+            if screenshot_bytes
+            else None
+        )
 
         text_sha = (
             hashlib.sha256(extracted.plain_text.encode("utf-8")).hexdigest()
@@ -153,7 +208,7 @@ def _capture_html(archive: WebArchive, fetched) -> None:
             else ""
         )
 
-        archive.canonical_url = extracted.canonical_url or fetched.final_url
+        archive.canonical_url = canonical_url
         archive.title = extracted.title[:500]
         archive.site_name = extracted.site_name[:200]
         archive.author = extracted.author[:200]
@@ -166,6 +221,8 @@ def _capture_html(archive: WebArchive, fetched) -> None:
         archive.text_sha256 = text_sha
         archive.readable_asset = readable_asset
         archive.raw_asset = raw_asset
+        if screenshot_asset is not None:
+            archive.screenshot_asset = screenshot_asset
         archive.status = "ready"
         archive.failure_reason = ""
         archive.captured_at = timezone.now()

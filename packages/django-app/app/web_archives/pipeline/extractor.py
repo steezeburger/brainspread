@@ -1,10 +1,17 @@
 import html as html_lib
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from html.parser import HTMLParser
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 from urllib.parse import urljoin, urlparse
+
+from lxml.html import fromstring as lxml_fromstring
+from lxml.html import tostring as lxml_tostring
+from readability import Document
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -23,7 +30,8 @@ class ExtractedPage:
     meta: Dict[str, str] = field(default_factory=dict)
 
 
-# Tags whose inner text is noise, not content.
+# Tags whose inner text is noise, not content. Only used by the last-resort
+# fallback parser below.
 _SKIP_TAGS = {
     "script",
     "style",
@@ -40,7 +48,7 @@ _SKIP_TAGS = {
     "embed",
 }
 
-# Tags to preserve in the readable HTML body.
+# Tags to preserve in the readable HTML body (fallback parser only).
 _KEEP_TAGS = {
     "p",
     "br",
@@ -110,14 +118,12 @@ class _MetaExtractor(HTMLParser):
             self.title += data
 
 
-class _ReadableExtractor(HTMLParser):
+class _FallbackReadableExtractor(HTMLParser):
     """
-    Second pass: walk the body, drop noisy tags, keep a small HTML subset
-    plus the plain text.
-
-    This is intentionally dumb. Readability-level extraction needs a real
-    library (readability-lxml, trafilatura); this fallback just produces
-    something usable so v1 works without new deps. Swap later.
+    Last-resort body extraction, used only when readability-lxml can't find
+    a usable article in the page (e.g. it comes back empty). Intentionally
+    dumb - see extract_readable() for the real (readability-lxml-backed)
+    extraction path.
     """
 
     def __init__(self, base_url: str = "") -> None:
@@ -186,10 +192,59 @@ class _ReadableExtractor(HTMLParser):
         self._parts.append(escaped)
         self._text_parts.append(data)
 
-    def result(self) -> tuple[str, str]:
+    def result(self) -> Tuple[str, str]:
         html_body = "".join(self._parts)
         text = re.sub(r"\s+", " ", "".join(self._text_parts)).strip()
         return html_body, text
+
+
+def _fallback_extract_body(html: str, final_url: str) -> Tuple[str, str]:
+    body_parser = _FallbackReadableExtractor(base_url=final_url)
+    try:
+        body_parser.feed(html)
+        body_parser.close()
+    except Exception:
+        # HTMLParser can trip on malformed markup. Fall through with
+        # whatever we got so far rather than failing the whole capture.
+        pass
+    return body_parser.result()
+
+
+def _strip_noise_tags(html: str) -> str:
+    """
+    Drop nav/header/footer/script/etc. before handing the document to
+    readability. Readability's own candidate scoring is class/id-driven
+    (it doesn't treat e.g. <nav> as inherently unlikely), so on small or
+    unusually-marked-up pages it can otherwise fall through to "return the
+    whole body" and drag chrome back in.
+    """
+    try:
+        tree = lxml_fromstring(html)
+    except Exception:
+        return html
+    for el in list(tree.iter(*_SKIP_TAGS)):
+        el.drop_tree()
+    return lxml_tostring(tree, encoding="unicode")
+
+
+def _run_readability(html: str, final_url: str) -> Tuple[str, str, str]:
+    """
+    Run the article through readability-lxml (a port of Mozilla's
+    Readability). It scores candidate DOM nodes to find the actual article
+    body, drops ads/boilerplate, and - when given a base url - rewrites
+    relative hrefs/srcs to absolute ones in the same pass.
+
+    Returns (readable_html, plain_text, short_title). Can raise on
+    thoroughly broken input; callers treat that as "no readable body".
+    """
+    document = Document(_strip_noise_tags(html), url=final_url or None)
+    readable_html = document.summary(html_partial=True) or ""
+    plain_text = ""
+    if readable_html.strip():
+        tree = lxml_fromstring(readable_html)
+        plain_text = re.sub(r"\s+", " ", tree.text_content()).strip()
+    short_title = document.short_title() or ""
+    return readable_html, plain_text, short_title
 
 
 def _parse_published_at(meta: Dict[str, str]) -> Optional[datetime]:
@@ -229,27 +284,40 @@ def extract_readable(html: str, final_url: str = "") -> ExtractedPage:
     Parse a fetched HTML document into an ExtractedPage. Never raises -
     missing fields come back as empty strings so partial extractions still
     store something useful.
+
+    Body extraction is delegated to readability-lxml; metadata (title,
+    author, dates, images, canonical url, favicon) comes from a plain
+    meta/link-tag pass, since that's cheap, precise, and readability
+    doesn't attempt most of it anyway.
     """
     meta_parser = _MetaExtractor()
     try:
         meta_parser.feed(html)
         meta_parser.close()
     except Exception:
-        # HTMLParser can trip on malformed markup. Fall through with
-        # whatever we got so far rather than failing the whole capture.
         pass
 
-    body_parser = _ReadableExtractor(base_url=final_url)
+    readable_html = ""
+    plain_text = ""
+    short_title = ""
     try:
-        body_parser.feed(html)
-        body_parser.close()
-    except Exception:
-        pass
-    readable_html, plain_text = body_parser.result()
+        readable_html, plain_text, short_title = _run_readability(html, final_url)
+    except Exception as exc:  # noqa: BLE001 - readability is best-effort
+        logger.warning("readability extraction failed for %s: %s", final_url, exc)
+
+    if not plain_text.strip():
+        # readability found nothing usable (or blew up) - fall back to the
+        # dumb tag-stripping parser so we still store something.
+        fallback_html, fallback_text = _fallback_extract_body(html, final_url)
+        if fallback_text.strip():
+            readable_html, plain_text = fallback_html, fallback_text
 
     meta = meta_parser.meta
     title = (
-        meta.get("og:title") or meta.get("twitter:title") or meta_parser.title.strip()
+        meta.get("og:title")
+        or meta.get("twitter:title")
+        or short_title
+        or meta_parser.title.strip()
     )
 
     excerpt = (
