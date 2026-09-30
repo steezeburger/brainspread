@@ -92,6 +92,11 @@ window.BlockChatPopover = {
   watch: {
     isOpen: {
       handler(open) {
+        if (open) {
+          document.addEventListener("keydown", this.handleKeydown, true);
+        } else {
+          document.removeEventListener("keydown", this.handleKeydown, true);
+        }
         if (!open) return;
         // Each open is a fresh chat — toss any prior turn so the popover
         // doesn't visually leak between two unrelated blocks.
@@ -126,6 +131,9 @@ window.BlockChatPopover = {
       },
       deep: true,
     },
+  },
+  beforeUnmount() {
+    document.removeEventListener("keydown", this.handleKeydown, true);
   },
   methods: {
     loadPref(key, defaultValue) {
@@ -615,6 +623,15 @@ window.BlockChatPopover = {
       }
       return order.map((id) => byId[id]);
     },
+    // Bound on `document` in the capture phase (see the isOpen watcher)
+    // rather than left as a template @keydown on the backdrop — that
+    // only fires when focus happens to sit inside it, and clicking a
+    // plain, non-focusable part of the popover blurs focus without
+    // moving it back in, silently breaking Escape. Capture-phase on
+    // `document` is focus-independent and runs before app.js's
+    // bubble-phase Escape handler, which closes the left nav / chat
+    // panel — stopPropagation here keeps this keystroke scoped to the
+    // popover instead.
     handleKeydown(event) {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -643,7 +660,6 @@ window.BlockChatPopover = {
       v-if="isOpen"
       class="block-chat-popover-backdrop"
       @click="handleBackdropClick"
-      @keydown="handleKeydown"
     >
       <div class="block-chat-popover" role="dialog" aria-label="AI chat for block">
         <div class="block-chat-popover-header">

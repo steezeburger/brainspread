@@ -93,6 +93,11 @@ window.AppModals = {
 
   watch: {
     active(next, prev) {
+      if (next && !prev) {
+        this._bindDocumentKeydown();
+      } else if (!next && prev) {
+        this._unbindDocumentKeydown();
+      }
       if (next && next.kind === "prompt") {
         this.promptValue = next.opts.defaultValue || "";
         this.$nextTick(() => {
@@ -156,6 +161,7 @@ window.AppModals = {
     if (window.appModals && window.appModals.confirm === this.confirm) {
       delete window.appModals;
     }
+    this._unbindDocumentKeydown();
   },
 
   methods: {
@@ -564,6 +570,23 @@ window.AppModals = {
       this.finish(undefined);
     },
 
+    // The backdrop's own @keydown only fires when focus happens to sit
+    // somewhere inside it. Clicking a plain, non-focusable part of the
+    // dialog (a heading, a message paragraph) blurs focus without
+    // moving it back into the backdrop, so that listener silently
+    // stops firing — and the keystroke falls through to app.js's
+    // document-level Escape handler, which closes whatever sidebar is
+    // open behind the modal instead. Binding the same handler directly
+    // on `document` in the capture phase makes it focus-independent
+    // and guarantees it runs before app.js's bubble-phase listener.
+    _bindDocumentKeydown() {
+      document.addEventListener("keydown", this.onKeydown, true);
+    },
+
+    _unbindDocumentKeydown() {
+      document.removeEventListener("keydown", this.onKeydown, true);
+    },
+
     onBackdropClick() {
       const top = this.active;
       if (!top) return;
@@ -580,8 +603,18 @@ window.AppModals = {
       if (!top) return;
       // The pickers drive their own keyboard surface (arrows + Enter +
       // Esc) via @keydown on the input — the global Enter-on-button
-      // handlers below would otherwise fight Enter-to-pick.
-      if (top.kind === "pickPage" || top.kind === "pickBlock") return;
+      // handlers below would otherwise fight Enter-to-pick. Escape has
+      // no such conflict, so it's still handled here — this is what
+      // lets Escape cancel a picker even when focus has drifted off
+      // the search input (see the comment on _bindDocumentKeydown).
+      if (top.kind === "pickPage" || top.kind === "pickBlock") {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          this.onPickerCancel();
+        }
+        return;
+      }
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
@@ -614,7 +647,6 @@ window.AppModals = {
         v-if="active"
         class="app-modal-backdrop"
         @click.self="onBackdropClick"
-        @keydown="onKeydown"
         tabindex="-1"
       >
         <div
@@ -638,7 +670,6 @@ window.AppModals = {
               class="btn"
               :class="active.opts.destructive ? 'btn-danger' : 'btn-primary'"
               @click="onConfirm"
-              @keydown="onKeydown"
             >
               {{ active.opts.confirmLabel }}
             </button>
@@ -663,7 +694,6 @@ window.AppModals = {
             type="text"
             class="app-modal-input"
             :placeholder="active.opts.placeholder"
-            @keydown="onKeydown"
           />
           <div class="app-modal-actions">
             <button type="button" class="btn btn-secondary" @click="onPromptCancel">
@@ -691,7 +721,6 @@ window.AppModals = {
               ref="alertOk"
               class="btn btn-primary"
               @click="onAlertOk"
-              @keydown="onKeydown"
             >
               {{ active.opts.confirmLabel }}
             </button>

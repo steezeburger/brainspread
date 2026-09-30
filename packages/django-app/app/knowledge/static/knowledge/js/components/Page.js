@@ -400,6 +400,7 @@ const Page = {
     window.removeEventListener("focus", this.handleWindowFocus);
     document.removeEventListener("keydown", this.handlePageGlobalKeydown);
     document.removeEventListener("keydown", this.handleSelectionKeydown);
+    document.removeEventListener("keydown", this.handleShareModalKeydown, true);
     document.removeEventListener("copy", this.handleSelectionCopy);
     document.removeEventListener(
       "spotlight:new-block",
@@ -3092,6 +3093,20 @@ const Page = {
       this.shareModalOpen = true;
       this.shareLinkCopied = false;
       this.closePageMenu();
+      // Capture-phase + stopPropagation so Escape closes this modal
+      // instead of falling through to app.js's sidebar-closing handler
+      // once focus has drifted off an input inside the modal — same
+      // fix as AppModals/HelpModal/etc. Bubble-phase @keydown bindings
+      // only fire while a descendant of the bound element is focused,
+      // which breaks the moment the user clicks the modal background.
+      document.addEventListener("keydown", this.handleShareModalKeydown, true);
+    },
+
+    handleShareModalKeydown(event) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeShareModal();
     },
 
     async duplicatePage() {
@@ -3309,6 +3324,11 @@ const Page = {
       this.shareModalOpen = false;
       this.shareSavingMode = null;
       this.shareLinkCopied = false;
+      document.removeEventListener(
+        "keydown",
+        this.handleShareModalKeydown,
+        true
+      );
     },
 
     async setShareMode(mode) {

@@ -76,9 +76,13 @@ window.BlockInfoModal = {
         this.uuidCopied = false;
         this.cancelEditCompleted();
         this.$nextTick(() => this.$refs.closeBtn?.focus());
-      } else if (this.uuidCopyTimer) {
-        clearTimeout(this.uuidCopyTimer);
-        this.uuidCopyTimer = null;
+        document.addEventListener("keydown", this.onKeydown, true);
+      } else {
+        document.removeEventListener("keydown", this.onKeydown, true);
+        if (this.uuidCopyTimer) {
+          clearTimeout(this.uuidCopyTimer);
+          this.uuidCopyTimer = null;
+        }
       }
     },
     // Parent reassigns the block object after a successful save; drop out
@@ -86,6 +90,9 @@ window.BlockInfoModal = {
     block() {
       this.cancelEditCompleted();
     },
+  },
+  beforeUnmount() {
+    document.removeEventListener("keydown", this.onKeydown, true);
   },
   methods: {
     // datetime-local wants "YYYY-MM-DDTHH:MM" in local wall-clock time.
@@ -166,11 +173,18 @@ window.BlockInfoModal = {
     onBackdropClick(event) {
       if (event.target === event.currentTarget) this.$emit("close");
     },
+    // Bound on `document` in the capture phase (see the isOpen watcher)
+    // rather than left as a template @keydown on the backdrop — that
+    // only fires when focus happens to sit inside it, and clicking a
+    // plain, non-focusable part of the modal blurs focus without
+    // moving it back in, silently breaking Escape. Capture-phase on
+    // `document` is focus-independent and runs before app.js's
+    // bubble-phase Escape handler, which closes the left nav / chat
+    // panel — stopPropagation here keeps this keystroke scoped to the
+    // modal instead.
     onKeydown(event) {
       if (event.key === "Escape") {
         event.preventDefault();
-        // app.js and Page.js listen for Escape on document to close the
-        // left nav / chat panel; keep this keystroke scoped to the modal.
         event.stopPropagation();
         this.$emit("close");
       }
@@ -182,7 +196,6 @@ window.BlockInfoModal = {
         v-if="isOpen && block"
         class="app-modal-backdrop"
         @click.self="onBackdropClick"
-        @keydown="onKeydown"
         tabindex="-1"
       >
         <div class="app-modal block-info-modal" role="dialog" aria-modal="true" aria-label="Block info">

@@ -34,8 +34,15 @@ window.HistoryModal = {
         this.expandedUuids = {};
         this.fetchRevisions();
         this.$nextTick(() => this.$refs.closeBtn?.focus());
+        document.addEventListener("keydown", this.onKeydown, true);
+      } else {
+        document.removeEventListener("keydown", this.onKeydown, true);
       }
     },
+  },
+
+  beforeUnmount() {
+    document.removeEventListener("keydown", this.onKeydown, true);
   },
   methods: {
     async fetchRevisions() {
@@ -140,11 +147,18 @@ window.HistoryModal = {
     onBackdropClick(event) {
       if (event.target === event.currentTarget) this.$emit("close");
     },
+    // Bound on `document` in the capture phase (see the isOpen watcher)
+    // rather than left as a template @keydown on the backdrop — that
+    // only fires when focus happens to sit inside it, and clicking a
+    // plain, non-focusable part of the modal blurs focus without
+    // moving it back in, silently breaking Escape. Capture-phase on
+    // `document` is focus-independent and runs before app.js's
+    // bubble-phase Escape handler, which closes the left nav / chat
+    // panel — stopPropagation here keeps this keystroke scoped to the
+    // modal instead.
     onKeydown(event) {
       if (event.key === "Escape") {
         event.preventDefault();
-        // app.js and Page.js listen for Escape on document to close the
-        // left nav / chat panel; keep this keystroke scoped to the modal.
         event.stopPropagation();
         this.$emit("close");
       }
@@ -156,7 +170,6 @@ window.HistoryModal = {
         v-if="isOpen && block"
         class="app-modal-backdrop"
         @click.self="onBackdropClick"
-        @keydown="onKeydown"
         tabindex="-1"
       >
         <div class="app-modal history-modal" role="dialog" aria-modal="true" aria-label="Block history">
