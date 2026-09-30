@@ -1230,6 +1230,20 @@ body {
   font-size: 1.1rem;
 }
 
+/* Nests a couple of related checkboxes under a parent setting, e.g.
+   "highlight keys" / "highlight values" under "key::value properties" */
+.settings-subgroup {
+  margin: 0.5rem 0 0.5rem 0.25rem;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--border-secondary);
+}
+
+.settings-subgroup-label {
+  margin: 0 0 0.35rem 0;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
 /* Custom {{variables}} (issue #228) — list + add form in settings. */
 .custom-variable-list {
   list-style: none;
@@ -1568,6 +1582,18 @@ kbd {
 
 .inline-tag-plain:hover {
   text-decoration: underline;
+}
+
+/* A property's value half, when highlight_property_values is on. Lower
+   contrast than .inline-tag on purpose — a value can run to a full
+   cron expression or query string, unlike a short hashtag, so it uses
+   a soft tint instead of the solid pill fill to avoid one long value
+   reading as a single block of color. The key half keeps .inline-tag
+   as-is. */
+.inline-property-value {
+  background-color: var(--hover-bg-light);
+  color: var(--text-secondary);
+  padding: 0.1rem 0.3rem;
 }
 
 /* Tag page styling */
