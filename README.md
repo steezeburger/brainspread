@@ -53,14 +53,18 @@ does:
 
 ```
 - #automation Copy workout to today on lift days
-trigger:: schedule weekly tue,thu 5:30
+trigger:: schedule cron 30 5 * * 2,4
 action:: apply_template "strength training" to today
 enabled:: true
 ```
 
-**Triggers** run on a schedule — `every N minutes`, `hourly`, `daily HH:MM`,
-`weekly <days> HH:MM`, or a raw `cron` expression for anything cron can
-express — or you fire one manually from the ⋮ menu, chat, or MCP.
+![An automation block showing trigger, query, and action syntax rendered in the app](docs/images/screenshot4.png)
+
+**Triggers** run on a schedule — `every 15m` / `every 2h`, `hourly`,
+`daily HH:MM`, `weekly <day> HH:MM` (one day per trigger — `cron` is the
+escape hatch for "Tuesdays and Thursdays"-style multi-day cadences, as
+above), or a raw `cron` expression for anything cron can express — or you
+fire one manually from the ⋮ menu, chat, or MCP.
 
 **Queries** are the same filter language as saved views (below): tags,
 block type, due/completed dates, `key:: value` properties, combined with
@@ -71,7 +75,7 @@ matching block:
 - #automation Nudge stale open todos
 trigger:: daily 9:00
 query:: type:todo and tag:priority and due < today
-action:: notify "{{count}} p1 todos are overdue" on match
+action:: notify "{{count}} p1 todos are overdue"
 enabled:: true
 ```
 
@@ -86,7 +90,7 @@ written to do.
 Two more pieces that make automations compose instead of staying one-shot:
 
 - **`for::`** iterates an action over a literal list or numeric range
-  instead of a query — `for:: 1..5` or `for:: 10,20,30` — binding
+  instead of a query — `for:: 1..5 by 1` or `for:: 10,20,30` — binding
   `{{item}}` per step. Good for generating a run of blocks (a week's worth
   of habit-tracker rows, a countdown) without a query behind it.
 - **Variables** (next section) let an action's text pull in live values —
@@ -161,6 +165,8 @@ Blocks parse `key:: value` lines into queryable properties, so views can
 slice on whatever structure you invent (`project:: roadmap`,
 `priority:: p1`, etc).
 
+![The built-in Overdue saved view embedded inline on a page](docs/images/screenshot5.png)
+
 ### Templates
 
 A template is a page whose block tree can be stamped onto any other page.
@@ -188,7 +194,7 @@ So the prompts worth typing look like:
 - "every Tuesday and Thursday, copy my workout to the daily page" —
   said out loud, and the automation exists
 
-It's a small surface, 16 tools covering pages, blocks, todos, search,
+It's a small surface, 18 tools covering pages, blocks, todos, search,
 scheduling, tagging, and automations, each a thin wrapper over the same
 commands the UI uses.
 
@@ -221,6 +227,8 @@ There's also a chat panel next to your notes, with persistent history,
 bring-your-own-key support for Anthropic/OpenAI/Google, web search, and a
 bigger toolset with an approval gate on writes. Good for quick stuff like
 "what did I get done this week?" without leaving the app.
+
+![The chat panel mid-conversation, running a query tool against the graph](docs/images/screenshot6.png)
 
 ### Odds and ends
 
