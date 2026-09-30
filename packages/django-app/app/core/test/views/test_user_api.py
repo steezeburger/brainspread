@@ -256,6 +256,92 @@ class UserAPITestCase(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    def test_update_highlight_hashtags_off(self):
+        """Turning hashtag highlighting off persists and returns False."""
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
+        response = self.client.post(
+            "/api/auth/update-highlight-hashtags/",
+            {"highlight_hashtags": False},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["success"])
+        self.assertFalse(response.data["data"]["user"]["highlight_hashtags"])
+
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.highlight_hashtags)
+
+    def test_update_highlight_hashtags_back_on(self):
+        """Turning it back on works — the toggle isn't one-way."""
+        self.user.highlight_hashtags = False
+        self.user.save(update_fields=["highlight_hashtags"])
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
+        response = self.client.post(
+            "/api/auth/update-highlight-hashtags/",
+            {"highlight_hashtags": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["data"]["user"]["highlight_hashtags"])
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.highlight_hashtags)
+
+    def test_update_highlight_hashtags_unauthenticated(self):
+        """Hashtag highlighting update without authentication is rejected."""
+        response = self.client.post(
+            "/api/auth/update-highlight-hashtags/",
+            {"highlight_hashtags": False},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_update_highlight_properties_off(self):
+        """Turning property highlighting off persists and returns False."""
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
+        response = self.client.post(
+            "/api/auth/update-highlight-properties/",
+            {"highlight_properties": False},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["success"])
+        self.assertFalse(response.data["data"]["user"]["highlight_properties"])
+
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.highlight_properties)
+
+    def test_update_highlight_properties_back_on(self):
+        """Turning it back on works — the toggle isn't one-way."""
+        self.user.highlight_properties = False
+        self.user.save(update_fields=["highlight_properties"])
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
+        response = self.client.post(
+            "/api/auth/update-highlight-properties/",
+            {"highlight_properties": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["data"]["user"]["highlight_properties"])
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.highlight_properties)
+
+    def test_update_highlight_properties_unauthenticated(self):
+        """Property highlighting update without authentication is rejected."""
+        response = self.client.post(
+            "/api/auth/update-highlight-properties/",
+            {"highlight_properties": False},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
     def test_update_discord_user_id_success(self):
         """Updating the Discord user ID persists and returns it."""
         self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)

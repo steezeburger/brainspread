@@ -577,10 +577,16 @@
 
   // Vue options mixin for components that render content through a
   // method rather than a computed. A method has no dependency list of
-  // its own, so nothing would re-run it when the setting flips; reading
-  // `emojiRenderKey` inside the method registers the dependency against
-  // whichever render effect is active, and bumping the key on the
+  // its own, so nothing would re-run it when a rendering setting flips;
+  // reading `emojiRenderKey` inside the method registers the dependency
+  // against whichever render effect is active, and bumping the key on a
   // settings event re-renders those consumers without a page reload.
+  //
+  // Despite the name, this now also covers the hashtag/property
+  // highlighting toggles (see content-highlighting.js) — same shape of
+  // problem (a display-only user setting a markdown-rendering method
+  // needs to react to), so it reuses the same key and mixin rather than
+  // adding a near-identical one per setting.
   //
   // Loaded before the components in base.html, so it's there by the time
   // a component's options object is built.
@@ -590,21 +596,29 @@
     },
 
     mounted() {
-      this._onEmojiSettingChanged = () => {
+      this._onRenderSettingChanged = () => {
         // Block content is unchanged — only its rendering is — so a
         // reactive bump is enough; no refetch needed.
         this.emojiRenderKey += 1;
       };
       document.addEventListener(
         "brainspread:emoji-setting-changed",
-        this._onEmojiSettingChanged
+        this._onRenderSettingChanged
+      );
+      document.addEventListener(
+        "brainspread:highlight-setting-changed",
+        this._onRenderSettingChanged
       );
     },
 
     beforeUnmount() {
       document.removeEventListener(
         "brainspread:emoji-setting-changed",
-        this._onEmojiSettingChanged
+        this._onRenderSettingChanged
+      );
+      document.removeEventListener(
+        "brainspread:highlight-setting-changed",
+        this._onRenderSettingChanged
       );
     },
   };

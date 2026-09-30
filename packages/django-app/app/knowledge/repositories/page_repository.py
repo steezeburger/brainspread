@@ -1,12 +1,14 @@
 from datetime import date
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterable, Optional
 
+from django.db import IntegrityError, transaction
 from django.db.models import Count, F, Max, Q, QuerySet
 from django.utils.text import slugify
 
 from common.repositories.base_repository import BaseRepository
 
 from ..models import Page
+from .block_repository import BlockRepository
 
 
 class PageRepository(BaseRepository):
@@ -102,12 +104,9 @@ class PageRepository(BaseRepository):
     def get_or_create_daily_note(cls, user, date: date) -> tuple[Page, bool]:
         """Get or create daily note for specific date"""
         date_str = date.strftime("%Y-%m-%d")
-        page, created = cls.model.objects.get_or_create(
-            user=user,
-            slug=date_str,
-            defaults={"title": date_str, "page_type": "daily", "date": date},
+        return cls._get_or_create_with_revive(
+            user, date_str, {"title": date_str, "page_type": "daily", "date": date}
         )
-        return page, created
 
     @classmethod
     def get_by_title(cls, user, title: str) -> Optional[Page]:
@@ -137,10 +136,8 @@ class PageRepository(BaseRepository):
         moment nothing matched — e.g. an automation's `on <page>`
         target, which auto-creates the same way typing a #hashtag
         auto-creates its tag page."""
-        page, _ = cls.model.objects.get_or_create(
-            user=user,
-            slug=slugify(title)[:200] or "page",
-            defaults={"title": title, "is_published": True},
+        page, _ = cls._get_or_create_with_revive(
+            user, slugify(title)[:200] or "page", {"title": title, "is_published": True}
         )
         return page
 
@@ -148,20 +145,113 @@ class PageRepository(BaseRepository):
     def get_or_create_by_slug(cls, user, slug: str) -> Page:
         """Get or create a page by slug, humanizing the title the same
         way typing a #hashtag into content does (see
-        SyncBlockTagsCommand._get_or_create_tag_page). Used where a
-        bare tag slug should auto-vivify — e.g. an automation's
-        `tagged <slug>` clause."""
-        page, _ = cls.model.objects.get_or_create(
-            user=user,
-            slug=slug,
-            defaults={"title": slug.replace("-", " ").title(), "is_published": True},
+        SyncBlockTagsCommand). Used where a bare tag slug should
+        auto-vivify — e.g. an automation's `tagged <slug>` clause."""
+        page, _ = cls._get_or_create_with_revive(
+            user, slug, {"title": slug.replace("-", " ").title(), "is_published": True}
         )
         return page
+
+    @classmethod
+    def _get_or_create_with_revive(
+        cls, user, slug: str, create_defaults: dict
+    ) -> tuple[Page, bool]:
+        """Shared body for the get_or_create_by_* methods above.
+
+        `(user, slug)` is unique regardless of `is_active`, so a
+        soft-deleted page still occupies its slug — filtering to active
+        pages and then creating on a miss would raise an IntegrityError
+        the moment that slug belongs to a trashed page. Reviving that
+        page (undeleting it and restoring the blocks that were
+        cascade-deleted with it, mirroring RestorePageCommand) is the
+        only valid outcome once a slug is taken; only a genuinely new
+        slug creates a fresh row. The `.create()` is still guarded by a
+        race-condition fallback since the "does it exist" check and the
+        insert aren't atomic together.
+        """
+        existing = cls._get_active_or_revive_by_slug(user, slug)
+        if existing:
+            return existing, False
+
+        try:
+            page = cls.model.objects.create(user=user, slug=slug, **create_defaults)
+        except IntegrityError:
+            page = cls._get_active_or_revive_by_slug(user, slug)
+            if page is None:
+                raise
+        return page, True
+
+    @classmethod
+    def _get_active_or_revive_by_slug(cls, user, slug: str) -> Optional[Page]:
+        """The live page at this slug, reviving it first if it exists
+        only as a soft-deleted row (see _get_or_create_with_revive)."""
+        page = cls.get_queryset().filter(user=user, slug=slug).first()
+        if page:
+            return page
+
+        deleted_page = cls.get_deleted_by_slug(slug, user)
+        if not deleted_page:
+            return None
+
+        with transaction.atomic():
+            deleted_page.undelete()
+            BlockRepository.restore_page_blocks(deleted_page)
+        return deleted_page
+
+    @classmethod
+    def get_deleted_by_slug(cls, slug: str, user) -> Optional[Page]:
+        """Get a soft-deleted page by slug, scoped to `user` — the
+        read side _get_active_or_revive_by_slug uses to find the page
+        occupying a slug that's no longer active."""
+        try:
+            return cls.model.objects.deleted().get(slug=slug, user=user)
+        except cls.model.DoesNotExist:
+            return None
+
+    @classmethod
+    def get_by_slugs(cls, user, slugs: Iterable[str]) -> QuerySet:
+        """Live pages for `user` matching any of `slugs` — resolves
+        hashtag slugs parsed from block content back to their tag
+        pages (see SyncBlockTagsCommand)."""
+        return cls.get_queryset().filter(user=user, slug__in=list(slugs))
 
     @classmethod
     def search_by_title(cls, user, query: str) -> QuerySet:
         """Search pages by title"""
         return cls.get_queryset().filter(user=user, title__icontains=query)
+
+    @classmethod
+    def search(
+        cls,
+        user,
+        query: str,
+        page_type: Optional[str] = None,
+    ) -> QuerySet:
+        """Search published pages by title or slug, for the hashtag
+        autocomplete and page-search endpoints.
+
+        A single-character query matches by prefix only — a bare "c"
+        matching "roam research" would be more noise than signal.
+        Multi-character queries fall back to substring search so typing
+        in the middle of a title still surfaces relevant pages. Ordered
+        by most-recently-modified first, then title.
+        """
+        if len(query) == 1:
+            search_q = Q(title__istartswith=query) | Q(slug__istartswith=query)
+        else:
+            search_q = Q(title__icontains=query) | Q(slug__icontains=query)
+
+        queryset = (
+            cls.get_queryset()
+            .filter(user=user, is_published=True)
+            .filter(search_q)
+            .order_by("-modified_at", "title")
+            .select_related("user")
+        )
+        if page_type:
+            queryset = queryset.filter(page_type=page_type)
+
+        return queryset
 
     @classmethod
     def get_dailies_in_range(cls, user, start_date: date, end_date: date) -> QuerySet:

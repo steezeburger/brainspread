@@ -23,6 +23,8 @@ window.SettingsModal = {
       selectedTimezone: this.user?.timezone || "UTC",
       selectedTimeFormat: this.user?.time_format || "12h",
       renderEmoji: this.user?.render_emoji !== false,
+      highlightHashtags: this.user?.highlight_hashtags !== false,
+      highlightProperties: this.user?.highlight_properties !== false,
       discordWebhookUrl: this.user?.discord_webhook_url || "",
       discordUserId: this.user?.discord_user_id || "",
       isUpdating: false,
@@ -95,6 +97,12 @@ window.SettingsModal = {
         }
         if (typeof newUser?.render_emoji === "boolean") {
           this.renderEmoji = newUser.render_emoji;
+        }
+        if (typeof newUser?.highlight_hashtags === "boolean") {
+          this.highlightHashtags = newUser.highlight_hashtags;
+        }
+        if (typeof newUser?.highlight_properties === "boolean") {
+          this.highlightProperties = newUser.highlight_properties;
         }
         if (typeof newUser?.discord_webhook_url === "string") {
           this.discordWebhookUrl = newUser.discord_webhook_url;
@@ -246,6 +254,45 @@ window.SettingsModal = {
               hasUpdates = true;
             } else {
               this.emitToast("failed to update emoji setting");
+              return;
+            }
+          }
+
+          const currentHighlightHashtags =
+            this.user.highlight_hashtags !== false;
+          if (this.highlightHashtags !== currentHighlightHashtags) {
+            const result = await window.apiService.updateUserHighlightHashtags(
+              this.highlightHashtags
+            );
+            if (result.success) {
+              console.log("Hashtag highlighting setting updated");
+              this.$emit("user-updated", result.data.user);
+              document.dispatchEvent(
+                new CustomEvent("brainspread:highlight-setting-changed")
+              );
+              hasUpdates = true;
+            } else {
+              this.emitToast("failed to update hashtag highlighting setting");
+              return;
+            }
+          }
+
+          const currentHighlightProperties =
+            this.user.highlight_properties !== false;
+          if (this.highlightProperties !== currentHighlightProperties) {
+            const result =
+              await window.apiService.updateUserHighlightProperties(
+                this.highlightProperties
+              );
+            if (result.success) {
+              console.log("Property highlighting setting updated");
+              this.$emit("user-updated", result.data.user);
+              document.dispatchEvent(
+                new CustomEvent("brainspread:highlight-setting-changed")
+              );
+              hasUpdates = true;
+            } else {
+              this.emitToast("failed to update property highlighting setting");
               return;
             }
           }
@@ -715,6 +762,24 @@ window.SettingsModal = {
               your notes always store the shortcode text (e.g.
               <code>:grimacing:</code>) &mdash; this only changes how it
               displays, so turning it off gives you the raw text back.
+            </p>
+          </div>
+
+          <div class="settings-section">
+            <h3>highlighting</h3>
+            <label class="settings-checkbox">
+              <input type="checkbox" v-model="highlightHashtags" />
+              highlight #hashtags
+            </label>
+            <label class="settings-checkbox">
+              <input type="checkbox" v-model="highlightProperties" />
+              highlight key::value properties
+            </label>
+            <p class="settings-hint">
+              turns off the highlighted chip styling for #hashtags and
+              key::value properties &mdash; they still link to the tag's
+              page or matching saved view when clicked, just as plain
+              text.
             </p>
           </div>
 
