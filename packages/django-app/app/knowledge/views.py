@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from assets.models import Asset
 from knowledge.commands import (
     AddTemplateBlocksToPageCommand,
+    BlockTodoToggleConflictError,
     BlockUpdateConflictError,
     BulkDeleteBlocksCommand,
     BulkMoveBlocksCommand,
@@ -1574,6 +1575,18 @@ def toggle_block_todo(request):
                 "errors": form.errors,
             }
             return Response(response, status=status.HTTP_400_BAD_REQUEST)
+
+    except BlockTodoToggleConflictError as e:
+        # The caller's expected_from_type no longer matches — another
+        # session already cycled this block. Ship the current server-side
+        # block back with the 409 instead of cycling further from a state
+        # the caller never saw (issue #236).
+        response: BlockResponse = {
+            "success": False,
+            "data": e.block.to_dict(),
+            "errors": {"non_field_errors": ["block was modified in another session"]},
+        }
+        return Response(response, status=status.HTTP_409_CONFLICT)
 
     except ValidationError as e:
         return Response(

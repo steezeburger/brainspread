@@ -78,7 +78,10 @@ from .share_page_command import SharePageCommand
 from .snooze_block_command import SnoozeBlockCommand
 from .sync_block_tags_command import SyncBlockTagsCommand
 from .tag_blocks_command import TagBlocksCommand, UntagBlocksCommand
-from .toggle_block_todo_command import ToggleBlockTodoCommand
+from .toggle_block_todo_command import (
+    BlockTodoToggleConflictError,
+    ToggleBlockTodoCommand,
+)
 from .touch_page_command import TouchPageCommand
 from .update_block_command import BlockUpdateConflictError, UpdateBlockCommand
 from .update_custom_variable_command import UpdateCustomVariableCommand

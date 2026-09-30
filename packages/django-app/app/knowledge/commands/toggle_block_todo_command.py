@@ -6,6 +6,17 @@ from ..models import Block
 from .set_block_type_command import SetBlockTypeCommand, get_next_todo_type
 
 
+class BlockTodoToggleConflictError(Exception):
+    """Raised when the caller's `expected_from_type` no longer matches the
+    block's actual block_type — another session cycled it in between. Carries
+    the current server-side block so the API can return it unchanged instead
+    of cycling from a state the caller never saw (issue #236)."""
+
+    def __init__(self, block: Block) -> None:
+        self.block = block
+        super().__init__("Block was toggled by another session")
+
+
 class ToggleBlockTodoCommand(AbstractBaseCommand):
     """Command to cycle a block's todo status to the next state."""
 
@@ -18,6 +29,17 @@ class ToggleBlockTodoCommand(AbstractBaseCommand):
         block: Block = self.form.cleaned_data["block"]
         user = self.form.cleaned_data["user"]
         source = self.form.cleaned_data.get("source")
+
+        # Optimistic-concurrency check, mirroring UpdateBlockCommand's
+        # expected_content: presence in cleaned_data means the caller opted
+        # in (BaseForm.clean prunes unsubmitted keys). Without this, a stale
+        # page cycles from whatever the block's REAL current type is rather
+        # than the type the user actually saw and clicked.
+        if "expected_from_type" in self.form.cleaned_data:
+            expected_from_type = self.form.cleaned_data["expected_from_type"]
+            if expected_from_type != block.block_type:
+                raise BlockTodoToggleConflictError(block)
+
         next_type = get_next_todo_type(block.block_type)
 
         set_form = SetBlockTypeForm(

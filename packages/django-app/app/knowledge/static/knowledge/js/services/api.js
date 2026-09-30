@@ -299,10 +299,17 @@ class ApiService {
     });
   }
 
-  async toggleBlockTodo(blockUuid) {
+  async toggleBlockTodo(blockUuid, expectedFromType) {
+    // Opt in to the server-side conflict check with the type this tab
+    // last saw. Omitting it (JSON.stringify drops undefined) degrades to
+    // the old cycle-from-whatever-the-server-has behavior.
+    const body = { block: blockUuid };
+    if (expectedFromType !== undefined) {
+      body.expected_from_type = expectedFromType;
+    }
     return await this.request("/knowledge/api/blocks/toggle-todo/", {
       method: "POST",
-      body: JSON.stringify({ block: blockUuid }),
+      body: JSON.stringify(body),
     });
   }
 

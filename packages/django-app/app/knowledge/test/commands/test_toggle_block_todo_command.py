@@ -5,9 +5,10 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
-from knowledge.commands import ToggleBlockTodoCommand
+from knowledge.commands import BlockTodoToggleConflictError, ToggleBlockTodoCommand
 from knowledge.forms import ToggleBlockTodoForm
 from knowledge.models import Block, Page
+from knowledge.test.helpers import BlockFactory, PageFactory, UserFactory
 
 User = get_user_model()
 
@@ -392,3 +393,76 @@ class TestToggleBlockTodoCommand:
 
         assert result.block_type == "wontdo"
         assert result.completed_at is not None
+
+    def test_toggle_succeeds_when_expected_from_type_matches(self):
+        """expected_from_type matching the block's real type cycles normally."""
+        user = UserFactory()
+        page = PageFactory(user=user)
+        block = BlockFactory(
+            user=user, page=page, content="TODO write docs", block_type="todo"
+        )
+
+        form = ToggleBlockTodoForm(
+            {
+                "user": user.id,
+                "block": str(block.uuid),
+                "expected_from_type": "todo",
+            }
+        )
+        assert form.is_valid()
+        result = ToggleBlockTodoCommand(form).execute()
+
+        assert result.block_type == "doing"
+        assert result.content == "DOING write docs"
+
+        block.refresh_from_db()
+        assert block.block_type == "doing"
+
+    def test_toggle_raises_conflict_when_expected_from_type_diverged(self):
+        """Simulates the issue #236 scenario: the block was already cycled
+        by another session (todo -> doing -> done) since this tab last saw
+        it as "todo". Toggling with a stale expected_from_type must not
+        cycle the block further (done -> later) — it should raise a
+        conflict and leave the block exactly as the other session left it."""
+        user = UserFactory()
+        page = PageFactory(user=user)
+        block = BlockFactory(
+            user=user, page=page, content="DONE write docs", block_type="done"
+        )
+
+        form = ToggleBlockTodoForm(
+            {
+                "user": user.id,
+                "block": str(block.uuid),
+                # Stale — this tab still thinks the block is "todo".
+                "expected_from_type": "todo",
+            }
+        )
+        assert form.is_valid()
+
+        with pytest.raises(BlockTodoToggleConflictError) as exc_info:
+            ToggleBlockTodoCommand(form).execute()
+
+        # The block was returned unchanged, not cycled from "done".
+        conflict_block = exc_info.value.block
+        assert conflict_block.block_type == "done"
+        assert conflict_block.content == "DONE write docs"
+
+        block.refresh_from_db()
+        assert block.block_type == "done"
+        assert block.content == "DONE write docs"
+
+    def test_toggle_without_expected_from_type_ignores_conflict_check(self):
+        """Omitting expected_from_type (existing MCP/AI-chat callers) keeps
+        the old behavior: cycle from whatever the server's real type is."""
+        user = UserFactory()
+        page = PageFactory(user=user)
+        block = BlockFactory(
+            user=user, page=page, content="DONE write docs", block_type="done"
+        )
+
+        form = ToggleBlockTodoForm({"user": user.id, "block": str(block.uuid)})
+        assert form.is_valid()
+        result = ToggleBlockTodoCommand(form).execute()
+
+        assert result.block_type == "later"

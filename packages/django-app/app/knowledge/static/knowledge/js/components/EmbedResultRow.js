@@ -214,7 +214,10 @@ window.EmbedResultRow = {
       const b = this.block;
       if (!this.isTodoType(b)) return;
       try {
-        const r = await window.apiService.toggleBlockTodo(b.uuid);
+        const r = await window.apiService.toggleBlockTodo(
+          b.uuid,
+          b.block_type
+        );
         if (r && r.success && r.data) {
           // Mutate the prop in place so the bullet + meta update
           // without forcing a parent refetch. The row stays visible
@@ -234,6 +237,18 @@ window.EmbedResultRow = {
           );
         }
       } catch (err) {
+        if (err && err.status === 409) {
+          // Stale local state — another page/tab already changed this
+          // block. Adopt the fresh state instead of erroring (issue #236).
+          const serverData = err.payload && err.payload.data;
+          if (serverData) {
+            b.block_type = serverData.block_type;
+            b.completed_at = serverData.completed_at;
+            b.content = serverData.content;
+            await this.notifyChanged(b.uuid);
+          }
+          return;
+        }
         console.error("toggleBlockTodo failed:", err);
         this.$emit("error", "failed to toggle todo. please try again.");
       }

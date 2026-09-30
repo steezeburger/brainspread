@@ -1344,7 +1344,10 @@ const Page = {
     async toggleBlockTodo(block) {
       if (this.monitorMode) return;
       try {
-        const result = await window.apiService.toggleBlockTodo(block.uuid);
+        const result = await window.apiService.toggleBlockTodo(
+          block.uuid,
+          block.block_type
+        );
         if (result.success) {
           block.block_type = result.data.block_type;
           block.content = result.data.content;
@@ -1367,6 +1370,20 @@ const Page = {
           );
         }
       } catch (error) {
+        if (error && error.status === 409) {
+          // This tab's idea of the block's type was stale — another
+          // page/tab/session already changed it. Nothing was cycled;
+          // adopt the fresh state instead of erroring (issue #236).
+          const serverData = error.payload && error.payload.data;
+          if (serverData) {
+            block.block_type = serverData.block_type;
+            block.content = serverData.content;
+            block._baseContent = serverData.content;
+            block.completed_at = serverData.completed_at;
+            this.broadcastBlockChanged(block.uuid);
+          }
+          return;
+        }
         console.error("failed to toggle block todo:", error);
         this.toastBlockError(error, "failed to toggle todo. please try again.");
       }
