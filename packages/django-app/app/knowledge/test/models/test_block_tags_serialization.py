@@ -33,10 +33,9 @@ class TestBlockToDictTags(TestCase):
 
         self.assertEqual(block.to_dict()["tags"], [expected])
 
-    def test_own_page_and_dailies_are_not_tags(self):
-        """get_tags() already filters these out — they'd be useless move
-        suggestions (the block is on one and the picker pins today's
-        daily itself)."""
+    def test_dailies_are_not_tags(self):
+        """Daily-note links aren't shown as hashtag chips — they'd be a
+        useless move suggestion (the picker pins today's daily itself)."""
         daily = PageFactory(
             user=self.user,
             title="2026-08-21",
@@ -45,11 +44,24 @@ class TestBlockToDictTags(TestCase):
             date=date(2026, 8, 21),
         )
         block = BlockFactory(user=self.user, page=self.home, content="note")
-        block.pages.add(self.home, daily, self.recipes)
+        block.pages.add(daily, self.recipes)
 
         names = [tag["name"] for tag in block.to_dict()["tags"]]
 
         self.assertEqual(names, ["recipes"])
+
+    def test_own_page_is_a_tag(self):
+        """A block living on a page it's also hashtag-linked to (e.g. an
+        automation definition on the `automation` page carrying
+        `#automation`) is genuinely tagged with it — get_tags() must not
+        hide the block's own page (issue #217), or the serialized tag
+        list lies to consumers like the run-automation menu."""
+        block = BlockFactory(user=self.user, page=self.home, content="note #home")
+        block.pages.add(self.home, self.recipes)
+
+        names = [tag["name"] for tag in block.to_dict()["tags"]]
+
+        self.assertEqual(names, ["home", "recipes"])
 
     def test_untagged_block_has_no_tags(self):
         block = BlockFactory(user=self.user, page=self.home, content="note")

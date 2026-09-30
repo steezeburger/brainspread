@@ -1,5 +1,5 @@
 from datetime import time
-from typing import TYPE_CHECKING, Optional, TypedDict
+from typing import TYPE_CHECKING, List, Optional, TypedDict
 
 from django.conf import settings
 from django.db import models
@@ -7,6 +7,7 @@ from django.db import models
 from common.models.crud_timestamps_mixin import CRUDTimestampsMixin
 from common.models.soft_delete_timestamp_mixin import SoftDeleteTimestampMixin
 from common.models.uuid_mixin import UUIDModelMixin
+from knowledge.services.automation_spec import AUTOMATION_TAG_SLUG
 from knowledge.services.due_dates import combine_local_to_utc
 
 if TYPE_CHECKING:
@@ -220,29 +221,42 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
         return lines[0] if lines else ""
 
     def get_tags(self) -> list:
-        """Pages this block is tagged with, excluding the page it belongs
-        to and daily notes (daily-note tags aren't shown as hashtag
-        chips). Filters in Python over ``self.pages.all()`` so a
+        """Pages this block is tagged with, excluding daily notes (a
+        daily link means "appears on that daily", not a tag). The
+        block's own page is NOT excluded: a block living on a tag page
+        it also carries the hashtag for is genuinely tagged with it, and
+        hiding that here broke every truth-consumer downstream —
+        tag-removal sync could never unlink an own-page tag, and the
+        serialized tag list lied to the run-automation menu (issue
+        #217). Redundant own-page *display* is a renderer concern, not a
+        data one. Filters in Python over ``self.pages.all()`` so a
         ``prefetch_related("pages")`` cache is used instead of bypassed —
         same pattern as get_pending_reminders(). Also drops an archived
         tag page: ``self.pages`` isn't filtered by is_active (only
         BaseRepository.get_queryset() applies that), so an unfiltered
         `.all()` would otherwise leak an archived page back in as a
-        chip — the same category of bug as #122's nested-block leak.
-        Compares by ``page_id`` rather than ``.uuid`` — a page assigned
-        in-memory (e.g. straight from a factory or a just-created Page,
-        never round-tripped through the DB) holds `.uuid` as a plain
-        str, which never compares equal to the UUID object a fresh
-        query returns for the same row."""
+        chip — the same category of bug as #122's nested-block leak."""
         return [
             page
             for page in self.pages.all()
-            if page.is_active and page.id != self.page_id and page.page_type != "daily"
+            if page.is_active and page.page_type != "daily"
         ]
 
     def get_tag_names(self):
         """Get tag names (uses slug format without # prefix)"""
         return [page.slug for page in self.get_tags()]
+
+    def is_automation(self, tag_slugs: Optional[List[str]] = None) -> bool:
+        """Whether this block is a live automation definition. Mirrors
+        ``BlockRepository._automation_blocks_qs`` — tagged ``automation``
+        or living on the ``automation`` page, never inside a template
+        (dormant blueprint) — keep the two in sync. Pass ``tag_slugs``
+        when the tag list is already computed (to_dict) to skip
+        re-deriving it from get_tags()."""
+        if self.page.page_type == "template":
+            return False
+        slugs = self.get_tag_names() if tag_slugs is None else tag_slugs
+        return self.page.slug == AUTOMATION_TAG_SLUG or AUTOMATION_TAG_SLUG in slugs
 
     def _tag_to_dict(self, tag: "Page") -> "BlockTagData":
         """Serialize one tag page for BlockData["tags"].
@@ -266,6 +280,7 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
         due_date, due_time = self._due_local()
         pending_reminders = self._pending_reminders_local()
         first_reminder = pending_reminders[0] if pending_reminders else None
+        tags = self.get_tags()
         data: BlockData = {
             "uuid": str(self.uuid),
             "content": self.content,
@@ -282,7 +297,10 @@ class Block(UUIDModelMixin, CRUDTimestampsMixin, SoftDeleteTimestampMixin):
             "media_url": self.media_url,
             "asset": self.asset.to_dict() if self.asset_id else None,
             "properties": self.properties or {},
-            "tags": [self._tag_to_dict(tag) for tag in self.get_tags()],
+            "tags": [self._tag_to_dict(tag) for tag in tags],
+            # Derived server-side so the client never re-implements the
+            # membership rule (tag OR automation-page residency).
+            "is_automation": self.is_automation([tag.slug for tag in tags]),
             "children": None,
             # `due_at` is the raw UTC instant; `due_date` / `due_time` are the
             # user-local pieces the UI renders (time is None for all-day items).
@@ -460,6 +478,7 @@ class BlockData(TypedDict):
     asset: Optional[dict]
     properties: dict
     tags: Optional[list[BlockTagData]]
+    is_automation: bool
     children: Optional[list["BlockData"]]
     due_at: Optional[str]
     due_date: Optional[str]

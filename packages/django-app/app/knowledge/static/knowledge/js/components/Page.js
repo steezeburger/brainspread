@@ -976,6 +976,12 @@ const Page = {
           if (result.data && Array.isArray(result.data.tags)) {
             block.tags = result.data.tags;
           }
+          // Same server-derived field the ⋮ menu gates "run automation"
+          // on (see BlockComponent.isAutomationBlock) — keep it live as
+          // the #automation hashtag is typed/removed from content.
+          if (result.data && result.data.is_automation !== undefined) {
+            block.is_automation = result.data.is_automation;
+          }
           // Inline URL detection on save: if the user typed (or pasted
           // without the paste handler firing, e.g. mobile) a bare URL,
           // promote the block to an embed so the card renders. Archiving
