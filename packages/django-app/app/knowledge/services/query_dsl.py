@@ -27,6 +27,9 @@ Predicates (compact ``field:value`` or comparison ``field op value``):
     due <= now              → {"due_at": {"lte": "now"}}
     due_has_time:true       → {"due_has_time": true}
     completed >= "7 days ago" → {"completed_at": {"gte": "7 days ago"}}
+    created < "7 days ago"  → {"created_at": {"lt": "7 days ago"}}
+    page:braindump          → {"page": "braindump"}
+    under:<block-uuid>      → {"under": "<block-uuid>"}
     prop:key=value          → {"property_eq": {"key": ..., "eq": ...}}
 
 ``scheduled`` is accepted as an alias for ``due`` (matching the engine's
@@ -200,6 +203,8 @@ _DATE_FIELDS = {
     "scheduled_for": "due_at",
     "completed": "completed_at",
     "completed_at": "completed_at",
+    "created": "created_at",
+    "created_at": "created_at",
 }
 
 _COMPARISON_OPS = {"<": "lt", "<=": "lte", ">": "gt", ">=": "gte", "=": "eq"}
@@ -250,6 +255,10 @@ def _compile_colon_predicate(field: str, value: str, raw: str) -> Dict[str, Any]
         )
     if field == "has":
         return {"has_property": value}
+    if field == "page":
+        return {"page": value}
+    if field == "under":
+        return {"under": value}
     if field == "due_has_time":
         lowered = value.lower()
         if lowered not in ("true", "false"):
@@ -267,7 +276,8 @@ def _compile_colon_predicate(field: str, value: str, raw: str) -> Dict[str, Any]
 
     raise QueryDSLError(
         f"unknown predicate `{field}:` (expected tag / type / page_type / "
-        "has / content / prop / due / due_has_time / completed)"
+        "has / content / prop / due / due_has_time / completed / created / "
+        "page / under)"
     )
 
 

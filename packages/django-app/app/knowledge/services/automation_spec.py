@@ -36,6 +36,26 @@ Recognized props (slice 1 — schedule + manual triggers, command actions):
   Integers, ascending, max ``MAX_FOR_ITEMS``. Mutually exclusive with
   ``query::`` — an automation has exactly one iteration source (the
   query's matched blocks, or ``for::``'s literal items), never both.
+- ``when::``    reactive slice (issue #206) — a condition over the
+  ``query::`` result that turns a tick's "still matches" into a
+  state-change signal:
+
+    - ``becomes-empty`` / ``becomes-nonempty`` — fires on the rising
+      edge only (see :mod:`.automation_when` for the edge-detect
+      design); every other tick records a SKIPPED run.
+    - ``count <op> N`` (``<``/``<=``/``>``/``>=``) — fires when the
+      matched count crosses the threshold, same rising-edge rule.
+    - ``matched-for <n>m|h|d`` — per-block dwell: the action runs only
+      over the subset of matched blocks that have matched continuously
+      for at least that long (e.g. nudge a ``doing`` block open 2h).
+
+  Requires ``query::``. An explicit manual run bypasses the gate (same
+  rationale as the ``enabled::`` bypass) — it always executes.
+- ``watch::``   only meaningful with ``when:: matched-for`` — narrows
+  which fields/tags count as a "change" for that block's dwell clock: a
+  watched field flipping resets the clock even though the block never
+  left the match set. Comma/space separated tokens: ``due``, ``type``,
+  ``content``, ``tag:<slug>``, ``property:<key>``.
 
 Action args may carry ``{{token}}`` placeholders (issue #209), resolved
 by ``services.content_tokens`` / ``services.automation_actions`` at run
@@ -51,6 +71,7 @@ from __future__ import annotations
 import re
 import shlex
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from django.utils.text import slugify
@@ -183,6 +204,42 @@ class ForSpec:
     raw: str
 
 
+# WhenSpec.kind values (issue #206 reactive slice).
+WHEN_BECOMES_EMPTY = "becomes-empty"
+WHEN_BECOMES_NONEMPTY = "becomes-nonempty"
+WHEN_COUNT = "count"
+WHEN_MATCHED_FOR = "matched-for"
+
+_WHEN_COUNT_RE = re.compile(r"^count\s*(<=|>=|<|>)\s*(\d+)$")
+_WHEN_MATCHED_FOR_RE = re.compile(r"^matched-for\s+(\d+)(m|h|d)$")
+
+# `count` comparison ops, shared shape with the query DSL's own
+# comparisons (services.query_dsl._COMPARISON_OPS).
+WHEN_COUNT_OPS = {
+    "<": lambda count, threshold: count < threshold,
+    "<=": lambda count, threshold: count <= threshold,
+    ">": lambda count, threshold: count > threshold,
+    ">=": lambda count, threshold: count >= threshold,
+}
+
+
+@dataclass(frozen=True)
+class WhenSpec:
+    """A ``when::`` reactive condition (issue #206) — see the module
+    docstring's ``when::`` entry. ``kind`` selects which fields apply:
+    ``op``/``threshold`` for ``count``, ``duration`` for ``matched-for``,
+    neither for ``becomes-empty``/``becomes-nonempty``."""
+
+    kind: str
+    raw: str
+    op: Optional[str] = None
+    threshold: Optional[int] = None
+    duration: Optional[timedelta] = None
+
+
+_WATCH_TOKEN_RE = re.compile(r"^(due|type|content|tag:[\w-]+|property:[\w-]+)$")
+
+
 @dataclass(frozen=True)
 class AutomationSpec:
     block_uuid: str
@@ -197,6 +254,8 @@ class AutomationSpec:
     enabled: bool
     query: Optional[QuerySpec] = None
     for_spec: Optional[ForSpec] = None
+    when: Optional[WhenSpec] = None
+    watch: Optional[frozenset] = None
 
 
 def parse_automation_block(block: "Block") -> AutomationSpec:
@@ -216,6 +275,10 @@ def parse_automation_block(block: "Block") -> AutomationSpec:
     for_spec = _parse_for(_prop_str(props, "for"), errors) if "for" in props else None
     allow = _parse_allow(_prop_str(props, "allow")) if "allow" in props else None
     enabled = _parse_bool(_prop_str(props, "enabled", "true"))
+    when = _parse_when(_prop_str(props, "when"), errors) if "when" in props else None
+    watch = (
+        _parse_watch(_prop_str(props, "watch"), errors) if "watch" in props else None
+    )
 
     if action is not None:
         arg_tokens = [name for arg in action.args for name in token_names(arg)]
@@ -232,6 +295,11 @@ def parse_automation_block(block: "Block") -> AutomationSpec:
             "has one iteration source"
         )
 
+    if when is not None and query is None:
+        errors.append("`when::` requires a `query::`")
+    if watch is not None and (when is None or when.kind != WHEN_MATCHED_FOR):
+        errors.append("`watch::` only applies to `when:: matched-for ...`")
+
     if errors:
         raise AutomationSpecError(errors)
 
@@ -245,6 +313,8 @@ def parse_automation_block(block: "Block") -> AutomationSpec:
         enabled=enabled,
         query=query,
         for_spec=for_spec,
+        when=when,
+        watch=watch,
     )
 
 
@@ -382,6 +452,63 @@ def _parse_query(raw: str, errors: List[str]) -> Optional[QuerySpec]:
         errors.append(f"bad query: {exc}")
         return None
     return QuerySpec(kind=QUERY_INLINE, filter_spec=filter_spec)
+
+
+def _parse_when(raw: str, errors: List[str]) -> Optional[WhenSpec]:
+    raw = (raw or "").strip()
+    if not raw:
+        errors.append(
+            "`when::` needs a condition, e.g. `when:: becomes-empty`, "
+            "`when:: count > 5`, or `when:: matched-for 2h`"
+        )
+        return None
+
+    lowered = raw.lower()
+    if lowered == WHEN_BECOMES_EMPTY:
+        return WhenSpec(kind=WHEN_BECOMES_EMPTY, raw=raw)
+    if lowered == WHEN_BECOMES_NONEMPTY:
+        return WhenSpec(kind=WHEN_BECOMES_NONEMPTY, raw=raw)
+
+    match = _WHEN_COUNT_RE.match(lowered)
+    if match:
+        op, threshold = match.group(1), int(match.group(2))
+        return WhenSpec(kind=WHEN_COUNT, raw=raw, op=op, threshold=threshold)
+
+    match = _WHEN_MATCHED_FOR_RE.match(lowered)
+    if match:
+        amount, unit = int(match.group(1)), match.group(2)
+        seconds = amount * {"m": 60, "h": 3600, "d": 86400}[unit]
+        if seconds < 60:
+            errors.append("`when:: matched-for` interval must be at least 1 minute")
+            return None
+        return WhenSpec(
+            kind=WHEN_MATCHED_FOR, raw=raw, duration=timedelta(seconds=seconds)
+        )
+
+    errors.append(
+        f"unknown `when::` condition `{raw}` (expected `becomes-empty`, "
+        "`becomes-nonempty`, `count <op> N` (</<=/>/>=), or "
+        "`matched-for <n>m|h|d`)"
+    )
+    return None
+
+
+def _parse_watch(raw: str, errors: List[str]) -> Optional[frozenset]:
+    raw = (raw or "").strip()
+    if not raw:
+        errors.append(
+            "`watch::` needs field/tag tokens, e.g. `watch:: due, tag:priority`"
+        )
+        return None
+    tokens = [t.strip().lower() for t in re.split(r"[,\s]+", raw) if t.strip()]
+    bad = [t for t in tokens if not _WATCH_TOKEN_RE.match(t)]
+    if bad:
+        errors.append(
+            f"bad `watch::` token(s): {', '.join(bad)} (expected due / type / "
+            "content / tag:<slug> / property:<key>)"
+        )
+        return None
+    return frozenset(tokens)
 
 
 def _parse_for(raw: str, errors: List[str]) -> Optional[ForSpec]:

@@ -6,7 +6,15 @@ from django.utils.html import format_html
 
 from .commands.normalize_block_order_command import NormalizeBlockOrderCommand
 from .forms.normalize_block_order_form import NormalizeBlockOrderForm
-from .models import AutomationRun, Block, BlockRevision, Page, Reminder, ReminderAction
+from .models import (
+    AutomationBlockMatch,
+    AutomationRun,
+    Block,
+    BlockRevision,
+    Page,
+    Reminder,
+    ReminderAction,
+)
 from .repositories import BlockRepository
 
 
@@ -282,6 +290,38 @@ class AutomationRunAdmin(admin.ModelAdmin):
             return obj.automation_block_uuid
         url = reverse("admin:knowledge_block_change", args=[block.pk])
         return format_html('<a href="{}">{}</a>', url, obj.automation_block_uuid)
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+
+@admin.register(AutomationBlockMatch)
+class AutomationBlockMatchAdmin(admin.ModelAdmin):
+    """Read-only dwell-watermark view (issue #206) — rows are written by
+    AutomationBlockMatchRepository as part of a `when:: matched-for` run,
+    never by hand."""
+
+    list_display = (
+        "short_uuid",
+        "automation_block_uuid",
+        "matched_block_uuid",
+        "user",
+        "first_matched_at",
+    )
+    list_filter = ("created_at",)
+    search_fields = ("automation_block_uuid", "matched_block_uuid", "user__email")
+    readonly_fields = (
+        "id",
+        "uuid",
+        "user",
+        "automation_block_uuid",
+        "matched_block_uuid",
+        "first_matched_at",
+        "fingerprint",
+        "created_at",
+        "modified_at",
+    )
+    ordering = ("-created_at",)
 
     def has_add_permission(self, request) -> bool:
         return False

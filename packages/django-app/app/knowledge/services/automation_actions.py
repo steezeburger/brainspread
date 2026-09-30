@@ -554,6 +554,84 @@ def _move_to_page(
     )
 
 
+def _file_by_tag(
+    ctx: ActionContext, blocks: List[Block], args: Tuple[str, ...]
+) -> ActionResult:
+    """Move each matched block (with its subtree) to the page named by
+    its own single tag — the braindumps sweep (issue #206): dump
+    everything on one inbox page under whatever hashtag it carries, then
+    file each block onto that tag's page automatically.
+
+    Args are excluded tag slugs — e.g. a block matched via `tag:braindump`
+    still carries that organizational tag alongside its real destination
+    tag, so `file_by_tag braindump` strips it before picking the target.
+    A block left with zero or more than one candidate tag after excluding
+    is skipped (recorded, not failed) rather than guessed at — the same
+    ambiguity rule `{{block.tag}}` applies elsewhere in this module."""
+    excluded = {a.strip().lower().lstrip("#") for a in args if a.strip()}
+    top_blocks, subtree_by_top = _partition_matched_blocks(blocks)
+
+    groups_by_page_uuid: Dict[str, List[Block]] = {}
+    skipped: List[dict] = []
+    for top in top_blocks:
+        candidates = [t for t in top.get_tag_names() if t not in excluded]
+        if len(candidates) != 1:
+            found = ", ".join(candidates) if candidates else "(none)"
+            skipped.append(
+                {
+                    "block_uuid": str(top.uuid),
+                    "reason": (
+                        "file_by_tag needs exactly one tag after excluding — "
+                        f"found {len(candidates)}: {found}"
+                    ),
+                }
+            )
+            continue
+        page = PageRepository.get_or_create_by_slug(ctx.user, candidates[0])
+        if page.page_type == "template":
+            skipped.append(
+                {
+                    "block_uuid": str(top.uuid),
+                    "reason": f"`{candidates[0]}` is a template page",
+                }
+            )
+            continue
+        groups_by_page_uuid.setdefault(str(page.uuid), []).extend(
+            subtree_by_top[top.pk]
+        )
+
+    affected = 0
+    details: List[dict] = []
+    groups: List[dict] = []
+    for page_uuid, group_blocks in groups_by_page_uuid.items():
+        entry = {"target_page_uuid": page_uuid, "count": len(group_blocks)}
+        form = BulkMoveBlocksToPageForm(
+            data={
+                "user": ctx.user.id,
+                "blocks": [str(block.uuid) for block in group_blocks],
+                "target_page": page_uuid,
+            }
+        )
+        if not form.is_valid():
+            entry.update(affected=0, error=form.errors.as_json())
+        else:
+            outcome = BulkMoveBlocksToPageCommand(form).execute()
+            affected += outcome["moved_count"]
+            details.append(
+                {
+                    "moved_count": outcome["moved_count"],
+                    "skipped_count": outcome["skipped_count"],
+                    "target_page_uuid": page_uuid,
+                }
+            )
+            entry["affected"] = outcome["moved_count"]
+        groups.append(entry)
+
+    return ActionResult(
+        affected=affected, details=details, groups=groups, skipped=skipped
+    )
+
+
 # Cap how many block lines ride in a notify embed; Discord embeds top out
 # well above this, but a nudge listing 500 items is noise, not a nudge.
 _NOTIFY_MAX_LINES = 10
@@ -1188,6 +1266,9 @@ COMMAND_ACTIONS: Dict[str, ActionDef] = {
     "untag": ActionDef(handler=_untag, capability="untag"),
     "set_due": ActionDef(handler=_set_due, capability="set_due"),
     "set_property": ActionDef(handler=_set_property, capability="set_property"),
+    "file_by_tag": ActionDef(
+        handler=_file_by_tag, capability="file_by_tag", block_token_mode="none"
+    ),
     "create_block": ActionDef(
         handler=_create_block,
         capability="create_block",

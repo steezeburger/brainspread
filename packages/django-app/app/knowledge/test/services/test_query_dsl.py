@@ -149,6 +149,21 @@ class TestCompileInlineQuery(SimpleTestCase):
         # Anything with DSL syntax still parses as an expression.
         self.assertEqual(compile_inline_query("tag:meeting"), {"has_tag": "meeting"})
 
+    def test_created_age_page_and_under_predicates(self):
+        # issue #206: `created`/age filtering shares the due/completed
+        # date machinery; `page:`/`under:` are new predicate names.
+        self.assertEqual(
+            compile_inline_query('created < "7 days ago"'),
+            {"created_at": {"lt": "7 days ago"}},
+        )
+        self.assertEqual(
+            compile_inline_query("created:2026-01-01"),
+            {"created_at": "2026-01-01"},
+        )
+        self.assertEqual(compile_inline_query("page:braindump"), {"page": "braindump"})
+        uuid_ = "11111111-1111-1111-1111-111111111111"
+        self.assertEqual(compile_inline_query(f"under:{uuid_}"), {"under": uuid_})
+
     def test_errors_are_specific(self):
         with self.assertRaises(QueryDSLError):
             compile_inline_query("")
