@@ -73,14 +73,6 @@
     return Math.max(minPx, (refWidth || 0) * ratio);
   }
 
-  // Distance from touchX to the named screen edge, given the viewport
-  // width. Used to gate an edge-swipe-to-open gesture to a narrow strip
-  // so it doesn't fire on every touch that happens to drift rightward.
-  function distanceFromEdge(touchX, edge, viewportWidth) {
-    if (edge === "right") return viewportWidth - touchX;
-    return touchX;
-  }
-
   // Factory for the per-element gesture state a Vue component wires its
   // @touchstart/@touchmove/@touchend/@touchcancel handlers to. `options`:
   //   - direction: -1 (leftward closes) or 1 (rightward closes)
@@ -151,98 +143,12 @@
     };
   }
 
-  // Factory for the edge-swipe-to-open gesture (issue #115 follow-up): a
-  // drag starting within `edgeWidth` px of the named screen edge, past
-  // the same threshold, opens a closed drawer. Meant to be wired to
-  // document-level touch listeners rather than a specific element, since
-  // a closed drawer has no full-height surface of its own to listen on.
-  // `options`:
-  //   - edge: "left" (left nav) or "right" (chat panel)
-  //   - direction: 1 for a rightward-opening drag (left edge), -1 for a
-  //     leftward-opening drag (right edge)
-  //   - edgeWidth: px from the edge the gesture must start within
-  //     (default 24 — deliberately narrow so it doesn't eat normal
-  //     touches; this also happens to be roughly where iOS's own
-  //     back/forward edge-swipe lives, so the overlap is a known,
-  //     accepted rough edge rather than a bug)
-  //   - onOpen: called once the gesture crosses the threshold
-  //   - threshold / thresholdRatio: passed through to closeThreshold()
-  function createEdgeSwipeOpenTracker(options) {
-    const edgeWidth = options.edgeWidth || 24;
-    let tracking = false;
-    let startX = 0;
-    let startY = 0;
-    let scrollAncestor = null;
-    let resolvedAsScroll = false;
-
-    return {
-      handleTouchStart(e) {
-        tracking = false;
-        if (!isTouchViewport()) return;
-        if (!e.touches || e.touches.length !== 1) return;
-        const touch = e.touches[0];
-        const viewportWidth =
-          typeof window !== "undefined" ? window.innerWidth : 0;
-        if (
-          distanceFromEdge(touch.clientX, options.edge, viewportWidth) >
-          edgeWidth
-        ) {
-          return;
-        }
-        startX = touch.clientX;
-        startY = touch.clientY;
-        tracking = true;
-        resolvedAsScroll = false;
-        scrollAncestor = findHorizontalScrollAncestor(
-          e.target,
-          typeof document !== "undefined" ? document.body : null
-        );
-      },
-      handleTouchMove(e) {
-        if (!tracking || resolvedAsScroll) return;
-        const touch = e.touches && e.touches[0];
-        if (!touch) return;
-        const dx = touch.clientX - startX;
-        if (hasScrollRoomTowardDx(scrollAncestor, dx)) {
-          resolvedAsScroll = true;
-        }
-      },
-      handleTouchEnd(e) {
-        if (!tracking) return;
-        tracking = false;
-        if (resolvedAsScroll) {
-          resolvedAsScroll = false;
-          return;
-        }
-        const touch = e.changedTouches && e.changedTouches[0];
-        if (!touch) return;
-        const dx = touch.clientX - startX;
-        const dy = touch.clientY - startY;
-        const refWidth = typeof window !== "undefined" ? window.innerWidth : 0;
-        const threshold = closeThreshold(
-          refWidth,
-          options.threshold,
-          options.thresholdRatio
-        );
-        if (isClosingSwipe(dx, dy, options.direction, threshold)) {
-          options.onOpen();
-        }
-      },
-      handleTouchCancel() {
-        tracking = false;
-        resolvedAsScroll = false;
-      },
-    };
-  }
-
   window.brainspreadSwipe = {
     isTouchViewport,
     findHorizontalScrollAncestor,
     hasScrollRoomTowardDx,
     isClosingSwipe,
     closeThreshold,
-    distanceFromEdge,
     createSwipeCloseTracker,
-    createEdgeSwipeOpenTracker,
   };
 })();
