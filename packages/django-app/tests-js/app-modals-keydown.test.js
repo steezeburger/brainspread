@@ -1,9 +1,9 @@
-// Tests for AppModals.onKeydown — the global confirm/prompt/alert/
+// Tests for AppModals.onEscapeCapture — the global confirm/prompt/alert/
 // picker dialog host's Escape/Enter routing.
 //
 // AppModals.js is a plain Vue options object hung off `window`, so it
 // loads into a vm sandbox with a stub window and needs no bundler —
-// same approach as the Page.js tests. `onKeydown` only touches
+// same approach as the Page.js tests. `onEscapeCapture` only touches
 // `this.queue`/`this.active` and sibling methods (never `document`),
 // so it's invoked bound to a plain object replicating just that
 // surface, no real Vue instance or DOM needed.
@@ -66,7 +66,7 @@ test("Escape on a confirm dialog cancels it", () => {
   ]);
   const event = fakeEscapeEvent();
 
-  ctx.onKeydown.call(ctx, event);
+  ctx.onEscapeCapture.call(ctx, event);
 
   assert.equal(resolved, false);
   assert.equal(ctx.queue.length, 0);
@@ -74,7 +74,7 @@ test("Escape on a confirm dialog cancels it", () => {
   assert.equal(event.calls.stopPropagation, 1);
 });
 
-// The bug this covers: onKeydown used to return immediately for
+// The bug this covers: onEscapeCapture used to return immediately for
 // pickPage/pickBlock on every key, including Escape, so cancelling a
 // picker depended entirely on the search input still having focus —
 // exactly the focus-fragile pattern that let Escape fall through to
@@ -86,7 +86,7 @@ test("Escape on a page picker cancels it too", () => {
   ]);
   const event = fakeEscapeEvent();
 
-  ctx.onKeydown.call(ctx, event);
+  ctx.onEscapeCapture.call(ctx, event);
 
   assert.equal(resolved, null);
   assert.equal(ctx.queue.length, 0);
@@ -101,7 +101,7 @@ test("Escape on a block picker cancels it too", () => {
   ]);
   const event = fakeEscapeEvent();
 
-  ctx.onKeydown.call(ctx, event);
+  ctx.onEscapeCapture.call(ctx, event);
 
   assert.equal(resolved, null);
   assert.equal(ctx.queue.length, 0);
@@ -121,11 +121,11 @@ test("non-Escape keys on a picker are still left alone", () => {
     },
   };
 
-  assert.doesNotThrow(() => ctx.onKeydown.call(ctx, event));
+  assert.doesNotThrow(() => ctx.onEscapeCapture.call(ctx, event));
   assert.equal(ctx.queue.length, 1);
 });
 
-test("onKeydown is a no-op with nothing in the queue", () => {
+test("onEscapeCapture is a no-op with nothing in the queue", () => {
   const ctx = makeContext([]);
   const event = {
     key: "Escape",
@@ -137,7 +137,7 @@ test("onKeydown is a no-op with nothing in the queue", () => {
     },
   };
 
-  assert.doesNotThrow(() => ctx.onKeydown.call(ctx, event));
+  assert.doesNotThrow(() => ctx.onEscapeCapture.call(ctx, event));
 });
 
 test("Enter on an alert dialog confirms it", () => {
@@ -151,7 +151,7 @@ test("Enter on an alert dialog confirms it", () => {
     stopPropagation: () => {},
   };
 
-  ctx.onKeydown.call(ctx, event);
+  ctx.onEscapeCapture.call(ctx, event);
 
   assert.equal(resolved, undefined);
   assert.equal(ctx.queue.length, 0);

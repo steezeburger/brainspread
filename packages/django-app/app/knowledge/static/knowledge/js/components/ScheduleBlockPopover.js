@@ -208,9 +208,6 @@ window.ScheduleBlockPopover = {
     escapeCaptureFlag() {
       return "isOpen";
     },
-    escapeCaptureHandlerName() {
-      return "handleKeydown";
-    },
 
     onDueTimeToggle() {
       // Seed a sensible default so enabling the time doesn't leave the
@@ -302,7 +299,7 @@ window.ScheduleBlockPopover = {
     // sit inside it, and clicking a plain, non-focusable part of the
     // popover blurs focus without moving it back in, silently breaking
     // Escape.
-    handleKeydown(event) {
+    onEscapeCapture(event) {
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();

@@ -3100,9 +3100,6 @@ const Page = {
     escapeCaptureFlag() {
       return "shareModalOpen";
     },
-    escapeCaptureHandlerName() {
-      return "handleShareModalKeydown";
-    },
 
     // Called for every keydown while the share modal is open, bound
     // directly on `document` in the capture phase (see
@@ -3110,7 +3107,7 @@ const Page = {
     // rather than a template @keydown on the modal's own root — that
     // only fires while a descendant of the bound element is focused,
     // which breaks the moment the user clicks the modal background.
-    handleShareModalKeydown(event) {
+    onEscapeCapture(event) {
       if (event.key !== "Escape") return;
       event.preventDefault();
       event.stopPropagation();

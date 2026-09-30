@@ -43,9 +43,6 @@ window.HistoryModal = {
     escapeCaptureFlag() {
       return "isOpen";
     },
-    escapeCaptureHandlerName() {
-      return "onKeydown";
-    },
 
     async fetchRevisions() {
       if (!this.block?.uuid) return;
@@ -156,7 +153,7 @@ window.HistoryModal = {
     // sit inside it, and clicking a plain, non-focusable part of the
     // modal blurs focus without moving it back in, silently breaking
     // Escape.
-    onKeydown(event) {
+    onEscapeCapture(event) {
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();

@@ -26,9 +26,6 @@ window.HelpModal = {
     escapeCaptureFlag() {
       return "isOpen";
     },
-    escapeCaptureHandlerName() {
-      return "handleModalKeydown";
-    },
 
     // Called for every keydown while open (see
     // brainspreadEscapeCaptureMixin in services/escape-capture.js) —
@@ -37,7 +34,7 @@ window.HelpModal = {
     // fires when focus happens to sit inside the modal, and clicking a
     // plain, non-focusable part of it (a heading, a table cell) blurs
     // focus without moving it back in, silently breaking Escape.
-    handleModalKeydown(event) {
+    onEscapeCapture(event) {
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();

@@ -401,9 +401,6 @@ window.SettingsModal = {
     escapeCaptureFlag() {
       return "isOpen";
     },
-    escapeCaptureHandlerName() {
-      return "handleModalKeydown";
-    },
 
     // Called for every keydown while open, bound directly on `document`
     // in the capture phase (see brainspreadEscapeCaptureMixin in
@@ -412,7 +409,7 @@ window.SettingsModal = {
     // happens to sit inside the modal, and clicking a plain,
     // non-focusable part of it (a heading, a settings-section label)
     // blurs focus without moving it back in, silently breaking Escape.
-    handleModalKeydown(event) {
+    onEscapeCapture(event) {
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();

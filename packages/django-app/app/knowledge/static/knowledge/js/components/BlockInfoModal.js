@@ -92,9 +92,6 @@ window.BlockInfoModal = {
     escapeCaptureFlag() {
       return "isOpen";
     },
-    escapeCaptureHandlerName() {
-      return "onKeydown";
-    },
 
     // datetime-local wants "YYYY-MM-DDTHH:MM" in local wall-clock time.
     toDatetimeLocal(value) {
@@ -181,7 +178,7 @@ window.BlockInfoModal = {
     // sit inside it, and clicking a plain, non-focusable part of the
     // modal blurs focus without moving it back in, silently breaking
     // Escape.
-    onKeydown(event) {
+    onEscapeCapture(event) {
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();

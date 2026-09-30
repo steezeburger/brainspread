@@ -163,9 +163,6 @@ window.AppModals = {
     escapeCaptureFlag() {
       return "active";
     },
-    escapeCaptureHandlerName() {
-      return "onKeydown";
-    },
 
     confirm(opts) {
       const normalized =
@@ -583,7 +580,9 @@ window.AppModals = {
         this.onPickerCancel();
     },
 
-    onKeydown(event) {
+    // Called for every keydown while a modal is active — wired up via
+    // brainspreadEscapeCaptureMixin, see services/escape-capture.js.
+    onEscapeCapture(event) {
       const top = this.active;
       if (!top) return;
       // The pickers drive their own keyboard surface (arrows + Enter +
@@ -591,8 +590,7 @@ window.AppModals = {
       // handlers below would otherwise fight Enter-to-pick. Escape has
       // no such conflict, so it's still handled here — this is what
       // lets Escape cancel a picker even when focus has drifted off
-      // the search input (onKeydown itself is wired up via
-      // brainspreadEscapeCaptureMixin, see services/escape-capture.js).
+      // the search input.
       if (top.kind === "pickPage" || top.kind === "pickBlock") {
         if (event.key === "Escape") {
           event.preventDefault();

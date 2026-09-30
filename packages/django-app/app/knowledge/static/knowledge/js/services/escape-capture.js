@@ -15,21 +15,26 @@
 // A component opts in with:
 //   mixins: [window.brainspreadEscapeCaptureMixin],
 //   methods: {
-//     escapeCaptureFlag() { return "isOpen"; },       // data/computed name that means "open"
-//     escapeCaptureHandlerName() { return "onKeydown"; }, // method to call for every captured keydown
+//     escapeCaptureFlag() { return "isOpen"; },  // data/computed name that means "open"
+//     onEscapeCapture(event) { ... },            // called for every captured keydown
 //   }
 //
-// The named handler is called for every keydown while open — not just
+// onEscapeCapture is called for every keydown while open — not just
 // Escape — so a component that also drives other shortcuts while open
 // (e.g. Enter-to-confirm) keeps doing its own key filtering exactly as
 // before; this mixin only owns the watch → toggle → cleanup wiring.
+// Every component names its own open-flag (that's meaningful domain
+// state — AppModals' `active` is a queue entry, not a bare boolean;
+// Page.js's `shareModalOpen` is one of many flags on that component),
+// but the handler is always called the same way, so there's nothing
+// to configure for it.
 //
 // Loaded before the components in base.html, so it's there by the
 // time a component's options object is built.
 window.brainspreadEscapeCaptureMixin = {
   created() {
     this._escapeCaptureListener = (event) => {
-      this[this.escapeCaptureHandlerName()](event);
+      this.onEscapeCapture(event);
     };
   },
 

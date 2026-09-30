@@ -63,9 +63,11 @@ function loadMixin(doc) {
 // Builds a fake component instance. `$watch` is a stub that just
 // records the callback rather than reacting to real changes — the
 // test drives the flag and invokes the callback itself, the same way
-// the AppModals tests drive `onKeydown` directly rather than going
-// through a real Vue render cycle.
-function makeComponent(mixin, { flag, handlerName, initial = false }) {
+// the AppModals tests drive `onEscapeCapture` directly rather than
+// going through a real Vue render cycle. The handler is always named
+// `onEscapeCapture` — only the open-flag name is configurable (see
+// the mixin's own comment for why).
+function makeComponent(mixin, { flag, initial = false }) {
   const calls = [];
   const ctx = {
     [flag]: initial,
@@ -77,8 +79,7 @@ function makeComponent(mixin, { flag, handlerName, initial = false }) {
       };
     },
     escapeCaptureFlag: () => flag,
-    escapeCaptureHandlerName: () => handlerName,
-    [handlerName](event) {
+    onEscapeCapture(event) {
       calls.push(event);
     },
     ...mixin.methods,
@@ -93,7 +94,7 @@ function makeComponent(mixin, { flag, handlerName, initial = false }) {
 test("mounting while closed does not bind a listener", () => {
   const doc = fakeDocument();
   const mixin = loadMixin(doc);
-  const ctx = makeComponent(mixin, { flag: "isOpen", handlerName: "onKey" });
+  const ctx = makeComponent(mixin, { flag: "isOpen" });
 
   ctx.created.call(ctx);
   ctx.mounted.call(ctx);
@@ -104,11 +105,7 @@ test("mounting while closed does not bind a listener", () => {
 test("mounting while already open binds a capture-phase listener", () => {
   const doc = fakeDocument();
   const mixin = loadMixin(doc);
-  const ctx = makeComponent(mixin, {
-    flag: "isOpen",
-    handlerName: "onKey",
-    initial: true,
-  });
+  const ctx = makeComponent(mixin, { flag: "isOpen", initial: true });
 
   ctx.created.call(ctx);
   ctx.mounted.call(ctx);
@@ -121,7 +118,7 @@ test("mounting while already open binds a capture-phase listener", () => {
 test("flipping the flag open binds, closed unbinds", () => {
   const doc = fakeDocument();
   const mixin = loadMixin(doc);
-  const ctx = makeComponent(mixin, { flag: "isOpen", handlerName: "onKey" });
+  const ctx = makeComponent(mixin, { flag: "isOpen" });
   ctx.created.call(ctx);
   ctx.mounted.call(ctx);
 
@@ -132,14 +129,10 @@ test("flipping the flag open binds, closed unbinds", () => {
   assert.equal(doc.listeners.length, 0);
 });
 
-test("the bound listener forwards to the named handler", () => {
+test("the bound listener forwards to onEscapeCapture", () => {
   const doc = fakeDocument();
   const mixin = loadMixin(doc);
-  const ctx = makeComponent(mixin, {
-    flag: "isOpen",
-    handlerName: "onKey",
-    initial: true,
-  });
+  const ctx = makeComponent(mixin, { flag: "isOpen", initial: true });
   ctx.created.call(ctx);
   ctx.mounted.call(ctx);
 
@@ -153,11 +146,7 @@ test("the bound listener forwards to the named handler", () => {
 test("beforeUnmount removes the listener even while still open", () => {
   const doc = fakeDocument();
   const mixin = loadMixin(doc);
-  const ctx = makeComponent(mixin, {
-    flag: "isOpen",
-    handlerName: "onKey",
-    initial: true,
-  });
+  const ctx = makeComponent(mixin, { flag: "isOpen", initial: true });
   ctx.created.call(ctx);
   ctx.mounted.call(ctx);
   assert.equal(doc.listeners.length, 1);
@@ -167,13 +156,10 @@ test("beforeUnmount removes the listener even while still open", () => {
   assert.equal(doc.listeners.length, 0);
 });
 
-test("different components can use different flag/handler names", () => {
+test("different components can watch different flag names", () => {
   const doc = fakeDocument();
   const mixin = loadMixin(doc);
-  const ctx = makeComponent(mixin, {
-    flag: "shareModalOpen",
-    handlerName: "handleShareModalKeydown",
-  });
+  const ctx = makeComponent(mixin, { flag: "shareModalOpen" });
   ctx.created.call(ctx);
   ctx.mounted.call(ctx);
 

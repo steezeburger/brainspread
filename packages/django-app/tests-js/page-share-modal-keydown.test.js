@@ -1,16 +1,16 @@
-// Tests for Page.handleShareModalKeydown — the share modal's Escape
+// Tests for Page.onEscapeCapture — the share modal's Escape
 // handler.
 //
 // Page.js is a plain Vue options object hung off `window`, so it loads
 // into a vm sandbox with a stub window and needs no bundler — same
-// approach as format-content-with-tags.test.js. `handleShareModalKeydown`
+// approach as format-content-with-tags.test.js. `onEscapeCapture`
 // only calls `this.closeShareModal`, so it's invoked bound to a plain
 // object stubbing just that method.
 //
 // This closes the bug where Escape, after a click on the modal
 // backdrop moved focus off any input, fell through to app.js's
 // document-level handler and closed the sidebar instead of the modal
-// — handleShareModalKeydown is bound in the capture phase (see
+// — onEscapeCapture is bound in the capture phase (see
 // openShareModal), so it runs and calls stopPropagation() before that
 // bubble-phase handler ever sees the event.
 //
@@ -48,7 +48,7 @@ const Page = loadPage();
 function makeContext() {
   let closed = false;
   return {
-    handleShareModalKeydown: Page.methods.handleShareModalKeydown,
+    onEscapeCapture: Page.methods.onEscapeCapture,
     closeShareModal: () => {
       closed = true;
     },
@@ -72,7 +72,7 @@ test("Escape closes the share modal and stops the event", () => {
   const ctx = makeContext();
   const event = fakeEvent("Escape");
 
-  ctx.handleShareModalKeydown(event);
+  ctx.onEscapeCapture(event);
 
   assert.equal(ctx.closed, true);
   assert.equal(event.calls.preventDefault, 1);
@@ -83,7 +83,7 @@ test("other keys are left alone", () => {
   const ctx = makeContext();
   const event = fakeEvent("a");
 
-  ctx.handleShareModalKeydown(event);
+  ctx.onEscapeCapture(event);
 
   assert.equal(ctx.closed, false);
   assert.equal(event.calls.preventDefault, 0);
