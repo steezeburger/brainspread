@@ -3768,6 +3768,15 @@ const Page = {
           // Only intercept pastes that start with a list item; if the first
           // non-empty line isn't a list item, defer to native paste behavior.
           if (!sawFirstNonEmpty) return [];
+          // A non-bulleted line after a list item is a lazy continuation
+          // of that item's content, not a dropped line — mirrors how
+          // serializeBlockToMarkdown exports a block's embedded newlines
+          // as unindented, unbulleted lines directly under its `- ` line,
+          // so a multi-line block (e.g. `key:: value` properties each on
+          // their own line) round-trips through copy → paste unchanged.
+          if (items.length > 0) {
+            items[items.length - 1].content += `\n${rest}`;
+          }
           continue;
         }
 
