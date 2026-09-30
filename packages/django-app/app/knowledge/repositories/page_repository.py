@@ -164,6 +164,39 @@ class PageRepository(BaseRepository):
         return cls.get_queryset().filter(user=user, title__icontains=query)
 
     @classmethod
+    def search(
+        cls,
+        user,
+        query: str,
+        page_type: Optional[str] = None,
+    ) -> QuerySet:
+        """Search published pages by title or slug, for the hashtag
+        autocomplete and page-search endpoints.
+
+        A single-character query matches by prefix only — a bare "c"
+        matching "roam research" would be more noise than signal.
+        Multi-character queries fall back to substring search so typing
+        in the middle of a title still surfaces relevant pages. Ordered
+        by most-recently-modified first, then title.
+        """
+        if len(query) == 1:
+            search_q = Q(title__istartswith=query) | Q(slug__istartswith=query)
+        else:
+            search_q = Q(title__icontains=query) | Q(slug__icontains=query)
+
+        queryset = (
+            cls.get_queryset()
+            .filter(user=user, is_published=True)
+            .filter(search_q)
+            .order_by("-modified_at", "title")
+            .select_related("user")
+        )
+        if page_type:
+            queryset = queryset.filter(page_type=page_type)
+
+        return queryset
+
+    @classmethod
     def get_dailies_in_range(cls, user, start_date: date, end_date: date) -> QuerySet:
         """Daily-note pages with a date in the inclusive [start, end] range."""
         return (

@@ -129,6 +129,23 @@ class TestPageRepository(TestCase):
         self.assertEqual(results.count(), 1)
         self.assertEqual(results.first().title, "Django Tutorial")
 
+    def test_search_excludes_soft_deleted_pages(self):
+        page = PageFactory(user=self.user, title="#food-log2", slug="food-log2")
+        page.delete()  # soft delete
+
+        results = PageRepository.search(self.user, "foo")
+
+        self.assertEqual(list(results), [])
+
+    def test_search_matches_title_or_slug(self):
+        by_title = PageFactory(user=self.user, title="Groceries", slug="misc")
+        by_slug = PageFactory(user=self.user, title="Misc", slug="groceries-list")
+        PageFactory(user=self.user, title="Unrelated", slug="unrelated")
+
+        results = PageRepository.search(self.user, "groc")
+
+        self.assertCountEqual(list(results), [by_title, by_slug])
+
     def test_should_update_page_by_uuid(self):
         page = PageFactory(user=self.user, title="Original Title", slug="original-slug")
 
