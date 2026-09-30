@@ -103,6 +103,15 @@ const ChatPanel = {
     this.handleViewportResize = () => this.syncChatWidthVar();
     window.addEventListener("resize", this.handleViewportResize);
     this.syncChatWidthVar();
+    // Swipe-right-to-close on mobile (issue #115). The panel has no
+    // backdrop, so the listener lives on the panel root itself; the
+    // tracker's horizontal-scroll bail keeps this from firing while the
+    // user is scrolling a code block, table, or mermaid diagram.
+    this.swipeTracker = window.brainspreadSwipe.createSwipeCloseTracker({
+      direction: 1,
+      root: () => this.$el,
+      onClose: () => this.closePanel(),
+    });
   },
   beforeUnmount() {
     this.removeResizeListener();
@@ -1862,9 +1871,32 @@ const ChatPanel = {
         document.removeEventListener("click", this.clickOutsideHandler);
       }
     },
+
+    onPanelTouchStart(event) {
+      if (!this.isOpen) return;
+      this.swipeTracker.handleTouchStart(event);
+    },
+
+    onPanelTouchMove(event) {
+      if (!this.isOpen) return;
+      this.swipeTracker.handleTouchMove(event);
+    },
+
+    onPanelTouchEnd(event) {
+      if (!this.isOpen) return;
+      this.swipeTracker.handleTouchEnd(event);
+    },
+
+    onPanelTouchCancel() {
+      this.swipeTracker.handleTouchCancel();
+    },
   },
   template: `
-    <div class="chat-panel" :class="{ open: isOpen }" :style="isOpen ? { width: width + 'px' } : {}">
+    <div class="chat-panel" :class="{ open: isOpen }" :style="isOpen ? { width: width + 'px' } : {}"
+         @touchstart.passive="onPanelTouchStart"
+         @touchmove.passive="onPanelTouchMove"
+         @touchend.passive="onPanelTouchEnd"
+         @touchcancel.passive="onPanelTouchCancel">
       <div class="chat-resize-handle" 
            :class="{ resizing: isResizing }"
            @mousedown="startResize">

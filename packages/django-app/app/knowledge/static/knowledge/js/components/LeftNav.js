@@ -184,6 +184,14 @@ window.LeftNav = {
     if (this.isOpen && this.isMobileViewport()) {
       this.attachOutsideClickHandler();
     }
+    // Swipe-left-to-close on the mobile backdrop (issue #115). The
+    // backdrop covers the full screen and has no scrollable content of
+    // its own, so this tracker never needs the horizontal-scroll bail.
+    this.swipeTracker = window.brainspreadSwipe.createSwipeCloseTracker({
+      direction: -1,
+      root: () => this.$el,
+      onClose: () => this.toggleSidebar(),
+    });
   },
 
   beforeUnmount() {
@@ -333,6 +341,22 @@ window.LeftNav = {
 
     detachOutsideClickHandler() {
       document.removeEventListener("click", this.handleOutsideClick);
+    },
+
+    onBackdropTouchStart(event) {
+      this.swipeTracker.handleTouchStart(event);
+    },
+
+    onBackdropTouchMove(event) {
+      this.swipeTracker.handleTouchMove(event);
+    },
+
+    onBackdropTouchEnd(event) {
+      this.swipeTracker.handleTouchEnd(event);
+    },
+
+    onBackdropTouchCancel() {
+      this.swipeTracker.handleTouchCancel();
     },
 
     toggleRecent() {
@@ -897,6 +921,10 @@ window.LeftNav = {
         v-if="isOpen"
         class="leftnav-backdrop"
         @click="toggleSidebar"
+        @touchstart.passive="onBackdropTouchStart"
+        @touchmove.passive="onBackdropTouchMove"
+        @touchend.passive="onBackdropTouchEnd"
+        @touchcancel.passive="onBackdropTouchCancel"
         aria-hidden="true"
       ></div>
 
