@@ -126,14 +126,24 @@ class User(
         ),
     )
 
-    highlight_properties = models.BooleanField(
-        _("highlight properties"),
+    highlight_property_keys = models.BooleanField(
+        _("highlight property keys"),
         default=True,
         help_text=_(
-            "Whether key::value block properties render as a highlighted, "
-            "clickable chip. When off they still link to the matching "
-            "saved view, just without the pill styling — this only "
-            "affects rendering."
+            "Whether the `key::` part of a block property renders as a "
+            "highlighted, clickable chip. When off it still links to the "
+            "matching saved view, just without the pill styling — this "
+            "only affects rendering."
+        ),
+    )
+
+    highlight_property_values = models.BooleanField(
+        _("highlight property values"),
+        default=True,
+        help_text=_(
+            "Whether the value part of a `key::value` block property "
+            "renders in a softer, lower-contrast highlight. When off it "
+            "displays as plain text — this only affects rendering."
         ),
     )
 
@@ -184,7 +194,8 @@ class User(
             time_format=self.time_format,
             render_emoji=self.render_emoji,
             highlight_hashtags=self.highlight_hashtags,
-            highlight_properties=self.highlight_properties,
+            highlight_property_keys=self.highlight_property_keys,
+            highlight_property_values=self.highlight_property_values,
             created_at=self.created_at.isoformat(),
         )
 
@@ -207,5 +218,6 @@ class UserData(TypedDict):
     time_format: str
     render_emoji: bool
     highlight_hashtags: bool
-    highlight_properties: bool
+    highlight_property_keys: bool
+    highlight_property_values: bool
     created_at: str

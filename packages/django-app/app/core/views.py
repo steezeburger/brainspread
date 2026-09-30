@@ -15,7 +15,8 @@ from core.commands import (
     UpdateDiscordUserIdCommand,
     UpdateDiscordWebhookCommand,
     UpdateHighlightHashtagsCommand,
-    UpdateHighlightPropertiesCommand,
+    UpdateHighlightPropertyKeysCommand,
+    UpdateHighlightPropertyValuesCommand,
     UpdateRenderEmojiCommand,
     UpdateThemeCommand,
     UpdateTimeFormatCommand,
@@ -27,7 +28,8 @@ from core.forms import (
     UpdateDiscordUserIdForm,
     UpdateDiscordWebhookForm,
     UpdateHighlightHashtagsForm,
-    UpdateHighlightPropertiesForm,
+    UpdateHighlightPropertyKeysForm,
+    UpdateHighlightPropertyValuesForm,
     UpdateRenderEmojiForm,
     UpdateThemeForm,
     UpdateTimeFormatForm,
@@ -75,7 +77,11 @@ class UpdateHighlightHashtagsResponse(TypedDict):
     user: UserData
 
 
-class UpdateHighlightPropertiesResponse(TypedDict):
+class UpdateHighlightPropertyKeysResponse(TypedDict):
+    user: UserData
+
+
+class UpdateHighlightPropertyValuesResponse(TypedDict):
     user: UserData
 
 
@@ -398,22 +404,57 @@ def update_highlight_hashtags(request):
 
 
 @api_view(["POST"])
-def update_highlight_properties(request):
-    """Update whether key::value properties render as a highlighted chip."""
+def update_highlight_property_keys(request):
+    """Update whether a property's `key::` renders as a highlighted chip."""
     try:
         data = request.data.copy()
         data["user"] = request.user.id
-        form = UpdateHighlightPropertiesForm(data)
+        form = UpdateHighlightPropertyKeysForm(data)
         if form.is_valid():
-            updated_user = UpdateHighlightPropertiesCommand(form).execute()
-            payload: UpdateHighlightPropertiesResponse = {
+            updated_user = UpdateHighlightPropertyKeysCommand(form).execute()
+            payload: UpdateHighlightPropertyKeysResponse = {
                 "user": updated_user.to_user_data()
             }
             return Response(
                 {
                     "success": True,
                     "data": payload,
-                    "message": "Property highlighting setting updated",
+                    "message": "Property key highlighting setting updated",
+                }
+            )
+        return Response(
+            {"success": False, "errors": form.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+def update_highlight_property_values(request):
+    """Update whether a property's value renders with a soft highlight."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = UpdateHighlightPropertyValuesForm(data)
+        if form.is_valid():
+            updated_user = UpdateHighlightPropertyValuesCommand(form).execute()
+            payload: UpdateHighlightPropertyValuesResponse = {
+                "user": updated_user.to_user_data()
+            }
+            return Response(
+                {
+                    "success": True,
+                    "data": payload,
+                    "message": "Property value highlighting setting updated",
                 }
             )
         return Response(

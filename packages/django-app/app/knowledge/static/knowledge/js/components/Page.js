@@ -2556,15 +2556,28 @@ const Page = {
         `<a class="${hashtagClass}" href="/knowledge/page/$1/" data-tag="$1">#$1</a>`
       );
 
-      // Restore key::value property placeholders as chips. Reuses the
-      // hashtag chip styling (.inline-tag .clickable-tag) and routes to
+      // Restore key::value property placeholders as chips, and route to
       // the saved-views page with prefill params so the user lands on a
-      // property_eq query they can run or save.
-      const propertiesHighlighted =
-        window.brainspreadContentHighlighting?.propertiesEnabled() !== false;
-      const propertyClass = propertiesHighlighted
-        ? "inline-tag inline-property clickable-tag"
-        : "inline-tag-plain inline-property";
+      // property_eq query they can run or save. The key and value each
+      // get their own per-user highlighting setting: the key keeps the
+      // hashtag's pill look (.inline-tag), but the value — which can
+      // run to a full cron expression or query string, unlike a short
+      // hashtag — gets a softer, lower-contrast highlight
+      // (.inline-property-value) so a long value doesn't read as one
+      // solid block of color. Either half falls back to
+      // .inline-tag-plain (plain text, still part of the link) when
+      // its setting is off.
+      const propertyKeysHighlighted =
+        window.brainspreadContentHighlighting?.propertyKeysEnabled() !== false;
+      const propertyValuesHighlighted =
+        window.brainspreadContentHighlighting?.propertyValuesEnabled() !==
+        false;
+      const propertyKeyClass = propertyKeysHighlighted
+        ? "inline-tag"
+        : "inline-tag-plain";
+      const propertyValueClass = propertyValuesHighlighted
+        ? "inline-property-value"
+        : "inline-tag-plain";
       propertySegments.forEach(({ key, value, sep }, idx) => {
         const safeKey = this.escapeHtml(key);
         const safeValue = this.escapeHtml(value);
@@ -2573,11 +2586,13 @@ const Page = {
           `/knowledge/views/?property_key=${encodeURIComponent(key)}` +
           `&property_value=${encodeURIComponent(value)}`;
         const replacement =
-          `<a class="${propertyClass}" ` +
+          `<a class="inline-property clickable-tag" ` +
           `href="${href}" ` +
           `data-property-key="${this.escapeAttr(key)}" ` +
           `data-property-value="${this.escapeAttr(value)}">` +
-          `${safeKey}::${safeSep}${safeValue}</a>`;
+          `<span class="${propertyKeyClass}">${safeKey}::</span>` +
+          `<span class="${propertyValueClass}">${safeSep}${safeValue}</span>` +
+          `</a>`;
         formatted = formatted.split(`\x00PROP${idx}\x00`).join(replacement);
       });
 

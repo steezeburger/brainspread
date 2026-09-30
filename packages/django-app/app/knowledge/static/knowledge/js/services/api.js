@@ -670,27 +670,58 @@ class ApiService {
     }
   }
 
-  async updateUserHighlightProperties(highlightProperties) {
+  async updateUserHighlightPropertyKeys(highlightPropertyKeys) {
     try {
       const result = await this.request(
-        "/api/auth/update-highlight-properties/",
+        "/api/auth/update-highlight-property-keys/",
         {
           method: "POST",
           body: JSON.stringify({
-            highlight_properties: !!highlightProperties,
+            highlight_property_keys: !!highlightPropertyKeys,
           }),
         }
       );
       if (result.success) {
         const currentUser = this.getCurrentUser();
         if (currentUser) {
-          currentUser.highlight_properties = !!highlightProperties;
+          currentUser.highlight_property_keys = !!highlightPropertyKeys;
           localStorage.setItem("user", JSON.stringify(currentUser));
         }
       }
       return result;
     } catch (error) {
-      console.error("Failed to update property highlighting setting:", error);
+      console.error(
+        "Failed to update property key highlighting setting:",
+        error
+      );
+      throw error;
+    }
+  }
+
+  async updateUserHighlightPropertyValues(highlightPropertyValues) {
+    try {
+      const result = await this.request(
+        "/api/auth/update-highlight-property-values/",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            highlight_property_values: !!highlightPropertyValues,
+          }),
+        }
+      );
+      if (result.success) {
+        const currentUser = this.getCurrentUser();
+        if (currentUser) {
+          currentUser.highlight_property_values = !!highlightPropertyValues;
+          localStorage.setItem("user", JSON.stringify(currentUser));
+        }
+      }
+      return result;
+    } catch (error) {
+      console.error(
+        "Failed to update property value highlighting setting:",
+        error
+      );
       throw error;
     }
   }

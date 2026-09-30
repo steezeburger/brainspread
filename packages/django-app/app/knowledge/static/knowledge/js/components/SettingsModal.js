@@ -24,7 +24,8 @@ window.SettingsModal = {
       selectedTimeFormat: this.user?.time_format || "12h",
       renderEmoji: this.user?.render_emoji !== false,
       highlightHashtags: this.user?.highlight_hashtags !== false,
-      highlightProperties: this.user?.highlight_properties !== false,
+      highlightPropertyKeys: this.user?.highlight_property_keys !== false,
+      highlightPropertyValues: this.user?.highlight_property_values !== false,
       discordWebhookUrl: this.user?.discord_webhook_url || "",
       discordUserId: this.user?.discord_user_id || "",
       isUpdating: false,
@@ -101,8 +102,11 @@ window.SettingsModal = {
         if (typeof newUser?.highlight_hashtags === "boolean") {
           this.highlightHashtags = newUser.highlight_hashtags;
         }
-        if (typeof newUser?.highlight_properties === "boolean") {
-          this.highlightProperties = newUser.highlight_properties;
+        if (typeof newUser?.highlight_property_keys === "boolean") {
+          this.highlightPropertyKeys = newUser.highlight_property_keys;
+        }
+        if (typeof newUser?.highlight_property_values === "boolean") {
+          this.highlightPropertyValues = newUser.highlight_property_values;
         }
         if (typeof newUser?.discord_webhook_url === "string") {
           this.discordWebhookUrl = newUser.discord_webhook_url;
@@ -277,22 +281,46 @@ window.SettingsModal = {
             }
           }
 
-          const currentHighlightProperties =
-            this.user.highlight_properties !== false;
-          if (this.highlightProperties !== currentHighlightProperties) {
+          const currentHighlightPropertyKeys =
+            this.user.highlight_property_keys !== false;
+          if (this.highlightPropertyKeys !== currentHighlightPropertyKeys) {
             const result =
-              await window.apiService.updateUserHighlightProperties(
-                this.highlightProperties
+              await window.apiService.updateUserHighlightPropertyKeys(
+                this.highlightPropertyKeys
               );
             if (result.success) {
-              console.log("Property highlighting setting updated");
+              console.log("Property key highlighting setting updated");
               this.$emit("user-updated", result.data.user);
               document.dispatchEvent(
                 new CustomEvent("brainspread:highlight-setting-changed")
               );
               hasUpdates = true;
             } else {
-              this.emitToast("failed to update property highlighting setting");
+              this.emitToast(
+                "failed to update property key highlighting setting"
+              );
+              return;
+            }
+          }
+
+          const currentHighlightPropertyValues =
+            this.user.highlight_property_values !== false;
+          if (this.highlightPropertyValues !== currentHighlightPropertyValues) {
+            const result =
+              await window.apiService.updateUserHighlightPropertyValues(
+                this.highlightPropertyValues
+              );
+            if (result.success) {
+              console.log("Property value highlighting setting updated");
+              this.$emit("user-updated", result.data.user);
+              document.dispatchEvent(
+                new CustomEvent("brainspread:highlight-setting-changed")
+              );
+              hasUpdates = true;
+            } else {
+              this.emitToast(
+                "failed to update property value highlighting setting"
+              );
               return;
             }
           }
@@ -771,15 +799,21 @@ window.SettingsModal = {
               <input type="checkbox" v-model="highlightHashtags" />
               highlight #hashtags
             </label>
-            <label class="settings-checkbox">
-              <input type="checkbox" v-model="highlightProperties" />
-              highlight key::value properties
-            </label>
+            <div class="settings-subgroup">
+              <p class="settings-subgroup-label">key::value properties</p>
+              <label class="settings-checkbox">
+                <input type="checkbox" v-model="highlightPropertyKeys" />
+                highlight keys
+              </label>
+              <label class="settings-checkbox">
+                <input type="checkbox" v-model="highlightPropertyValues" />
+                highlight values
+              </label>
+            </div>
             <p class="settings-hint">
-              turns off the highlighted chip styling for #hashtags and
-              key::value properties &mdash; they still link to the tag's
-              page or matching saved view when clicked, just as plain
-              text.
+              turns off the highlighted styling &mdash; hashtags and
+              properties still link to the tag's page or matching saved
+              view when clicked, just as plain text.
             </p>
           </div>
 

@@ -90,12 +90,21 @@ class UserRepository(BaseRepository):
         return user
 
     @classmethod
-    def update_highlight_properties(
-        cls, user: User, highlight_properties: bool
+    def update_highlight_property_keys(
+        cls, user: User, highlight_property_keys: bool
     ) -> User:
-        """Update whether key::value properties render as a highlighted chip."""
-        user.highlight_properties = highlight_properties
-        user.save(update_fields=["highlight_properties"])
+        """Update whether a property's `key::` renders as a highlighted chip."""
+        user.highlight_property_keys = highlight_property_keys
+        user.save(update_fields=["highlight_property_keys"])
+        return user
+
+    @classmethod
+    def update_highlight_property_values(
+        cls, user: User, highlight_property_values: bool
+    ) -> User:
+        """Update whether a property's value renders with a soft highlight."""
+        user.highlight_property_values = highlight_property_values
+        user.save(update_fields=["highlight_property_values"])
         return user
 
     @classmethod
