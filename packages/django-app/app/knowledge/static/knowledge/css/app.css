@@ -1549,6 +1549,13 @@ kbd {
   font-weight: normal;
   border: 1px solid var(--tag-bg);
   text-decoration: none;
+  /* Vertical padding/border on an inline element doesn't grow the line
+     box — on multiline content where a chip sits at the start of every
+     line (a multi-property automation definition: trigger::/query::/
+     action::), adjacent chips' backgrounds visually touch with no gap.
+     A taller line-height on the chip itself grows just its own line's
+     box, adding breathing room without touching normal prose lines. */
+  line-height: 1.9;
 }
 
 /* More specific selector for inline tags in block content */
@@ -1594,6 +1601,8 @@ kbd {
   background-color: var(--hover-bg-light);
   color: var(--text-secondary);
   padding: 0.1rem 0.3rem;
+  /* See .inline-tag's line-height comment — same fix, same reason. */
+  line-height: 1.9;
 }
 
 /* Tag page styling */
