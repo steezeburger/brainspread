@@ -1,5 +1,7 @@
 // Settings Modal Component
 window.SettingsModal = {
+  mixins: [window.brainspreadEscapeCaptureMixin || {}],
+
   props: {
     isOpen: {
       type: Boolean,
@@ -396,7 +398,18 @@ window.SettingsModal = {
       }
     },
 
-    handleModalKeydown(event) {
+    escapeCaptureFlag() {
+      return "isOpen";
+    },
+
+    // Called for every keydown while open, bound directly on `document`
+    // in the capture phase (see brainspreadEscapeCaptureMixin in
+    // services/escape-capture.js) rather than left as a template
+    // @keydown on the modal's own root — that only fires when focus
+    // happens to sit inside the modal, and clicking a plain,
+    // non-focusable part of it (a heading, a settings-section label)
+    // blurs focus without moving it back in, silently breaking Escape.
+    onEscapeCapture(event) {
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
@@ -704,7 +717,6 @@ window.SettingsModal = {
       v-if="isOpen"
       class="settings-modal"
       @click="handleBackdropClick"
-      @keydown="handleModalKeydown"
     >
       <div class="settings-modal-content">
         <h2>settings</h2>

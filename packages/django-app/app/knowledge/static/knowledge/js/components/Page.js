@@ -32,7 +32,10 @@ const PAGE_SORT_LABELS = Object.fromEntries(
 const PAGE_SORT_STORAGE_PREFIX = "bs:page-sort:";
 
 const Page = {
-  mixins: [window.brainspreadEmojiRenderMixin || {}],
+  mixins: [
+    window.brainspreadEmojiRenderMixin || {},
+    window.brainspreadEscapeCaptureMixin || {},
+  ],
   components: {
     BlockComponent: window.BlockComponent || {},
     Whiteboard: window.Whiteboard || {},
@@ -3092,6 +3095,23 @@ const Page = {
       this.shareModalOpen = true;
       this.shareLinkCopied = false;
       this.closePageMenu();
+    },
+
+    escapeCaptureFlag() {
+      return "shareModalOpen";
+    },
+
+    // Called for every keydown while the share modal is open, bound
+    // directly on `document` in the capture phase (see
+    // brainspreadEscapeCaptureMixin in services/escape-capture.js)
+    // rather than a template @keydown on the modal's own root — that
+    // only fires while a descendant of the bound element is focused,
+    // which breaks the moment the user clicks the modal background.
+    onEscapeCapture(event) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeShareModal();
     },
 
     async duplicatePage() {
