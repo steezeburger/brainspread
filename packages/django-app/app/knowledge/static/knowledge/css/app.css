@@ -1556,6 +1556,20 @@ kbd {
   text-decoration: underline;
 }
 
+/* Hashtag / property links with highlighting turned off (see
+   content-highlighting.js) — no pill, no background, reads as plain
+   text until hovered, but still navigates like a normal link. */
+.inline-tag-plain {
+  color: inherit;
+  font-weight: normal;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.inline-tag-plain:hover {
+  text-decoration: underline;
+}
+
 /* Tag page styling */
 .tag-page-content {
   margin-top: 2rem;

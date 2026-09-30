@@ -2541,15 +2541,30 @@ const Page = {
       // cmd+click, middle-click, right-click → open in new tab. Code spans
       // and fenced blocks are still placeholders here, so `#foo` inside
       // `` `code` `` or ```` ```...``` ```` is intentionally not matched.
+      //
+      // Highlighting (the pill styling) is a per-user display setting
+      // (content-highlighting.js) — off just drops `.inline-tag`, so the
+      // link is unstyled text rather than a chip, but `.inline-tag-plain`
+      // keeps it clickable with a hover underline like a normal link.
+      const hashtagsHighlighted =
+        window.brainspreadContentHighlighting?.hashtagsEnabled() !== false;
+      const hashtagClass = hashtagsHighlighted
+        ? "inline-tag clickable-tag"
+        : "inline-tag-plain";
       formatted = formatted.replace(
         /#([a-zA-Z0-9_-]+)/g,
-        '<a class="inline-tag clickable-tag" href="/knowledge/page/$1/" data-tag="$1">#$1</a>'
+        `<a class="${hashtagClass}" href="/knowledge/page/$1/" data-tag="$1">#$1</a>`
       );
 
       // Restore key::value property placeholders as chips. Reuses the
       // hashtag chip styling (.inline-tag .clickable-tag) and routes to
       // the saved-views page with prefill params so the user lands on a
       // property_eq query they can run or save.
+      const propertiesHighlighted =
+        window.brainspreadContentHighlighting?.propertiesEnabled() !== false;
+      const propertyClass = propertiesHighlighted
+        ? "inline-tag inline-property clickable-tag"
+        : "inline-tag-plain inline-property";
       propertySegments.forEach(({ key, value, sep }, idx) => {
         const safeKey = this.escapeHtml(key);
         const safeValue = this.escapeHtml(value);
@@ -2558,7 +2573,7 @@ const Page = {
           `/knowledge/views/?property_key=${encodeURIComponent(key)}` +
           `&property_value=${encodeURIComponent(value)}`;
         const replacement =
-          `<a class="inline-tag inline-property clickable-tag" ` +
+          `<a class="${propertyClass}" ` +
           `href="${href}" ` +
           `data-property-key="${this.escapeAttr(key)}" ` +
           `data-property-value="${this.escapeAttr(value)}">` +

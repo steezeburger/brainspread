@@ -34,11 +34,12 @@ function loadFormatContentWithTags() {
     filename: SOURCE,
   });
   const ctx = { emojiRenderKey: 0, ...sandbox.window.Page.methods };
-  return (content, blockType, properties) =>
+  const format = (content, blockType, properties) =>
     ctx.formatContentWithTags.call(ctx, content, blockType, properties);
+  return { format, window: sandbox.window };
 }
 
-const format = loadFormatContentWithTags();
+const { format, window: sandboxWindow } = loadFormatContentWithTags();
 
 test("issue #240: a cron trigger property keeps its literal stars", () => {
   const html = format("trigger:: schedule cron 0 6 1 * *");
@@ -127,4 +128,70 @@ test("the chip preserves no space after :: when none was typed", () => {
 test("a line-start multi-word value keeps its space after ::", () => {
   const html = format("trigger:: schedule cron 0 6 1 * *");
   assert.match(html, />trigger:: schedule cron 0 6 1 \* \*</);
+});
+
+// Highlighting (the pill styling) is a per-user display setting read
+// from content-highlighting.js, gated independently for hashtags and
+// properties. Off drops `.inline-tag`/`.clickable-tag` in favor of
+// `.inline-tag-plain` — still an `<a>` that navigates, just without
+// the chip look. Each test restores the stub afterward so the default
+// (both enabled, matching a page where the service never loaded) holds
+// for every other test in this file.
+test("hashtags get the chip classes by default", () => {
+  const html = format("see #project for details");
+  assert.match(html, /class="inline-tag clickable-tag"/);
+  assert.doesNotMatch(html, /inline-tag-plain/);
+});
+
+test("hashtags drop the chip classes when highlighting is off", () => {
+  sandboxWindow.brainspreadContentHighlighting = {
+    hashtagsEnabled: () => false,
+    propertiesEnabled: () => true,
+  };
+  try {
+    const html = format("see #project for details");
+    assert.match(
+      html,
+      /class="inline-tag-plain" href="\/knowledge\/page\/project\//
+    );
+    assert.doesNotMatch(html, /inline-tag clickable-tag/);
+  } finally {
+    delete sandboxWindow.brainspreadContentHighlighting;
+  }
+});
+
+test("property chips get the chip classes by default", () => {
+  const html = format("priority::high");
+  assert.match(html, /class="inline-tag inline-property clickable-tag"/);
+});
+
+test("property chips drop the chip classes when highlighting is off", () => {
+  sandboxWindow.brainspreadContentHighlighting = {
+    hashtagsEnabled: () => true,
+    propertiesEnabled: () => false,
+  };
+  try {
+    const html = format("priority::high");
+    assert.match(html, /class="inline-tag-plain inline-property"/);
+    assert.doesNotMatch(html, /inline-tag inline-property clickable-tag/);
+  } finally {
+    delete sandboxWindow.brainspreadContentHighlighting;
+  }
+});
+
+test("hashtags and properties toggle independently", () => {
+  sandboxWindow.brainspreadContentHighlighting = {
+    hashtagsEnabled: () => false,
+    propertiesEnabled: () => true,
+  };
+  try {
+    const html = format("see #project\npriority:: high");
+    assert.match(
+      html,
+      /class="inline-tag-plain" href="\/knowledge\/page\/project\//
+    );
+    assert.match(html, /class="inline-tag inline-property clickable-tag"/);
+  } finally {
+    delete sandboxWindow.brainspreadContentHighlighting;
+  }
 });
