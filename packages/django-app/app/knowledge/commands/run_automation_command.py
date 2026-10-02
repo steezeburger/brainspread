@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import List, Optional, Tuple
 
 from django.db import transaction
 from django.utils import timezone
@@ -8,10 +8,12 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.run_automation_form import RunAutomationForm
 from ..models import AutomationRun, AutomationRunData, Block
-from ..repositories import AutomationRunRepository
-from ..services import automation_actions, query_engine
+from ..repositories import AutomationBlockMatchRepository, AutomationRunRepository
+from ..services import automation_actions, automation_when, query_engine
 from ..services.automation_spec import (
     QUERY_VIEW,
+    WHEN_MATCHED_FOR,
+    AutomationSpec,
     AutomationSpecError,
     parse_automation_block,
 )
@@ -38,6 +40,13 @@ class RunAutomationCommand(AbstractBaseCommand):
     are captured on the run rather than raised, so a bad automation never
     crashes a batch the poller is iterating and a run can never be left
     stranded in ``running``.
+
+    A ``when::`` spec (issue #206's reactive slice) gates whether the
+    query match actually fires the action this tick — see
+    ``_apply_when_gate`` and ``services.automation_when``. Every tick
+    still records a run (SUCCEEDED when it fires, SKIPPED when the
+    condition doesn't hold), because the ledger's ``result["matched"]``
+    is the next tick's baseline.
     """
 
     def __init__(self, form: RunAutomationForm) -> None:
@@ -135,6 +144,16 @@ class RunAutomationCommand(AbstractBaseCommand):
                     run, AutomationRun.STATUS_FAILED, error=f"query error: {exc}"
                 )
 
+        action_blocks = blocks
+        if spec.when is not None:
+            should_fire, skip_result, action_blocks = self._apply_when_gate(
+                run, spec, blocks
+            )
+            if not should_fire:
+                return self._finish(
+                    run, AutomationRun.STATUS_SKIPPED, result=skip_result
+                )
+
         # `allow::` omitted = the action line itself is the authorization:
         # grant exactly the declared verb. An explicit list is honored as
         # written (it narrows/extends, and stays mandatory for the future
@@ -158,7 +177,7 @@ class RunAutomationCommand(AbstractBaseCommand):
                 action_result = automation_actions.run_action(
                     spec.action,
                     ctx,
-                    blocks,
+                    action_blocks,
                     token_context=token_context,
                     for_items=for_items,
                 )
@@ -177,6 +196,72 @@ class RunAutomationCommand(AbstractBaseCommand):
                 "skipped": action_result.skipped,
             },
         )
+
+    def _apply_when_gate(
+        self, run: AutomationRun, spec: AutomationSpec, blocks: List[Block]
+    ) -> Tuple[bool, Optional[dict], List[Block]]:
+        """Reactive-slice gate (issue #206): decide whether a ``when::``
+        condition actually fires this tick. Returns ``(should_fire,
+        skip_result, action_blocks)`` — ``skip_result`` is the SKIPPED
+        run's ``result`` dict when ``should_fire`` is False;
+        ``action_blocks`` is the subset of ``blocks`` the action should
+        run over (the full match set, except for ``matched-for`` dwell,
+        which narrows it to the blocks that have dwelled long enough).
+
+        An explicit manual run bypasses the gate entirely — same
+        rationale as the ``enabled:: false`` bypass just above: the
+        strongest intent signal there is, and it always runs over the
+        full match set."""
+        if run.trigger == AutomationRun.TRIGGER_MANUAL:
+            return True, None, blocks
+
+        when = spec.when
+        if when.kind == WHEN_MATCHED_FOR:
+            existing = AutomationBlockMatchRepository.get_for_automation(
+                spec.block_uuid
+            )
+            dwell = automation_when.sync_dwell(
+                when=when,
+                watch=spec.watch,
+                blocks=blocks,
+                existing=existing,
+                now=timezone.now(),
+            )
+            for block_uuid, first_matched_at, fingerprint in dwell.upserts:
+                AutomationBlockMatchRepository.upsert(
+                    user=run.user,
+                    automation_block_uuid=spec.block_uuid,
+                    matched_block_uuid=block_uuid,
+                    first_matched_at=first_matched_at,
+                    fingerprint=fingerprint,
+                )
+            AutomationBlockMatchRepository.delete_stale(
+                spec.block_uuid, dwell.stale_block_uuids
+            )
+            if not dwell.ready_blocks:
+                return (
+                    False,
+                    {
+                        "matched": len(blocks),
+                        "dwelling": len(blocks),
+                        "reason": "not-dwelled-yet",
+                    },
+                    [],
+                )
+            return True, None, dwell.ready_blocks
+
+        baseline_run = AutomationRunRepository.latest_before(
+            spec.block_uuid, str(run.uuid)
+        )
+        baseline_matched = (
+            (baseline_run.result or {}).get("matched") if baseline_run else None
+        )
+        outcome = automation_when.evaluate_count_baseline(
+            when, len(blocks), baseline_matched
+        )
+        if not outcome.should_fire:
+            return False, {"matched": len(blocks), "reason": outcome.reason}, []
+        return True, None, blocks
 
     def _finish(
         self,
