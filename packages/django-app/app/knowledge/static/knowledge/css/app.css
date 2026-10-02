@@ -1335,6 +1335,17 @@ body {
   font-size: 0.85rem;
 }
 
+.mcp-url-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.mcp-url-row input {
+  flex: 1;
+  min-width: 0;
+}
+
 .mcp-token-expired {
   color: var(--error-color);
 }

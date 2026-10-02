@@ -1082,6 +1082,17 @@ class ApiService {
     });
   }
 
+  async listOAuthConnections() {
+    return await this.request("/api/oauth/connections/");
+  }
+
+  async revokeOAuthConnection(familyId) {
+    return await this.request("/api/oauth/connections/revoke/", {
+      method: "POST",
+      body: JSON.stringify({ family_id: familyId }),
+    });
+  }
+
   // ---- Custom variables (issue #228) -----------------------------------
 
   async listCustomVariables() {

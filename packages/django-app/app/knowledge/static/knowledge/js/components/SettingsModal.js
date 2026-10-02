@@ -56,6 +56,11 @@ window.SettingsModal = {
       createdMcpKeyCopied: false,
       mcpTokenError: "",
       mcpTokenBusy: false,
+      // Apps connected over OAuth (Claude connectors).
+      oauthConnections: [],
+      oauthConnectionsLoaded: false,
+      loadingOAuthConnections: false,
+      mcpUrlCopied: false,
       commonTimezones: [
         "UTC",
         "America/New_York",
@@ -138,7 +143,7 @@ window.SettingsModal = {
     },
     currentTab(newTab) {
       if (newTab === "variables") this.loadCustomVariables();
-      if (newTab === "mcp") this.loadMcpTokens();
+      if (newTab === "mcp") this.loadMcpTab();
     },
     isOpen: {
       async handler(newValue) {
@@ -149,7 +154,8 @@ window.SettingsModal = {
           this.createdMcpKey = "";
           this.mcpTokenError = "";
           if (this.currentTab === "variables") this.loadCustomVariables();
-          if (this.currentTab === "mcp") this.loadMcpTokens();
+          this.mcpUrlCopied = false;
+          if (this.currentTab === "mcp") this.loadMcpTab();
           await this.loadAISettings();
           this.$nextTick(() => {
             const firstFocusable = this.$el?.querySelector(
@@ -722,6 +728,72 @@ window.SettingsModal = {
       }
     },
 
+    loadMcpTab() {
+      this.loadOAuthConnections();
+      this.loadMcpTokens();
+    },
+
+    async loadOAuthConnections() {
+      if (this.loadingOAuthConnections || this.oauthConnectionsLoaded) return;
+      this.loadingOAuthConnections = true;
+      try {
+        const result = await window.apiService.listOAuthConnections();
+        this.oauthConnections = result?.data?.connections || [];
+        this.oauthConnectionsLoaded = true;
+      } catch (error) {
+        this.mcpTokenError = "failed to load connected apps";
+      } finally {
+        this.loadingOAuthConnections = false;
+      }
+    },
+
+    async disconnectOAuthConnection(connection) {
+      if (this.mcpTokenBusy) return;
+      const message = `disconnect "${connection.client_name}"? it stops working immediately and has to sign in again to reconnect.`;
+      const confirmed = window.appModals
+        ? await window.appModals.confirm({
+            title: "disconnect app?",
+            message,
+            confirmLabel: "disconnect",
+            destructive: true,
+          })
+        : window.confirm(message);
+      if (!confirmed) return;
+      this.mcpTokenBusy = true;
+      this.mcpTokenError = "";
+      try {
+        await window.apiService.revokeOAuthConnection(connection.family_id);
+        this.oauthConnections = this.oauthConnections.filter(
+          (c) => c.family_id !== connection.family_id
+        );
+      } catch (error) {
+        this.mcpTokenError = error?.message || "failed to disconnect app";
+      } finally {
+        this.mcpTokenBusy = false;
+      }
+    },
+
+    async copyMcpUrl() {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(this.mcpEndpointUrl);
+          this.mcpUrlCopied = true;
+          return;
+        }
+      } catch (error) {
+        console.warn("clipboard API failed, falling back:", error);
+      }
+      const input = this.$refs.mcpUrlInput;
+      if (!input) return;
+      input.focus();
+      input.select();
+      try {
+        this.mcpUrlCopied = document.execCommand("copy");
+      } catch (_) {
+        this.mcpUrlCopied = false;
+      }
+    },
+
     async loadMcpTokens() {
       if (this.loadingMcpTokens || this.mcpTokensLoaded) return;
       this.loadingMcpTokens = true;
@@ -1172,16 +1244,86 @@ window.SettingsModal = {
         </div>
 
         <div v-if="currentTab === 'mcp'" class="tab-content">
-          <div class="settings-section">
-            <h3>mcp access tokens</h3>
-            <p class="settings-hint">
-              create one token per machine or claude instance. tokens keep
-              working when you log out of the web app, and you can revoke
-              each one on its own.
-            </p>
+          <p v-if="mcpTokenError" class="custom-variable-error" role="alert">
+            {{ mcpTokenError }}
+          </p>
 
-            <p v-if="mcpTokenError" class="custom-variable-error" role="alert">
-              {{ mcpTokenError }}
+          <div class="settings-section">
+            <h3>connect claude</h3>
+            <p class="settings-hint">
+              in claude (desktop, web, or mobile) go to customize &rarr;
+              connectors &rarr; add custom connector and paste this url. you
+              sign in once and it works on every device signed in to that
+              claude account. claude code: <code>claude mcp add --transport
+              http brainspread &lt;url&gt;</code>, then <code>/mcp</code> to
+              sign in.
+            </p>
+            <div class="mcp-url-row">
+              <input
+                ref="mcpUrlInput"
+                type="text"
+                class="form-control custom-variable-name-input"
+                :value="mcpEndpointUrl"
+                readonly
+                aria-label="mcp server url"
+                @focus="$event.target.select()"
+              />
+              <button
+                type="button"
+                class="btn btn-primary btn-compact"
+                @click="copyMcpUrl"
+              >
+                {{ mcpUrlCopied ? 'copied' : 'copy url' }}
+              </button>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>connected apps</h3>
+            <div v-if="loadingOAuthConnections" class="loading">
+              loading connected apps...
+            </div>
+            <p
+              v-else-if="oauthConnectionsLoaded && !oauthConnections.length"
+              class="settings-hint"
+            >
+              nothing connected yet.
+            </p>
+            <ul v-else class="custom-variable-list">
+              <li
+                v-for="connection in oauthConnections"
+                :key="connection.family_id"
+                class="mcp-token-row"
+              >
+                <div class="mcp-token-info">
+                  <span class="mcp-token-name">{{ connection.client_name }}</span>
+                  <span class="mcp-token-meta">
+                    connected {{ formatMcpTokenDate(connection.connected_at) }}
+                    &middot;
+                    last used {{ formatMcpTokenDate(connection.last_used_at) }}
+                  </span>
+                </div>
+                <div class="custom-variable-actions">
+                  <button
+                    type="button"
+                    class="btn btn-danger btn-compact"
+                    :disabled="mcpTokenBusy"
+                    @click="disconnectOAuthConnection(connection)"
+                  >
+                    disconnect
+                  </button>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <div class="settings-section">
+            <h3>access tokens</h3>
+            <p class="settings-hint">
+              for clients that can't open a browser to sign in, like a
+              claude code cloud session: create a token and pass it as a
+              header. tokens keep working when you log out of the web app,
+              and you can revoke each one on its own.
             </p>
 
             <div v-if="createdMcpKey" class="mcp-token-created">
@@ -1256,7 +1398,7 @@ window.SettingsModal = {
           </div>
 
           <div class="settings-section">
-            <h3>new token</h3>
+            <h3>new access token</h3>
             <form class="mcp-token-form" @submit.prevent="createMcpToken">
               <input
                 type="text"

@@ -4,13 +4,18 @@ Speaks just enough of the MCP wire protocol to support tools-only
 servers (no resources/prompts). One POST endpoint that dispatches
 JSON-RPC requests to a small set of handlers.
 
-Auth: a per-client MCP access token (``Authorization: Bearer
-bsmcp_…``), minted in settings. Unlike the web app's DRF token, these
-survive web logouts, so a configured client doesn't need re-auth.
-The legacy ``Authorization: Token <web-token>`` still works. The
-authenticated user is what each tool acts on. This is intentionally
-*not* OAuth — the MCP spec recommends OAuth for public servers, but
-this server is per-user and a static bearer token is enough.
+Auth, in order of preference:
+
+- OAuth (``oauth_server``): Claude connectors on claude.ai, Desktop,
+  and mobile discover the authorization server from this endpoint's
+  401 and sign the user in once per account; tokens refresh silently.
+- MCP access tokens (``Authorization: Bearer bsmcp_…``), minted in
+  settings, for clients that take a static header (e.g. a Claude Code
+  cloud session that can't open a browser).
+- The legacy ``Authorization: Token <web-token>``, deleted on web
+  logout.
+
+The authenticated user is what each tool acts on.
 
 We always respond with ``application/json`` (no SSE) since every
 tool here completes synchronously. Streaming can be added later if a
@@ -33,6 +38,7 @@ from rest_framework.response import Response
 
 from core.authentication import McpAccessTokenAuthentication
 from core.llm_tools import ToolContext, ToolError, to_mcp
+from oauth_server.authentication import OAuthAccessTokenAuthentication
 
 from .tools import REGISTRY
 
@@ -165,9 +171,17 @@ def _dispatch_single(user, message: dict[str, Any]) -> dict[str, Any] | None:
 
 
 @api_view(["POST"])
-# MCP access tokens first: legacy TokenAuthentication would reject a
-# bsmcp_ key outright instead of passing it along.
-@authentication_classes([McpAccessTokenAuthentication, TokenAuthentication])
+# OAuth first: DRF builds the 401's WWW-Authenticate header from the
+# first class, and that header is how clients find the OAuth server.
+# Legacy TokenAuthentication goes last because it rejects a bsmcp_ key
+# outright instead of passing it along.
+@authentication_classes(
+    [
+        OAuthAccessTokenAuthentication,
+        McpAccessTokenAuthentication,
+        TokenAuthentication,
+    ]
+)
 @permission_classes([IsAuthenticated])
 def mcp_endpoint(request):
     """The single Streamable-HTTP MCP endpoint."""
