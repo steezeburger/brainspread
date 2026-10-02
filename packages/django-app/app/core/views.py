@@ -9,9 +9,12 @@ from rest_framework.response import Response
 
 from common.forms import UserForm
 from core.commands import (
+    CreateMcpAccessTokenCommand,
+    ListMcpAccessTokensCommand,
     LoginCommand,
     LogoutCommand,
     RegisterCommand,
+    RevokeMcpAccessTokenCommand,
     UpdateDiscordUserIdCommand,
     UpdateDiscordWebhookCommand,
     UpdateHighlightHashtagsCommand,
@@ -23,8 +26,11 @@ from core.commands import (
     UpdateTimezoneCommand,
 )
 from core.forms import (
+    CreateMcpAccessTokenForm,
+    ListMcpAccessTokensForm,
     LoginForm,
     RegisterForm,
+    RevokeMcpAccessTokenForm,
     UpdateDiscordUserIdForm,
     UpdateDiscordWebhookForm,
     UpdateHighlightHashtagsForm,
@@ -35,6 +41,7 @@ from core.forms import (
     UpdateTimeFormatForm,
     UpdateTimezoneForm,
 )
+from core.models.mcp_access_token import McpAccessTokenData
 from core.models.user import UserData
 
 
@@ -91,6 +98,16 @@ class GetUserProfileResponse(TypedDict):
 
 class LogoutResponse(TypedDict):
     message: str
+
+
+class ListMcpAccessTokensResponse(TypedDict):
+    tokens: list[McpAccessTokenData]
+
+
+class CreateMcpAccessTokenResponse(TypedDict):
+    token: McpAccessTokenData
+    # Plaintext key, shown to the user once.
+    key: str
 
 
 @api_view(["POST"])
@@ -506,3 +523,60 @@ def update_theme(request):
             {"success": False, "errors": {"non_field_errors": [str(e)]}},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+@api_view(["GET"])
+def list_mcp_access_tokens(request):
+    """The user's MCP access tokens (never the keys themselves)."""
+    form = ListMcpAccessTokensForm({"user": request.user.id})
+    if not form.is_valid():
+        return Response(
+            {"success": False, "errors": form.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    tokens = ListMcpAccessTokensCommand(form).execute()
+    data: ListMcpAccessTokensResponse = {"tokens": [t.to_dict() for t in tokens]}
+    return Response({"success": True, "data": data})
+
+
+@api_view(["POST"])
+def create_mcp_access_token(request):
+    """Mint an MCP access token. The response is the only time the
+    plaintext key is available."""
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = CreateMcpAccessTokenForm(data)
+    if not form.is_valid():
+        return Response(
+            {"success": False, "errors": form.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    result = CreateMcpAccessTokenCommand(form).execute()
+    response_data: CreateMcpAccessTokenResponse = {
+        "token": result.token.to_dict(),
+        "key": result.key,
+    }
+    return Response(
+        {"success": True, "data": response_data}, status=status.HTTP_201_CREATED
+    )
+
+
+@api_view(["POST"])
+def revoke_mcp_access_token(request):
+    """Revoke one MCP access token."""
+    data = request.data.copy()
+    data["user"] = request.user.id
+    form = RevokeMcpAccessTokenForm(data)
+    if not form.is_valid():
+        return Response(
+            {"success": False, "errors": form.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        RevokeMcpAccessTokenCommand(form).execute()
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": e.messages}},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    return Response({"success": True, "data": {"revoked": True}})

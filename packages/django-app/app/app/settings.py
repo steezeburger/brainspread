@@ -65,6 +65,7 @@ INSTALLED_APPS = [
     "ai_chat",
     "web_archives",
     "mcp_server",
+    "oauth_server",
 ]
 
 MIDDLEWARE = [

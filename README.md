@@ -152,13 +152,31 @@ It's a small surface, 16 tools covering pages, blocks, todos, search,
 scheduling, and tagging, each a thin wrapper over the same commands the UI
 uses.
 
-Auth is the same token the web app gets when you log in (visible in the
-Django admin under Auth Tokens):
+Auth is OAuth. In Claude (desktop, web, or mobile), go to Customize →
+Connectors → Add custom connector and paste your server's MCP URL, e.g.
+`https://your-host/api/mcp/`. You sign in to brainspread once, approve the
+connection, and it works on every device signed in to that Claude account.
+Tokens refresh on their own, so there's nothing to re-auth. Claude Code uses
+the same flow:
 
 ```bash
-claude mcp add --transport http brainspread http://localhost:8001/api/mcp/ \
-  --header "Authorization: Token YOUR_TOKEN"
+claude mcp add --transport http brainspread https://your-host/api/mcp/
+# then run /mcp inside Claude Code to sign in
 ```
+
+Connected apps are listed under settings → mcp, where you can disconnect them.
+
+For clients that can't open a browser to sign in (a Claude Code cloud
+session, say), create an access token under settings → mcp and pass it as a
+header instead:
+
+```bash
+claude mcp add --transport http brainspread https://your-host/api/mcp/ \
+  --header "Authorization: Bearer bsmcp_..."
+```
+
+Claude's connectors require HTTPS, so the OAuth flow needs a deployment with
+a real certificate and `SITE_URL` set to its public URL.
 
 ### The in-app chat
 

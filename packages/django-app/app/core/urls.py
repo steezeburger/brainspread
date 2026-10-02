@@ -46,4 +46,19 @@ urlpatterns = [
         views.update_discord_user_id,
         name="update_discord_user_id",
     ),
+    path(
+        "auth/mcp-tokens/",
+        views.list_mcp_access_tokens,
+        name="list_mcp_access_tokens",
+    ),
+    path(
+        "auth/mcp-tokens/create/",
+        views.create_mcp_access_token,
+        name="create_mcp_access_token",
+    ),
+    path(
+        "auth/mcp-tokens/revoke/",
+        views.revoke_mcp_access_token,
+        name="revoke_mcp_access_token",
+    ),
 ]
