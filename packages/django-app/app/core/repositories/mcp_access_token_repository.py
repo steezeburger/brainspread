@@ -5,7 +5,7 @@ from django.db.models import Q, QuerySet
 from django.utils import timezone
 
 from common.repositories.base_repository import BaseRepository
-from core.mcp_access_keys import hash_mcp_access_key
+from core.helpers import hash_mcp_access_key
 from core.models import McpAccessToken, User
 
 # last_used_at is informational, so don't write it on every MCP call.

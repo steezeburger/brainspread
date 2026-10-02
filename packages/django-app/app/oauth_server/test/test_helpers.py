@@ -1,10 +1,10 @@
 from django.test import SimpleTestCase
 
-from oauth_server.services.secrets import verify_pkce_s256
-from oauth_server.services.urls import (
+from oauth_server.helpers import (
     is_mcp_resource,
     is_valid_redirect_uri,
     redirect_uri_matches,
+    verify_pkce_s256,
 )
 from oauth_server.test.helpers import pkce_pair
 

@@ -6,7 +6,7 @@ from django.utils import timezone
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms import CreateMcpAccessTokenForm
-from ..mcp_access_keys import (
+from ..helpers import (
     MCP_ACCESS_KEY_DISPLAY_LENGTH,
     generate_mcp_access_key,
     hash_mcp_access_key,

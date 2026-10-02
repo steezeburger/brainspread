@@ -6,10 +6,10 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 from ..constants import REFRESH_REUSE_GRACE
 from ..errors import OAuthError
 from ..forms import RefreshOAuthTokenForm
+from ..helpers import hash_secret
 from ..models import OAuthToken
 from ..repositories import OAuthTokenRepository
-from ..services.secrets import hash_secret
-from ..services.tokens import TokenResponse, issue_token_pair
+from .token_issuance import TokenResponse, issue_token_pair
 
 
 class RefreshOAuthTokenCommand(AbstractBaseCommand):

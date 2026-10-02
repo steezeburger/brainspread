@@ -11,9 +11,9 @@ from ..constants import (
     REFRESH_TOKEN_LIFETIME,
     REFRESH_TOKEN_PREFIX,
 )
+from ..helpers import generate_secret, hash_secret
 from ..models import OAuthClient, OAuthToken
 from ..repositories import OAuthTokenRepository
-from .secrets import generate_secret, hash_secret
 
 
 class TokenResponse(TypedDict):

@@ -7,11 +7,10 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..errors import OAuthError
 from ..forms import ExchangeAuthorizationCodeForm
+from ..helpers import hash_secret, is_mcp_resource, verify_pkce_s256
 from ..models import OAuthAuthorizationCode
 from ..repositories import OAuthAuthorizationCodeRepository, OAuthTokenRepository
-from ..services.secrets import hash_secret, verify_pkce_s256
-from ..services.tokens import TokenResponse, issue_token_pair
-from ..services.urls import is_mcp_resource
+from .token_issuance import TokenResponse, issue_token_pair
 
 
 class ExchangeAuthorizationCodeCommand(AbstractBaseCommand):

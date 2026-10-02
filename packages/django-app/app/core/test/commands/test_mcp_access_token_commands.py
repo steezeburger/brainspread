@@ -14,7 +14,7 @@ from core.forms import (
     ListMcpAccessTokensForm,
     RevokeMcpAccessTokenForm,
 )
-from core.mcp_access_keys import MCP_ACCESS_KEY_PREFIX, hash_mcp_access_key
+from core.helpers import MCP_ACCESS_KEY_PREFIX, hash_mcp_access_key
 from core.repositories import McpAccessTokenRepository
 from core.test.helpers import McpAccessTokenFactory, UserFactory
 

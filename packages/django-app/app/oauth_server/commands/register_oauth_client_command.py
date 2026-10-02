@@ -2,9 +2,9 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..constants import CLIENT_ID_PREFIX
 from ..forms import RegisterOAuthClientForm
+from ..helpers import generate_secret
 from ..models import OAuthClient
 from ..repositories import OAuthClientRepository
-from ..services.secrets import generate_secret
 
 
 class RegisterOAuthClientCommand(AbstractBaseCommand):

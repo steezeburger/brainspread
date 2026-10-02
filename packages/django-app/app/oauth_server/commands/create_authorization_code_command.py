@@ -4,8 +4,8 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..constants import AUTHORIZATION_CODE_LIFETIME, MCP_SCOPE
 from ..forms import ApproveAuthorizationForm
+from ..helpers import generate_secret, hash_secret
 from ..repositories import OAuthAuthorizationCodeRepository
-from ..services.secrets import generate_secret, hash_secret
 
 
 class CreateAuthorizationCodeCommand(AbstractBaseCommand):

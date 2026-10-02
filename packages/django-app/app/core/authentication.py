@@ -3,7 +3,7 @@ from typing import Optional
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
 from rest_framework.exceptions import AuthenticationFailed
 
-from core.mcp_access_keys import is_mcp_access_key
+from core.helpers import is_mcp_access_key
 from core.models import McpAccessToken, User
 from core.repositories import McpAccessTokenRepository
 

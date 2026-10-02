@@ -6,10 +6,9 @@ from rest_framework.exceptions import AuthenticationFailed
 from core.models import User
 
 from .constants import ACCESS_TOKEN_PREFIX, MCP_SCOPE
+from .helpers import hash_secret, resource_metadata_url
 from .models import OAuthToken
 from .repositories import OAuthTokenRepository
-from .services.secrets import hash_secret
-from .services.urls import resource_metadata_url
 
 
 class OAuthAccessTokenAuthentication(BaseAuthentication):

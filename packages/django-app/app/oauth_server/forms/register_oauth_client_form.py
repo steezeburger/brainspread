@@ -2,7 +2,7 @@ from django import forms
 
 from common.forms.base_form import BaseForm
 
-from ..services.urls import is_valid_redirect_uri
+from ..helpers import is_valid_redirect_uri
 from .fields import StringListField
 
 SUPPORTED_GRANT_TYPES = {"authorization_code", "refresh_token"}

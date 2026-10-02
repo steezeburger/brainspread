@@ -52,7 +52,7 @@ from .forms import (
     RegisterOAuthClientForm,
     RevokeOAuthConnectionForm,
 )
-from .services.urls import add_query_params, is_loopback_redirect, issuer_url
+from .helpers import add_query_params, is_loopback_redirect, issuer_url
 
 # The resource paths a protected-resource metadata URL may be suffixed
 # with: "" is the bare well-known path, the others mirror the MCP URL.

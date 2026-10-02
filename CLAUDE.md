@@ -78,6 +78,18 @@ Navigate to `packages/django-app/` for most development tasks.
   `cls.model.objects.create(**fields)` calls inside repository
   classmethods. If you find yourself reaching for the ORM at a
   callsite, add the method to the repository first.
+- **Services wrap external systems, nothing else.** `<app>/services/`
+  is for clients of things outside this app: LLM providers, Discord
+  webhooks, calendar, auth providers, messaging, storage, cloud task
+  queues. Code that doesn't call out to an external system doesn't
+  go there:
+  - pure functions (parsing, formatting, hashing, URL building) go in
+    the app's `helpers.py`
+  - logic that reads or writes the database belongs in a command; a
+    helper shared by several commands can live in a module next to
+    them in `<app>/commands/`
+  - some older modules in `knowledge/services/` that call nothing
+    external predate this rule; don't add more like them
 - **Model Mixins**: UUID, timestamps, soft delete functionality
 - **Soft Delete**: Models can inherit `SoftDeleteTimestampMixin` for logical deletion
 - **Custom Managers**: Extend Django's model managers for complex queries

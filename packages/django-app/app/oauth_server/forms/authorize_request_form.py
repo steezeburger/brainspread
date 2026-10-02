@@ -6,9 +6,9 @@ from common.forms.base_form import BaseForm
 from core.repositories import UserRepository
 
 from ..constants import MCP_SCOPE, SCOPES_SUPPORTED
+from ..helpers import is_mcp_resource, redirect_uri_matches
 from ..models import OAuthClient
 from ..repositories import OAuthClientRepository
-from ..services.urls import is_mcp_resource, redirect_uri_matches
 
 # Errors on these fields mean we can't trust redirect_uri, so the user
 # sees an error page instead of being bounced back to the client.
