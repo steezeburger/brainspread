@@ -95,6 +95,7 @@ function deriveOffset(scheduledFor, pendingDate) {
 
 window.ScheduleBlockPopover = {
   name: "ScheduleBlockPopover",
+  mixins: [window.brainspreadEscapeCaptureMixin || {}],
   props: {
     isOpen: { type: Boolean, default: false },
     initialDate: { type: String, default: "" },
@@ -204,6 +205,10 @@ window.ScheduleBlockPopover = {
     },
   },
   methods: {
+    escapeCaptureFlag() {
+      return "isOpen";
+    },
+
     onDueTimeToggle() {
       // Seed a sensible default so enabling the time doesn't leave the
       // input empty (an empty time would submit as all-day).
@@ -287,9 +292,17 @@ window.ScheduleBlockPopover = {
     handleBackdropClick(event) {
       if (event.target === event.currentTarget) this.cancel();
     },
-    handleKeydown(event) {
+    // Called for every keydown while open, bound directly on `document`
+    // in the capture phase (see brainspreadEscapeCaptureMixin in
+    // services/escape-capture.js) rather than left as a template
+    // @keydown on the backdrop — that only fires when focus happens to
+    // sit inside it, and clicking a plain, non-focusable part of the
+    // popover blurs focus without moving it back in, silently breaking
+    // Escape.
+    onEscapeCapture(event) {
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         this.cancel();
       } else if (event.key === "Enter" && event.target.tagName !== "BUTTON") {
         event.preventDefault();
@@ -302,7 +315,6 @@ window.ScheduleBlockPopover = {
       v-if="isOpen"
       class="schedule-popover-backdrop"
       @click="handleBackdropClick"
-      @keydown="handleKeydown"
     >
       <div class="schedule-popover" role="dialog" aria-label="Schedule block">
         <h3 class="schedule-popover-title">schedule</h3>

@@ -1,5 +1,7 @@
 // Help Modal Component
 window.HelpModal = {
+  mixins: [window.brainspreadEscapeCaptureMixin || {}],
+
   props: {
     isOpen: {
       type: Boolean,
@@ -21,8 +23,21 @@ window.HelpModal = {
   },
 
   methods: {
-    handleModalKeydown(event) {
+    escapeCaptureFlag() {
+      return "isOpen";
+    },
+
+    // Called for every keydown while open (see
+    // brainspreadEscapeCaptureMixin in services/escape-capture.js) —
+    // bound directly on `document` in the capture phase rather than
+    // left as a template @keydown on the modal's own root, which only
+    // fires when focus happens to sit inside the modal, and clicking a
+    // plain, non-focusable part of it (a heading, a table cell) blurs
+    // focus without moving it back in, silently breaking Escape.
+    onEscapeCapture(event) {
       if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
         this.$emit("close");
         return;
       }
@@ -49,7 +64,7 @@ window.HelpModal = {
   },
 
   template: `
-    <div v-if="isOpen" class="settings-modal" @click.self="$emit('close')" @keydown="handleModalKeydown">
+    <div v-if="isOpen" class="settings-modal" @click.self="$emit('close')">
       <div class="settings-modal-content help-modal-content">
         <div class="help-modal-header">
           <h2>help</h2>

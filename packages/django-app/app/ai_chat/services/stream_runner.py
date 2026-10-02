@@ -332,12 +332,10 @@ def follow_message(message_uuid: str) -> Iterator[Dict[str, Any]]:
                 "error": "Stream ended with an error.",
             }
         else:
-            from ..commands.send_message_command import SendMessageCommand
-
             yield {
                 "type": "done",
                 "session_id": str(msg.session.uuid),
-                "message": SendMessageCommand._serialize_message(msg, msg.ai_model),
+                "message": msg.to_dict(),
             }
     finally:
         close_old_connections()

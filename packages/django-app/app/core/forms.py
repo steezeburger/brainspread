@@ -87,6 +87,24 @@ class UpdateRenderEmojiForm(BaseForm):
     render_emoji = forms.BooleanField(required=False)
 
 
+class UpdateHighlightHashtagsForm(BaseForm):
+    user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
+    # required=False — see UpdateRenderEmojiForm.
+    highlight_hashtags = forms.BooleanField(required=False)
+
+
+class UpdateHighlightPropertyKeysForm(BaseForm):
+    user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
+    # required=False — see UpdateRenderEmojiForm.
+    highlight_property_keys = forms.BooleanField(required=False)
+
+
+class UpdateHighlightPropertyValuesForm(BaseForm):
+    user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
+    # required=False — see UpdateRenderEmojiForm.
+    highlight_property_values = forms.BooleanField(required=False)
+
+
 class UpdateDiscordWebhookForm(BaseForm):
     user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
     discord_webhook_url = forms.URLField(required=False, empty_value="", max_length=500)

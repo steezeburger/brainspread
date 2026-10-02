@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.test import TestCase
 
 from knowledge.commands import DeletePageCommand, RestorePageCommand
@@ -76,3 +78,28 @@ class TestRestorePageCommand(TestCase):
 
         restore_form = RestorePageForm({"user": self.user.id, "page": page.uuid})
         self.assertFalse(restore_form.is_valid())
+
+    def test_rolls_back_page_undelete_if_the_block_restore_step_fails(self):
+        # page.undelete() and the block cascade must commit or fail
+        # together — otherwise a mid-cascade error leaves the page
+        # active while its blocks are still archived (invisible and
+        # stuck, with no Trash entry to recover from).
+        page = PageFactory(user=self.user)
+        block = BlockFactory(user=self.user, page=page)
+        self._archive_page(page)
+
+        form = RestorePageForm({"user": self.user.id, "page": page.uuid})
+        self.assertTrue(form.is_valid(), form.errors)
+
+        with patch(
+            "knowledge.repositories.block_repository.BlockRepository"
+            ".restore_page_blocks",
+            side_effect=RuntimeError("boom"),
+        ):
+            with self.assertRaises(RuntimeError):
+                RestorePageCommand(form).execute()
+
+        page.refresh_from_db()
+        block.refresh_from_db()
+        self.assertFalse(page.is_active)
+        self.assertFalse(block.is_active)

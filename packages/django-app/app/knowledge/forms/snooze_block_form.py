@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError
 from common.forms import BaseForm, UUIDModelChoiceField
 from core.repositories import UserRepository
 
+from ..models import BlockRevision
 from ..repositories import BlockRepository
 
 
@@ -18,6 +19,10 @@ class SnoozeBlockForm(BaseForm):
     block = UUIDModelChoiceField(queryset=BlockRepository.get_queryset(), required=True)
     days = forms.IntegerField(min_value=-365, max_value=365, required=False, initial=0)
     hours = forms.IntegerField(min_value=-72, max_value=72, required=False, initial=0)
+    # Who's making this change, for BlockRevision attribution. Omitted by
+    # the web UI (the command defaults to "user"); automation / the AI
+    # chat / MCP tools pass their own value explicitly.
+    source = forms.ChoiceField(choices=BlockRevision.SOURCE_CHOICES, required=False)
 
     def clean_block(self):
         block = self.cleaned_data.get("block")

@@ -71,7 +71,7 @@ from ..forms.create_block_form import CreateBlockForm
 from ..forms.schedule_block_form import ScheduleBlockForm
 from ..forms.tag_blocks_form import UntagBlocksForm
 from ..forms.update_block_form import UpdateBlockForm
-from ..models import Block
+from ..models import Block, BlockRevision
 from ..repositories.block_repository import BlockRepository
 from ..repositories.page_repository import PageRepository
 from . import content_tokens
@@ -480,6 +480,7 @@ def _set_type(
             "user": ctx.user.id,
             "block_uuids": [str(block.uuid) for block in blocks],
             "new_type": new_type,
+            "source": BlockRevision.SOURCE_AUTOMATION,
         }
     )
     if not form.is_valid():
@@ -716,7 +717,12 @@ def _update_block_content(ctx: ActionContext, block: Block, content: str) -> Non
     if prefix and not content.lstrip().lower().startswith(prefix.lower()):
         content = f"{prefix} {content.lstrip()}"
     form = UpdateBlockForm(
-        data={"user": ctx.user.id, "block": str(block.uuid), "content": content}
+        data={
+            "user": ctx.user.id,
+            "block": str(block.uuid),
+            "content": content,
+            "source": BlockRevision.SOURCE_AUTOMATION,
+        }
     )
     if not form.is_valid():
         raise ActionError(form.errors.as_json())
@@ -822,6 +828,7 @@ def _set_due(
             data={
                 "user": ctx.user.id,
                 "block_uuids": [str(block.uuid) for block in blocks],
+                "source": BlockRevision.SOURCE_AUTOMATION,
             }
         )
         if not clear_form.is_valid():
@@ -857,6 +864,7 @@ def _set_due(
         "user": ctx.user.id,
         "block_uuids": [str(block.uuid) for block in blocks],
         "new_date": target.isoformat() if target else "",
+        "source": BlockRevision.SOURCE_AUTOMATION,
     }
     if due_time is not None:
         data["new_time"] = due_time
@@ -1144,6 +1152,7 @@ def _create_block(
             "user": ctx.user.id,
             "block": str(block.uuid),
             "due_date": due_date.isoformat(),
+            "source": BlockRevision.SOURCE_AUTOMATION,
         }
         if due_time is not None:
             schedule_data["due_time"] = due_time

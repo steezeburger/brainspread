@@ -9,7 +9,7 @@ from common.forms import BaseForm, UUIDModelChoiceField
 from core.models import User
 from core.repositories import UserRepository
 
-from ..models import Block
+from ..models import Block, BlockRevision
 from ..repositories import BlockRepository
 
 
@@ -37,6 +37,10 @@ class UpdateBlockForm(BaseForm):
     asset = UUIDModelChoiceField(
         queryset=AssetRepository.get_queryset(), required=False
     )
+    # Who's making this change, for BlockRevision attribution. Omitted by
+    # the web UI (the command defaults to "user"); automation / the AI
+    # chat / MCP tools pass their own value explicitly.
+    source = forms.ChoiceField(choices=BlockRevision.SOURCE_CHOICES, required=False)
 
     def clean_block(self) -> Block:
         block = self.cleaned_data.get("block")

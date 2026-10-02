@@ -5,8 +5,10 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.utils import timezone
 
 from ai_chat.models import AIModel, AIProvider, UserAISettings, UserProviderConfig
+from knowledge.constants import COMPLETED_TODO_TYPES
 from knowledge.models import Block, Page
 
 User = get_user_model()
@@ -140,6 +142,12 @@ class Command(BaseCommand):
                 prefix = state_prefixes.get(block_type)
                 if prefix and not content.lstrip().upper().startswith(prefix):
                     content = f"{prefix} {content}"
+                # SetBlockTypeCommand stamps completed_at when a block
+                # enters a completed type; a done/wontdo row without one
+                # is a state no real user can reach.
+                completed_at = (
+                    timezone.now() if block_type in COMPLETED_TODO_TYPES else None
+                )
                 return Block.objects.create(
                     user=user,
                     page=page,
@@ -147,6 +155,7 @@ class Command(BaseCommand):
                     block_type=block_type,
                     order=order,
                     parent=parent,
+                    completed_at=completed_at,
                 )
 
             # Top-level blocks

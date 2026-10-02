@@ -1,3 +1,6 @@
+import uuid
+from datetime import date
+
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 
@@ -159,8 +162,6 @@ class TestDuplicatePageCommand(TestCase):
         self.assertEqual(BlockRepository.get_page_blocks(clone).count(), 1)
 
     def test_duplicate_daily_normalizes_to_page(self):
-        from datetime import date
-
         daily = PageFactory(
             user=self.user,
             title="2026-04-01",
@@ -205,12 +206,10 @@ class TestDuplicatePageCommand(TestCase):
             DuplicatePageCommand(form).execute()
 
     def test_duplicate_rejects_unknown_uuid(self):
-        import uuid as uuid_module
-
         form = DuplicatePageForm(
             {
                 "user": self.user.id,
-                "source_page_uuid": str(uuid_module.uuid4()),
+                "source_page_uuid": str(uuid.uuid4()),
             }
         )
         self.assertTrue(form.is_valid())

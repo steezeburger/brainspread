@@ -1,5 +1,9 @@
-from django.test import TestCase
+from datetime import timedelta
 
+from django.test import TestCase
+from django.utils import timezone
+
+from knowledge.models import Block
 from knowledge.repositories import BlockRepository
 
 from ..helpers import BlockFactory, PageFactory, UserFactory
@@ -67,6 +71,26 @@ class TestGetReferencedBlocks(TestCase):
 
         result = BlockRepository.get_referenced_blocks(self.tag_page)
         self.assertEqual(result, [])
+
+
+class TestPagesPrefetch(TestCase):
+    """get_root_blocks() / get_referenced_blocks() / run_compiled_query()
+    all prefetch `pages` so Block.get_tags() (called by to_dict() to
+    serialize a block's tag chips) reads the cache instead of issuing
+    one query per block — mirrors the existing `reminders` prefetch.
+    Without it, rendering a page tree does an extra tags query per
+    block on the page."""
+
+    def test_get_root_blocks_prefetches_pages(self):
+        user = UserFactory()
+        page = PageFactory(user=user)
+        tag_page = PageFactory(user=user, title="Tag", slug="tag")
+        block = BlockFactory(user=user, page=page)
+        block.pages.add(tag_page)
+
+        roots = list(BlockRepository.get_root_blocks(page))
+        with self.assertNumQueries(0):
+            list(roots[0].pages.all())
 
 
 class TestSearchByContentExcludesDeleted(TestCase):
@@ -159,8 +183,6 @@ class TestSoftDeleteCascades(TestCase):
         self.assertEqual(restored, 0)
 
     def test_restore_ancestors_stops_at_the_first_active_ancestor(self):
-        from knowledge.models import Block
-
         root = BlockFactory(user=self.user, page=self.page, content="root")
         child = BlockFactory(
             user=self.user, page=self.page, parent=root, content="child"
@@ -211,12 +233,6 @@ class TestSoftDeleteCascades(TestCase):
         self.assertIsNone(BlockRepository.get_deleted_by_uuid(str(block.uuid), other))
 
     def test_get_purgeable_filters_by_cutoff(self):
-        from datetime import timedelta
-
-        from django.utils import timezone
-
-        from knowledge.models import Block
-
         old = BlockFactory(user=self.user, page=self.page)
         old.delete()
         Block.objects.filter(pk=old.pk).update(

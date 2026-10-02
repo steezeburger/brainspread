@@ -27,6 +27,7 @@ from knowledge.forms import (
     UpdatePageEmbeddedViewForm,
 )
 from knowledge.models import PageEmbeddedView, SavedView
+from knowledge.repositories import PageEmbeddedViewRepository
 
 from ..helpers import PageFactory, UserFactory
 
@@ -275,8 +276,6 @@ class DailyScopeTests(_EmbedTestBase):
         self.assertIsNone(embed.page_id)
 
     def test_embed_on_yesterdays_daily_shows_on_todays_daily(self):
-        from knowledge.repositories import PageEmbeddedViewRepository
-
         yesterday = self._make_daily(date(2026, 4, 23))
         today = self._make_daily(date(2026, 4, 24))
         self._make_embed(yesterday, self.view)
@@ -302,16 +301,12 @@ class DailyScopeTests(_EmbedTestBase):
         self.assertEqual(embed.page_id, self.page.id)
 
     def test_daily_scoped_embed_does_not_show_on_regular_page(self):
-        from knowledge.repositories import PageEmbeddedViewRepository
-
         yesterday = self._make_daily(date(2026, 4, 23))
         self._make_embed(yesterday, self.view)
         on_regular = list(PageEmbeddedViewRepository.list_for_page(self.page))
         self.assertEqual(on_regular, [])
 
     def test_reorder_operates_on_daily_bucket(self):
-        from knowledge.repositories import PageEmbeddedViewRepository
-
         yesterday = self._make_daily(date(2026, 4, 23))
         today = self._make_daily(date(2026, 4, 24))
         view_a = SavedView.objects.create(

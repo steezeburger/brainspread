@@ -8,7 +8,8 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 from ..constants import COMPLETED_TODO_TYPES
 from ..forms.set_block_type_form import SetBlockTypeForm
 from ..forms.touch_page_form import TouchPageForm
-from ..models import Block, Reminder
+from ..models import Block, BlockRevision, Reminder
+from ..repositories import BlockRevisionRepository
 from .touch_page_command import TouchPageCommand
 
 # Block types that carry a leading content prefix (e.g. "TODO write docs").
@@ -38,12 +39,17 @@ class SetBlockTypeCommand(AbstractBaseCommand):
         if old_type == new_type:
             return block
 
+        previous_snapshot = BlockRevisionRepository.snapshot(block)
+
         block.content = self._update_content_prefix(block.content, old_type, new_type)
         block.completed_at = self._next_completed_at(
             old_type, new_type, block.completed_at
         )
         block.block_type = new_type
         block.save()
+
+        source = self.form.cleaned_data.get("source") or BlockRevision.SOURCE_USER
+        BlockRevisionRepository.record_if_changed(block, previous_snapshot, source)
 
         # Once a block is completed, pending reminders are noise.
         # Stay-skipped on un-complete: user can reschedule manually. We set

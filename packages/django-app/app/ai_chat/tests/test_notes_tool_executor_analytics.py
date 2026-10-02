@@ -12,6 +12,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from ai_chat.tools.notes_tool_executor import NotesToolExecutor
+from ai_chat.tools.notes_tools import anthropic_notes_tools
 from core.test.helpers import UserFactory
 from knowledge.models import Block
 from knowledge.test.helpers import BlockFactory, PageFactory, due_dt
@@ -449,8 +450,6 @@ class AnalyticsToolRegistrationTests(TestCase):
             self.assertFalse(executor.requires_approval(name), name)
 
     def test_anthropic_schema_includes_new_tools(self):
-        from ai_chat.tools.notes_tools import anthropic_notes_tools
-
         names = {t["name"] for t in anthropic_notes_tools()}
         self.assertIn("get_daily_pages_in_range", names)
         self.assertIn("get_completion_stats", names)

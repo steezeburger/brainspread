@@ -1,6 +1,8 @@
 from django.test import TestCase
 
-from ai_chat.commands import SetChatSessionFavoritedCommand
+from ai_chat.commands.set_chat_session_favorited_command import (
+    SetChatSessionFavoritedCommand,
+)
 from ai_chat.forms import SetChatSessionFavoritedForm
 from ai_chat.test.helpers import ChatSessionFactory
 from core.test.helpers import UserFactory

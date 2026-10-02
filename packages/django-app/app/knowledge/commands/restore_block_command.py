@@ -1,3 +1,5 @@
+from django.db import transaction
+
 from common.commands.abstract_base_command import AbstractBaseCommand
 from knowledge.forms.touch_page_form import TouchPageForm
 from knowledge.repositories.block_repository import BlockRepository
@@ -25,8 +27,9 @@ class RestoreBlockCommand(AbstractBaseCommand):
         block = self.form.cleaned_data["block"]
         user = self.form.cleaned_data["user"]
 
-        BlockRepository.restore_ancestors(block)
-        BlockRepository.restore_subtree(block)
+        with transaction.atomic():
+            BlockRepository.restore_ancestors(block)
+            BlockRepository.restore_subtree(block)
 
         touch_form = TouchPageForm(data={"user": user.id, "page": str(block.page.uuid)})
         if touch_form.is_valid():

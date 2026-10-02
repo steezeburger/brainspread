@@ -1,3 +1,4 @@
+import json
 from unittest.mock import Mock, patch
 
 from django.test import TestCase, TransactionTestCase
@@ -5,7 +6,7 @@ from django.test import TestCase, TransactionTestCase
 from ai_chat.commands.resume_approval_command import ResumeApprovalCommand
 from ai_chat.commands.stream_send_message_command import StreamSendMessageCommand
 from ai_chat.forms import ResumeApprovalForm, SendMessageForm
-from ai_chat.models import AIModel, PendingToolApproval
+from ai_chat.models import AIModel, ChatSession, PendingToolApproval
 from ai_chat.services import stream_runner
 from ai_chat.services.base_ai_service import AIUsage, PendingApproval
 from ai_chat.test.helpers import (
@@ -141,8 +142,6 @@ class ResumeApprovalCommandTestCase(TestCase):
         )
 
     def _create_pending(self, requires_approval: bool = True):
-        from ai_chat.models import ChatSession
-
         session = ChatSession.objects.create(user=self.user, title="")
         approval = PendingToolApproval.objects.create(
             session=session,
@@ -263,8 +262,6 @@ class ResumeApprovalCommandTestCase(TestCase):
         self.assertEqual(last_msg["role"], "user")
         result_block = last_msg["content"][0]
         self.assertEqual(result_block["type"], "tool_result")
-        import json
-
         self.assertTrue(json.loads(result_block["content"]).get("declined"))
 
     @patch("ai_chat.services.ai_service_factory.AIServiceFactory.create_service")
@@ -320,8 +317,6 @@ class ResumeApprovalFormValidationTestCase(TestCase):
         cls.other_user = UserFactory(email="rform-other@example.com")
 
     def _create_approval(self, user):
-        from ai_chat.models import ChatSession
-
         session = ChatSession.objects.create(user=user, title="")
         return PendingToolApproval.objects.create(
             session=session,

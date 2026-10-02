@@ -348,6 +348,31 @@ class ApiService {
     });
   }
 
+  /**
+   * A block's revision history, newest first (issue #234).
+   */
+  async getBlockRevisions(blockUuid) {
+    const params = new URLSearchParams({ block: blockUuid });
+    return await this.request(
+      `/knowledge/api/blocks/revisions/?${params.toString()}`
+    );
+  }
+
+  /**
+   * Restore a block to a past revision's field values. The restore
+   * itself is recorded as a new revision, so it can be undone the same
+   * way.
+   */
+  async restoreBlockRevision(blockUuid, revisionUuid) {
+    return await this.request("/knowledge/api/blocks/revisions/restore/", {
+      method: "POST",
+      body: JSON.stringify({
+        block: blockUuid,
+        revision: revisionUuid,
+      }),
+    });
+  }
+
   async moveUndoneTodos(targetDate = null) {
     const body = targetDate ? { target_date: targetDate } : {};
     return await this.request("/knowledge/api/blocks/move-undone-todos/", {
@@ -622,6 +647,85 @@ class ApiService {
       return result;
     } catch (error) {
       console.error("Failed to update emoji setting:", error);
+      throw error;
+    }
+  }
+
+  async updateUserHighlightHashtags(highlightHashtags) {
+    try {
+      const result = await this.request(
+        "/api/auth/update-highlight-hashtags/",
+        {
+          method: "POST",
+          body: JSON.stringify({ highlight_hashtags: !!highlightHashtags }),
+        }
+      );
+      if (result.success) {
+        const currentUser = this.getCurrentUser();
+        if (currentUser) {
+          currentUser.highlight_hashtags = !!highlightHashtags;
+          localStorage.setItem("user", JSON.stringify(currentUser));
+        }
+      }
+      return result;
+    } catch (error) {
+      console.error("Failed to update hashtag highlighting setting:", error);
+      throw error;
+    }
+  }
+
+  async updateUserHighlightPropertyKeys(highlightPropertyKeys) {
+    try {
+      const result = await this.request(
+        "/api/auth/update-highlight-property-keys/",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            highlight_property_keys: !!highlightPropertyKeys,
+          }),
+        }
+      );
+      if (result.success) {
+        const currentUser = this.getCurrentUser();
+        if (currentUser) {
+          currentUser.highlight_property_keys = !!highlightPropertyKeys;
+          localStorage.setItem("user", JSON.stringify(currentUser));
+        }
+      }
+      return result;
+    } catch (error) {
+      console.error(
+        "Failed to update property key highlighting setting:",
+        error
+      );
+      throw error;
+    }
+  }
+
+  async updateUserHighlightPropertyValues(highlightPropertyValues) {
+    try {
+      const result = await this.request(
+        "/api/auth/update-highlight-property-values/",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            highlight_property_values: !!highlightPropertyValues,
+          }),
+        }
+      );
+      if (result.success) {
+        const currentUser = this.getCurrentUser();
+        if (currentUser) {
+          currentUser.highlight_property_values = !!highlightPropertyValues;
+          localStorage.setItem("user", JSON.stringify(currentUser));
+        }
+      }
+      return result;
+    } catch (error) {
+      console.error(
+        "Failed to update property value highlighting setting:",
+        error
+      );
       throw error;
     }
   }

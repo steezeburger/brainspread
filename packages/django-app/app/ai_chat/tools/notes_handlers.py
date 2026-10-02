@@ -21,6 +21,9 @@ import pytz
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
+from ai_chat.commands.get_chat_history_summary_command import (
+    GetChatHistorySummaryCommand,
+)
 from ai_chat.forms import GetChatHistorySummaryForm
 from core.commands.get_current_time_command import GetCurrentTimeCommand
 from core.commands.get_user_preferences_command import GetUserPreferencesCommand
@@ -132,12 +135,13 @@ from knowledge.forms.snooze_block_form import SnoozeBlockForm
 from knowledge.forms.tag_blocks_form import TagBlocksForm, UntagBlocksForm
 from knowledge.forms.update_block_form import UpdateBlockForm
 from knowledge.forms.update_saved_view_form import UpdateSavedViewForm
-from knowledge.models import Block
+from knowledge.models import Block, BlockRevision
 from knowledge.repositories.block_repository import BlockRepository
 from knowledge.repositories.page_embedded_view_repository import (
     PageEmbeddedViewRepository,
 )
 from knowledge.repositories.page_repository import PageRepository
+from knowledge.services import query_engine
 
 # ---- Read handlers (thin form -> command wrappers) ----
 
@@ -345,13 +349,6 @@ def _get_recent_activity(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, An
 
 
 def _get_chat_history_summary(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
-    # Lazy import — `ai_chat.commands.__init__` pulls in
-    # ResumeApprovalCommand which in turn imports NotesToolExecutor;
-    # resolving the command class at call time avoids that cycle.
-    from ai_chat.commands.get_chat_history_summary_command import (
-        GetChatHistorySummaryCommand,
-    )
-
     form_data: Dict[str, Any] = {"user": ctx.user.id}
     if args.get("limit") is not None:
         form_data["limit"] = args["limit"]
@@ -455,10 +452,6 @@ def _run_saved_view(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
         # Draft path — compile + execute without saving. Mirrors what
         # RunSavedViewCommand does internally so the LLM can dry-run
         # before proposing a save.
-        from django.core.exceptions import ValidationError
-
-        from knowledge.services import query_engine
-
         if not isinstance(inline_filter, dict):
             return {"error": "filter must be an object"}
         if sort is not None and not isinstance(sort, list):
@@ -719,6 +712,7 @@ def _edit_block(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
 
     updated = block
     if has_block_fields:
+        form_data["source"] = BlockRevision.SOURCE_ASSISTANT
         form = UpdateBlockForm(form_data)
         if not form.is_valid():
             return {"error": _first_form_error(form)}
@@ -734,6 +728,7 @@ def _edit_block(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
                 "user": ctx.user.id,
                 "block": str(updated.uuid),
                 "completed_at": completed_at,
+                "source": BlockRevision.SOURCE_ASSISTANT,
             }
         )
         if not ca_form.is_valid():
@@ -878,6 +873,7 @@ def _schedule_block(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
         "user": ctx.user.id,
         "block": block.uuid,
         "due_date": due_date.isoformat(),
+        "source": BlockRevision.SOURCE_ASSISTANT,
     }
     # Optional time-of-day; absent leaves the due all-day.
     if args.get("due_time"):
@@ -912,6 +908,7 @@ def _clear_schedule(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
         {
             "user": ctx.user.id,
             "block": block.uuid,
+            "source": BlockRevision.SOURCE_ASSISTANT,
         }
     )
     if not form.is_valid():
@@ -940,6 +937,7 @@ def _set_block_type(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
             "user": ctx.user.id,
             "block": block.uuid,
             "block_type": block_type,
+            "source": BlockRevision.SOURCE_ASSISTANT,
         }
     )
     if not form.is_valid():
@@ -999,6 +997,7 @@ def _snooze_block(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
     form_data: Dict[str, Any] = {
         "user": ctx.user.id,
         "block": (args.get("block_uuid") or "").strip(),
+        "source": BlockRevision.SOURCE_ASSISTANT,
     }
     if args.get("days") is not None:
         form_data["days"] = args["days"]
@@ -1028,6 +1027,7 @@ def _bulk_set_block_type(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, An
             "user": ctx.user.id,
             "block_uuids": args.get("block_uuids") or [],
             "new_type": (args.get("new_type") or "").strip(),
+            "source": BlockRevision.SOURCE_ASSISTANT,
         }
     )
     if not form.is_valid():
@@ -1092,6 +1092,7 @@ def _bulk_schedule(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
         "user": ctx.user.id,
         "block_uuids": args.get("block_uuids") or [],
         "new_date": new_date.isoformat(),
+        "source": BlockRevision.SOURCE_ASSISTANT,
     }
     # Optional time-of-day; absent leaves the dues all-day.
     if args.get("new_time"):
@@ -1130,6 +1131,7 @@ def _bulk_clear_schedule(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, An
         {
             "user": ctx.user.id,
             "block_uuids": args.get("block_uuids") or [],
+            "source": BlockRevision.SOURCE_ASSISTANT,
         }
     )
     if not form.is_valid():
@@ -1153,6 +1155,7 @@ def _bulk_snooze(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
     form_data: Dict[str, Any] = {
         "user": ctx.user.id,
         "block_uuids": args.get("block_uuids") or [],
+        "source": BlockRevision.SOURCE_ASSISTANT,
     }
     if args.get("days") is not None:
         form_data["days"] = args["days"]
@@ -1168,8 +1171,6 @@ def _bulk_snooze(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _create_saved_view(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
-    from django.core.exceptions import ValidationError
-
     form_data: Dict[str, Any] = {
         "user": ctx.user.id,
         "name": (args.get("name") or "").strip(),
@@ -1192,8 +1193,6 @@ def _create_saved_view(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]
 
 
 def _update_saved_view(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
-    from django.core.exceptions import ValidationError
-
     view_uuid = (args.get("uuid") or "").strip()
     if not view_uuid:
         return {"error": "uuid is required"}
@@ -1220,8 +1219,6 @@ def _update_saved_view(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]
 
 
 def _delete_saved_view(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
-    from django.core.exceptions import ValidationError
-
     view_uuid = (args.get("uuid") or "").strip()
     if not view_uuid:
         return {"error": "uuid is required"}
@@ -1236,8 +1233,6 @@ def _delete_saved_view(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]
 
 
 def _duplicate_saved_view(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
-    from django.core.exceptions import ValidationError
-
     view_uuid = (args.get("uuid") or "").strip()
     if not view_uuid:
         return {"error": "uuid is required"}
@@ -1259,8 +1254,6 @@ def _duplicate_saved_view(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, A
 
 
 def _embed_view_on_page(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
-    from django.core.exceptions import ValidationError
-
     page_uuid = (args.get("page_uuid") or "").strip()
     view_uuid = (args.get("saved_view_uuid") or "").strip()
     if not page_uuid or not view_uuid:
@@ -1282,8 +1275,6 @@ def _embed_view_on_page(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any
 
 
 def _delete_page_embed(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
-    from django.core.exceptions import ValidationError
-
     embed_uuid = (args.get("embed_uuid") or "").strip()
     if not embed_uuid:
         return {"error": "embed_uuid is required"}

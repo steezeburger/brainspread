@@ -1,3 +1,5 @@
+from django.db import transaction
+
 from common.commands.abstract_base_command import AbstractBaseCommand
 from knowledge.repositories.block_repository import BlockRepository
 
@@ -15,6 +17,7 @@ class RestorePageCommand(AbstractBaseCommand):
         super().execute()
 
         page = self.form.cleaned_data["page"]
-        page.undelete()
-        BlockRepository.restore_page_blocks(page)
+        with transaction.atomic():
+            page.undelete()
+            BlockRepository.restore_page_blocks(page)
         return True

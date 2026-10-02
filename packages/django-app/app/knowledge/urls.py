@@ -45,6 +45,16 @@ urlpatterns = [
         name="set_block_completed_at",
     ),
     path(
+        "api/blocks/revisions/",
+        views.list_block_revisions,
+        name="list_block_revisions",
+    ),
+    path(
+        "api/blocks/revisions/restore/",
+        views.restore_block_revision,
+        name="restore_block_revision",
+    ),
+    path(
         "api/blocks/move-undone-todos/",
         views.move_undone_todos,
         name="move_undone_todos",

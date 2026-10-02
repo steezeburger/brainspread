@@ -7,9 +7,10 @@ from ..forms.set_block_type_form import SetBlockTypeForm
 from ..forms.sync_block_tags_form import SyncBlockTagsForm
 from ..forms.touch_page_form import TouchPageForm
 from ..forms.update_block_form import UpdateBlockForm
-from ..models import Block
-from ..repositories import BlockRepository
+from ..models import Block, BlockRevision
+from ..repositories import BlockRepository, BlockRevisionRepository
 from ..services.automation_spec import is_automation_content
+from ..services.block_properties import extract_properties_from_content
 from ..services.content_tokens import TokenError, resolve_content_tokens
 from ..services.token_context import build_token_context
 from .set_block_type_command import SetBlockTypeCommand
@@ -118,6 +119,14 @@ class UpdateBlockCommand(AbstractBaseCommand):
             except TokenError as e:
                 raise ValidationError(str(e))
 
+        # Snapshot tracked fields before mutating — compared against the
+        # post-save state below to decide whether a BlockRevision is
+        # warranted. Taken here (not at the top of execute()) so it
+        # reflects the block's state right before this command's own
+        # writes; the explicit block_type delegation below records its
+        # own revision for the type/prefix/completed_at change.
+        previous_snapshot = BlockRevisionRepository.snapshot(block)
+
         # Update other fields
         for field in [
             "content",
@@ -160,6 +169,9 @@ class UpdateBlockCommand(AbstractBaseCommand):
 
         block.save()
 
+        source = self.form.cleaned_data.get("source") or BlockRevision.SOURCE_USER
+        BlockRevisionRepository.record_if_changed(block, previous_snapshot, source)
+
         if explicit_block_type:
             new_type = self.form.cleaned_data["block_type"]
             if new_type != block.block_type:
@@ -168,6 +180,7 @@ class UpdateBlockCommand(AbstractBaseCommand):
                         "user": user.id,
                         "block": str(block.uuid),
                         "block_type": new_type,
+                        "source": source,
                     }
                 )
                 if not type_form.is_valid():
@@ -193,7 +206,11 @@ class UpdateBlockCommand(AbstractBaseCommand):
         # Extract and set properties from content if content was updated (business logic)
         # Skip for code blocks — `key::value` inside code shouldn't be parsed.
         if content_updated and block.content and block.block_type != "code":
-            block.extract_properties_from_content()
+            properties = extract_properties_from_content(
+                block.content, block.properties
+            )
+            if properties != block.properties:
+                BlockRepository.update_properties(block, properties)
 
         # Bump the page's modified_at so the recent-pages sidebar reflects
         # this edit even though only the block row changed.

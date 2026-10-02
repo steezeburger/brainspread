@@ -7,6 +7,8 @@ from django.core.exceptions import ValidationError
 from common.forms.base_form import BaseForm
 from core.repositories import UserRepository
 
+from ..models import BlockRevision
+
 
 class BulkSnoozeForm(BaseForm):
     """Inputs for the assistant's bulk_snooze tool.
@@ -20,6 +22,10 @@ class BulkSnoozeForm(BaseForm):
     block_uuids = forms.JSONField()
     days = forms.IntegerField(min_value=-365, max_value=365, required=False, initial=0)
     hours = forms.IntegerField(min_value=-72, max_value=72, required=False, initial=0)
+    # Who's making this change, for BlockRevision attribution. Omitted by
+    # the web UI (the command defaults to "user"); automation / the AI
+    # chat pass their own value explicitly.
+    source = forms.ChoiceField(choices=BlockRevision.SOURCE_CHOICES, required=False)
 
     def clean_block_uuids(self) -> List[str]:
         raw = self.cleaned_data.get("block_uuids")

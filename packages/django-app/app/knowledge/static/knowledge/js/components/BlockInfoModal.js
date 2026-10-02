@@ -12,6 +12,7 @@
 //   save-completed-at — { iso } user saved a corrected completion time
 window.BlockInfoModal = {
   name: "BlockInfoModal",
+  mixins: [window.brainspreadEscapeCaptureMixin || {}],
   props: {
     isOpen: { type: Boolean, default: false },
     block: { type: Object, default: null },
@@ -88,6 +89,10 @@ window.BlockInfoModal = {
     },
   },
   methods: {
+    escapeCaptureFlag() {
+      return "isOpen";
+    },
+
     // datetime-local wants "YYYY-MM-DDTHH:MM" in local wall-clock time.
     toDatetimeLocal(value) {
       if (!value) return "";
@@ -166,9 +171,17 @@ window.BlockInfoModal = {
     onBackdropClick(event) {
       if (event.target === event.currentTarget) this.$emit("close");
     },
-    onKeydown(event) {
+    // Called for every keydown while open, bound directly on `document`
+    // in the capture phase (see brainspreadEscapeCaptureMixin in
+    // services/escape-capture.js) rather than left as a template
+    // @keydown on the backdrop — that only fires when focus happens to
+    // sit inside it, and clicking a plain, non-focusable part of the
+    // modal blurs focus without moving it back in, silently breaking
+    // Escape.
+    onEscapeCapture(event) {
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         this.$emit("close");
       }
     },
@@ -179,7 +192,6 @@ window.BlockInfoModal = {
         v-if="isOpen && block"
         class="app-modal-backdrop"
         @click.self="onBackdropClick"
-        @keydown="onKeydown"
         tabindex="-1"
       >
         <div class="app-modal block-info-modal" role="dialog" aria-modal="true" aria-label="Block info">

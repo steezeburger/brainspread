@@ -1,4 +1,6 @@
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 
 from knowledge.commands import DeleteBlockCommand
 from knowledge.forms import DeleteBlockForm
@@ -29,6 +31,32 @@ class TestDeleteBlockCommand(TestCase):
         block.refresh_from_db()
         self.assertFalse(block.is_active)
         self.assertIsNotNone(block.deleted_at)
+
+    def test_deleted_nested_block_drops_out_of_the_rendered_tree(self):
+        # Regression: BlockRepository.get_tree_dict() must recurse through
+        # get_child_blocks() (is_active-filtered), not a raw reverse FK
+        # manager — otherwise a deleted non-root block keeps showing up in
+        # the page-render API even though the delete request succeeded and
+        # the row was correctly marked inactive. Root-level deletes never
+        # hit this, since BlockRepository.get_root_blocks() is filtered —
+        # only nested ones did.
+        parent = BlockFactory(user=self.user, page=self.page, content="parent")
+        child = BlockFactory(
+            user=self.user, page=self.page, parent=parent, content="child"
+        )
+        sibling = BlockFactory(
+            user=self.user, page=self.page, parent=parent, content="sibling"
+        )
+
+        form = DeleteBlockForm({"user": self.user.id, "block": child.uuid})
+        self.assertTrue(form.is_valid(), form.errors)
+        DeleteBlockCommand(form).execute()
+
+        parent.refresh_from_db()
+        rendered = BlockRepository.get_tree_dict(parent)
+        child_uuids = {c["uuid"] for c in rendered["children"]}
+        self.assertNotIn(str(child.uuid), child_uuids)
+        self.assertIn(str(sibling.uuid), child_uuids)
 
     def test_cascades_to_descendant_subtree(self):
         root = BlockFactory(user=self.user, page=self.page, content="root")
@@ -106,6 +134,36 @@ class TestDeleteBlockCommand(TestCase):
         self.assertFalse(root_archive.is_active)
         self.assertFalse(child_archive.is_active)
 
+    def test_archive_cleanup_is_a_single_bulk_operation(self):
+        # Regression for an N+1: the cleanup used to do a form-validation
+        # query plus a WebArchiveRepository lookup per subtree member
+        # (almost none of which have an archive). Isolate just the
+        # archive-cleanup queries from DeleteBlockCommand's other work
+        # (descendant lookup, the subtree soft-delete itself, touching
+        # the page) by asserting the WebArchive table is only ever
+        # touched twice regardless of subtree size: one bulk UPDATE
+        # ... WHERE block_id IN (...), no SELECT beforehand since the
+        # UPDATE's WHERE clause does the filtering.
+        root = BlockFactory(user=self.user, page=self.page, content="root")
+        parent = root
+        for i in range(20):
+            parent = BlockFactory(
+                user=self.user, page=self.page, parent=parent, content=f"n{i}"
+            )
+        WebArchive.objects.create(
+            user=self.user, block=root, source_url="https://example.com/root"
+        )
+
+        form = DeleteBlockForm({"user": self.user.id, "block": root.uuid})
+        self.assertTrue(form.is_valid())
+        with CaptureQueriesContext(connection) as ctx:
+            DeleteBlockCommand(form).execute()
+
+        web_archive_queries = [
+            q for q in ctx.captured_queries if "web_archives" in q["sql"]
+        ]
+        self.assertEqual(len(web_archive_queries), 1)
+
     def test_is_a_noop_when_block_has_no_archive(self):
         block = BlockFactory(user=self.user, page=self.page)
         form = DeleteBlockForm({"user": self.user.id, "block": block.uuid})
@@ -117,6 +175,44 @@ class TestDeleteBlockCommand(TestCase):
         block.refresh_from_db()
         self.assertFalse(block.is_active)
         self.assertEqual(WebArchive.objects.count(), 0)
+
+    def test_deleted_child_drops_out_of_parents_serialized_tree(self):
+        # Regression for a bug reported live after #122 shipped: deleting
+        # a nested block "worked" server-side but the block kept
+        # rendering after refresh, and deleting it again failed with a
+        # not-found error. Root cause was Block.get_children() (since
+        # removed — see BlockRepository.get_child_blocks()) reading the
+        # raw `children` reverse-FK manager (unfiltered by is_active)
+        # instead of routing through BlockRepository, so a soft-deleted
+        # child still showed up in its parent's serialized tree even
+        # though the second delete attempt correctly couldn't find it
+        # via the repository-scoped queryset.
+        root = BlockFactory(user=self.user, page=self.page, content="root")
+        child = BlockFactory(
+            user=self.user, page=self.page, parent=root, content="child"
+        )
+        surviving_sibling = BlockFactory(
+            user=self.user, page=self.page, parent=root, content="sibling"
+        )
+
+        form = DeleteBlockForm({"user": self.user.id, "block": child.uuid})
+        self.assertTrue(form.is_valid(), form.errors)
+        DeleteBlockCommand(form).execute()
+
+        root.refresh_from_db()
+        child_uuids = [str(b.uuid) for b in BlockRepository.get_child_blocks(root)]
+        self.assertNotIn(str(child.uuid), child_uuids)
+        self.assertIn(str(surviving_sibling.uuid), child_uuids)
+
+        descendant_uuids = [
+            str(b.uuid) for b in BlockRepository.get_block_descendants(root)
+        ]
+        self.assertNotIn(str(child.uuid), descendant_uuids)
+
+        tree = BlockRepository.get_tree_dict(root)
+        rendered_uuids = [c["uuid"] for c in tree["children"]]
+        self.assertNotIn(str(child.uuid), rendered_uuids)
+        self.assertIn(str(surviving_sibling.uuid), rendered_uuids)
 
     def test_still_exists_via_unfiltered_manager(self):
         # Sanity check that soft-delete never touches the raw row count —

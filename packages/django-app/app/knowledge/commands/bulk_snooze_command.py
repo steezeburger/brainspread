@@ -6,7 +6,8 @@ from django.db import transaction
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.bulk_snooze_form import BulkSnoozeForm
-from ..repositories import BlockRepository
+from ..models import BlockRevision
+from ..repositories import BlockRepository, BlockRevisionRepository
 from ..services.due_dates import shift_due_days
 
 
@@ -31,6 +32,7 @@ class BulkSnoozeCommand(AbstractBaseCommand):
         block_uuids: List[str] = self.form.cleaned_data["block_uuids"]
         days: int = self.form.cleaned_data["days"]
         hours: int = self.form.cleaned_data["hours"]
+        source = self.form.cleaned_data.get("source") or BlockRevision.SOURCE_USER
 
         snoozed_count = 0
         not_found: List[str] = []
@@ -52,10 +54,14 @@ class BulkSnoozeCommand(AbstractBaseCommand):
                     continue
 
                 if block.due_at is not None and days != 0:
+                    previous_snapshot = BlockRevisionRepository.snapshot(block)
                     block.due_at = shift_due_days(
                         block.due_at, block.due_at_has_time, days, tz
                     )
                     block.save(update_fields=["due_at", "modified_at"])
+                    BlockRevisionRepository.record_if_changed(
+                        block, previous_snapshot, source
+                    )
 
                 for reminder in pending:
                     reminder.fire_at = reminder.fire_at + reminder_delta

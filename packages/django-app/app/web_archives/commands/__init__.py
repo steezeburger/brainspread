@@ -5,6 +5,9 @@ from .get_web_archive_readable_command import (
     ReadableArchivePayload,
 )
 from .soft_delete_web_archive_command import SoftDeleteWebArchiveCommand
+from .soft_delete_web_archives_for_blocks_command import (
+    SoftDeleteWebArchivesForBlocksCommand,
+)
 
 __all__ = [
     "CaptureWebArchiveCommand",
@@ -12,4 +15,5 @@ __all__ = [
     "GetWebArchiveReadableCommand",
     "ReadableArchivePayload",
     "SoftDeleteWebArchiveCommand",
+    "SoftDeleteWebArchivesForBlocksCommand",
 ]

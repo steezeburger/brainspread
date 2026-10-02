@@ -17,7 +17,7 @@ from ai_chat.tools.notes_tool_executor import NotesToolExecutor
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms import ResumeApprovalForm
-from ..models import PendingToolApproval
+from ..models import AIProvider, PendingToolApproval
 from ..repositories import AIModelRepository, ChatMessageRepository
 from ..repositories.user_settings_repository import UserSettingsRepository
 from .send_message_command import (
@@ -257,15 +257,11 @@ class ResumeApprovalCommand(AbstractBaseCommand):
         yield {
             "type": "done",
             "session_id": str(session.uuid),
-            "message": SendMessageCommand._serialize_message(
-                assistant_message, ai_model
-            ),
+            "message": assistant_message.to_dict(),
         }
 
     @staticmethod
     def _resolve_api_key(user, provider_name: str) -> Optional[str]:
-        from ai_chat.models import AIProvider
-
         try:
             provider = AIProvider.objects.get(name__iexact=provider_name)
         except AIProvider.DoesNotExist:

@@ -199,6 +199,10 @@ const BlockComponent = {
       type: Function,
       default: () => () => {},
     },
+    openBlockHistoryModal: {
+      type: Function,
+      default: () => () => {},
+    },
     onBlockPaste: {
       type: Function,
       default: () => () => {},
@@ -1600,6 +1604,7 @@ const BlockComponent = {
       }
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         this.cancelAddEmbedTag();
         return;
       }
@@ -1701,6 +1706,9 @@ const BlockComponent = {
           break;
         case "blockInfo":
           this.openBlockInfoModal(this.block);
+          break;
+        case "history":
+          this.openBlockHistoryModal(this.block);
           break;
         case "newBlockBefore":
           this.createBlockBefore(this.block);
@@ -2413,6 +2421,10 @@ const BlockComponent = {
           <span class="context-menu-icon">i</span>
           <span>block info...</span>
         </button>
+        <button class="context-menu-item" role="menuitem" tabindex="-1" @click="handleContextMenuAction('history')">
+          <span class="context-menu-icon">⧗</span>
+          <span>history...</span>
+        </button>
         <button class="context-menu-item context-menu-danger" role="menuitem" tabindex="-1" @click="handleContextMenuAction('delete')">
           <span class="context-menu-icon">×</span>
           <span>delete</span>
@@ -2469,6 +2481,7 @@ const BlockComponent = {
           :onMoveDrop="onMoveDrop"
           :onMoveDragEnd="onMoveDragEnd"
           :openBlockInfoModal="openBlockInfoModal"
+          :openBlockHistoryModal="openBlockHistoryModal"
           :onBlockPaste="onBlockPaste"
           :onBlockDrop="onBlockDrop"
           :onBlockAttachPick="onBlockAttachPick"

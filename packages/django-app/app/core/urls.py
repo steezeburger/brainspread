@@ -22,6 +22,21 @@ urlpatterns = [
         name="update_render_emoji",
     ),
     path(
+        "auth/update-highlight-hashtags/",
+        views.update_highlight_hashtags,
+        name="update_highlight_hashtags",
+    ),
+    path(
+        "auth/update-highlight-property-keys/",
+        views.update_highlight_property_keys,
+        name="update_highlight_property_keys",
+    ),
+    path(
+        "auth/update-highlight-property-values/",
+        views.update_highlight_property_values,
+        name="update_highlight_property_values",
+    ),
+    path(
         "auth/update-discord-webhook/",
         views.update_discord_webhook,
         name="update_discord_webhook",

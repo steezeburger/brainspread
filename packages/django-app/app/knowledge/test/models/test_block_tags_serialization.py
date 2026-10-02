@@ -55,3 +55,15 @@ class TestBlockToDictTags(TestCase):
         block = BlockFactory(user=self.user, page=self.home, content="note")
 
         self.assertEqual(block.to_dict()["tags"], [])
+
+    def test_archived_tag_page_is_not_a_tag(self):
+        """A block tagged with a page that's since been soft-deleted
+        shouldn't still render that tag as a chip — get_tags() filters
+        `self.pages.all()` (an unfiltered M2M manager) by is_active
+        itself, the same category of leak as #122's nested-block bug."""
+        block = BlockFactory(user=self.user, page=self.home, content="note")
+        block.pages.add(self.recipes)
+        self.recipes.is_active = False
+        self.recipes.save(update_fields=["is_active"])
+
+        self.assertEqual(block.to_dict()["tags"], [])

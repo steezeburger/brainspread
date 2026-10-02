@@ -6,7 +6,8 @@ from core.models import User
 
 from ..forms.set_block_completed_at_form import SetBlockCompletedAtForm
 from ..forms.touch_page_form import TouchPageForm
-from ..models import Block
+from ..models import Block, BlockRevision
+from ..repositories import BlockRevisionRepository
 from .touch_page_command import TouchPageCommand
 
 
@@ -32,8 +33,12 @@ class SetBlockCompletedAtCommand(AbstractBaseCommand):
         if timezone.is_naive(completed_at):
             completed_at = user.tz().localize(completed_at).astimezone(pytz.UTC)
 
+        previous_snapshot = BlockRevisionRepository.snapshot(block)
         block.completed_at = completed_at
         block.save(update_fields=["completed_at", "modified_at"])
+
+        source = self.form.cleaned_data.get("source") or BlockRevision.SOURCE_USER
+        BlockRevisionRepository.record_if_changed(block, previous_snapshot, source)
 
         touch_form = TouchPageForm(data={"user": user.id, "page": str(block.page.uuid)})
         if touch_form.is_valid():

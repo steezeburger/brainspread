@@ -1,7 +1,8 @@
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 from django.test import TestCase
+from django.utils import timezone
 
 from knowledge.models import Page
 from knowledge.repositories import PageRepository
@@ -119,6 +120,29 @@ class TestPageRepository(TestCase):
         self.assertEqual(page.date, today)
         self.assertEqual(page.title, today.strftime("%Y-%m-%d"))
 
+    def test_get_or_create_daily_note_revives_a_soft_deleted_note(self):
+        today = date.today()
+        original = PageFactory(
+            user=self.user,
+            title=today.strftime("%Y-%m-%d"),
+            slug=today.strftime("%Y-%m-%d"),
+            page_type="daily",
+            date=today,
+        )
+        original.delete()  # soft delete
+
+        page, created = PageRepository.get_or_create_daily_note(self.user, today)
+
+        self.assertFalse(created)
+        self.assertEqual(page.pk, original.pk)
+        self.assertTrue(page.is_active)
+        self.assertEqual(
+            Page.objects.filter(
+                user=self.user, slug=today.strftime("%Y-%m-%d")
+            ).count(),
+            1,
+        )
+
     def test_should_search_pages_by_title(self):
         PageFactory(user=self.user, title="Django Tutorial")
         PageFactory(user=self.user, title="Python Guide")
@@ -127,6 +151,23 @@ class TestPageRepository(TestCase):
 
         self.assertEqual(results.count(), 1)
         self.assertEqual(results.first().title, "Django Tutorial")
+
+    def test_search_excludes_soft_deleted_pages(self):
+        page = PageFactory(user=self.user, title="#food-log2", slug="food-log2")
+        page.delete()  # soft delete
+
+        results = PageRepository.search(self.user, "foo")
+
+        self.assertEqual(list(results), [])
+
+    def test_search_matches_title_or_slug(self):
+        by_title = PageFactory(user=self.user, title="Groceries", slug="misc")
+        by_slug = PageFactory(user=self.user, title="Misc", slug="groceries-list")
+        PageFactory(user=self.user, title="Unrelated", slug="unrelated")
+
+        results = PageRepository.search(self.user, "groc")
+
+        self.assertCountEqual(list(results), [by_title, by_slug])
 
     def test_should_update_page_by_uuid(self):
         page = PageFactory(user=self.user, title="Original Title", slug="original-slug")
@@ -200,6 +241,19 @@ class TestPageRepository(TestCase):
         self.assertIn(str(whiteboard_page.uuid), uuids)
         self.assertNotIn(str(empty_regular_page.uuid), uuids)
 
+    def test_get_recent_pages_excludes_a_page_whose_only_block_was_deleted(self):
+        # block_count must be scoped to active blocks — otherwise a page
+        # emptied via Trash still reads as "has content" since the
+        # block's row survives soft-delete (is_active=False), just no
+        # longer live.
+        page = PageFactory(user=self.user, title="Now Empty")
+        block = BlockFactory(user=self.user, page=page)
+        block.delete()
+
+        pages = list(PageRepository.get_recent_pages(self.user))
+
+        self.assertNotIn(str(page.uuid), {str(p.uuid) for p in pages})
+
     def test_get_by_share_token_excludes_archived_pages(self):
         page = PageFactory(user=self.user, share_token="tok", share_mode="link")
 
@@ -226,10 +280,6 @@ class TestPageRepository(TestCase):
         self.assertNotIn(str(still_active.uuid), [str(p.uuid) for p in result])
 
     def test_get_purgeable_filters_by_cutoff(self):
-        from datetime import timedelta
-
-        from django.utils import timezone
-
         old = PageFactory(user=self.user)
         old.delete()
         Page.objects.filter(pk=old.pk).update(
@@ -269,6 +319,18 @@ class TestGetOrCreateByTitle(TestCase):
         self.assertEqual(page.pk, existing.pk)
         self.assertEqual(Page.objects.filter(user=self.user, slug="archive").count(), 1)
 
+    def test_revives_a_soft_deleted_page_instead_of_erroring_or_ignoring_it(self):
+        # (user, slug) stays unique regardless of is_active, so a naive
+        # active-only get-then-create would hit an IntegrityError here.
+        existing = PageFactory(user=self.user, title="Archive", slug="archive")
+        existing.delete()  # soft delete
+
+        page = PageRepository.get_or_create_by_title(self.user, "Archive")
+
+        self.assertEqual(page.pk, existing.pk)
+        self.assertTrue(page.is_active)
+        self.assertEqual(Page.objects.filter(user=self.user, slug="archive").count(), 1)
+
 
 class TestGetOrCreateBySlug(TestCase):
     @classmethod
@@ -289,3 +351,26 @@ class TestGetOrCreateBySlug(TestCase):
 
         self.assertEqual(page.pk, existing.pk)
         self.assertEqual(Page.objects.filter(user=self.user, slug="sticky").count(), 1)
+
+    def test_revives_a_soft_deleted_page_instead_of_erroring_or_ignoring_it(self):
+        existing = PageFactory(user=self.user, title="Sticky", slug="sticky")
+        existing.delete()  # soft delete
+
+        page = PageRepository.get_or_create_by_slug(self.user, "sticky")
+
+        self.assertEqual(page.pk, existing.pk)
+        self.assertTrue(page.is_active)
+        self.assertEqual(Page.objects.filter(user=self.user, slug="sticky").count(), 1)
+
+    def test_revive_restores_blocks_cascade_deleted_with_the_page(self):
+        existing = PageFactory(user=self.user, title="Sticky", slug="sticky")
+        child = BlockFactory(user=self.user, page=existing, content="note")
+        existing.delete()
+        child.delete()
+        child.refresh_from_db()
+        self.assertFalse(child.is_active)
+
+        PageRepository.get_or_create_by_slug(self.user, "sticky")
+
+        child.refresh_from_db()
+        self.assertTrue(child.is_active)

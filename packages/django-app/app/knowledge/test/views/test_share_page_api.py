@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from rest_framework import status
@@ -132,8 +134,6 @@ class PublicPageViewTestCase(TestCase):
         # Topic / tag-style pages live on tagged blocks scattered across
         # daily notes. Sharing the topic page should surface those
         # references — without them a #food-log share would be empty.
-        from datetime import date
-
         self.page.share_token = "tag-share-token"
         self.page.share_mode = "link"
         self.page.save()
@@ -166,8 +166,6 @@ class PublicPageViewTestCase(TestCase):
     def test_public_view_linked_reference_includes_nested_children(self):
         # A tagged note with sub-blocks should expose those children in the
         # shared page's linked references, not just the tagged parent.
-        from datetime import date
-
         self.page.share_token = "tag-share-token-children"
         self.page.share_mode = "link"
         self.page.save()
@@ -210,8 +208,6 @@ class PublicPageViewTestCase(TestCase):
     def test_public_view_dedupes_child_tagged_alongside_ancestor(self):
         # A child tagged with the same page as its parent must appear only
         # once (nested under the parent), not also as a standalone reference.
-        from datetime import date
-
         self.page.share_token = "tag-share-token-dedup"
         self.page.share_mode = "link"
         self.page.save()

@@ -84,8 +84,3 @@ class ReminderAction(UUIDModelMixin, CRUDTimestampsMixin):
     def is_usable(self, *, now: Optional["timezone.datetime"] = None) -> bool:
         moment = now or timezone.now()
         return self.used_at is None and moment < self.expires_at
-
-    def mark_used(self, *, now: Optional["timezone.datetime"] = None) -> None:
-        moment = now or timezone.now()
-        self.used_at = moment
-        self.save(update_fields=["used_at", "modified_at"])

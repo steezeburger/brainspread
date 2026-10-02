@@ -2,6 +2,7 @@ import re
 from typing import Dict, List, Optional, TypedDict
 from urllib.parse import urlparse
 
+from django.conf import settings
 from django.contrib.staticfiles import finders
 from django.core.exceptions import ValidationError
 from django.http import Http404, HttpResponse
@@ -41,6 +42,7 @@ from knowledge.commands import (
     GetSavedViewCommand,
     GetTagContentCommand,
     GetUserPagesCommand,
+    ListBlockRevisionsCommand,
     ListCustomVariablesCommand,
     ListSavedViewsCommand,
     ListTemplatesCommand,
@@ -53,6 +55,7 @@ from knowledge.commands import (
     ReorderFavoritedPagesCommand,
     ReorderPageEmbeddedViewsCommand,
     RestoreBlockCommand,
+    RestoreBlockRevisionCommand,
     RestorePageCommand,
     RunAutomationCommand,
     RunSavedViewCommand,
@@ -113,6 +116,7 @@ from knowledge.forms import (
     GetSavedViewForm,
     GetTagContentForm,
     GetUserPagesForm,
+    ListBlockRevisionsForm,
     ListCustomVariablesForm,
     ListSavedViewsForm,
     ListTemplatesForm,
@@ -125,6 +129,7 @@ from knowledge.forms import (
     ReorderFavoritedPagesForm,
     ReorderPageEmbeddedViewsForm,
     RestoreBlockForm,
+    RestoreBlockRevisionForm,
     RestorePageForm,
     RunAutomationForm,
     RunSavedViewForm,
@@ -143,7 +148,7 @@ from knowledge.forms import (
     UpdatePageForm,
     UpdateSavedViewForm,
 )
-from knowledge.models import BlockData, PageData, PagesData
+from knowledge.models import BlockData, BlockRevisionData, PageData, PagesData
 from knowledge.models.page import PageWithBlocksData
 from knowledge.repositories import BlockRepository, PageRepository, SavedViewRepository
 
@@ -242,6 +247,12 @@ class BulkMoveBlocksResponse(TypedDict):
 class BulkMoveBlocksToPageResponse(TypedDict):
     success: bool
     data: Optional[BulkMoveBlocksToPageData]
+    errors: Optional[Dict[str, List[str]]]
+
+
+class ListBlockRevisionsResponse(TypedDict):
+    success: bool
+    data: Optional[List[BlockRevisionData]]
     errors: Optional[Dict[str, List[str]]]
 
 
@@ -381,7 +392,8 @@ def _serialize_block_tree(block, share_token: str) -> dict:
         ),
         "asset_is_image": asset_file_type == "image",
         "children": [
-            _serialize_block_tree(child, share_token) for child in block.get_children()
+            _serialize_block_tree(child, share_token)
+            for child in BlockRepository.get_child_blocks(block)
         ],
     }
 
@@ -422,7 +434,8 @@ def _serialize_referenced_block(block, share_token: str) -> dict:
             source.date.isoformat() if source and source.date else None
         ),
         "children": [
-            _serialize_block_tree(child, share_token) for child in block.get_children()
+            _serialize_block_tree(child, share_token)
+            for child in BlockRepository.get_child_blocks(block)
         ],
     }
 
@@ -608,12 +621,12 @@ def get_tag_content(request, tag_name):
         # Format the response data
         direct_blocks_data = []
         for block in result["direct_blocks"]:
-            direct_blocks_data.append(block.to_dict_with_children())
+            direct_blocks_data.append(BlockRepository.get_tree_dict(block))
 
         referenced_blocks_data = []
         for block in result["referenced_blocks"]:
             referenced_blocks_data.append(
-                block.to_dict_with_children(include_page_context=True)
+                BlockRepository.get_tree_dict(block, include_page_context=True)
             )
 
         pages_data = []
@@ -1098,10 +1111,10 @@ def get_page_with_blocks(request):
             page_with_blocks_data = PageWithBlocksData(
                 page=page.to_dict(),
                 direct_blocks=[
-                    block.to_dict_with_children() for block in direct_blocks
+                    BlockRepository.get_tree_dict(block) for block in direct_blocks
                 ],
                 referenced_blocks=[
-                    block.to_dict_with_children(include_page_context=True)
+                    BlockRepository.get_tree_dict(block, include_page_context=True)
                     for block in referenced_blocks
                 ],
                 embedded_views=[embed.to_dict() for embed in embedded_views],
@@ -1303,7 +1316,7 @@ def duplicate_block(request):
 
             response: BlockResponse = {
                 "success": True,
-                "data": clone.to_dict_with_children(),
+                "data": BlockRepository.get_tree_dict(clone),
                 "errors": None,
             }
 
@@ -1431,6 +1444,81 @@ def set_block_completed_at(request):
 
         if form.is_valid():
             block = SetBlockCompletedAtCommand(form).execute()
+            response: BlockResponse = {
+                "success": True,
+                "data": block.to_dict(),
+                "errors": None,
+            }
+            return Response(response)
+
+        response: BlockResponse = {
+            "success": False,
+            "data": None,
+            "errors": form.errors,
+        }
+        return Response(response, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        response: BlockResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def list_block_revisions(request):
+    """A block's revision history, newest first (issue #234)."""
+    try:
+        data = request.query_params.copy()
+        data["user"] = request.user.id
+        form = ListBlockRevisionsForm(data)
+
+        if form.is_valid():
+            revisions = ListBlockRevisionsCommand(form).execute()
+            response: ListBlockRevisionsResponse = {
+                "success": True,
+                "data": revisions,
+                "errors": None,
+            }
+            return Response(response)
+
+        response: ListBlockRevisionsResponse = {
+            "success": False,
+            "data": None,
+            "errors": form.errors,
+        }
+        return Response(response, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        response: ListBlockRevisionsResponse = {
+            "success": False,
+            "data": None,
+            "errors": {"non_field_errors": [str(e)]},
+        }
+        return Response(response, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def restore_block_revision(request):
+    """Restore a block to a past revision's field values (issue #234).
+
+    Writes the revision's values back onto the live block and records a
+    new revision for the restore itself, so history stays append-only.
+    """
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = RestoreBlockRevisionForm(data)
+
+        if form.is_valid():
+            block = RestoreBlockRevisionCommand(form).execute()
             response: BlockResponse = {
                 "success": True,
                 "data": block.to_dict(),
@@ -1981,8 +2069,6 @@ def _block_link_for_result(result) -> str:
     `_page_link` behavior) and when the result lacks a block — e.g.
     the token didn't resolve.
     """
-    from django.conf import settings
-
     site_url = settings.SITE_URL or ""
     if not site_url.startswith(("http://", "https://")):
         return ""

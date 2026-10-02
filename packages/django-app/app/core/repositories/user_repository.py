@@ -83,6 +83,31 @@ class UserRepository(BaseRepository):
         return user
 
     @classmethod
+    def update_highlight_hashtags(cls, user: User, highlight_hashtags: bool) -> User:
+        """Update whether #hashtags render as a highlighted chip for this user."""
+        user.highlight_hashtags = highlight_hashtags
+        user.save(update_fields=["highlight_hashtags"])
+        return user
+
+    @classmethod
+    def update_highlight_property_keys(
+        cls, user: User, highlight_property_keys: bool
+    ) -> User:
+        """Update whether a property's `key::` renders as a highlighted chip."""
+        user.highlight_property_keys = highlight_property_keys
+        user.save(update_fields=["highlight_property_keys"])
+        return user
+
+    @classmethod
+    def update_highlight_property_values(
+        cls, user: User, highlight_property_values: bool
+    ) -> User:
+        """Update whether a property's value renders with a soft highlight."""
+        user.highlight_property_values = highlight_property_values
+        user.save(update_fields=["highlight_property_values"])
+        return user
+
+    @classmethod
     def update_discord_webhook_url(cls, user: User, url: str) -> User:
         """Update the user's Discord reminder webhook URL.
 

@@ -25,6 +25,7 @@ class BulkClearScheduleCommand(AbstractBaseCommand):
 
         user = self.form.cleaned_data["user"]
         block_uuids: List[str] = self.form.cleaned_data["block_uuids"]
+        source = self.form.cleaned_data.get("source")
 
         cleared_count = 0
         skipped: List[Dict[str, str]] = []
@@ -42,7 +43,13 @@ class BulkClearScheduleCommand(AbstractBaseCommand):
                         {"block_uuid": block_uuid, "reason": "nothing to clear"}
                     )
                     continue
-                inner = ScheduleBlockForm({"user": user.id, "block": str(block.uuid)})
+                inner = ScheduleBlockForm(
+                    {
+                        "user": user.id,
+                        "block": str(block.uuid),
+                        **({"source": source} if source else {}),
+                    }
+                )
                 if not inner.is_valid():
                     skipped.append(
                         {

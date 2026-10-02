@@ -11,6 +11,7 @@ from ..forms.touch_page_form import TouchPageForm
 from ..models import Block, PageData
 from ..repositories import BlockRepository, CustomVariableRepository
 from ..services.automation_spec import is_automation_content
+from ..services.block_properties import extract_properties_from_content
 from ..services.content_tokens import (
     TokenError,
     find_input_tokens,
@@ -142,7 +143,11 @@ class AddTemplateBlocksToPageCommand(AbstractBaseCommand):
             )
             if sync_form.is_valid():
                 SyncBlockTagsCommand(sync_form).execute()
-            block.extract_properties_from_content()
+            properties = extract_properties_from_content(
+                block.content, block.properties
+            )
+            if properties != block.properties:
+                BlockRepository.update_properties(block, properties)
 
 
 class AddTemplateBlocksToPageData(TypedDict):

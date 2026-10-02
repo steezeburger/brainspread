@@ -14,6 +14,15 @@ from core.commands.revoke_mcp_access_token_command import (
 )
 from core.commands.update_discord_user_id_command import UpdateDiscordUserIdCommand
 from core.commands.update_discord_webhook_command import UpdateDiscordWebhookCommand
+from core.commands.update_highlight_hashtags_command import (
+    UpdateHighlightHashtagsCommand,
+)
+from core.commands.update_highlight_property_keys_command import (
+    UpdateHighlightPropertyKeysCommand,
+)
+from core.commands.update_highlight_property_values_command import (
+    UpdateHighlightPropertyValuesCommand,
+)
 from core.commands.update_render_emoji_command import UpdateRenderEmojiCommand
 from core.commands.update_theme_command import UpdateThemeCommand
 from core.commands.update_time_format_command import UpdateTimeFormatCommand

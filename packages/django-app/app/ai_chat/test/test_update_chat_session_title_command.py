@@ -1,6 +1,8 @@
 from django.test import TestCase
 
-from ai_chat.commands import UpdateChatSessionTitleCommand
+from ai_chat.commands.update_chat_session_title_command import (
+    UpdateChatSessionTitleCommand,
+)
 from ai_chat.forms import UpdateChatSessionTitleForm
 from ai_chat.test.helpers import ChatSessionFactory
 from core.test.helpers import UserFactory

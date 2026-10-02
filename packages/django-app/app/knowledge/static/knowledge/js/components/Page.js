@@ -32,13 +32,17 @@ const PAGE_SORT_LABELS = Object.fromEntries(
 const PAGE_SORT_STORAGE_PREFIX = "bs:page-sort:";
 
 const Page = {
-  mixins: [window.brainspreadEmojiRenderMixin || {}],
+  mixins: [
+    window.brainspreadEmojiRenderMixin || {},
+    window.brainspreadEscapeCaptureMixin || {},
+  ],
   components: {
     BlockComponent: window.BlockComponent || {},
     Whiteboard: window.Whiteboard || {},
     ScheduleBlockPopover: window.ScheduleBlockPopover || {},
     BlockChatPopover: window.BlockChatPopover || {},
     BlockInfoModal: window.BlockInfoModal || {},
+    HistoryModal: window.HistoryModal || {},
     QueryEmbedBlock: window.QueryEmbedBlock || {},
   },
   props: {
@@ -88,6 +92,8 @@ const Page = {
       blockChatPopoverBlock: null,
       blockInfoModalOpen: false,
       blockInfoModalBlock: null,
+      historyModalOpen: false,
+      historyModalBlock: null,
       loading: false,
       error: null,
       // Page title editing
@@ -1654,6 +1660,23 @@ const Page = {
       this.blockInfoModalBlock = null;
     },
 
+    openBlockHistoryModal(block) {
+      this.historyModalBlock = block;
+      this.historyModalOpen = true;
+    },
+
+    closeBlockHistoryModal() {
+      this.historyModalOpen = false;
+      this.historyModalBlock = null;
+    },
+
+    async onBlockHistoryRestored({ block }) {
+      if (!block) return;
+      this.$parent?.addToast?.("block restored", "success");
+      this.broadcastBlockChanged(block.uuid);
+      await this.loadPage({ silent: true });
+    },
+
     async onSaveBlockCompletedAt({ iso }) {
       const block = this.blockInfoModalBlock;
       if (!block || !iso) return;
@@ -2399,15 +2422,48 @@ const Page = {
 
       // Extract key::value properties as placeholders so later markdown
       // transforms (emphasis, URL linkification) don't touch the chip
-      // text — a value like *foo* would otherwise pick up italics.
-      // Pattern mirrors Block.extract_properties_from_content's inline
-      // form: word-boundary key, ::, single-token value.
+      // text — a value like *foo* would otherwise pick up italics, and
+      // a lone cron `*` sitting next to another one (e.g. `trigger::
+      // schedule cron 0 6 1 * *`) would otherwise get swallowed as
+      // empty emphasis (`* *` reads as an opening and closing marker
+      // around a single space).
+      //
+      // Mirrors extract_properties_from_content's two passes: a
+      // property at the start of a line may carry a multi-word value,
+      // consumed up to the next `word::` token so a second inline
+      // property on the same line still gets split out; a property
+      // appearing elsewhere on the line is single-token. `sep` is
+      // whatever whitespace (none or one-or-more spaces) followed the
+      // `::` as typed — the chip echoes it verbatim so `key::value` and
+      // `key:: value` each render the way they were written, while the
+      // key/value used for the href and data attributes stay trimmed.
       const propertySegments = [];
       formatted = formatted.replace(
-        /\b([a-zA-Z0-9_-]+)::([^\s]+)/g,
-        (_match, key, value) => {
+        /^(\s*)([a-zA-Z0-9_-]+)::(\s*)(.+)$/gm,
+        (match, leading, key, sep, rest) => {
+          const words = rest.split(/\s+/);
+          let stop = words.length;
+          for (let i = 0; i < words.length; i++) {
+            if (/^[a-zA-Z0-9_-]+::/.test(words[i])) {
+              stop = i;
+              break;
+            }
+          }
+          if (stop === 0) return match;
+          const value = words.slice(0, stop).join(" ");
+          const remainder = words.slice(stop).join(" ");
           const idx = propertySegments.length;
-          propertySegments.push({ key, value });
+          propertySegments.push({ key, value, sep });
+          return remainder
+            ? `${leading}\x00PROP${idx}\x00 ${remainder}`
+            : `${leading}\x00PROP${idx}\x00`;
+        }
+      );
+      formatted = formatted.replace(
+        /\b([a-zA-Z0-9_-]+)::(\s*)([^\s]+)/g,
+        (_match, key, sep, value) => {
+          const idx = propertySegments.length;
+          propertySegments.push({ key, value, sep });
           return `\x00PROP${idx}\x00`;
         }
       );
@@ -2488,27 +2544,58 @@ const Page = {
       // cmd+click, middle-click, right-click → open in new tab. Code spans
       // and fenced blocks are still placeholders here, so `#foo` inside
       // `` `code` `` or ```` ```...``` ```` is intentionally not matched.
+      //
+      // Highlighting (the pill styling) is a per-user display setting
+      // (content-highlighting.js) — off just drops `.inline-tag`, so the
+      // link is unstyled text rather than a chip, but `.inline-tag-plain`
+      // keeps it clickable with a hover underline like a normal link.
+      const hashtagsHighlighted =
+        window.brainspreadContentHighlighting?.hashtagsEnabled() !== false;
+      const hashtagClass = hashtagsHighlighted
+        ? "inline-tag clickable-tag"
+        : "inline-tag-plain";
       formatted = formatted.replace(
         /#([a-zA-Z0-9_-]+)/g,
-        '<a class="inline-tag clickable-tag" href="/knowledge/page/$1/" data-tag="$1">#$1</a>'
+        `<a class="${hashtagClass}" href="/knowledge/page/$1/" data-tag="$1">#$1</a>`
       );
 
-      // Restore key::value property placeholders as chips. Reuses the
-      // hashtag chip styling (.inline-tag .clickable-tag) and routes to
+      // Restore key::value property placeholders as chips, and route to
       // the saved-views page with prefill params so the user lands on a
-      // property_eq query they can run or save.
-      propertySegments.forEach(({ key, value }, idx) => {
+      // property_eq query they can run or save. The key and value each
+      // get their own per-user highlighting setting: the key keeps the
+      // hashtag's pill look (.inline-tag), but the value — which can
+      // run to a full cron expression or query string, unlike a short
+      // hashtag — gets a softer, lower-contrast highlight
+      // (.inline-property-value) so a long value doesn't read as one
+      // solid block of color. Either half falls back to
+      // .inline-tag-plain (plain text, still part of the link) when
+      // its setting is off.
+      const propertyKeysHighlighted =
+        window.brainspreadContentHighlighting?.propertyKeysEnabled() !== false;
+      const propertyValuesHighlighted =
+        window.brainspreadContentHighlighting?.propertyValuesEnabled() !==
+        false;
+      const propertyKeyClass = propertyKeysHighlighted
+        ? "inline-tag"
+        : "inline-tag-plain";
+      const propertyValueClass = propertyValuesHighlighted
+        ? "inline-property-value"
+        : "inline-tag-plain";
+      propertySegments.forEach(({ key, value, sep }, idx) => {
         const safeKey = this.escapeHtml(key);
         const safeValue = this.escapeHtml(value);
+        const safeSep = sep || "";
         const href =
           `/knowledge/views/?property_key=${encodeURIComponent(key)}` +
           `&property_value=${encodeURIComponent(value)}`;
         const replacement =
-          `<a class="inline-tag inline-property clickable-tag" ` +
+          `<a class="inline-property clickable-tag" ` +
           `href="${href}" ` +
           `data-property-key="${this.escapeAttr(key)}" ` +
           `data-property-value="${this.escapeAttr(value)}">` +
-          `${safeKey}::${safeValue}</a>`;
+          `<span class="${propertyKeyClass}">${safeKey}::</span>` +
+          `<span class="${propertyValueClass}">${safeSep}${safeValue}</span>` +
+          `</a>`;
         formatted = formatted.split(`\x00PROP${idx}\x00`).join(replacement);
       });
 
@@ -2783,6 +2870,7 @@ const Page = {
         case "Escape":
         case "Tab":
           event.preventDefault();
+          event.stopPropagation();
           this.closePageMenuAndRestoreFocus();
           break;
         case "Home":
@@ -2843,6 +2931,7 @@ const Page = {
         case "Escape":
         case "Tab":
           event.preventDefault();
+          event.stopPropagation();
           this.closePageSortMenuAndRestoreFocus();
           break;
         case "Home":
@@ -2899,6 +2988,9 @@ const Page = {
 
     handlePageGlobalKeydown(event) {
       if (event.key === "Escape") {
+        // app.js's document handler runs first and marks the event
+        // handled when it closes a sidebar; one Escape, one layer.
+        if (event.defaultPrevented) return;
         if (this.showPageSortMenu) {
           this.closePageSortMenuAndRestoreFocus();
         } else if (this.showPageMenu) {
@@ -3003,6 +3095,23 @@ const Page = {
       this.shareModalOpen = true;
       this.shareLinkCopied = false;
       this.closePageMenu();
+    },
+
+    escapeCaptureFlag() {
+      return "shareModalOpen";
+    },
+
+    // Called for every keydown while the share modal is open, bound
+    // directly on `document` in the capture phase (see
+    // brainspreadEscapeCaptureMixin in services/escape-capture.js)
+    // rather than a template @keydown on the modal's own root — that
+    // only fires while a descendant of the bound element is focused,
+    // which breaks the moment the user clicks the modal background.
+    onEscapeCapture(event) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeShareModal();
     },
 
     async duplicatePage() {
@@ -3679,6 +3788,15 @@ const Page = {
           // Only intercept pastes that start with a list item; if the first
           // non-empty line isn't a list item, defer to native paste behavior.
           if (!sawFirstNonEmpty) return [];
+          // A non-bulleted line after a list item is a lazy continuation
+          // of that item's content, not a dropped line — mirrors how
+          // serializeBlockToMarkdown exports a block's embedded newlines
+          // as unindented, unbulleted lines directly under its `- ` line,
+          // so a multi-line block (e.g. `key:: value` properties each on
+          // their own line) round-trips through copy → paste unchanged.
+          if (items.length > 0) {
+            items[items.length - 1].content += `\n${rest}`;
+          }
           continue;
         }
 
@@ -5159,6 +5277,7 @@ const Page = {
                 :onMoveDrop="onMoveDrop"
                 :onMoveDragEnd="onMoveDragEnd"
                 :openBlockInfoModal="openBlockInfoModal"
+                :openBlockHistoryModal="openBlockHistoryModal"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"
                 :onBlockAttachPick="onBlockAttachPick"
@@ -5217,6 +5336,7 @@ const Page = {
                 :openMovePagePicker="openMovePagePicker"
                 :openMoveUnderPicker="openMoveUnderPicker"
                 :openBlockInfoModal="openBlockInfoModal"
+                :openBlockHistoryModal="openBlockHistoryModal"
                 :onBlockPaste="onBlockPaste"
                 :onBlockDrop="onBlockDrop"
                 :onBlockAttachPick="onBlockAttachPick"
@@ -5263,6 +5383,14 @@ const Page = {
         :block="blockInfoModalBlock"
         @close="closeBlockInfoModal"
         @save-completed-at="onSaveBlockCompletedAt"
+      />
+
+      <!-- Block revision history modal (issue #234) -->
+      <HistoryModal
+        :is-open="historyModalOpen"
+        :block="historyModalBlock"
+        @close="closeBlockHistoryModal"
+        @restored="onBlockHistoryRestored"
       />
 
       <!-- Share modal (issue #90) -->

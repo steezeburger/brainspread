@@ -17,6 +17,9 @@ from core.commands import (
     RevokeMcpAccessTokenCommand,
     UpdateDiscordUserIdCommand,
     UpdateDiscordWebhookCommand,
+    UpdateHighlightHashtagsCommand,
+    UpdateHighlightPropertyKeysCommand,
+    UpdateHighlightPropertyValuesCommand,
     UpdateRenderEmojiCommand,
     UpdateThemeCommand,
     UpdateTimeFormatCommand,
@@ -30,6 +33,9 @@ from core.forms import (
     RevokeMcpAccessTokenForm,
     UpdateDiscordUserIdForm,
     UpdateDiscordWebhookForm,
+    UpdateHighlightHashtagsForm,
+    UpdateHighlightPropertyKeysForm,
+    UpdateHighlightPropertyValuesForm,
     UpdateRenderEmojiForm,
     UpdateThemeForm,
     UpdateTimeFormatForm,
@@ -71,6 +77,18 @@ class UpdateTimeFormatResponse(TypedDict):
 
 
 class UpdateRenderEmojiResponse(TypedDict):
+    user: UserData
+
+
+class UpdateHighlightHashtagsResponse(TypedDict):
+    user: UserData
+
+
+class UpdateHighlightPropertyKeysResponse(TypedDict):
+    user: UserData
+
+
+class UpdateHighlightPropertyValuesResponse(TypedDict):
     user: UserData
 
 
@@ -350,6 +368,111 @@ def update_render_emoji(request):
             payload: UpdateRenderEmojiResponse = {"user": updated_user.to_user_data()}
             return Response(
                 {"success": True, "data": payload, "message": "Emoji setting updated"}
+            )
+        return Response(
+            {"success": False, "errors": form.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+def update_highlight_hashtags(request):
+    """Update whether #hashtags render as a highlighted chip."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = UpdateHighlightHashtagsForm(data)
+        if form.is_valid():
+            updated_user = UpdateHighlightHashtagsCommand(form).execute()
+            payload: UpdateHighlightHashtagsResponse = {
+                "user": updated_user.to_user_data()
+            }
+            return Response(
+                {
+                    "success": True,
+                    "data": payload,
+                    "message": "Hashtag highlighting setting updated",
+                }
+            )
+        return Response(
+            {"success": False, "errors": form.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+def update_highlight_property_keys(request):
+    """Update whether a property's `key::` renders as a highlighted chip."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = UpdateHighlightPropertyKeysForm(data)
+        if form.is_valid():
+            updated_user = UpdateHighlightPropertyKeysCommand(form).execute()
+            payload: UpdateHighlightPropertyKeysResponse = {
+                "user": updated_user.to_user_data()
+            }
+            return Response(
+                {
+                    "success": True,
+                    "data": payload,
+                    "message": "Property key highlighting setting updated",
+                }
+            )
+        return Response(
+            {"success": False, "errors": form.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except ValidationError as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception as e:
+        return Response(
+            {"success": False, "errors": {"non_field_errors": [str(e)]}},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+def update_highlight_property_values(request):
+    """Update whether a property's value renders with a soft highlight."""
+    try:
+        data = request.data.copy()
+        data["user"] = request.user.id
+        form = UpdateHighlightPropertyValuesForm(data)
+        if form.is_valid():
+            updated_user = UpdateHighlightPropertyValuesCommand(form).execute()
+            payload: UpdateHighlightPropertyValuesResponse = {
+                "user": updated_user.to_user_data()
+            }
+            return Response(
+                {
+                    "success": True,
+                    "data": payload,
+                    "message": "Property value highlighting setting updated",
+                }
             )
         return Response(
             {"success": False, "errors": form.errors},

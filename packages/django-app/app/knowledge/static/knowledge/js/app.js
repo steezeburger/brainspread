@@ -286,6 +286,7 @@ const KnowledgeApp = createApp({
     handleLogoutConfirmKeydown(event) {
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         this.cancelLogout();
       } else if (event.key === "Enter") {
         event.preventDefault();

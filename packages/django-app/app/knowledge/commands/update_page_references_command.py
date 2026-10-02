@@ -5,7 +5,8 @@ from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.sync_block_tags_form import SyncBlockTagsForm
 from ..forms.update_page_references_form import UpdatePageReferencesForm
-from ..models import Block, Page
+from ..models import Block, BlockRevision, Page
+from ..repositories import BlockRevisionRepository
 from .sync_block_tags_command import SyncBlockTagsCommand
 
 
@@ -75,8 +76,15 @@ class UpdatePageReferencesCommand(AbstractBaseCommand):
                 old_pattern, f"[[{new_title}]]", block.content, flags=re.IGNORECASE
             )
             if new_content != block.content:
+                previous_snapshot = BlockRevisionRepository.snapshot(block)
                 block.content = new_content
                 block.save()
+                # Cascading rewrite triggered by an unrelated page rename,
+                # not a direct edit by any actor — tagged "system" rather
+                # than attributed to whoever happened to rename the page.
+                BlockRevisionRepository.record_if_changed(
+                    block, previous_snapshot, BlockRevision.SOURCE_SYSTEM
+                )
                 updated_blocks.append(block)
 
         return updated_blocks
@@ -107,8 +115,12 @@ class UpdatePageReferencesCommand(AbstractBaseCommand):
             print(f"DEBUG: New content would be: '{new_content}'")
             if new_content != block.content:
                 print("DEBUG: Content changed, saving block")
+                previous_snapshot = BlockRevisionRepository.snapshot(block)
                 block.content = new_content
                 block.save()
+                BlockRevisionRepository.record_if_changed(
+                    block, previous_snapshot, BlockRevision.SOURCE_SYSTEM
+                )
                 updated_blocks.append(block)
             else:
                 print("DEBUG: No change in content")
