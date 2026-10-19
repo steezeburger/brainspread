@@ -142,6 +142,7 @@ from knowledge.repositories.page_embedded_view_repository import (
 )
 from knowledge.repositories.page_repository import PageRepository
 from knowledge.services import query_engine
+from knowledge.services.state_prefix import keeps_state_type
 
 # ---- Read handlers (thin form -> command wrappers) ----
 
@@ -676,6 +677,8 @@ def _edit_block(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
     block_type = args.get("block_type")
     if block_type:
         form_data["block_type"] = block_type
+    elif keeps_state_type(block.block_type, form_data.get("content")):
+        form_data["block_type"] = block.block_type
 
     order_value = args.get("order")
     if order_value is not None:
@@ -1041,6 +1044,7 @@ def _tag_blocks(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
             "user": ctx.user.id,
             "block_uuids": args.get("block_uuids") or [],
             "page_uuids": args.get("page_uuids") or [],
+            "source": BlockRevision.SOURCE_ASSISTANT,
         }
     )
     if not form.is_valid():
@@ -1054,6 +1058,7 @@ def _untag_blocks(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
             "user": ctx.user.id,
             "block_uuids": args.get("block_uuids") or [],
             "page_uuids": args.get("page_uuids") or [],
+            "source": BlockRevision.SOURCE_ASSISTANT,
         }
     )
     if not form.is_valid():

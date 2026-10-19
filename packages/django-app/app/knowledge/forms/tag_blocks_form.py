@@ -14,6 +14,8 @@ from django.core.exceptions import ValidationError
 from common.forms.base_form import BaseForm
 from core.repositories import UserRepository
 
+from ..models import BlockRevision
+
 
 def _normalize_uuid_list(raw, label: str) -> List[str]:
     if not isinstance(raw, list) or not raw:
@@ -34,11 +36,12 @@ def _normalize_uuid_list(raw, label: str) -> List[str]:
 
 
 class TagBlocksForm(BaseForm):
-    """Add page tags to multiple blocks (block.pages M2M)."""
+    """Add page tags to multiple blocks (as #slug in content)."""
 
     user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
     block_uuids = forms.JSONField()
     page_uuids = forms.JSONField()
+    source = forms.ChoiceField(choices=BlockRevision.SOURCE_CHOICES, required=False)
 
     def clean_block_uuids(self) -> List[str]:
         return _normalize_uuid_list(self.cleaned_data.get("block_uuids"), "block_uuids")
@@ -48,11 +51,12 @@ class TagBlocksForm(BaseForm):
 
 
 class UntagBlocksForm(BaseForm):
-    """Remove page tags from multiple blocks (block.pages M2M)."""
+    """Remove page tags from multiple blocks (content #slug and block.pages)."""
 
     user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
     block_uuids = forms.JSONField()
     page_uuids = forms.JSONField()
+    source = forms.ChoiceField(choices=BlockRevision.SOURCE_CHOICES, required=False)
 
     def clean_block_uuids(self) -> List[str]:
         return _normalize_uuid_list(self.cleaned_data.get("block_uuids"), "block_uuids")

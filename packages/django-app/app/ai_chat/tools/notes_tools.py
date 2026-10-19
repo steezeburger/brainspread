@@ -1028,7 +1028,8 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
     {
         "name": "tag_blocks",
         "description": (
-            "Add page tags to many blocks at once (M2M Block.pages)."
+            "Add page tags to many blocks at once by appending #slug"
+            " to each block's content, same as typing the hashtag."
             " Idempotent. Both the blocks and the pages must belong to"
             " the user; missing items are reported and skipped. Every"
             " call pauses for explicit user approval before execution."
@@ -1053,8 +1054,8 @@ _WRITE_SCHEMAS: List[Dict[str, Any]] = [
     {
         "name": "untag_blocks",
         "description": (
-            "Remove page tags from many blocks at once (M2M"
-            " Block.pages). Idempotent — removing a tag that wasn't"
+            "Remove page tags from many blocks at once, stripping"
+            " #slug from each block's content. Idempotent — removing a tag that wasn't"
             " set is a no-op. Every call pauses for explicit user"
             " approval before execution."
         ),

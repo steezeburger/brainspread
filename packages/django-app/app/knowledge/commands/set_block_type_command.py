@@ -10,16 +10,12 @@ from ..forms.set_block_type_form import SetBlockTypeForm
 from ..forms.touch_page_form import TouchPageForm
 from ..models import Block, BlockRevision, Reminder
 from ..repositories import BlockRevisionRepository
+from ..services.state_prefix import (
+    STATE_PREFIXES,
+    ensure_state_prefix,
+    strip_state_prefix,
+)
 from .touch_page_command import TouchPageCommand
-
-# Block types that carry a leading content prefix (e.g. "TODO write docs").
-STATE_PREFIXES = {
-    "todo": "TODO",
-    "doing": "DOING",
-    "done": "DONE",
-    "later": "LATER",
-    "wontdo": "WONTDO",
-}
 
 
 class SetBlockTypeCommand(AbstractBaseCommand):
@@ -36,12 +32,16 @@ class SetBlockTypeCommand(AbstractBaseCommand):
         new_type: str = self.form.cleaned_data["block_type"]
         old_type = block.block_type
 
-        if old_type == new_type:
+        # A same-type call still normalizes the content prefix (issue
+        # #263) — it's how callers with an explicit type keep content
+        # and type from drifting. Nothing to write when it's already right.
+        new_content = self._update_content_prefix(block.content, old_type, new_type)
+        if old_type == new_type and new_content == block.content:
             return block
 
         previous_snapshot = BlockRevisionRepository.snapshot(block)
 
-        block.content = self._update_content_prefix(block.content, old_type, new_type)
+        block.content = new_content
         block.completed_at = self._next_completed_at(
             old_type, new_type, block.completed_at
         )
@@ -90,12 +90,15 @@ class SetBlockTypeCommand(AbstractBaseCommand):
         new_prefix = STATE_PREFIXES.get(new_type)
 
         if old_prefix and new_prefix:
-            return _swap_prefix(content, old_prefix, new_prefix)
-        if not old_prefix and new_prefix:
-            return _prepend_prefix(content, new_prefix)
-        if old_prefix and not new_prefix:
-            return _strip_prefix(content, old_prefix)
-        return content
+            content = _swap_prefix(content, old_prefix, new_prefix)
+        elif new_prefix and not content.strip():
+            return new_prefix
+        elif old_prefix and not new_prefix:
+            return strip_state_prefix(content, old_prefix)
+        # An edit can save prefix-less content right before the type
+        # change (UpdateBlockCommand saves content first), so there may
+        # be no old keyword to swap; make sure the new one lands anyway.
+        return ensure_state_prefix(content, new_type)
 
 
 def _swap_prefix(content: str, old_prefix: str, new_prefix: str) -> str:
@@ -107,19 +110,6 @@ def _swap_prefix(content: str, old_prefix: str, new_prefix: str) -> str:
         rf"\b{old_prefix}\b(?!\s*:)", new_prefix, content, flags=re.IGNORECASE
     )
     return content
-
-
-def _prepend_prefix(content: str, new_prefix: str) -> str:
-    if re.match(rf"^\s*{new_prefix}\b", content, re.IGNORECASE):
-        return content
-    return f"{new_prefix} {content}".strip()
-
-
-def _strip_prefix(content: str, old_prefix: str) -> str:
-    stripped = re.sub(
-        rf"^\s*{old_prefix}\b\s*:?\s*", "", content, count=1, flags=re.IGNORECASE
-    )
-    return stripped
 
 
 def get_next_todo_type(current_type: str) -> Optional[str]:

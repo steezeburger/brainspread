@@ -12,6 +12,7 @@ from ..repositories import BlockRepository
 from ..services.automation_spec import is_automation_content
 from ..services.block_properties import extract_properties_from_content
 from ..services.content_tokens import TokenError, resolve_content_tokens
+from ..services.state_prefix import ensure_state_prefix
 from ..services.token_context import build_token_context
 from .sync_block_tags_command import SyncBlockTagsCommand
 from .touch_page_command import TouchPageCommand
@@ -69,6 +70,11 @@ class CreateBlockCommand(AbstractBaseCommand):
 
         # Auto-detect block type from content if not explicitly set
         final_block_type = self._detect_block_type_from_content(content, block_type)
+
+        # Todo-family content always carries its state keyword (issue
+        # #263) — without it the next content-only save auto-detects the
+        # block back to a bullet.
+        content = ensure_state_prefix(content, final_block_type)
 
         # Terminal states (done/wontdo) need completed_at stamped at
         # creation — SetBlockTypeCommand only fires on transitions, so a
