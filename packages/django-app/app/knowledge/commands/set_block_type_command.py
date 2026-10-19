@@ -95,8 +95,9 @@ class SetBlockTypeCommand(AbstractBaseCommand):
             return new_prefix
         elif old_prefix and not new_prefix:
             return strip_state_prefix(content, old_prefix)
-        # Content that never carried the old keyword (blocks typed via
-        # tools before issue #263) still has to end up with the new one.
+        # An edit can save prefix-less content right before the type
+        # change (UpdateBlockCommand saves content first), so there may
+        # be no old keyword to swap; make sure the new one lands anyway.
         return ensure_state_prefix(content, new_type)
 
 
