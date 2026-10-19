@@ -13,7 +13,6 @@ from ..repositories import BlockRepository, PageRepository
 from ..services.tag_content import (
     TAGGABLE_SLUG_RE,
     append_tags,
-    has_tag,
     remove_tags,
 )
 from .update_block_command import UpdateBlockCommand
@@ -39,7 +38,7 @@ class TagBlocksCommand(AbstractBaseCommand):
 
 class UntagBlocksCommand(AbstractBaseCommand):
     """Remove a set of page tags from a set of blocks — strips the
-    ``#slug`` from content and drops any link that had no hashtag.
+    ``#slug`` from content, which drops the link on re-sync.
 
     Idempotent — removing a tag that wasn't there is a no-op.
     """
@@ -79,9 +78,8 @@ def _apply_tag_op(form, *, add: bool) -> Dict[str, Any]:
                     missing_blocks.append(block_uuid)
                     continue
                 _rewrite_tag_content(block, pages, add=add, user=user, source=source)
-                # Covers what content can't carry (code blocks, slugs the
-                # hashtag parser can't read back) and drops links that
-                # never had a hashtag behind them.
+                # Covers what content can't carry: code blocks and slugs
+                # the hashtag parser can't read back.
                 if add:
                     block.pages.add(*pages)
                 else:
@@ -113,19 +111,6 @@ def _rewrite_tag_content(
     new_content = append_tags(content, slugs) if add else remove_tags(content, slugs)
     if new_content == content:
         return
-
-    # The content save re-syncs links from hashtags, which would drop
-    # tags that only exist as links (what the old tag_block wrote). Put
-    # those in the content too so this edit doesn't silently lose them.
-    removed = set() if add else set(slugs)
-    link_only = [
-        slug
-        for slug in block.get_tag_names()
-        if slug not in removed
-        and TAGGABLE_SLUG_RE.match(slug)
-        and not has_tag(content, slug)
-    ]
-    new_content = append_tags(new_content, link_only)
 
     data: Dict[str, Any] = {
         "user": user.id,

@@ -89,15 +89,6 @@ class TestTagBlocksCommand(TestCase):
         self.assertEqual(block.block_type, "done")
         self.assertEqual(block.completed_at, stamp)
 
-    def test_tag_preserves_link_only_tags(self):
-        block = BlockFactory(user=self.user, page=self.page, content="task")
-        block.pages.add(self.ideas)
-
-        self._tag(block, self.work)
-
-        self.assertEqual(block.content, "task #work #ideas")
-        self.assertEqual(set(block.pages.all()), {self.work, self.ideas})
-
     def test_tag_leaves_code_content_alone(self):
         block = BlockFactory(
             user=self.user, page=self.page, block_type="code", content="x = 1"
@@ -127,13 +118,3 @@ class TestTagBlocksCommand(TestCase):
 
         self.assertEqual(block.content, "task")
         self.assertNotIn(self.work, block.pages.all())
-
-    def test_untag_keeps_other_link_only_tags(self):
-        block = BlockFactory(user=self.user, page=self.page, content="task")
-        self._tag(block, self.work)
-        block.pages.add(self.ideas)
-
-        self._untag(block, self.work)
-
-        self.assertEqual(block.content, "task #ideas")
-        self.assertEqual(list(block.pages.all()), [self.ideas])
