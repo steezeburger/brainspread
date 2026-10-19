@@ -683,6 +683,116 @@ class MCPEndpointTestCase(TestCase):
         self.assertFalse(response.json()["result"]["isError"])
         self.assertNotIn(tag_page, block.pages.all())
 
+    def test_tag_block_writes_hashtag_into_content(self):
+        page = PageFactory(user=self.user)
+        block = BlockFactory(
+            user=self.user, page=page, block_type="todo", content="TODO task"
+        )
+
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "tag_block",
+                {"block_uuid": str(block.uuid), "tags": ["project-ideas"]},
+            ),
+            format="json",
+        )
+        self.assertFalse(response.json()["result"]["isError"])
+        block.refresh_from_db()
+        self.assertEqual(block.content, "TODO task #project-ideas")
+        self.assertEqual(block.block_type, "todo")
+
+    def test_untag_block_strips_hashtag_from_content(self):
+        page = PageFactory(user=self.user)
+        tag_page = PageFactory(user=self.user, title="#work", slug="work")
+        block = BlockFactory(user=self.user, page=page, content="task #work")
+        block.pages.add(tag_page)
+
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "untag_block",
+                {"block_uuid": str(block.uuid), "tags": ["work"]},
+            ),
+            format="json",
+        )
+        self.assertFalse(response.json()["result"]["isError"])
+        block.refresh_from_db()
+        self.assertEqual(block.content, "task")
+        self.assertNotIn(tag_page, block.pages.all())
+
+    # --- todo prefix (issue #263) --------------------------------------
+
+    def _edit(self, block, **args):
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call("edit_block", {"block_uuid": str(block.uuid), **args}),
+            format="json",
+        )
+        body = response.json()
+        self.assertFalse(body["result"]["isError"], body)
+        block.refresh_from_db()
+        return block
+
+    def test_create_block_todo_writes_prefix(self):
+        response = self.client.post(
+            "/api/mcp/",
+            _tool_call(
+                "create_block",
+                {"content": "chase the refund", "block_type": "todo"},
+            ),
+            format="json",
+        )
+        payload = _content_json(response.json())
+        self.assertEqual(payload["block"]["content"], "TODO chase the refund")
+
+    def test_edit_block_todo_with_type_and_prefixless_content(self):
+        page = PageFactory(user=self.user)
+        block = BlockFactory(
+            user=self.user, page=page, block_type="todo", content="TODO old"
+        )
+
+        block = self._edit(block, content="run the thing", block_type="todo")
+
+        self.assertEqual(block.block_type, "todo")
+        self.assertEqual(block.content, "TODO run the thing")
+
+    def test_edit_block_todo_content_only_keeps_type(self):
+        page = PageFactory(user=self.user)
+        block = BlockFactory(
+            user=self.user, page=page, block_type="todo", content="TODO old"
+        )
+
+        block = self._edit(block, content="run the thing")
+
+        self.assertEqual(block.block_type, "todo")
+        self.assertEqual(block.content, "TODO run the thing")
+
+    def test_edit_block_content_naming_a_state_still_switches(self):
+        page = PageFactory(user=self.user)
+        block = BlockFactory(
+            user=self.user, page=page, block_type="todo", content="TODO x"
+        )
+
+        block = self._edit(block, content="DONE x")
+
+        self.assertEqual(block.block_type, "done")
+        self.assertIsNotNone(block.completed_at)
+
+    def test_edit_block_done_content_keeps_completed_at(self):
+        page = PageFactory(user=self.user)
+        block = BlockFactory(
+            user=self.user, page=page, block_type="todo", content="TODO x"
+        )
+        block = self._edit(block, block_type="done")
+        stamp = block.completed_at
+
+        block = self._edit(block, content="x with notes")
+
+        self.assertEqual(block.block_type, "done")
+        self.assertEqual(block.content, "DONE x with notes")
+        self.assertEqual(block.completed_at, stamp)
+
     # --- get_current_time --------------------------------------------
 
     def test_get_current_time_returns_user_local_clock(self):

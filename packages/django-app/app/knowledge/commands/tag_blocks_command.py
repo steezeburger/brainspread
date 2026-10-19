@@ -1,19 +1,32 @@
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 
+from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from common.commands.abstract_base_command import AbstractBaseCommand
+from core.models import User
 
 from ..forms.tag_blocks_form import TagBlocksForm, UntagBlocksForm
+from ..forms.update_block_form import UpdateBlockForm
+from ..models import Block, Page
 from ..repositories import BlockRepository, PageRepository
+from ..services.tag_content import (
+    TAGGABLE_SLUG_RE,
+    append_tags,
+    has_tag,
+    remove_tags,
+)
+from .update_block_command import UpdateBlockCommand
 
 
 class TagBlocksCommand(AbstractBaseCommand):
-    """Add a set of page tags to a set of blocks (M2M Block.pages).
+    """Add a set of page tags to a set of blocks.
 
-    Idempotent — adding a tag that's already present is a no-op. Both
-    blocks and pages must belong to the user; missing items are
-    reported per-uuid and skipped, the rest still apply.
+    Tags go into the content as ``#slug`` (issue #261) so they show on
+    the block and survive later edits; the content save syncs the
+    Block.pages links. Idempotent — adding a tag that's already present
+    is a no-op. Both blocks and pages must belong to the user; missing
+    items are reported per-uuid and skipped, the rest still apply.
     """
 
     def __init__(self, form: TagBlocksForm) -> None:
@@ -25,7 +38,8 @@ class TagBlocksCommand(AbstractBaseCommand):
 
 
 class UntagBlocksCommand(AbstractBaseCommand):
-    """Remove a set of page tags from a set of blocks (M2M Block.pages).
+    """Remove a set of page tags from a set of blocks — strips the
+    ``#slug`` from content and drops any link that had no hashtag.
 
     Idempotent — removing a tag that wasn't there is a no-op.
     """
@@ -42,6 +56,7 @@ def _apply_tag_op(form, *, add: bool) -> Dict[str, Any]:
     user = form.cleaned_data["user"]
     block_uuids: List[str] = form.cleaned_data["block_uuids"]
     page_uuids: List[str] = form.cleaned_data["page_uuids"]
+    source: Optional[str] = form.cleaned_data.get("source")
 
     pages = []
     missing_pages: List[str] = []
@@ -63,6 +78,10 @@ def _apply_tag_op(form, *, add: bool) -> Dict[str, Any]:
                 if block is None:
                     missing_blocks.append(block_uuid)
                     continue
+                _rewrite_tag_content(block, pages, add=add, user=user, source=source)
+                # Covers what content can't carry (code blocks, slugs the
+                # hashtag parser can't read back) and drops links that
+                # never had a hashtag behind them.
                 if add:
                     block.pages.add(*pages)
                 else:
@@ -77,3 +96,49 @@ def _apply_tag_op(form, *, add: bool) -> Dict[str, Any]:
         "missing_pages": missing_pages,
         "affected_page_uuids": sorted(affected_page_uuids),
     }
+
+
+def _rewrite_tag_content(
+    block: Block,
+    pages: List[Page],
+    *,
+    add: bool,
+    user: User,
+    source: Optional[str],
+) -> None:
+    if block.block_type == "code":
+        return
+    slugs = [p.slug for p in pages if TAGGABLE_SLUG_RE.match(p.slug)]
+    content = block.content or ""
+    new_content = append_tags(content, slugs) if add else remove_tags(content, slugs)
+    if new_content == content:
+        return
+
+    # The content save re-syncs links from hashtags, which would drop
+    # tags that only exist as links (what the old tag_block wrote). Put
+    # those in the content too so this edit doesn't silently lose them.
+    removed = set() if add else set(slugs)
+    link_only = [
+        slug
+        for slug in block.get_tag_names()
+        if slug not in removed
+        and TAGGABLE_SLUG_RE.match(slug)
+        and not has_tag(content, slug)
+    ]
+    new_content = append_tags(new_content, link_only)
+
+    data: Dict[str, Any] = {
+        "user": user.id,
+        "block": str(block.uuid),
+        "content": new_content,
+        # Explicit type so a todo whose content lacks its keyword isn't
+        # auto-detected down to a bullet by this edit.
+        "block_type": block.block_type,
+    }
+    if source:
+        data["source"] = source
+    update_form = UpdateBlockForm(data=data)
+    if not update_form.is_valid():
+        raise ValidationError(update_form.errors.as_json())
+    UpdateBlockCommand(update_form).execute()
+    block.refresh_from_db()

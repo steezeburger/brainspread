@@ -12,6 +12,7 @@ from ..repositories import BlockRepository, BlockRevisionRepository
 from ..services.automation_spec import is_automation_content
 from ..services.block_properties import extract_properties_from_content
 from ..services.content_tokens import TokenError, resolve_content_tokens
+from ..services.state_prefix import ensure_state_prefix
 from ..services.token_context import build_token_context
 from .set_block_type_command import SetBlockTypeCommand
 from .sync_block_tags_command import SyncBlockTagsCommand
@@ -167,6 +168,14 @@ class UpdateBlockCommand(AbstractBaseCommand):
                 )
                 block.block_type = auto_detected_type
 
+        # Keep the content's state keyword in step with an explicit type
+        # even when the type itself didn't change (issue #263). A type
+        # change gets the same treatment from SetBlockTypeCommand below.
+        if explicit_block_type and self.form.cleaned_data["block_type"] == (
+            block.block_type
+        ):
+            block.content = ensure_state_prefix(block.content, block.block_type)
+
         block.save()
 
         source = self.form.cleaned_data.get("source") or BlockRevision.SOURCE_USER
@@ -226,7 +235,7 @@ class UpdateBlockCommand(AbstractBaseCommand):
         """Auto-detect block type from content patterns"""
         # Only auto-detect for bullet and the todo-family states. All five
         # states carry their keyword as a content prefix (see
-        # SetBlockTypeCommand.STATE_PREFIXES), so editing "LATER x" to
+        # STATE_PREFIXES in services/state_prefix.py), so editing "LATER x" to
         # "TODO x" must move the type too. Don't override other explicit
         # types like heading, code, etc.
         if current_block_type != "bullet" and current_block_type not in TODO_TYPES:

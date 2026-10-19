@@ -13,6 +13,7 @@ from ..constants import OPEN_TODO_TYPES
 from ..models import Block, Page
 from ..services.automation_spec import AUTOMATION_TAG_SLUG
 from ..services.due_dates import start_of_local_day
+from ..services.state_prefix import ensure_state_prefix
 
 
 class BlockRepository(BaseRepository):
@@ -821,7 +822,9 @@ class BlockRepository(BaseRepository):
                     user=target_user,
                     page=target_page,
                     parent=None,
-                    content=src.content,
+                    # Heal prefix-less todo-family sources (issue #263)
+                    # so every application doesn't inherit the drift.
+                    content=ensure_state_prefix(src.content, src.block_type),
                     content_type=src.content_type,
                     block_type=src.block_type,
                     order=order_map[src.id],
@@ -881,7 +884,7 @@ class BlockRepository(BaseRepository):
             user=target_user,
             page=source.page,
             parent=parent,
-            content=source.content,
+            content=ensure_state_prefix(source.content, source.block_type),
             content_type=source.content_type,
             block_type=source.block_type,
             order=order,

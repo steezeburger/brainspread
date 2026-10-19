@@ -103,11 +103,11 @@ class NotesToolExecutorWriteTestCase(TestCase):
         )
 
         self.assertTrue(result.get("created"))
-        self.assertEqual(result["block"]["content"], "new item")
+        self.assertEqual(result["block"]["content"], "TODO new item")
         self.assertEqual(result["block"]["block_type"], "todo")
         self.assertTrue(
             Block.objects.filter(
-                user=self.user, page=self.page, content="new item"
+                user=self.user, page=self.page, content="TODO new item"
             ).exists()
         )
 

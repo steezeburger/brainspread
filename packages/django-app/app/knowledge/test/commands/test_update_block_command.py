@@ -948,3 +948,89 @@ class TestReparentOrderAppends(TestCase):
         updated = self._update(child, parent=str(parent.uuid), content="c edited")
 
         self.assertEqual(updated.order, 3)
+
+
+class TestStatePrefixFollowsType(TestCase):
+    """Issue #263: todo-family content always carries its state keyword,
+    so a later content-only save can't auto-detect the block back to a
+    bullet."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+        cls.page = PageFactory(user=cls.user)
+
+    def _update(self, block, **fields):
+        form = UpdateBlockForm(
+            {"user": self.user.id, "block": str(block.uuid), **fields}
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return UpdateBlockCommand(form).execute()
+
+    def test_same_explicit_type_adds_missing_prefix(self):
+        block = BlockFactory(
+            page=self.page, user=self.user, block_type="todo", content="TODO old"
+        )
+
+        updated = self._update(block, content="run the thing", block_type="todo")
+
+        self.assertEqual(updated.block_type, "todo")
+        self.assertEqual(updated.content, "TODO run the thing")
+
+    def test_prefix_survives_a_later_content_only_save(self):
+        block = BlockFactory(
+            page=self.page, user=self.user, block_type="todo", content="TODO old"
+        )
+        updated = self._update(block, content="run the thing", block_type="todo")
+
+        again = self._update(updated, content=f"{updated.content} today")
+
+        self.assertEqual(again.block_type, "todo")
+
+    def test_explicit_type_only_heals_prefixless_content(self):
+        block = BlockFactory(
+            page=self.page, user=self.user, block_type="todo", content="ship it"
+        )
+
+        updated = self._update(block, block_type="todo")
+
+        self.assertEqual(updated.content, "TODO ship it")
+
+    def test_type_change_on_prefixless_content_adds_new_prefix(self):
+        block = BlockFactory(
+            page=self.page, user=self.user, block_type="todo", content="ship it"
+        )
+
+        updated = self._update(block, block_type="doing")
+
+        self.assertEqual(updated.content, "DOING ship it")
+
+    def test_explicit_type_swaps_a_mismatched_keyword(self):
+        block = BlockFactory(
+            page=self.page, user=self.user, block_type="later", content="LATER x"
+        )
+
+        updated = self._update(block, content="TODO: x", block_type="later")
+
+        self.assertEqual(updated.content, "LATER: x")
+
+    def test_done_content_edit_keeps_completed_at(self):
+        block = BlockFactory(
+            page=self.page, user=self.user, block_type="todo", content="TODO x"
+        )
+        done = self._update(block, block_type="done")
+        stamp = done.completed_at
+
+        updated = self._update(done, content="x with notes", block_type="done")
+
+        self.assertEqual(updated.content, "DONE x with notes")
+        self.assertEqual(updated.completed_at, stamp)
+
+    def test_non_state_type_content_is_untouched(self):
+        block = BlockFactory(
+            page=self.page, user=self.user, block_type="heading", content="old"
+        )
+
+        updated = self._update(block, content="Title", block_type="heading")
+
+        self.assertEqual(updated.content, "Title")
