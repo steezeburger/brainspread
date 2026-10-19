@@ -93,7 +93,7 @@ class TestDuplicatePageCommand(TestCase):
         roots = [b for b in cloned_blocks if b.parent_id is None]
         self.assertEqual(len(roots), 2)
         roots_by_order = sorted(roots, key=lambda b: b.order)
-        self.assertEqual(roots_by_order[0].content, "TODO Buy milk")
+        self.assertEqual(roots_by_order[0].content, "Buy milk")
         self.assertEqual(roots_by_order[0].block_type, "todo")
         self.assertEqual(roots_by_order[1].block_type, "heading")
 

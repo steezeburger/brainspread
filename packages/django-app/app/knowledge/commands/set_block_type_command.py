@@ -32,12 +32,16 @@ class SetBlockTypeCommand(AbstractBaseCommand):
         new_type: str = self.form.cleaned_data["block_type"]
         old_type = block.block_type
 
-        if old_type == new_type:
+        # A same-type call still normalizes the content prefix (issue
+        # #263) — it's how callers with an explicit type keep content
+        # and type from drifting. Nothing to write when it's already right.
+        new_content = self._update_content_prefix(block.content, old_type, new_type)
+        if old_type == new_type and new_content == block.content:
             return block
 
         previous_snapshot = BlockRevisionRepository.snapshot(block)
 
-        block.content = self._update_content_prefix(block.content, old_type, new_type)
+        block.content = new_content
         block.completed_at = self._next_completed_at(
             old_type, new_type, block.completed_at
         )

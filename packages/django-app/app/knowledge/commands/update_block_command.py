@@ -12,7 +12,6 @@ from ..repositories import BlockRepository, BlockRevisionRepository
 from ..services.automation_spec import is_automation_content
 from ..services.block_properties import extract_properties_from_content
 from ..services.content_tokens import TokenError, resolve_content_tokens
-from ..services.state_prefix import ensure_state_prefix
 from ..services.token_context import build_token_context
 from .set_block_type_command import SetBlockTypeCommand
 from .sync_block_tags_command import SyncBlockTagsCommand
@@ -168,33 +167,26 @@ class UpdateBlockCommand(AbstractBaseCommand):
                 )
                 block.block_type = auto_detected_type
 
-        # Keep the content's state keyword in step with an explicit type
-        # even when the type itself didn't change (issue #263). A type
-        # change gets the same treatment from SetBlockTypeCommand below.
-        if explicit_block_type and self.form.cleaned_data["block_type"] == (
-            block.block_type
-        ):
-            block.content = ensure_state_prefix(block.content, block.block_type)
-
         block.save()
 
         source = self.form.cleaned_data.get("source") or BlockRevision.SOURCE_USER
         BlockRevisionRepository.record_if_changed(block, previous_snapshot, source)
 
+        # Delegated even when the type didn't change: SetBlockTypeCommand
+        # also keeps the content's state keyword in step with the type
+        # (issue #263).
         if explicit_block_type:
-            new_type = self.form.cleaned_data["block_type"]
-            if new_type != block.block_type:
-                type_form = SetBlockTypeForm(
-                    data={
-                        "user": user.id,
-                        "block": str(block.uuid),
-                        "block_type": new_type,
-                        "source": source,
-                    }
-                )
-                if not type_form.is_valid():
-                    raise ValidationError(type_form.errors.as_json())
-                block = SetBlockTypeCommand(type_form).execute()
+            type_form = SetBlockTypeForm(
+                data={
+                    "user": user.id,
+                    "block": str(block.uuid),
+                    "block_type": self.form.cleaned_data["block_type"],
+                    "source": source,
+                }
+            )
+            if not type_form.is_valid():
+                raise ValidationError(type_form.errors.as_json())
+            block = SetBlockTypeCommand(type_form).execute()
 
         # Extract and set tags if content was updated (business logic)
         # Skip for code blocks — their content is code, not markdown.

@@ -698,23 +698,15 @@ def _resolve_tag_slugs(
 
 
 def _update_block_content(ctx: ActionContext, block: Block, content: str) -> None:
-    """Rewrite a block's content the way the editor would.
-
-    UpdateBlockCommand auto-detects block type from a state-keyword
-    prefix (``TODO ``/``DONE ``/…) because the editor always submits
-    one for todo-family blocks — content without it demotes the block
-    to ``bullet`` and clears ``completed_at``. Blocks whose type was
-    set via commands/tools store bare content, so an automation rewrite
-    must re-assert the prefix or a `done` block silently loses its
-    completion the moment a verb touches its text."""
-    prefix = STATE_PREFIXES.get(block.block_type)
-    if prefix and not content.lstrip().lower().startswith(prefix.lower()):
-        content = f"{prefix} {content.lstrip()}"
+    """Rewrite a block's content, keeping its type. The explicit
+    block_type stops content auto-detect from demoting a todo whose
+    rewritten text lacks its state keyword, and re-adds the keyword."""
     form = UpdateBlockForm(
         data={
             "user": ctx.user.id,
             "block": str(block.uuid),
             "content": content,
+            "block_type": block.block_type,
             "source": BlockRevision.SOURCE_AUTOMATION,
         }
     )
