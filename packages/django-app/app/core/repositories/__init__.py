@@ -1,1 +1,2 @@
+from core.repositories.mcp_access_token_repository import McpAccessTokenRepository
 from core.repositories.user_repository import UserRepository

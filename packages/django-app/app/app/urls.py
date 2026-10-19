@@ -19,6 +19,8 @@ from django.templatetags.static import static
 from django.urls import include, path
 from django.views.generic.base import RedirectView
 
+from mcp_server.views import mcp_endpoint
+
 urlpatterns = [
     # Browsers request /favicon.ico at the origin root for any page that
     # doesn't carry its own <link rel="icon"> - the django admin and the
@@ -34,4 +36,12 @@ urlpatterns = [
     path("api/web-archives/", include("web_archives.urls")),
     path("api/assets/", include("assets.urls")),
     path("api/mcp/", include("mcp_server.urls")),
+    # Without the slash too: it's what people paste into a connector
+    # dialog, and APPEND_SLASH can't redirect a POST.
+    path("api/mcp", mcp_endpoint),
+    # OAuth for MCP clients (Claude connectors). Discovery documents
+    # live at the origin root per RFC 8414 / RFC 9728.
+    path(".well-known/", include("oauth_server.well_known_urls")),
+    path("oauth/", include("oauth_server.urls")),
+    path("api/oauth/", include("oauth_server.api_urls")),
 ]

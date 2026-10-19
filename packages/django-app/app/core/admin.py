@@ -7,7 +7,7 @@ from django.contrib.auth.forms import UserChangeForm
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 
-from core.models import User
+from core.models import McpAccessToken, User
 
 
 class UserCreationForm(forms.ModelForm):
@@ -167,3 +167,32 @@ class UserAdmin(DjangoUserAdmin):
     readonly_fields = ["id", "uuid", "created_at", "deleted_at", "modified_at"]
 
     search_fields = ("email",)
+
+
+@admin.register(McpAccessToken)
+class McpAccessTokenAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "user",
+        "key_prefix",
+        "created_at",
+        "last_used_at",
+        "expires_at",
+        "revoked_at",
+    )
+    list_filter = ("revoked_at",)
+    search_fields = ("name", "user__email", "key_prefix")
+    # Keys are minted in the app's settings UI; the admin can only
+    # inspect or revoke (set revoked_at).
+    readonly_fields = (
+        "uuid",
+        "user",
+        "key_prefix",
+        "key_hash",
+        "created_at",
+        "modified_at",
+        "last_used_at",
+    )
+
+    def has_add_permission(self, request) -> bool:
+        return False

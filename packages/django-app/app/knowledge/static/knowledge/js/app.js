@@ -205,11 +205,26 @@ const KnowledgeApp = createApp({
             this.isAuthenticated = true;
             this.currentView = "journal";
           } else {
-            this.handleLogout();
+            this.clearLocalSession();
           }
         } catch (error) {
           console.error("Auth check failed:", error);
-          this.handleLogout();
+          if (error.status === 401 || error.status === 403) {
+            // The token is already dead server-side; just forget it.
+            this.clearLocalSession();
+          } else {
+            // A 5xx, deploy, or network blip isn't a reason to log out.
+            // Logging out deletes the token on the server, which signs
+            // out every other browser too. Keep going on the cached user.
+            const cachedUser = window.apiService.getCurrentUser();
+            if (cachedUser) {
+              this.user = cachedUser;
+              this.isAuthenticated = true;
+              this.currentView = "journal";
+            } else {
+              this.currentView = "login";
+            }
+          }
         }
       } else {
         this.currentView = "login";
@@ -228,6 +243,15 @@ const KnowledgeApp = createApp({
       setTimeout(() => {
         this.checkTimezoneChange();
       }, 1000);
+    },
+
+    // Forget the local token without calling the server's logout (which
+    // deletes the token for every browser signed in with it).
+    clearLocalSession() {
+      window.apiService.clearAuth();
+      this.user = null;
+      this.isAuthenticated = false;
+      this.currentView = "login";
     },
 
     async handleLogout() {

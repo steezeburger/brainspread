@@ -1299,9 +1299,87 @@ body {
   margin: 0 0 0.75rem 0;
 }
 
+/* MCP access tokens — list + create form in settings. */
+.mcp-token-row,
+.mcp-token-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.5rem;
+  border: 1px solid var(--border-secondary);
+  border-radius: 0;
+}
+
+.mcp-token-form {
+  grid-template-columns: 1fr minmax(8rem, 12rem) auto;
+}
+
+.mcp-token-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.mcp-token-name {
+  color: var(--text-primary);
+  font-weight: bold;
+  word-break: break-word;
+}
+
+.mcp-token-prefix,
+.mcp-token-meta {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.mcp-url-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.mcp-url-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.mcp-token-expired {
+  color: var(--error-color);
+}
+
+.mcp-token-created {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.5rem;
+  border: 3px solid var(--border-primary);
+  border-radius: 0;
+}
+
+.mcp-token-created .settings-hint {
+  margin: 0;
+}
+
+.mcp-token-command {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.4rem 0.5rem;
+  font-family: monospace;
+  font-size: 0.85rem;
+  border-radius: 0;
+  resize: none;
+  word-break: break-all;
+}
+
 @media (max-width: 768px) {
   .custom-variable-row,
-  .custom-variable-form {
+  .custom-variable-form,
+  .mcp-token-row,
+  .mcp-token-form {
     grid-template-columns: 1fr;
   }
 }

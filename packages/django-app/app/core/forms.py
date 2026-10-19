@@ -4,6 +4,7 @@ from django.contrib.auth import authenticate
 from django.core.exceptions import ValidationError
 
 from common.forms.base_form import BaseForm
+from common.forms.user_form import UserForm
 from core.repositories.user_repository import UserRepository
 
 
@@ -144,3 +145,23 @@ class GetUserPreferencesForm(BaseForm):
     deliberately excluded by the command."""
 
     user = forms.ModelChoiceField(queryset=UserRepository.get_queryset())
+
+
+class ListMcpAccessTokensForm(UserForm):
+    pass
+
+
+class CreateMcpAccessTokenForm(UserForm):
+    name = forms.CharField(max_length=100)
+    # Blank means the token never expires.
+    expires_in_days = forms.IntegerField(required=False, min_value=1, max_value=3650)
+
+    def clean_name(self) -> str:
+        name = self.cleaned_data["name"].strip()
+        if not name:
+            raise ValidationError("Name is required")
+        return name
+
+
+class RevokeMcpAccessTokenForm(UserForm):
+    token_uuid = forms.UUIDField()

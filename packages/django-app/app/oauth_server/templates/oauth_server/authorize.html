@@ -1,0 +1,40 @@
+{% extends "oauth_server/base.html" %}
+{% block title %}connect {{ client_name }}{% endblock %}
+{% block content %}
+  <h1>Connect {{ client_name }}?</h1>
+  <p>
+    It will be able to read, create, and edit your notes, todos, and
+    reminders through brainspread's MCP tools, until you disconnect it in
+    settings.
+  </p>
+  <p class="muted">
+    Signed in as {{ user_email }}. After you allow it, you'll be sent to
+    <strong>{{ redirect_host }}</strong>.
+  </p>
+  {% if is_loopback %}
+    <p class="warning">
+      This app runs on your own computer (like Claude Code). Only allow it
+      if you just started connecting it.
+    </p>
+  {% endif %}
+  <form method="post">
+    {% csrf_token %}
+    {% for key, value in params.items %}
+      <input type="hidden" name="{{ key }}" value="{{ value }}" />
+    {% endfor %}
+    <div class="actions">
+      <button type="submit" name="decision" value="allow" class="btn btn-primary">
+        allow
+      </button>
+      <button type="submit" name="decision" value="deny" class="btn">
+        deny
+      </button>
+    </div>
+  </form>
+  <form method="post" action="{{ switch_url }}" style="margin-top: 1.5rem">
+    {% csrf_token %}
+    <button type="submit" name="action" value="switch" class="link-btn">
+      not {{ user_email }}? use a different account
+    </button>
+  </form>
+{% endblock %}
