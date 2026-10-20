@@ -8,7 +8,11 @@ from django.utils import timezone
 from knowledge.commands import RunAutomationCommand
 from knowledge.forms.run_automation_form import RunAutomationForm
 from knowledge.models import AutomationRun, Block, Reminder
-from knowledge.repositories import AutomationRunRepository, SavedViewRepository
+from knowledge.repositories import (
+    AutomationBlockMatchRepository,
+    AutomationRunRepository,
+    SavedViewRepository,
+)
 from knowledge.services.discord_webhook import DiscordDeliveryResult
 from knowledge.services.due_dates import start_of_local_day
 
@@ -1557,3 +1561,465 @@ class TestParameterizedActions(TestCase):
 
         self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
         self.assertIn("query::", result["last_error"])
+
+
+class TestFileByTagAction(TestCase):
+    """`file_by_tag` (issue #206): the braindumps sweep — move each
+    matched block to the page its own tag names."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+
+    def _automation(self, **props):
+        page = PageFactory(
+            user=self.user,
+            title="Automations",
+            slug=f"automations-{uuid_lib.uuid4().hex[:8]}",
+        )
+        return BlockFactory(
+            user=self.user,
+            page=page,
+            content="My automation #automation",
+            properties=props,
+        )
+
+    def _run(self, automation_block, trigger="manual"):
+        form = RunAutomationForm(
+            {
+                "user": self.user,
+                "automation_block": automation_block.uuid,
+                "trigger": trigger,
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return RunAutomationCommand(form).execute()
+
+    def test_files_each_block_to_its_own_tag_page(self):
+        groceries = PageFactory(user=self.user, title="Groceries", slug="groceries")
+        urgent = PageFactory(user=self.user, title="Urgent", slug="urgent")
+        braindump = PageFactory(user=self.user, title="Braindump", slug="braindump")
+
+        milk = BlockFactory(user=self.user, page=braindump, content="milk")
+        milk.pages.add(groceries)
+        call_mom = BlockFactory(user=self.user, page=braindump, content="call mom")
+        call_mom.pages.add(urgent)
+
+        automation = self._automation(
+            trigger="manual", query="page:braindump", action="file_by_tag"
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        milk.refresh_from_db()
+        call_mom.refresh_from_db()
+        self.assertEqual(milk.page, groceries)
+        self.assertEqual(call_mom.page, urgent)
+        self.assertEqual(result["result"]["affected"], 2)
+
+    def test_excludes_named_tags_before_disambiguating(self):
+        # Real braindumps shape: the block lives on a generic inbox page
+        # and carries the sweep's own organizational tag (#braindump)
+        # alongside its actual destination tag — `file_by_tag braindump`
+        # must exclude the former before the exactly-one check.
+        groceries = PageFactory(user=self.user, title="Groceries", slug="groceries")
+        braindump_tag = PageFactory(user=self.user, title="Braindump", slug="braindump")
+        inbox = PageFactory(user=self.user, title="Inbox", slug="inbox")
+        block = BlockFactory(user=self.user, page=inbox, content="milk")
+        block.pages.add(groceries)
+        block.pages.add(braindump_tag)
+
+        automation = self._automation(
+            trigger="manual", query="tag:braindump", action="file_by_tag braindump"
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        block.refresh_from_db()
+        self.assertEqual(block.page, groceries)
+
+    def test_zero_or_multiple_candidate_tags_are_skipped(self):
+        groceries = PageFactory(user=self.user, title="Groceries", slug="groceries")
+        urgent = PageFactory(user=self.user, title="Urgent", slug="urgent")
+        braindump = PageFactory(user=self.user, title="Braindump", slug="braindump")
+
+        no_tags = BlockFactory(user=self.user, page=braindump, content="mystery")
+        two_tags = BlockFactory(user=self.user, page=braindump, content="multi")
+        two_tags.pages.add(groceries)
+        two_tags.pages.add(urgent)
+
+        automation = self._automation(
+            trigger="manual", query="page:braindump", action="file_by_tag"
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        no_tags.refresh_from_db()
+        two_tags.refresh_from_db()
+        self.assertEqual(no_tags.page, braindump)
+        self.assertEqual(two_tags.page, braindump)
+        skipped_uuids = {s["block_uuid"] for s in result["result"]["skipped"]}
+        self.assertEqual(skipped_uuids, {str(no_tags.uuid), str(two_tags.uuid)})
+
+    def test_target_template_page_is_skipped(self):
+        template_page = PageFactory(
+            user=self.user, title="Pack", slug="pack", page_type="template"
+        )
+        braindump = PageFactory(user=self.user, title="Braindump", slug="braindump")
+        block = BlockFactory(user=self.user, page=braindump, content="pack list")
+        block.pages.add(template_page)
+
+        automation = self._automation(
+            trigger="manual", query="page:braindump", action="file_by_tag"
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        block.refresh_from_db()
+        self.assertEqual(block.page, braindump)
+        self.assertEqual(len(result["result"]["skipped"]), 1)
+        self.assertIn("template", result["result"]["skipped"][0]["reason"])
+
+    def test_requires_query(self):
+        automation = self._automation(trigger="manual", action="file_by_tag")
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("query::", result["last_error"])
+
+
+class TestReactiveWhenConditions(TestCase):
+    """`when::` edge detection (issue #206): becomes-empty /
+    becomes-nonempty / count <op> N fire only on the rising edge, with
+    the AutomationRun ledger itself as the baseline."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+
+    def _automation(self, **props):
+        page = PageFactory(
+            user=self.user,
+            title="Automations",
+            slug=f"automations-{uuid_lib.uuid4().hex[:8]}",
+        )
+        return BlockFactory(
+            user=self.user,
+            page=page,
+            content="My automation #automation",
+            properties=props,
+        )
+
+    def _run(self, automation_block, trigger="schedule"):
+        form = RunAutomationForm(
+            {
+                "user": self.user,
+                "automation_block": automation_block.uuid,
+                "trigger": trigger,
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return RunAutomationCommand(form).execute()
+
+    def test_becomes_empty_fires_once_on_transition_not_every_tick(self):
+        source = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        target = BlockFactory(
+            user=self.user, page=source, block_type="todo", content="TODO ship it"
+        )
+        automation = self._automation(
+            trigger="schedule every 5m",
+            query="type:todo",
+            when="becomes-empty",
+            action="set_type done",
+        )
+
+        # Tick 1: query is nonempty — no baseline yet, records one.
+        first = self._run(automation)
+        self.assertEqual(first["status"], AutomationRun.STATUS_SKIPPED)
+        self.assertEqual(first["result"]["reason"], "first-run")
+        self.assertEqual(first["result"]["matched"], 1)
+        target.refresh_from_db()
+        self.assertEqual(target.block_type, "todo")
+
+        # Someone else resolves the todo directly — query now matches zero.
+        target.block_type = "done"
+        target.save()
+
+        # Tick 2: transition detected — fires.
+        second = self._run(automation)
+        self.assertEqual(second["status"], AutomationRun.STATUS_SUCCEEDED)
+        self.assertEqual(second["result"]["matched"], 0)
+
+        # Tick 3: still empty — no re-fire, just records the baseline.
+        third = self._run(automation)
+        self.assertEqual(third["status"], AutomationRun.STATUS_SKIPPED)
+        self.assertEqual(third["result"]["reason"], "still-clear")
+
+    def test_becomes_nonempty_fires_once_on_transition(self):
+        # `tag` (not set_type) so the fired action doesn't remove the
+        # block from its own `type:todo` match set — keeps tick 3
+        # genuinely "still nonempty" rather than emptying it back out.
+        source = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        PageFactory(user=self.user, title="Reviewed", slug="reviewed")
+        automation = self._automation(
+            trigger="schedule every 5m",
+            query="type:todo",
+            when="becomes-nonempty",
+            action="tag reviewed",
+        )
+
+        first = self._run(automation)
+        self.assertEqual(first["status"], AutomationRun.STATUS_SKIPPED)
+        self.assertEqual(first["result"]["reason"], "first-run")
+
+        target = BlockFactory(
+            user=self.user, page=source, block_type="todo", content="TODO new thing"
+        )
+
+        second = self._run(automation)
+        self.assertEqual(second["status"], AutomationRun.STATUS_SUCCEEDED)
+        target.refresh_from_db()
+        self.assertIn("reviewed", target.get_tag_names())
+
+        third = self._run(automation)
+        self.assertEqual(third["status"], AutomationRun.STATUS_SKIPPED)
+        self.assertEqual(third["result"]["reason"], "still-satisfied")
+
+    def test_count_threshold_fires_on_crossing(self):
+        source = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        for i in range(2):
+            BlockFactory(
+                user=self.user, page=source, block_type="todo", content=f"TODO {i}"
+            )
+        automation = self._automation(
+            trigger="schedule every 5m",
+            query="type:todo",
+            when="count > 2",
+            action="set_type doing",
+        )
+
+        first = self._run(automation)
+        self.assertEqual(first["status"], AutomationRun.STATUS_SKIPPED)
+        self.assertEqual(first["result"]["reason"], "first-run")
+        self.assertEqual(first["result"]["matched"], 2)
+
+        # Tick 2: still 2 (below the threshold) — no transition yet, now
+        # with a real baseline to compare against.
+        second = self._run(automation)
+        self.assertEqual(second["status"], AutomationRun.STATUS_SKIPPED)
+        self.assertEqual(second["result"]["reason"], "still-unsatisfied")
+
+        BlockFactory(user=self.user, page=source, block_type="todo", content="TODO 3")
+
+        # Tick 3: crosses the threshold (3 > 2) — fires.
+        third = self._run(automation)
+        self.assertEqual(third["status"], AutomationRun.STATUS_SUCCEEDED)
+        self.assertEqual(third["result"]["matched"], 3)
+
+    def test_manual_trigger_bypasses_the_when_gate(self):
+        source = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        target = BlockFactory(
+            user=self.user, page=source, block_type="todo", content="TODO ship it"
+        )
+        automation = self._automation(
+            trigger="schedule every 5m",
+            query="type:todo",
+            when="becomes-empty",
+            action="set_type done",
+        )
+
+        # A manual run always executes, regardless of the reactive gate.
+        result = self._run(automation, trigger="manual")
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        target.refresh_from_db()
+        self.assertEqual(target.block_type, "done")
+
+    def test_when_without_query_fails_at_parse_time(self):
+        automation = self._automation(
+            trigger="manual", when="becomes-empty", action="set_type done"
+        )
+
+        result = self._run(automation, trigger="manual")
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_FAILED)
+        self.assertIn("query::", result["last_error"])
+
+
+class TestMatchedForDwell(TestCase):
+    """`matched-for` per-block dwell (issue #206): the action only runs
+    over blocks that have matched the query continuously for at least
+    the configured duration."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+
+    def _automation(self, **props):
+        page = PageFactory(
+            user=self.user,
+            title="Automations",
+            slug=f"automations-{uuid_lib.uuid4().hex[:8]}",
+        )
+        return BlockFactory(
+            user=self.user,
+            page=page,
+            content="My automation #automation",
+            properties=props,
+        )
+
+    def _run(self, automation_block, trigger="schedule"):
+        form = RunAutomationForm(
+            {
+                "user": self.user,
+                "automation_block": automation_block.uuid,
+                "trigger": trigger,
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return RunAutomationCommand(form).execute()
+
+    def test_freshly_matched_block_does_not_fire_yet(self):
+        source = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        BlockFactory(
+            user=self.user, page=source, block_type="doing", content="working on it"
+        )
+        automation = self._automation(
+            trigger="schedule every 5m",
+            query="type:doing",
+            when="matched-for 2h",
+            action="notify still going",
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SKIPPED)
+        self.assertEqual(result["result"]["reason"], "not-dwelled-yet")
+        self.assertEqual(
+            len(
+                AutomationBlockMatchRepository.get_for_automation(str(automation.uuid))
+            ),
+            1,
+        )
+
+    def test_block_dwelled_long_enough_fires(self):
+        source = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        target = BlockFactory(
+            user=self.user, page=source, block_type="doing", content="working on it"
+        )
+        automation = self._automation(
+            trigger="schedule every 5m",
+            query="type:doing",
+            when="matched-for 2h",
+            action="set_type todo",
+        )
+
+        self._run(automation)  # tick 1: starts the dwell clock
+
+        # Simulate 3h passing since first matched.
+        AutomationBlockMatchRepository.upsert(
+            user=self.user,
+            automation_block_uuid=str(automation.uuid),
+            matched_block_uuid=str(target.uuid),
+            first_matched_at=timezone.now() - timedelta(hours=3),
+            fingerprint={},
+        )
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        self.assertEqual(result["result"]["affected"], 1)
+        target.refresh_from_db()
+        self.assertEqual(target.block_type, "todo")
+
+    def test_block_leaving_match_set_resets_dwell_clock(self):
+        source = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        target = BlockFactory(
+            user=self.user, page=source, block_type="doing", content="working on it"
+        )
+        automation = self._automation(
+            trigger="schedule every 5m",
+            query="type:doing",
+            when="matched-for 2h",
+            action="notify still going",
+        )
+        AutomationBlockMatchRepository.upsert(
+            user=self.user,
+            automation_block_uuid=str(automation.uuid),
+            matched_block_uuid=str(target.uuid),
+            first_matched_at=timezone.now() - timedelta(hours=3),
+            fingerprint={},
+        )
+
+        # Block leaves the match set before the tick runs.
+        target.block_type = "todo"
+        target.save()
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SKIPPED)
+        self.assertEqual(
+            AutomationBlockMatchRepository.get_for_automation(str(automation.uuid)),
+            {},
+        )
+
+    def test_manual_trigger_bypasses_dwell_and_runs_immediately(self):
+        source = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        target = BlockFactory(
+            user=self.user, page=source, block_type="doing", content="working on it"
+        )
+        automation = self._automation(
+            trigger="schedule every 5m",
+            query="type:doing",
+            when="matched-for 2h",
+            action="set_type todo",
+        )
+
+        result = self._run(automation, trigger="manual")
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
+        target.refresh_from_db()
+        self.assertEqual(target.block_type, "todo")
+
+    def test_watch_resets_dwell_when_watched_field_changes(self):
+        source = PageFactory(user=self.user, slug=f"notes-{uuid_lib.uuid4().hex[:8]}")
+        target = BlockFactory(
+            user=self.user,
+            page=source,
+            block_type="doing",
+            content="working on it",
+            properties={"size": "small"},
+        )
+        automation = self._automation(
+            trigger="schedule every 5m",
+            query="type:doing",
+            when="matched-for 2h",
+            watch="property:size",
+            action="notify still going",
+        )
+        AutomationBlockMatchRepository.upsert(
+            user=self.user,
+            automation_block_uuid=str(automation.uuid),
+            matched_block_uuid=str(target.uuid),
+            first_matched_at=timezone.now() - timedelta(hours=3),
+            fingerprint={"property:size": "small"},
+        )
+
+        # The watched property changed — this counts as a fresh match, so
+        # the dwell clock resets even though the block never left type:doing.
+        target.properties = {"size": "large"}
+        target.save()
+
+        result = self._run(automation)
+
+        self.assertEqual(result["status"], AutomationRun.STATUS_SKIPPED)
+        self.assertEqual(result["result"]["reason"], "not-dwelled-yet")
+        row = AutomationBlockMatchRepository.get_for_automation(str(automation.uuid))[
+            str(target.uuid)
+        ]
+        self.assertEqual(row.fingerprint, {"property:size": "large"})

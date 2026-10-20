@@ -106,13 +106,20 @@ _Avoid_: carry-over, migration, roll-forward
 
 **Automation**:
 A rule the user writes as an `#automation` block, pairing a trigger with an
-action to run over matching blocks. The block is the definition; nothing else
-records it.
+action to run over matching blocks, optionally gated by a condition. The
+block is the definition; nothing else records it.
 _Avoid_: rule, job, workflow
 
 **Automation run**:
 One execution of an automation, recording what fired it and what it did.
 _Avoid_: job, invocation, execution
+
+**Condition**:
+A `when::` prop that gates whether a trigger's evaluation is worth acting on
+— a transition in the query result, a crossed count, or a block's own dwell
+time — as opposed to the trigger, which only decides *when* an evaluation
+happens. See ADR-0002.
+_Avoid_: filter, rule, guard
 
 ### Views
 

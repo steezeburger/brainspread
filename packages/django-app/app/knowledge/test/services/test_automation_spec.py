@@ -1,4 +1,5 @@
 import uuid as uuid_lib
+from datetime import timedelta
 
 from django.test import SimpleTestCase
 
@@ -12,6 +13,10 @@ from knowledge.services.automation_spec import (
     SCHEDULE_WEEKLY,
     TRIGGER_MANUAL,
     TRIGGER_SCHEDULE,
+    WHEN_BECOMES_EMPTY,
+    WHEN_BECOMES_NONEMPTY,
+    WHEN_COUNT,
+    WHEN_MATCHED_FOR,
     AutomationSpecError,
     is_automation_content,
     parse_automation_block,
@@ -470,6 +475,102 @@ class TestTokenSpecContracts(SimpleTestCase):
             )
         )
         self.assertIsNotNone(spec.for_spec)
+
+
+class TestParseWhenAndWatch(SimpleTestCase):
+    """`when::` / `watch::` reactive-slice parsing (issue #206)."""
+
+    def _spec(self, **props):
+        base = {
+            "trigger": "schedule every 5m",
+            "query": "type:todo",
+            "action": "set_type doing",
+        }
+        base.update(props)
+        return parse_automation_block(_block(base))
+
+    def test_becomes_empty_parses(self):
+        spec = self._spec(when="becomes-empty")
+        self.assertEqual(spec.when.kind, WHEN_BECOMES_EMPTY)
+        self.assertIsNone(spec.when.threshold)
+
+    def test_becomes_nonempty_parses(self):
+        spec = self._spec(when="becomes-nonempty")
+        self.assertEqual(spec.when.kind, WHEN_BECOMES_NONEMPTY)
+
+    def test_count_condition_parses_op_and_threshold(self):
+        spec = self._spec(when="count > 5")
+        self.assertEqual(spec.when.kind, WHEN_COUNT)
+        self.assertEqual(spec.when.op, ">")
+        self.assertEqual(spec.when.threshold, 5)
+
+    def test_count_condition_accepts_all_comparison_ops(self):
+        for op in ("<", "<=", ">", ">="):
+            spec = self._spec(when=f"count {op} 3")
+            self.assertEqual(spec.when.op, op, msg=op)
+
+    def test_count_condition_without_spaces_parses(self):
+        spec = self._spec(when="count>=10")
+        self.assertEqual(spec.when.op, ">=")
+        self.assertEqual(spec.when.threshold, 10)
+
+    def test_matched_for_parses_minutes_hours_days(self):
+        self.assertEqual(
+            self._spec(when="matched-for 30m").when.duration, timedelta(minutes=30)
+        )
+        self.assertEqual(
+            self._spec(when="matched-for 2h").when.duration, timedelta(hours=2)
+        )
+        self.assertEqual(
+            self._spec(when="matched-for 3d").when.duration, timedelta(days=3)
+        )
+        self.assertEqual(self._spec(when="matched-for 2h").when.kind, WHEN_MATCHED_FOR)
+
+    def test_matched_for_under_a_minute_is_rejected(self):
+        with self.assertRaises(AutomationSpecError) as ctx:
+            self._spec(when="matched-for 30s")
+        self.assertIn("unknown", "; ".join(ctx.exception.errors))
+
+    def test_unknown_when_condition_is_rejected(self):
+        with self.assertRaises(AutomationSpecError) as ctx:
+            self._spec(when="becomes-purple")
+        self.assertIn("unknown", "; ".join(ctx.exception.errors))
+
+    def test_when_without_query_is_rejected(self):
+        with self.assertRaises(AutomationSpecError) as ctx:
+            parse_automation_block(
+                _block(
+                    {
+                        "trigger": "manual",
+                        "action": "set_type doing",
+                        "when": "becomes-empty",
+                    }
+                )
+            )
+        self.assertIn("query::", "; ".join(ctx.exception.errors))
+
+    def test_watch_parses_field_and_tag_and_property_tokens(self):
+        spec = self._spec(
+            when="matched-for 2h", watch="due, tag:priority property:size"
+        )
+        self.assertEqual(
+            spec.watch, frozenset({"due", "tag:priority", "property:size"})
+        )
+
+    def test_watch_without_matched_for_is_rejected(self):
+        with self.assertRaises(AutomationSpecError) as ctx:
+            self._spec(when="becomes-empty", watch="due")
+        self.assertIn("watch::", "; ".join(ctx.exception.errors))
+
+    def test_watch_bad_token_is_rejected(self):
+        with self.assertRaises(AutomationSpecError) as ctx:
+            self._spec(when="matched-for 2h", watch="bogus-thing")
+        self.assertIn("bad `watch::` token", "; ".join(ctx.exception.errors))
+
+    def test_when_and_watch_absent_by_default(self):
+        spec = self._spec()
+        self.assertIsNone(spec.when)
+        self.assertIsNone(spec.watch)
 
 
 class TestIsAutomationContent(SimpleTestCase):

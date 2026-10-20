@@ -1,3 +1,4 @@
+from .automation_block_match import AutomationBlockMatch
 from .automation_run import AutomationRun, AutomationRunData
 from .block import Block, BlockData
 from .block_revision import BlockRevision, BlockRevisionData

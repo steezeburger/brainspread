@@ -45,6 +45,25 @@ class AutomationRunRepository(BaseRepository):
         )
 
     @classmethod
+    def latest_before(
+        cls, automation_block_uuid: str, exclude_run_uuid: str
+    ) -> Optional[AutomationRun]:
+        """Most recent run for an automation, excluding one specific run —
+        the reactive slice's (issue #206) edge-detect baseline. The
+        currently-executing run already exists as a row (claimed before
+        execution, or created at the top of ``RunAutomationCommand
+        .execute``) by the time a ``when::`` gate needs "the previous
+        run's result", so plain ``latest_for_automation`` would just
+        return the run in progress."""
+        return (
+            cls.get_queryset()
+            .filter(automation_block_uuid=automation_block_uuid)
+            .exclude(uuid=exclude_run_uuid)
+            .order_by("-created_at")
+            .first()
+        )
+
+    @classmethod
     def list_for_user(cls, user, limit: int = 50) -> List[AutomationRun]:
         return list(
             cls.get_queryset().filter(user=user).order_by("-created_at")[:limit]

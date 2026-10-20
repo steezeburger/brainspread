@@ -1,3 +1,4 @@
+from .automation_block_match_repository import AutomationBlockMatchRepository
 from .automation_run_repository import AutomationRunRepository
 from .block_repository import BlockRepository
 from .block_revision_repository import BlockRevisionRepository

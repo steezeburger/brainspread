@@ -33,7 +33,17 @@ so all comparisons are string-vs-string. Sort by a JSONB key with
 through table, which makes multi-tag AND/OR composition Just Work under
 arbitrary combinator nesting (a single ``filter(pages__slug__in=[...])``
 would match *any* tag, not *all* — see issue #60's "Glitch's favorite
-things" example for why this matters).
+things" example for why this matters). ``page`` is narrower — it matches
+only a block living directly on that page, not a hashtag reference from
+elsewhere.
+
+``created_at`` shares the due/completed date-token and day-boundary
+machinery (issue #206) — ``{"created_at": {"lt": "7 days ago"}}`` is how
+"stale todo" queries express age, since the engine has no separate
+concept of it. ``under`` matches blocks nested (at any depth) under a
+given block, referenced by its uuid — it compiles to a lazy recursive
+``RawSQL`` subquery over the parent-id adjacency list (blocks have no
+materialized path), so it still composes under any combinator nesting.
 
 The engine deliberately does no DB I/O — it returns a ``CompiledQuery``
 that the BlockRepository runs. Per the project's repository rule, all
@@ -43,11 +53,13 @@ that the BlockRepository runs. Per the project's repository rule, all
 from __future__ import annotations
 
 import re
+import uuid as uuid_module
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Callable, Dict, List
 
 from django.db.models import Exists, OuterRef, Q
+from django.db.models.expressions import RawSQL
 from django.utils import timezone
 
 from knowledge.models import Block, Page
@@ -357,6 +369,16 @@ def _completed_at_q(value: Any, user, context_date: "date | None" = None) -> Q:
     )
 
 
+def _created_at_q(value: Any, user, context_date: "date | None" = None) -> Q:
+    """Filter on ``Block.created_at`` — issue #206's "stale todo older
+    than N days" case, e.g. ``{"created_at": {"lt": "7 days ago"}}``.
+    Shares the same day-boundary/datetime-token semantics as due/
+    completed (see ``_date_field_q``)."""
+    return _date_field_q(
+        "created_at", value, user, is_datetime=True, context_date=context_date
+    )
+
+
 def _due_has_time_q(value: Any, user, context_date: "date | None" = None) -> Q:
     """Filter on ``Block.due_at_has_time`` — whether the due carries a
     real time of day (all-day dues sit at user-local midnight with the
@@ -417,6 +439,53 @@ def _has_tag_q(value: Any, user, context_date: "date | None" = None) -> Q:
     )
     page_membership = Q(page__slug=slug, page__user=user)
     return page_membership | Q(Exists(sub))
+
+
+def _page_q(value: Any, user, context_date: "date | None" = None) -> Q:
+    """Filter blocks that live directly on a page (``block.page.slug``),
+    without the hashtag-reference half ``has_tag`` also matches (issue
+    #206) — the braindumps-sweep-style automation that means "blocks
+    written on this page", not "blocks tagged with it from elsewhere"."""
+    if isinstance(value, dict):
+        value = value.get("eq")
+    if not isinstance(value, str) or not value.strip():
+        raise QueryEngineError(f"page must be a slug string: {value!r}")
+    return Q(page__slug=value.strip().lower(), page__user=user)
+
+
+# Recursive walk down the adjacency-list `parent_id` column. Blocks have
+# no materialized path, so `under:<uuid>` needs a real recursive query —
+# built here as a lazy RawSQL subquery (never executed until the
+# surrounding queryset is) so it still composes under any combinator
+# nesting exactly like `has_tag`'s Exists() does.
+_DESCENDANTS_CTE_SQL = """
+WITH RECURSIVE descendants(id) AS (
+    SELECT id FROM blocks WHERE parent_id = (
+        SELECT id FROM blocks WHERE uuid = %s AND user_id = %s
+    )
+    UNION ALL
+    SELECT b.id FROM blocks b INNER JOIN descendants d ON b.parent_id = d.id
+)
+SELECT id FROM descendants
+"""
+
+
+def _under_q(value: Any, user, context_date: "date | None" = None) -> Q:
+    """Filter blocks nested (at any depth) under a given block, referenced
+    by its uuid — issue #206's "nest-under-block" query predicate. A raw
+    uuid is the only block-reference syntax available today; a friendlier
+    authoring syntax is blocked on the shared block-reference grammar
+    (see #206's reactive-slice notes)."""
+    if isinstance(value, dict):
+        value = value.get("eq")
+    if not isinstance(value, str) or not value.strip():
+        raise QueryEngineError(f"under must be a block uuid string: {value!r}")
+    raw = value.strip()
+    try:
+        anchor_uuid = uuid_module.UUID(raw)
+    except ValueError as exc:
+        raise QueryEngineError(f"under must be a valid block uuid: {raw!r}") from exc
+    return Q(pk__in=RawSQL(_DESCENDANTS_CTE_SQL, [str(anchor_uuid), user.pk]))
 
 
 # Property keys are constrained to the same charset the parser accepts in
@@ -606,12 +675,15 @@ PREDICATE_HANDLERS: Dict[str, Callable[..., Q]] = {
     # still compile against the renamed field.
     "scheduled_for": _due_at_q,
     "completed_at": _completed_at_q,
+    "created_at": _created_at_q,
     "due_has_time": _due_has_time_q,
     "has_tag": _has_tag_q,
     "has_property": _has_property_q,
     "property_eq": _property_eq_q,
     "content_contains": _content_contains_q,
     "page_type": _page_type_q,
+    "page": _page_q,
+    "under": _under_q,
 }
 
 COMBINATORS = ("all", "any", "not")

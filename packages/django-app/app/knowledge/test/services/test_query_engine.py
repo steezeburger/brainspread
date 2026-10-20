@@ -14,6 +14,7 @@ from unittest.mock import patch
 import pytz
 from django.test import TestCase
 
+from knowledge.models import Block
 from knowledge.repositories import BlockRepository
 from knowledge.services import query_engine
 
@@ -161,6 +162,75 @@ class CompletedAtTests(_EngineTestBase):
         out_ids = {b.id for b in out}
         self.assertIn(after.id, out_ids)
         self.assertNotIn(before.id, out_ids)
+
+
+class CreatedAtTests(_EngineTestBase):
+    """issue #206: age filtering — the engine only date-filtered due_at /
+    completed_at before this, so "stale todo older than N days" needed
+    `created_at`. Shares the due/completed date-token machinery
+    (created_at is auto_now_add, so tests bypass it via .update())."""
+
+    def test_lt_n_days_ago_token(self):
+        old = BlockFactory(user=self.user, page=self.page)
+        Block.objects.filter(pk=old.pk).update(created_at=due_dt(2026, 4, 10))
+        recent = BlockFactory(user=self.user, page=self.page)
+        Block.objects.filter(pk=recent.pk).update(created_at=due_dt(2026, 4, 23))
+
+        # "7 days ago" relative to today (2026-04-24) = 2026-04-17.
+        out = self.run_query({"created_at": {"lt": "7 days ago"}})
+        self.assertEqual([b.id for b in out], [old.id])
+
+    def test_legacy_created_alias_unaffected_by_scheduled_for_alias(self):
+        match = BlockFactory(user=self.user, page=self.page)
+        Block.objects.filter(pk=match.pk).update(created_at=due_dt(2026, 4, 1))
+        out = self.run_query({"created_at": "2026-04-01"})
+        self.assertEqual([b.id for b in out], [match.id])
+
+
+class PagePredicateTests(_EngineTestBase):
+    """`page:` (issue #206) — narrower than `has_tag`: only a block living
+    directly on the page, not one merely tagged with it from elsewhere."""
+
+    def test_matches_only_blocks_living_directly_on_the_page(self):
+        braindump = PageFactory(user=self.user, title="Braindump", slug="braindump")
+        on_page = BlockFactory(user=self.user, page=braindump)
+        tagged_from_elsewhere = BlockFactory(user=self.user, page=self.page)
+        tagged_from_elsewhere.pages.add(braindump)
+
+        out = self.run_query({"page": "braindump"})
+        self.assertEqual([b.id for b in out], [on_page.id])
+
+    def test_rejects_blank_value(self):
+        with self.assertRaises(query_engine.QueryEngineError):
+            query_engine.compile({"page": ""}, user=self.user)
+
+
+class UnderPredicateTests(_EngineTestBase):
+    """`under:<block-uuid>` (issue #206) — descendants at any depth via a
+    recursive CTE over the parent-id adjacency list."""
+
+    def test_matches_descendants_at_any_depth_not_the_anchor_itself(self):
+        root = BlockFactory(user=self.user, page=self.page)
+        child = BlockFactory(user=self.user, page=self.page, parent=root)
+        grandchild = BlockFactory(user=self.user, page=self.page, parent=child)
+        sibling = BlockFactory(user=self.user, page=self.page)
+
+        out = self.run_query({"under": str(root.uuid)})
+        self.assertEqual({b.id for b in out}, {child.id, grandchild.id})
+        self.assertNotIn(root.id, {b.id for b in out})
+        self.assertNotIn(sibling.id, {b.id for b in out})
+
+    def test_invalid_uuid_rejected(self):
+        with self.assertRaises(query_engine.QueryEngineError):
+            query_engine.compile({"under": "not-a-uuid"}, user=self.user)
+
+    def test_anchor_from_another_user_is_ignored(self):
+        other_page = PageFactory(user=self.other_user)
+        other_root = BlockFactory(user=self.other_user, page=other_page)
+        BlockFactory(user=self.other_user, page=other_page, parent=other_root)
+
+        out = self.run_query({"under": str(other_root.uuid)})
+        self.assertEqual(out, [])
 
 
 class HasTagTests(_EngineTestBase):
