@@ -9,7 +9,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("knowledge", "0050_merge_block_revision_and_soft_delete"),
+        ("knowledge", "0052_backfill_link_only_tags"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
