@@ -8,8 +8,11 @@ from core.commands.update_discord_webhook_command import UpdateDiscordWebhookCom
 from core.commands.update_highlight_hashtags_command import (
     UpdateHighlightHashtagsCommand,
 )
-from core.commands.update_highlight_properties_command import (
-    UpdateHighlightPropertiesCommand,
+from core.commands.update_highlight_property_keys_command import (
+    UpdateHighlightPropertyKeysCommand,
+)
+from core.commands.update_highlight_property_values_command import (
+    UpdateHighlightPropertyValuesCommand,
 )
 from core.commands.update_render_emoji_command import UpdateRenderEmojiCommand
 from core.commands.update_theme_command import UpdateThemeCommand

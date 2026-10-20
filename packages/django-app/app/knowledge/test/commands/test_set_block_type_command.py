@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from knowledge.commands import SetBlockTypeCommand
 from knowledge.forms import SetBlockTypeForm
-from knowledge.models import Block, Page, Reminder
+from knowledge.models import Block, BlockRevision, Page, Reminder
 
 User = get_user_model()
 
@@ -91,6 +91,26 @@ class TestSetBlockTypeCommand:
         assert result.block_type == "todo"
         assert result.content == "TODO ship"
         assert result.completed_at is None
+
+    def test_same_type_adds_missing_prefix_and_keeps_completed_at(self):
+        stamp = timezone.now()
+        block = self._make_block(
+            content="paid rent", block_type="done", completed_at=stamp
+        )
+        result = self._run(block, "done")
+        assert result.content == "DONE paid rent"
+        assert result.completed_at == stamp
+        assert BlockRevision.objects.filter(block=block).count() == 1
+
+    def test_same_type_with_prefix_writes_no_revision(self):
+        block = self._make_block(content="TODO ship", block_type="todo")
+        self._run(block, "todo")
+        assert not BlockRevision.objects.filter(block=block).exists()
+
+    def test_prefixless_content_gets_new_prefix_on_transition(self):
+        block = self._make_block(content="ship it", block_type="todo")
+        result = self._run(block, "doing")
+        assert result.content == "DOING ship it"
 
     def test_swaps_content_prefix_between_states(self):
         block = self._make_block(content="TODO write docs", block_type="todo")

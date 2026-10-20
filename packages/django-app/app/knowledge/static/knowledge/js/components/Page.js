@@ -32,7 +32,10 @@ const PAGE_SORT_LABELS = Object.fromEntries(
 const PAGE_SORT_STORAGE_PREFIX = "bs:page-sort:";
 
 const Page = {
-  mixins: [window.brainspreadEmojiRenderMixin || {}],
+  mixins: [
+    window.brainspreadEmojiRenderMixin || {},
+    window.brainspreadEscapeCaptureMixin || {},
+  ],
   components: {
     BlockComponent: window.BlockComponent || {},
     Whiteboard: window.Whiteboard || {},
@@ -2556,15 +2559,28 @@ const Page = {
         `<a class="${hashtagClass}" href="/knowledge/page/$1/" data-tag="$1">#$1</a>`
       );
 
-      // Restore key::value property placeholders as chips. Reuses the
-      // hashtag chip styling (.inline-tag .clickable-tag) and routes to
+      // Restore key::value property placeholders as chips, and route to
       // the saved-views page with prefill params so the user lands on a
-      // property_eq query they can run or save.
-      const propertiesHighlighted =
-        window.brainspreadContentHighlighting?.propertiesEnabled() !== false;
-      const propertyClass = propertiesHighlighted
-        ? "inline-tag inline-property clickable-tag"
-        : "inline-tag-plain inline-property";
+      // property_eq query they can run or save. The key and value each
+      // get their own per-user highlighting setting: the key keeps the
+      // hashtag's pill look (.inline-tag), but the value — which can
+      // run to a full cron expression or query string, unlike a short
+      // hashtag — gets a softer, lower-contrast highlight
+      // (.inline-property-value) so a long value doesn't read as one
+      // solid block of color. Either half falls back to
+      // .inline-tag-plain (plain text, still part of the link) when
+      // its setting is off.
+      const propertyKeysHighlighted =
+        window.brainspreadContentHighlighting?.propertyKeysEnabled() !== false;
+      const propertyValuesHighlighted =
+        window.brainspreadContentHighlighting?.propertyValuesEnabled() !==
+        false;
+      const propertyKeyClass = propertyKeysHighlighted
+        ? "inline-tag"
+        : "inline-tag-plain";
+      const propertyValueClass = propertyValuesHighlighted
+        ? "inline-property-value"
+        : "inline-tag-plain";
       propertySegments.forEach(({ key, value, sep }, idx) => {
         const safeKey = this.escapeHtml(key);
         const safeValue = this.escapeHtml(value);
@@ -2573,11 +2589,13 @@ const Page = {
           `/knowledge/views/?property_key=${encodeURIComponent(key)}` +
           `&property_value=${encodeURIComponent(value)}`;
         const replacement =
-          `<a class="${propertyClass}" ` +
+          `<a class="inline-property clickable-tag" ` +
           `href="${href}" ` +
           `data-property-key="${this.escapeAttr(key)}" ` +
           `data-property-value="${this.escapeAttr(value)}">` +
-          `${safeKey}::${safeSep}${safeValue}</a>`;
+          `<span class="${propertyKeyClass}">${safeKey}::</span>` +
+          `<span class="${propertyValueClass}">${safeSep}${safeValue}</span>` +
+          `</a>`;
         formatted = formatted.split(`\x00PROP${idx}\x00`).join(replacement);
       });
 
@@ -3077,6 +3095,23 @@ const Page = {
       this.shareModalOpen = true;
       this.shareLinkCopied = false;
       this.closePageMenu();
+    },
+
+    escapeCaptureFlag() {
+      return "shareModalOpen";
+    },
+
+    // Called for every keydown while the share modal is open, bound
+    // directly on `document` in the capture phase (see
+    // brainspreadEscapeCaptureMixin in services/escape-capture.js)
+    // rather than a template @keydown on the modal's own root — that
+    // only fires while a descendant of the bound element is focused,
+    // which breaks the moment the user clicks the modal background.
+    onEscapeCapture(event) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.closeShareModal();
     },
 
     async duplicatePage() {
@@ -3753,6 +3788,15 @@ const Page = {
           // Only intercept pastes that start with a list item; if the first
           // non-empty line isn't a list item, defer to native paste behavior.
           if (!sawFirstNonEmpty) return [];
+          // A non-bulleted line after a list item is a lazy continuation
+          // of that item's content, not a dropped line — mirrors how
+          // serializeBlockToMarkdown exports a block's embedded newlines
+          // as unindented, unbulleted lines directly under its `- ` line,
+          // so a multi-line block (e.g. `key:: value` properties each on
+          // their own line) round-trips through copy → paste unchanged.
+          if (items.length > 0) {
+            items[items.length - 1].content += `\n${rest}`;
+          }
           continue;
         }
 

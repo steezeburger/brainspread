@@ -58,6 +58,7 @@ window.suggestedPagesFromBlockTags = function (blocks) {
 
 window.AppModals = {
   name: "AppModals",
+  mixins: [window.brainspreadEscapeCaptureMixin || {}],
 
   data() {
     return {
@@ -159,6 +160,10 @@ window.AppModals = {
   },
 
   methods: {
+    escapeCaptureFlag() {
+      return "active";
+    },
+
     confirm(opts) {
       const normalized =
         typeof opts === "string" ? { message: opts } : opts || {};
@@ -575,13 +580,25 @@ window.AppModals = {
         this.onPickerCancel();
     },
 
-    onKeydown(event) {
+    // Called for every keydown while a modal is active — wired up via
+    // brainspreadEscapeCaptureMixin, see services/escape-capture.js.
+    onEscapeCapture(event) {
       const top = this.active;
       if (!top) return;
       // The pickers drive their own keyboard surface (arrows + Enter +
       // Esc) via @keydown on the input — the global Enter-on-button
-      // handlers below would otherwise fight Enter-to-pick.
-      if (top.kind === "pickPage" || top.kind === "pickBlock") return;
+      // handlers below would otherwise fight Enter-to-pick. Escape has
+      // no such conflict, so it's still handled here — this is what
+      // lets Escape cancel a picker even when focus has drifted off
+      // the search input.
+      if (top.kind === "pickPage" || top.kind === "pickBlock") {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          this.onPickerCancel();
+        }
+        return;
+      }
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
@@ -614,7 +631,6 @@ window.AppModals = {
         v-if="active"
         class="app-modal-backdrop"
         @click.self="onBackdropClick"
-        @keydown="onKeydown"
         tabindex="-1"
       >
         <div
@@ -638,7 +654,6 @@ window.AppModals = {
               class="btn"
               :class="active.opts.destructive ? 'btn-danger' : 'btn-primary'"
               @click="onConfirm"
-              @keydown="onKeydown"
             >
               {{ active.opts.confirmLabel }}
             </button>
@@ -663,7 +678,6 @@ window.AppModals = {
             type="text"
             class="app-modal-input"
             :placeholder="active.opts.placeholder"
-            @keydown="onKeydown"
           />
           <div class="app-modal-actions">
             <button type="button" class="btn btn-secondary" @click="onPromptCancel">
@@ -691,7 +705,6 @@ window.AppModals = {
               ref="alertOk"
               class="btn btn-primary"
               @click="onAlertOk"
-              @keydown="onKeydown"
             >
               {{ active.opts.confirmLabel }}
             </button>

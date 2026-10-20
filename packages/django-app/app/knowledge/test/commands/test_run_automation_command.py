@@ -728,7 +728,7 @@ class TestSmallVerbActions(TestCase):
 
         self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
         self.assertEqual(result["result"]["affected"], 1)
-        created = Block.objects.get(user=self.user, content="drink water")
+        created = Block.objects.get(user=self.user, content="TODO drink water")
         self.assertEqual(created.block_type, "todo")
         self.assertEqual(created.page.page_type, "daily")
 
@@ -818,7 +818,7 @@ class TestSmallVerbActions(TestCase):
         result = self._run(automation)
 
         self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
-        created = Block.objects.get(user=self.user, content__startswith="buy milk")
+        created = Block.objects.get(user=self.user, content__startswith="TODO buy milk")
         self.assertIn("#groceries", created.content)
         self.assertIn(groceries, created.pages.all())
         self.assertEqual(created.properties.get("priority"), "high")
@@ -958,7 +958,7 @@ class TestDueRemindClauses(TestCase):
 
         self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
         created = Block.objects.get(
-            user=self.user, content="move car for street sweeping"
+            user=self.user, content="TODO move car for street sweeping"
         )
         self.assertEqual(created.block_type, "todo")
         self.assertEqual(created.page.page_type, "daily")
@@ -1093,7 +1093,7 @@ class TestDueRemindClauses(TestCase):
         result = self._run(automation)
 
         self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
-        created = Block.objects.get(user=self.user, content="move car")
+        created = Block.objects.get(user=self.user, content="TODO move car")
         pending = Reminder.objects.filter(block=created, sent_at__isnull=True)
         self.assertEqual(pending.count(), 2)
 
@@ -1107,7 +1107,7 @@ class TestDueRemindClauses(TestCase):
         result = self._run(automation)
 
         self.assertEqual(result["status"], AutomationRun.STATUS_SUCCEEDED)
-        created = Block.objects.get(user=self.user, content="prep")
+        created = Block.objects.get(user=self.user, content="TODO prep")
         self.assertIsNotNone(created.get_pending_reminder())
 
     def test_set_due_multiple_reminders(self):

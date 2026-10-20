@@ -440,7 +440,7 @@ class CreateBlocksBulkTests(TestCase):
         self.assertEqual(len(children), 3)
         self.assertEqual(
             [b.content for b in children],
-            ["buy milk", "call dentist", "polish deck"],
+            ["TODO buy milk", "TODO call dentist", "polish deck"],
         )
         self.assertEqual(
             [b.block_type for b in children],

@@ -1,9 +1,8 @@
-from django.db.models import Q
-
 from common.commands.abstract_base_command import AbstractBaseCommand
 
 from ..forms.search_pages_form import SearchPagesForm
-from ..models import Page, PagesData
+from ..models import PagesData
+from ..repositories import PageRepository
 
 
 class SearchPagesCommand(AbstractBaseCommand):
@@ -21,26 +20,7 @@ class SearchPagesCommand(AbstractBaseCommand):
         limit = self.form.cleaned_data.get("limit", 10)
         page_type = self.form.cleaned_data.get("page_type") or None
 
-        # For single-character queries we match by prefix only — a bare "c"
-        # matching "roam research" is more noise than signal. Multi-character
-        # queries fall back to substring search so that typing in the middle
-        # of a title still surfaces relevant pages.
-        if len(query) == 1:
-            search_q = Q(title__istartswith=query) | Q(slug__istartswith=query)
-        else:
-            search_q = Q(title__icontains=query) | Q(slug__icontains=query)
-
-        queryset = (
-            Page.objects.filter(user=user, is_published=True)
-            .filter(search_q)
-            .order_by(
-                "-modified_at", "title"
-            )  # Order by most recently updated first, then by title
-            .select_related("user")  # Optimize query
-        )
-        if page_type:
-            queryset = queryset.filter(page_type=page_type)
-
+        queryset = PageRepository.search(user, query, page_type=page_type)
         pages = list(queryset[:limit])
 
         return PagesData(

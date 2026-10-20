@@ -58,7 +58,6 @@ from ..commands.bulk_schedule_command import BulkScheduleCommand
 from ..commands.bulk_set_block_type_command import BulkSetBlockTypeCommand
 from ..commands.create_block_command import CreateBlockCommand
 from ..commands.schedule_block_command import ScheduleBlockCommand
-from ..commands.set_block_type_command import STATE_PREFIXES
 from ..commands.tag_blocks_command import UntagBlocksCommand
 from ..commands.update_block_command import UpdateBlockCommand
 from ..forms.add_template_blocks_to_page_form import AddTemplateBlocksToPageForm
@@ -79,6 +78,8 @@ from .automation_spec import ActionSpec
 from .block_links import block_page_url
 from .content_tokens import TokenContext
 from .discord_webhook import post_webhook
+from .state_prefix import STATE_PREFIXES
+from .tag_content import append_tags, remove_tags
 
 
 class ActionError(ValueError):
@@ -774,31 +775,16 @@ def _resolve_tag_slugs(
     return slugs
 
 
-def _tag_occurrence_re(slug: str) -> re.Pattern:
-    """Matches a live ``#slug`` occurrence in block content — the same
-    shape the tag sync scans for (backslash-escaped ``\\#slug`` excluded,
-    no partial-slug matches)."""
-    return re.compile(rf"(?<!\\)#{re.escape(slug)}(?![A-Za-z0-9_-])")
-
-
 def _update_block_content(ctx: ActionContext, block: Block, content: str) -> None:
-    """Rewrite a block's content the way the editor would.
-
-    UpdateBlockCommand auto-detects block type from a state-keyword
-    prefix (``TODO ``/``DONE ``/…) because the editor always submits
-    one for todo-family blocks — content without it demotes the block
-    to ``bullet`` and clears ``completed_at``. Blocks whose type was
-    set via commands/tools store bare content, so an automation rewrite
-    must re-assert the prefix or a `done` block silently loses its
-    completion the moment a verb touches its text."""
-    prefix = STATE_PREFIXES.get(block.block_type)
-    if prefix and not content.lstrip().lower().startswith(prefix.lower()):
-        content = f"{prefix} {content.lstrip()}"
+    """Rewrite a block's content, keeping its type. The explicit
+    block_type stops content auto-detect from demoting a todo whose
+    rewritten text lacks its state keyword, and re-adds the keyword."""
     form = UpdateBlockForm(
         data={
             "user": ctx.user.id,
             "block": str(block.uuid),
             "content": content,
+            "block_type": block.block_type,
             "source": BlockRevision.SOURCE_AUTOMATION,
         }
     )
@@ -820,13 +806,10 @@ def _tag(
     updated = 0
     for block in blocks:
         content = block.content or ""
-        to_add = [s for s in slugs if not _tag_occurrence_re(s).search(content)]
-        if not to_add:
+        new_content = append_tags(content, slugs)
+        if new_content == content:
             continue
-        lines = content.split("\n")
-        suffix = " ".join(f"#{s}" for s in to_add)
-        lines[0] = f"{lines[0].rstrip()} {suffix}".strip()
-        _update_block_content(ctx, block, "\n".join(lines))
+        _update_block_content(ctx, block, new_content)
         updated += 1
     return ActionResult(
         affected=updated,
@@ -847,12 +830,8 @@ def _untag(
     for block in blocks:
         content = block.content or ""
         had_tag = bool(set(slugs) & set(block.get_tag_names()))
-        new_content = content
-        for slug in slugs:
-            new_content = _tag_occurrence_re(slug).sub("", new_content)
+        new_content = remove_tags(content, slugs)
         if new_content != content:
-            new_content = re.sub(r"[ \t]{2,}", " ", new_content)
-            new_content = "\n".join(line.rstrip() for line in new_content.split("\n"))
             _update_block_content(ctx, block, new_content)
             affected += 1
         elif had_tag:
@@ -871,6 +850,7 @@ def _untag(
                 "user": ctx.user.id,
                 "block_uuids": [str(block.uuid) for block in blocks],
                 "page_uuids": page_uuids,
+                "source": BlockRevision.SOURCE_AUTOMATION,
             }
         )
         if not form.is_valid():

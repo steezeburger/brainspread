@@ -172,20 +172,21 @@ class UpdateBlockCommand(AbstractBaseCommand):
         source = self.form.cleaned_data.get("source") or BlockRevision.SOURCE_USER
         BlockRevisionRepository.record_if_changed(block, previous_snapshot, source)
 
+        # Delegated even when the type didn't change: SetBlockTypeCommand
+        # also keeps the content's state keyword in step with the type
+        # (issue #263).
         if explicit_block_type:
-            new_type = self.form.cleaned_data["block_type"]
-            if new_type != block.block_type:
-                type_form = SetBlockTypeForm(
-                    data={
-                        "user": user.id,
-                        "block": str(block.uuid),
-                        "block_type": new_type,
-                        "source": source,
-                    }
-                )
-                if not type_form.is_valid():
-                    raise ValidationError(type_form.errors.as_json())
-                block = SetBlockTypeCommand(type_form).execute()
+            type_form = SetBlockTypeForm(
+                data={
+                    "user": user.id,
+                    "block": str(block.uuid),
+                    "block_type": self.form.cleaned_data["block_type"],
+                    "source": source,
+                }
+            )
+            if not type_form.is_valid():
+                raise ValidationError(type_form.errors.as_json())
+            block = SetBlockTypeCommand(type_form).execute()
 
         # Extract and set tags if content was updated (business logic)
         # Skip for code blocks — their content is code, not markdown.
@@ -226,7 +227,7 @@ class UpdateBlockCommand(AbstractBaseCommand):
         """Auto-detect block type from content patterns"""
         # Only auto-detect for bullet and the todo-family states. All five
         # states carry their keyword as a content prefix (see
-        # SetBlockTypeCommand.STATE_PREFIXES), so editing "LATER x" to
+        # STATE_PREFIXES in services/state_prefix.py), so editing "LATER x" to
         # "TODO x" must move the type too. Don't override other explicit
         # types like heading, code, etc.
         if current_block_type != "bullet" and current_block_type not in TODO_TYPES:

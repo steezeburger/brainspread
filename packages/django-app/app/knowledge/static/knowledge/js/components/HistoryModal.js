@@ -14,6 +14,7 @@
 //   restored  — { block } a restore completed; parent should refresh
 window.HistoryModal = {
   name: "HistoryModal",
+  mixins: [window.brainspreadEscapeCaptureMixin || {}],
   props: {
     isOpen: { type: Boolean, default: false },
     block: { type: Object, default: null },
@@ -37,7 +38,12 @@ window.HistoryModal = {
       }
     },
   },
+
   methods: {
+    escapeCaptureFlag() {
+      return "isOpen";
+    },
+
     async fetchRevisions() {
       if (!this.block?.uuid) return;
       this.loading = true;
@@ -140,11 +146,16 @@ window.HistoryModal = {
     onBackdropClick(event) {
       if (event.target === event.currentTarget) this.$emit("close");
     },
-    onKeydown(event) {
+    // Called for every keydown while open, bound directly on `document`
+    // in the capture phase (see brainspreadEscapeCaptureMixin in
+    // services/escape-capture.js) rather than left as a template
+    // @keydown on the backdrop — that only fires when focus happens to
+    // sit inside it, and clicking a plain, non-focusable part of the
+    // modal blurs focus without moving it back in, silently breaking
+    // Escape.
+    onEscapeCapture(event) {
       if (event.key === "Escape") {
         event.preventDefault();
-        // app.js and Page.js listen for Escape on document to close the
-        // left nav / chat panel; keep this keystroke scoped to the modal.
         event.stopPropagation();
         this.$emit("close");
       }
@@ -156,7 +167,6 @@ window.HistoryModal = {
         v-if="isOpen && block"
         class="app-modal-backdrop"
         @click.self="onBackdropClick"
-        @keydown="onKeydown"
         tabindex="-1"
       >
         <div class="app-modal history-modal" role="dialog" aria-modal="true" aria-label="Block history">

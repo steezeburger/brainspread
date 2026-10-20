@@ -299,44 +299,87 @@ class UserAPITestCase(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    def test_update_highlight_properties_off(self):
-        """Turning property highlighting off persists and returns False."""
+    def test_update_highlight_property_keys_off(self):
+        """Turning property-key highlighting off persists and returns False."""
         self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
         response = self.client.post(
-            "/api/auth/update-highlight-properties/",
-            {"highlight_properties": False},
+            "/api/auth/update-highlight-property-keys/",
+            {"highlight_property_keys": False},
             format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data["success"])
-        self.assertFalse(response.data["data"]["user"]["highlight_properties"])
+        self.assertFalse(response.data["data"]["user"]["highlight_property_keys"])
 
         self.user.refresh_from_db()
-        self.assertFalse(self.user.highlight_properties)
+        self.assertFalse(self.user.highlight_property_keys)
 
-    def test_update_highlight_properties_back_on(self):
+    def test_update_highlight_property_keys_back_on(self):
         """Turning it back on works — the toggle isn't one-way."""
-        self.user.highlight_properties = False
-        self.user.save(update_fields=["highlight_properties"])
+        self.user.highlight_property_keys = False
+        self.user.save(update_fields=["highlight_property_keys"])
         self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
         response = self.client.post(
-            "/api/auth/update-highlight-properties/",
-            {"highlight_properties": True},
+            "/api/auth/update-highlight-property-keys/",
+            {"highlight_property_keys": True},
             format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTrue(response.data["data"]["user"]["highlight_properties"])
+        self.assertTrue(response.data["data"]["user"]["highlight_property_keys"])
 
         self.user.refresh_from_db()
-        self.assertTrue(self.user.highlight_properties)
+        self.assertTrue(self.user.highlight_property_keys)
 
-    def test_update_highlight_properties_unauthenticated(self):
-        """Property highlighting update without authentication is rejected."""
+    def test_update_highlight_property_keys_unauthenticated(self):
+        """Property-key highlighting update without authentication is rejected."""
         response = self.client.post(
-            "/api/auth/update-highlight-properties/",
-            {"highlight_properties": False},
+            "/api/auth/update-highlight-property-keys/",
+            {"highlight_property_keys": False},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_update_highlight_property_values_off(self):
+        """Turning property-value highlighting off persists and returns False."""
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
+        response = self.client.post(
+            "/api/auth/update-highlight-property-values/",
+            {"highlight_property_values": False},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["success"])
+        self.assertFalse(response.data["data"]["user"]["highlight_property_values"])
+
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.highlight_property_values)
+
+    def test_update_highlight_property_values_back_on(self):
+        """Turning it back on works — the toggle isn't one-way."""
+        self.user.highlight_property_values = False
+        self.user.save(update_fields=["highlight_property_values"])
+        self.client.credentials(HTTP_AUTHORIZATION="Token " + self.token.key)
+        response = self.client.post(
+            "/api/auth/update-highlight-property-values/",
+            {"highlight_property_values": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["data"]["user"]["highlight_property_values"])
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.highlight_property_values)
+
+    def test_update_highlight_property_values_unauthenticated(self):
+        """Property-value highlighting update without authentication is rejected."""
+        response = self.client.post(
+            "/api/auth/update-highlight-property-values/",
+            {"highlight_property_values": False},
             format="json",
         )
 

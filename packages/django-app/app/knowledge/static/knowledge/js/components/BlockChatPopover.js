@@ -16,7 +16,10 @@
 //   close — user dismissed (Esc, backdrop, "done" button)
 
 window.BlockChatPopover = {
-  mixins: [window.brainspreadEmojiRenderMixin || {}],
+  mixins: [
+    window.brainspreadEmojiRenderMixin || {},
+    window.brainspreadEscapeCaptureMixin || {},
+  ],
   name: "BlockChatPopover",
   props: {
     isOpen: { type: Boolean, default: false },
@@ -128,6 +131,10 @@ window.BlockChatPopover = {
     },
   },
   methods: {
+    escapeCaptureFlag() {
+      return "isOpen";
+    },
+
     loadPref(key, defaultValue) {
       const saved = localStorage.getItem(key);
       if (saved === null) return defaultValue;
@@ -615,7 +622,14 @@ window.BlockChatPopover = {
       }
       return order.map((id) => byId[id]);
     },
-    handleKeydown(event) {
+    // Called for every keydown while open, bound directly on `document`
+    // in the capture phase (see brainspreadEscapeCaptureMixin in
+    // services/escape-capture.js) rather than left as a template
+    // @keydown on the backdrop — that only fires when focus happens to
+    // sit inside it, and clicking a plain, non-focusable part of the
+    // popover blurs focus without moving it back in, silently breaking
+    // Escape.
+    onEscapeCapture(event) {
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
@@ -643,7 +657,6 @@ window.BlockChatPopover = {
       v-if="isOpen"
       class="block-chat-popover-backdrop"
       @click="handleBackdropClick"
-      @keydown="handleKeydown"
     >
       <div class="block-chat-popover" role="dialog" aria-label="AI chat for block">
         <div class="block-chat-popover-header">

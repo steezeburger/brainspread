@@ -1,6 +1,6 @@
 // Hashtag / key::value property chip highlighting toggles.
 //
-// Both settings only affect how Page.formatContentWithTags renders
+// All three settings only affect how Page.formatContentWithTags renders
 // content — the underlying #hashtag and key::value text in a block is
 // unchanged either way, and the link still navigates when the chip
 // styling is off. Mirrors emoji.js's isEnabled() read pattern: cached
@@ -10,7 +10,8 @@
   const contentHighlighting = {
     _rawUser: undefined,
     _hashtagsEnabled: true,
-    _propertiesEnabled: true,
+    _propertyKeysEnabled: true,
+    _propertyValuesEnabled: true,
 
     _refresh() {
       let raw = null;
@@ -31,8 +32,11 @@
       // Default on — a user who has never touched the setting and the
       // logged-out case both get highlighting.
       this._hashtagsEnabled = user ? user.highlight_hashtags !== false : true;
-      this._propertiesEnabled = user
-        ? user.highlight_properties !== false
+      this._propertyKeysEnabled = user
+        ? user.highlight_property_keys !== false
+        : true;
+      this._propertyValuesEnabled = user
+        ? user.highlight_property_values !== false
         : true;
     },
 
@@ -41,9 +45,14 @@
       return this._hashtagsEnabled;
     },
 
-    propertiesEnabled() {
+    propertyKeysEnabled() {
       this._refresh();
-      return this._propertiesEnabled;
+      return this._propertyKeysEnabled;
+    },
+
+    propertyValuesEnabled() {
+      this._refresh();
+      return this._propertyValuesEnabled;
     },
   };
 

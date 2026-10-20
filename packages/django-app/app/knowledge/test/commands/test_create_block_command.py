@@ -546,3 +546,42 @@ class TestCreateBlockAppendOrder(TestCase):
         self.assertEqual(created.parent_id, foreign_parent.id)
         # Appended within the parent's real sibling group.
         self.assertEqual(created.order, 1)
+
+
+class TestCreateBlockStatePrefix(TestCase):
+    """Issue #263: an explicit todo-family type writes its keyword into
+    the content."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = UserFactory()
+        cls.page = PageFactory(user=cls.user)
+
+    def _create(self, **fields):
+        form = CreateBlockForm(
+            {"user": self.user.id, "page": str(self.page.uuid), **fields}
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        return CreateBlockCommand(form).execute()
+
+    def test_todo_without_prefix_gets_one(self):
+        block = self._create(content="put trash out tonight", block_type="todo")
+
+        self.assertEqual(block.block_type, "todo")
+        self.assertEqual(block.content, "TODO put trash out tonight")
+
+    def test_done_without_prefix_gets_one_and_completed_at(self):
+        block = self._create(content="paid rent", block_type="done")
+
+        self.assertEqual(block.content, "DONE paid rent")
+        self.assertIsNotNone(block.completed_at)
+
+    def test_existing_prefix_is_kept(self):
+        block = self._create(content="TODO: call mom", block_type="todo")
+
+        self.assertEqual(block.content, "TODO: call mom")
+
+    def test_bullet_content_is_untouched(self):
+        block = self._create(content="just a note", block_type="bullet")
+
+        self.assertEqual(block.content, "just a note")

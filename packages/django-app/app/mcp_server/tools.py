@@ -68,6 +68,7 @@ from knowledge.forms.tag_blocks_form import TagBlocksForm, UntagBlocksForm
 from knowledge.forms.update_block_form import UpdateBlockForm
 from knowledge.models import Block, BlockRevision
 from knowledge.repositories import BlockRepository, PageRepository
+from knowledge.services.state_prefix import keeps_state_type
 
 # --- helpers -----------------------------------------------------------
 
@@ -195,6 +196,8 @@ def _edit_block(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     if block_type:
         payload["block_type"] = block_type
         touched = True
+    elif keeps_state_type(block.block_type, args.get("content")):
+        payload["block_type"] = block.block_type
     order = args.get("order")
     if order is not None:
         try:
@@ -459,6 +462,7 @@ def _tag_block(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
             "user": ctx.user.id,
             "block_uuids": [block_uuid],
             "page_uuids": page_uuids,
+            "source": BlockRevision.SOURCE_ASSISTANT,
         }
     )
     if not form.is_valid():
@@ -479,6 +483,7 @@ def _untag_block(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
             "user": ctx.user.id,
             "block_uuids": [block_uuid],
             "page_uuids": page_uuids,
+            "source": BlockRevision.SOURCE_ASSISTANT,
         }
     )
     if not form.is_valid():
@@ -905,11 +910,10 @@ REGISTRY = ToolRegistry(
         Tool(
             name="tag_block",
             description=(
-                "Tag a block with one or more existing pages. Pass tag"
-                " slugs (e.g. 'work', 'ideas') — the leading '#' is"
-                " optional. Tags that don't exist yet must be created via"
-                " create_page first; this tool will error rather than"
-                " silently creating typos."
+                "Tag a block by appending #slug to its content, same as"
+                " typing the hashtag. Pass tag slugs (e.g. 'work',"
+                " 'ideas') — the leading '#' is optional. Tag pages that"
+                " don't exist yet are created. The block's type is kept."
             ),
             input_schema={
                 "type": "object",
@@ -928,7 +932,8 @@ REGISTRY = ToolRegistry(
         Tool(
             name="untag_block",
             description=(
-                "Remove one or more tags from a block. Same slug format as tag_block."
+                "Remove one or more tags from a block, stripping #slug from"
+                " its content. Same slug format as tag_block."
             ),
             input_schema={
                 "type": "object",
